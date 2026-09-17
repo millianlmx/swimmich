@@ -4,8 +4,10 @@ import SwiftUI
 ///
 /// Premium visual layers:
 /// - **Uniform 1:1 square cells** (no ragged grid). Image fills + clips.
-/// - **Uniform material-pill badges**: favorite (heart), video (play + mm:ss),
-///   360° (equirectangular projection) — all share one capsule treatment.
+/// - **Clean SF Symbol & subtle capsule badges**: Live Photo symbol, video play+duration,
+///   cloud backup status, favorite heart, and stack cover.
+/// - **Dedicated corner positions**: Top-Trailing (video / live photo), Bottom-Leading (favorite),
+///   Bottom-Trailing (cloud backup / selection checkmark), Top-Leading (stack / 360° / offline).
 /// - **Pro selection**: cell scales to 0.96, blue-tint overlay on selected,
 ///   near-imperceptible 0.08 dim on unselected, checkmark morphs via
 ///   `.contentTransition(.symbolEffect(.replace))` + `.symbolEffect(.bounce)`.
@@ -26,6 +28,9 @@ struct AssetThumbnailCell: View {
     /// would eventually be forgotten at one of them.
     @Environment(CloudBackupStatusIndex.self) private var cloudStatus: CloudBackupStatusIndex?
 
+    /// When true, forces compact badges (e.g. icon-only play badge for dense grids).
+    /// If nil, dynamically inferred from geometry width (< 70pt).
+    var isCompact: Bool? = nil
     var selectionMode: Bool = false
     var isSelected: Bool = false
     var onTap: () -> Void = {}
@@ -83,11 +88,21 @@ struct AssetThumbnailCell: View {
                     }
             }
             .overlay { selectionTint }
-            .overlay { favoriteBadge }
-            .overlay(alignment: .topLeading) { topLeadingBadges }
-            .overlay(alignment: .bottomLeading) { livePhotoBadge }
-            .overlay(alignment: .bottomTrailing) { videoBadge }
-            .overlay(alignment: .bottomTrailing) { checkmark }
+            .overlay {
+                GeometryReader { proxy in
+                    let compact = isCompact ?? (proxy.size.width > 0 && proxy.size.width < 70)
+                    ZStack {
+                        topLeadingBadges(isCompact: compact)
+                            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+                        topTrailingBadges(isCompact: compact)
+                            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topTrailing)
+                        favoriteBadge(isCompact: compact)
+                            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottomLeading)
+                        bottomTrailingBadges(isCompact: compact)
+                            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottomTrailing)
+                    }
+                }
+            }
             .clipShape(RoundedRectangle(cornerRadius: PVRadius.xs, style: .continuous))
             // Pro selection: selected cells recede slightly (scale 0.96) w/ spring.
             .scaleEffect(selectionMode && isSelected ? 0.96 : 1.0)
@@ -151,19 +166,117 @@ struct AssetThumbnailCell: View {
         }
     }
 
-    // MARK: - Badges (uniform material-pill treatment, V4)
+    // MARK: - Badges (Clean aesthetic, Photos parity)
 
-    /// Favorite heart — small material pill, top-trailing. Always visible in
-    /// selection mode (users must see which photos are already liked) while
-    /// the checkmark sits bottom-trailing on the selected cell (D1).
+    /// Video or Live Photo badge — top-trailing.
     @ViewBuilder
-    private var favoriteBadge: some View {
-        if asset.isFavorite {
-            badge {
-                Image(systemName: "heart.fill")
+    private func topTrailingBadges(isCompact: Bool) -> some View {
+        if asset.isVideo {
+            videoBadge(isCompact: isCompact)
+        } else if asset.isLivePhoto {
+            livePhotoBadge(isCompact: isCompact)
+        }
+    }
+
+    /// Video play + duration — top-trailing (Photos parity).
+    /// Hidden on dense/compact image grids where space is constrained (Apple Photos parity).
+    @ViewBuilder
+    private func videoBadge(isCompact: Bool) -> some View {
+        if !isCompact {
+            let durationText: String? = {
+                guard let d = asset.duration, d > 0 else { return nil }
+                return Self.formattedDuration(d)
+            }()
+
+            Group {
+                if let durationText {
+                    Label(durationText, systemImage: "play.fill")
+                        .font(.caption2.weight(.semibold))
+                        .lineLimit(1)
+                        .foregroundStyle(.white) // DS-exempt: badge contrast on material
+                        .padding(.horizontal, 6)
+                        .padding(.vertical, 3) // DS-exempt: badge micro-padding
+                        .background(Color.black.opacity(0.4), in: Capsule())
+                        .padding(5)
+                } else {
+                    compactPlayIcon
+                }
             }
-            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topTrailing)
+            .accessibilityElement(children: .ignore)
+            .accessibilityIdentifier("videoBadge")
+            .accessibilityLabel(durationText.map { String(localized: "Video, \($0)") } ?? String(localized: "Video"))
+        }
+    }
+
+    /// Minimal circular play icon for dense/small image grids where duration does not fit.
+    private var compactPlayIcon: some View {
+        Image(systemName: "play.fill")
+            .font(.system(size: 8, weight: .semibold)) // DS-exempt: badge micro-glyph §8.6
+            .foregroundStyle(.white) // DS-exempt: badge contrast
             .padding(4)
+            .background(Color.black.opacity(0.4), in: Circle())
+            .padding(4)
+    }
+
+    /// Clean Live Photo symbol — top-trailing (Photos parity).
+    @ViewBuilder
+    private func livePhotoBadge(isCompact: Bool) -> some View {
+        Image(systemName: "livephoto")
+            .font(.caption.weight(.semibold))
+            .foregroundStyle(.white) // DS-exempt: badge contrast
+            .shadow(color: .black.opacity(0.6), radius: 3) // DS-exempt: micro-badge shadow
+            .padding(isCompact ? 4 : 6)
+            .accessibilityElement(children: .ignore)
+            .accessibilityIdentifier("livePhotoBadge")
+            .accessibilityLabel(String(localized: "Live Photo"))
+    }
+
+    /// Favorite heart — bottom-leading, clean icon with soft shadow (Photos parity).
+    /// Always visible in selection mode (users must see which photos are already liked)
+    /// while the checkmark sits bottom-trailing on the selected cell (D1).
+    @ViewBuilder
+    private func favoriteBadge(isCompact: Bool) -> some View {
+        if asset.isFavorite {
+            Image(systemName: "heart.fill")
+                .font(.caption)
+                .foregroundStyle(.white) // DS-exempt: badge contrast
+                .shadow(color: .black.opacity(0.6), radius: 3) // DS-exempt: micro-badge shadow
+                .padding(isCompact ? 4 : 6)
+                .accessibilityElement(children: .ignore)
+                .accessibilityIdentifier("favoriteBadge")
+                .accessibilityLabel(String(localized: "Favorite"))
+        }
+    }
+
+    /// Bottom-trailing: checkmark during selection, otherwise cloud backup badge.
+    @ViewBuilder
+    private func bottomTrailingBadges(isCompact: Bool) -> some View {
+        if selectionMode {
+            checkmark
+        } else {
+            cloudBadge(isCompact: isCompact)
+        }
+    }
+
+    /// Backup badge (G6) — bottom-trailing; draws nothing when the ledger has no answer for this asset.
+    /// `asset.id` is a **server** UUID here, and an unknown one is not "not
+    /// backed up": the tile may show a photo another device uploaded, so the
+    /// absence of an answer stays an absence of a badge.
+    @ViewBuilder
+    private func cloudBadge(isCompact: Bool) -> some View {
+        if cloudStatus?.isEnabled == true,
+           let status = cloudStatus?.status(forServerAssetID: asset.id) {
+            Image(systemName: status.systemImage)
+                .font(.system(size: isCompact ? 10 : 12, weight: .semibold)) // DS-exempt: badge micro-glyph §8.6
+                .foregroundStyle(.white) // DS-exempt: badge contrast
+                .shadow(color: .black.opacity(0.6), radius: 2.5) // DS-exempt: micro-badge shadow
+                .padding(isCompact ? 4 : 6)
+                // One element, one sentence: the glyph is the whole badge, and its
+                // meaning has to reach VoiceOver through the label rather than the
+                // SF Symbol's name. The identifier goes on the badge itself.
+                .accessibilityElement(children: .ignore)
+                .accessibilityIdentifier(status == .uploaded ? "cloudBackedUpBadge" : "cloudLocalOnlyBadge")
+                .accessibilityLabel(status.localizedLabel)
         }
     }
 
@@ -172,24 +285,31 @@ struct AssetThumbnailCell: View {
     /// how many photos sit behind it (gap #1, Photos parity), since `withStacked`
     /// keeps only the primary in the bucket.
     @ViewBuilder
-    private var topLeadingBadges: some View {
+    private func topLeadingBadges(isCompact: Bool) -> some View {
         VStack(alignment: .leading, spacing: 4) {
             if asset.projectionType == "equirectangular" {
-                badge { Text("360°") }
+                Text("360°")
+                    .font(.system(size: isCompact ? 8 : 10, weight: .bold))
+                    .foregroundStyle(.white) // DS-exempt: badge contrast
+                    .padding(.horizontal, isCompact ? 4 : 5)
+                    .padding(.vertical, 2) // DS-exempt: badge micro-padding
+                    .background(Color.black.opacity(0.4), in: Capsule())
             }
             if isCachedOffline {
-                offlineBadge
+                offlineBadge(isCompact: isCompact)
             }
-            cloudBadge
             if asset.isStacked {
-                badge {
-                    HStack(spacing: 3) {
-                        Image(systemName: "square.stack.fill").font(.system(size: 8)) // DS-exempt: badge micro-glyph §8.6
-                        if let extra = asset.stackedExtraCount, extra > 0 {
-                            Text("+\(extra)").monospacedDigit()
-                        }
+                HStack(spacing: 3) {
+                    Image(systemName: "square.stack.fill").font(.system(size: isCompact ? 7 : 9)) // DS-exempt: badge micro-glyph §8.6
+                    if let extra = asset.stackedExtraCount, extra > 0 {
+                        Text("+\(extra)").monospacedDigit()
                     }
                 }
+                .font(.system(size: isCompact ? 8 : 10, weight: .semibold))
+                .foregroundStyle(.white) // DS-exempt: badge contrast
+                .padding(.horizontal, isCompact ? 4 : 5)
+                .padding(.vertical, 2) // DS-exempt: badge micro-padding
+                .background(Color.black.opacity(0.4), in: Capsule())
                 // One element, one sentence: the glyph and the count are a
                 // single piece of information, not two.
                 .accessibilityElement(children: .ignore)
@@ -198,7 +318,7 @@ struct AssetThumbnailCell: View {
             }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
-        .padding(4)
+        .padding(isCompact ? 3 : 4)
     }
 
     /// True when this asset's original is cached for offline viewing.
@@ -206,38 +326,18 @@ struct AssetThumbnailCell: View {
         offline?.isCached(asset.id) ?? false
     }
 
-    /// Backup pill (G6) — top-leading, between the offline pill and the stack
-    /// badge; draws nothing when the ledger has no answer for this asset.
-    /// `asset.id` is a **server** UUID here, and an unknown one is not "not
-    /// backed up": the tile may show a photo another device uploaded, so the
-    /// absence of an answer stays an absence of a badge.
-    @ViewBuilder
-    private var cloudBadge: some View {
-        if cloudStatus?.isEnabled == true,
-           let status = cloudStatus?.status(forServerAssetID: asset.id) {
-            badge {
-                Image(systemName: status.systemImage).font(.system(size: 10)) // DS-exempt: badge micro-glyph §8.6
-            }
-            // One element, one sentence: the glyph is the whole badge, and its
-            // meaning has to reach VoiceOver through the label rather than the
-            // SF Symbol's name. The identifier goes on the badge itself — on
-            // the enclosing `VStack` it would replace the children's own.
-            .accessibilityElement(children: .ignore)
-            .accessibilityIdentifier(status == .uploaded ? "cloudBackedUpBadge" : "cloudLocalOnlyBadge")
-            .accessibilityLabel(status.localizedLabel)
-        }
-    }
-
     /// Offline pill (issue #18) — top-leading, above the stack badge. Icon+text
     /// share one accessibility element: a label on the container would fold the
     /// children's own labels away, and a test then finds nothing.
-    private var offlineBadge: some View {
-        badge {
-            Image(systemName: "arrow.down.circle.fill").font(.system(size: 10)) // DS-exempt: badge micro-glyph §8.6
-        }
-        .accessibilityElement(children: .ignore)
-        .accessibilityIdentifier("offlineBadge")
-        .accessibilityLabel("Available offline")
+    private func offlineBadge(isCompact: Bool) -> some View {
+        Image(systemName: "arrow.down.circle.fill")
+            .font(.system(size: isCompact ? 10 : 12, weight: .semibold)) // DS-exempt: badge micro-glyph §8.6
+            .foregroundStyle(.white) // DS-exempt: badge contrast
+            .shadow(color: .black.opacity(0.6), radius: 2.5) // DS-exempt: micro-badge shadow
+            .padding(2)
+            .accessibilityElement(children: .ignore)
+            .accessibilityIdentifier("offlineBadge")
+            .accessibilityLabel(String(localized: "Available offline"))
     }
 
     /// Spoken form of the stack badge ("5 photos in a stack").
@@ -246,54 +346,6 @@ struct AssetThumbnailCell: View {
         return count == 1
             ? String(localized: "1 photo in a stack")
             : String(localized: "\(count) photos in a stack")
-    }
-
-    /// Video play + duration — bottom-trailing. Hidden in selection mode:
-    /// the checkmark owns the corner and the duration text would compete
-    /// with it (Photos parity).
-    @ViewBuilder
-    private var videoBadge: some View {
-        if asset.isVideo && !selectionMode {
-            badge {
-                HStack(spacing: 3) {
-                    Image(systemName: "play.fill").font(.system(size: 8)) // DS-exempt: badge micro-glyph §8.6
-                    if let d = asset.duration, d > 0 {
-                        Text(Self.formattedDuration(d)).monospacedDigit()
-                    }
-                }
-            }
-            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottomTrailing)
-            .padding(4)
-        }
-    }
-
-    /// "LIVE" pill for Live Photos — bottom-leading (Photos parity; the video
-    /// badge owns bottom-trailing). Hidden in selection mode with the others.
-    @ViewBuilder
-    private var livePhotoBadge: some View {
-        if asset.livePhotoVideoId != nil && !selectionMode {
-            badge {
-                Text("LIVE")
-            }
-            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottomLeading)
-            .padding(4)
-        }
-    }
-
-    /// Shared capsule treatment — `.ultraThinMaterial` + thin border.
-    /// All badges share this for visual consistency (V4 uniformity).
-    @ViewBuilder
-    private func badge<Content: View>(
-        @ViewBuilder _ content: () -> Content
-    ) -> some View {
-        content()
-            .font(.pvCaption)
-            .foregroundStyle(.white) // DS-exempt: badge contrast on material
-            .padding(.horizontal, PVSpacing.s8)
-            .padding(.vertical, 3) // DS-exempt: badge micro-padding
-            .background(.ultraThinMaterial, in: Capsule())
-            .overlay(Capsule().stroke(.white.opacity(0.25), lineWidth: 0.5))
-            .shadow(color: .black.opacity(0.2), radius: 1.5, y: 0.5) // DS-exempt: micro-badge shadow
     }
 
     // MARK: - Selection (V5)
@@ -328,10 +380,21 @@ struct AssetThumbnailCell: View {
         }
     }
 
-    /// mm:ss if ≥60s, else 0:ss (V11).
-    static func formattedDuration(_ seconds: Int) -> String {
-        let m = seconds / 60
+    /// Formatted duration for thumbnails and playback.
+    /// Under 1 hour: "m:ss" (or "0:ss").
+    /// When duration is ≥1 hour and `includeSecondsIfHours` is false (default for thumbnail badges),
+    /// seconds are omitted to keep the label compact ("h:mm") when the duration is too long.
+    static func formattedDuration(_ seconds: Int, includeSecondsIfHours: Bool = false) -> String {
+        let h = seconds / 3600
+        let m = (seconds % 3600) / 60
         let s = seconds % 60
+        if h > 0 {
+            if includeSecondsIfHours {
+                return String(format: "%d:%02d:%02d", h, m, s)
+            } else {
+                return String(format: "%d:%02d", h, m)
+            }
+        }
         return String(format: "%d:%02d", m, s)
     }
 }

@@ -280,8 +280,8 @@ struct VideoPlayerView: View {
 
     // MARK: - Helpers
 
-    /// mm:ss (0:ss under a minute) — same convention as the grid badges.
+    /// mm:ss (0:ss under a minute) — or h:mm:ss for video playback timer.
     static func format(_ seconds: Double) -> String {
-        AssetThumbnailCell.formattedDuration(Int(seconds.rounded()))
+        AssetThumbnailCell.formattedDuration(Int(seconds.rounded()), includeSecondsIfHours: true)
     }
 }

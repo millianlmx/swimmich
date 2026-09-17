@@ -272,11 +272,10 @@ private struct OfflineAssetCell: View {
     @ViewBuilder
     private var cachedBadge: some View {
         Image(systemName: "checkmark.circle.fill")
-            .font(.pvCaption)
+            .font(.system(size: 12, weight: .semibold))
             .foregroundStyle(.white)
-            .padding(3)
-            .background(.ultraThinMaterial, in: Circle())
-            .padding(4)
+            .shadow(color: .black.opacity(0.6), radius: 2.5)
+            .padding(6)
             .accessibilityElement(children: .ignore)
             .accessibilityIdentifier("offlineCachedBadge")
             .accessibilityLabel("Available offline")
@@ -285,19 +284,24 @@ private struct OfflineAssetCell: View {
     @ViewBuilder
     private var videoBadge: some View {
         if asset.isVideo {
-            HStack(spacing: 3) {
-                Image(systemName: "play.fill")
-                    .font(.system(size: 8))
-                if let duration = asset.duration, duration > 0 {
-                    Text(AssetThumbnailCell.formattedDuration(duration)).monospacedDigit()
+            let durationText: String? = {
+                guard let d = asset.duration, d > 0 else { return nil }
+                return AssetThumbnailCell.formattedDuration(d)
+            }()
+
+            Group {
+                if let durationText {
+                    Label(durationText, systemImage: "play.fill")
+                } else {
+                    Image(systemName: "play.fill").font(.system(size: 8)) // DS-exempt: badge micro-glyph §8.6
                 }
             }
-            .font(.pvCaption)
-            .foregroundStyle(.white)
-            .padding(.horizontal, PVSpacing.s8)
-            .padding(.vertical, 3)
-            .background(.ultraThinMaterial, in: Capsule())
-            .padding(4)
+            .font(.caption2.weight(.semibold))
+            .foregroundStyle(.white) // DS-exempt: badge contrast
+            .padding(.horizontal, 6)
+            .padding(.vertical, 3) // DS-exempt: badge micro-padding
+            .background(Color.black.opacity(0.4), in: Capsule())
+            .padding(5)
         }
     }
 }

@@ -538,6 +538,7 @@ struct TimelineView: View {
             asset: item,
             baseURL: auth.baseURL ?? URL(string: "https://example.com")!,
             token: auth.accessToken,
+            isCompact: columnCount >= 6,
             selectionMode: vm.selectionMode,
             isSelected: vm.selectedIds.contains(item.id),
             onTap: {

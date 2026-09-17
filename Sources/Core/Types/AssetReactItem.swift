@@ -43,6 +43,9 @@ struct AssetReactItem: Identifiable, Equatable, Hashable, Sendable {
     /// True for video assets.
     var isVideo: Bool { !isImage }
 
+    /// True for Live Photos (image with paired motion video).
+    var isLivePhoto: Bool { isImage && (livePhotoVideoId.map { !$0.isEmpty } ?? false) }
+
     /// True when this asset stands in for a stack of 2+ assets.
     var isStacked: Bool { stackId != nil }
 
