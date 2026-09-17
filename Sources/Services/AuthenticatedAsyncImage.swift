@@ -23,6 +23,10 @@ struct AuthenticatedAsyncImage: View {
     var localFileURL: URL? = nil
     var localMaxPixelSize: Int = 2048
 
+    /// Progressive placeholder: cached thumbnail URL to display immediately
+    /// while the full-resolution preview is in-flight.
+    var thumbnailURL: URL? = nil
+
     @State private var image: UIImage?
     @State private var didFail = false
 
@@ -75,6 +79,11 @@ struct AuthenticatedAsyncImage: View {
             }
         }
 
+        // Tier 0.5 — in-memory cached thumbnail placeholder for instant display.
+        if let thumbnailURL, let cachedThumb = await ImageCache.shared.image(for: thumbnailURL) {
+            self.image = cachedThumb
+        }
+
         guard let url else { return }
 
         // Tier 1 — in-memory cache. No await cost beyond actor hop.
@@ -91,21 +100,24 @@ struct AuthenticatedAsyncImage: View {
             // Tiers 2+3 — URLCache dedup + network.
             let (data, response) = try await Self.imageSession.data(for: request)
             if let http = response as? HTTPURLResponse, !(200..<300).contains(http.statusCode) {
-                didFail = true
+                if self.image == nil { didFail = true }
                 return
             }
-            guard let img = UIImage(data: data) else { didFail = true; return }
+            guard let img = UIImage(data: data) else {
+                if self.image == nil { didFail = true }
+                return
+            }
             // Populate both tiers for subsequent hits.
             await ImageCache.shared.store(img, for: url)
             self.image = img
         } catch {
-            didFail = true
+            if self.image == nil { didFail = true }
         }
     }
 
     /// Shared image session with a generous URLCache so the OS dedups HTTP
-    /// traffic across scroll churn. Bearer header is per-request, so this
-    /// session is safe to share between all authenticated image loads.
+    /// traffic across scroll churn. Bearer header is per-request, and the
+    /// delegate re-applies Authorization on HTTP redirects.
     private static let imageSession: URLSession = {
         let cache = URLCache(
             memoryCapacity: 50 * 1024 * 1024,   // 50MB
@@ -116,8 +128,26 @@ struct AuthenticatedAsyncImage: View {
         config.urlCache = cache
         config.requestCachePolicy = .returnCacheDataElseLoad
         config.timeoutIntervalForRequest = 20
-        return URLSession(configuration: config)
+        return URLSession(configuration: config, delegate: AuthenticatedImageRedirectDelegate(), delegateQueue: nil)
     }()
+}
+
+/// Preserves the Authorization header across HTTP redirects on same-host requests.
+final class AuthenticatedImageRedirectDelegate: NSObject, URLSessionTaskDelegate, @unchecked Sendable {
+    func urlSession(
+        _ session: URLSession,
+        task: URLSessionTask,
+        willPerformHTTPRedirection response: HTTPURLResponse,
+        newRequest request: URLRequest,
+        completionHandler: @escaping @Sendable (URLRequest?) -> Void
+    ) {
+        var redirectedRequest = request
+        if let auth = task.originalRequest?.value(forHTTPHeaderField: "Authorization"),
+           request.url?.host == task.originalRequest?.url?.host {
+            redirectedRequest.setValue(auth, forHTTPHeaderField: "Authorization")
+        }
+        completionHandler(redirectedRequest)
+    }
 }
 
 /// Animated shimmer sweep for the loading state — far more premium than a

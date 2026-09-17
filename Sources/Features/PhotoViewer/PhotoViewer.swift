@@ -1366,7 +1366,7 @@ private struct PhotoShareSheet: View {
             originalMime = detail.originalMimeType
         } catch {}
 
-        let url = asset.thumbnailURL(base: baseURL, size: .fullsize)
+        let url = asset.thumbnailURL(base: baseURL, size: .preview)
         do {
             let (data, contentType) = try await AssetFileTransfer.fetchData(from: url, token: token, session: .shared)
 

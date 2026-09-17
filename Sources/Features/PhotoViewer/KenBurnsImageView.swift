@@ -35,11 +35,12 @@ struct KenBurnsImageView: View {
     private var image: some View {
         GeometryReader { proxy in
             AuthenticatedAsyncImage(
-                url: asset.thumbnailURL(base: baseURL, size: .fullsize),
+                url: asset.thumbnailURL(base: baseURL, size: .preview),
                 token: token,
                 contentMode: .fit,
                 localFileURL: localFileURL,
-                localMaxPixelSize: 4096
+                localMaxPixelSize: 4096,
+                thumbnailURL: asset.thumbnailURL(base: baseURL, size: .thumbnail)
             )
             .frame(width: proxy.size.width, height: proxy.size.height)
         }

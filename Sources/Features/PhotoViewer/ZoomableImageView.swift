@@ -58,7 +58,7 @@ struct ZoomableImageView: View {
     private var imageURL: URL {
         appSettings.loadOriginal
             ? ImmichAssetURL.original(assetId: asset.id, baseURL: baseURL, sharedLink: sharedLink)
-            : asset.thumbnailURL(base: baseURL, size: .fullsize, sharedLink: sharedLink)
+            : asset.thumbnailURL(base: baseURL, size: .preview, sharedLink: sharedLink)
     }
 
     var body: some View {
@@ -73,7 +73,8 @@ struct ZoomableImageView: View {
                 localFileURL: localFileURL,
                 // Full screen: keep enough pixels for pinch-zoom to 4x without
                 // re-decoding, still far below the original's own size.
-                localMaxPixelSize: 4096
+                localMaxPixelSize: 4096,
+                thumbnailURL: asset.thumbnailURL(base: baseURL, size: .thumbnail, sharedLink: sharedLink)
             )
             .frame(width: proxy.size.width, height: proxy.size.height)
             .scaleEffect(scale)
