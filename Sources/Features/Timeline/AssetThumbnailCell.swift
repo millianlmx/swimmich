@@ -67,7 +67,8 @@ struct AssetThumbnailCell: View {
                 AuthenticatedAsyncImage(
                     url: url,
                     token: token,
-                    localFileURL: offline?.localURL(for: asset.id)
+                    localFileURL: offline?.localURL(for: asset.id),
+                    thumbhash: asset.thumbhash
                 )
                     // Identifier on the image LAYER, never on the whole cell: an
                     // identifier on a container replaces its descendants', which
