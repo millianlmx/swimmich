@@ -8,8 +8,10 @@ import XCTest
 /// the tiles actually read. Immich v3 sends `duration` in MILLISECONDS; a
 /// surface that forgets it renders 7173 ms as "119:33" — a plausible-looking
 /// label, on a screen that is otherwise perfectly healthy. The stub therefore
-/// serves one 7-second clip and one 5-minute clip, and the scenario pins both
-/// labels (and the absence of the two absurd ones) in the same run.
+/// serves a 7-second clip, a 5-minute clip and a 2-hour clip, and the scenario
+/// pins all three labels — including the badge compaction past the hour
+/// ("2:00", never the unbounded-minutes "120:00" nor the raw-cell
+/// "120000:00") — in the same run.
 ///
 /// Run it with the launcher, never by hand:
 ///
@@ -28,9 +30,10 @@ final class VideoDurationUITests: XCTestCase {
     private let stub = ProcessInfo.processInfo.environment["IMMICH_STUB_URL"] ?? "http://127.0.0.1:8421"
     private var app: XCUIApplication!
 
-    /// The two video tiles, in the stub's own order: 7173 ms then 300000 ms.
+    /// The video tiles, in the stub's own order: 7173 ms, 300000 ms, 7200000 ms.
     private let sevenSecondClip = "aaaaaaaa-1111-4111-8111-000000000001"
     private let fiveMinuteClip = "aaaaaaaa-1111-4111-8111-000000000003"
+    private let twoHourClip = "aaaaaaaa-1111-4111-8111-000000000004"
 
     override func setUpWithError() throws {
         continueAfterFailure = false
@@ -245,27 +248,32 @@ final class VideoDurationUITests: XCTestCase {
             whatsNewDone.tap()
         }
 
-        // Both videos of the stub are on screen — their ids are what the badge
-        // assertions below are about.
+        // All three videos of the stub are on screen — their ids are what the
+        // badge assertions below are about.
         XCTAssertTrue(tile(sevenSecondClip).waitForExistence(timeout: 30),
                       "the 7-second clip never rendered — screen reads: \(screenLabels())")
         XCTAssertTrue(tile(fiveMinuteClip).waitForExistence(timeout: 20),
                       "the 5-minute clip never rendered — screen reads: \(screenLabels())")
+        XCTAssertTrue(tile(twoHourClip).waitForExistence(timeout: 20),
+                      "the 2-hour clip never rendered — screen reads: \(screenLabels())")
         shot("v04-video-duration-timeline")
 
         // AC-1/AC-2: the 7173 ms clip reads "0:07" (never "119:33"), the
-        // 300000 ms clip reads "5:00" (never "3000:00"), and those two are the
-        // ONLY durations on screen — the photos carry `duration: nil` and draw
-        // no badge at all.
+        // 300000 ms clip reads "5:00" (never "3000:00"), the 7200000 ms clip
+        // compacts to "2:00" past the hour, and those three are the ONLY
+        // durations on screen — the photos carry `duration: nil` and draw no
+        // badge at all.
         let durationLabels = screenLabels().filter { $0.range(of: #"^\d+:\d{2}$"#, options: .regularExpression) != nil }
-        XCTAssertEqual(durationLabels.sorted(), ["0:07", "5:00"],
+        XCTAssertEqual(durationLabels.sorted(), ["0:07", "2:00", "5:00"],
                        "the grid shows the raw millisecond cell on a video tile — screen reads: \(screenLabels())")
 
         // The same claim as an explicit absence, so a regression names itself
-        // even if the two live labels above move around.
-        for wrong in ["119:33", "3000:00"] {
+        // even if the live labels above move around. "120:00" is the
+        // unbounded-minutes render this badge used to have; "120000:00" is the
+        // raw cell read as seconds.
+        for wrong in ["119:33", "3000:00", "120:00", "120000:00"] {
             XCTAssertFalse(screenLabels().contains { $0.contains(wrong) },
-                           "a surface still reads the millisecond duration as seconds (\(wrong))")
+                           "a surface renders the wrong duration (\(wrong))")
         }
     }
 }
