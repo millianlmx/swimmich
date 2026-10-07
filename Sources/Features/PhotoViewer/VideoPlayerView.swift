@@ -119,10 +119,6 @@ struct VideoPlayerView: View {
                     .ignoresSafeArea()
             }
 
-            if controlsVisible {
-                transportControls
-            }
-
             if case .failed = vm.status {
                 errorOverlay
             }
@@ -131,6 +127,15 @@ struct VideoPlayerView: View {
                 ProgressView()
                     .controlSize(.large)
                     .tint(.white) // DS-exempt: loading state on black
+            }
+        }
+        // Photos placement: the transport sits on the page's bottom edge, not
+        // in its middle. Deliberately an OVERLAY and not `ZStack(alignment:)`:
+        // the error overlay and the preparing spinner share this stack and must
+        // stay centered (they would follow the stack's alignment).
+        .overlay(alignment: .bottom) {
+            if controlsVisible {
+                transportControls
             }
         }
         .onAppear {
@@ -196,6 +201,7 @@ struct VideoPlayerView: View {
             )
             .tint(.white) // DS-exempt: transport accent on black
             .padding(.horizontal, PVSpacing.s16)
+            .accessibilityIdentifier("videoPlayerScrubber")
 
             HStack {
                 Text(VideoDurationFormatter.string(seconds: vm.currentTime))
@@ -232,6 +238,7 @@ struct VideoPlayerView: View {
         }
         .buttonStyle(.plain)
         .accessibilityLabel(vm.status == .playing ? "Pause" : "Play")
+        .accessibilityIdentifier("videoPlayerPlayPause")
     }
 
     private func seekButton(symbol: String, delta: Double, label: LocalizedStringKey) -> some View {

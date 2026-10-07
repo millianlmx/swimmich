@@ -213,6 +213,15 @@ targets:
     platform: iOS
     sources:
       - path: UITests
+        # XcodeGen enumerates `UITests` recursively and every file it finds
+        # becomes a bundle member; these two trees must not. `stubs/tools` holds
+        # the standalone macOS fixture generator (`make_video_fixture.swift` has
+        # top-level code — compiling it into a test bundle fails with
+        # "expressions are not allowed at the top level"), and `stubs/fixtures`
+        # is served from disk by the stub server, never read out of the bundle.
+        excludes:
+          - "stubs/tools/**"
+          - "stubs/fixtures/**"
     dependencies:
       - target: ImmichSwiftUI
     settings:
