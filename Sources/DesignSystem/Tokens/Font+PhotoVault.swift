@@ -14,8 +14,10 @@ extension Font {
     static let pvTitle   = Font.system(size: 28, weight: .bold)
     static let pvHeadline = Font.system(size: 17, weight: .semibold)
     static let pvBody    = Font.system(size: 17, weight: .regular)
-    static let pvSubhead = Font.system(size: 15, weight: .regular)
-    static let pvCaption = Font.system(size: 13, weight: .regular)
+    static let pvSubheadSize: CGFloat = 15
+    static let pvCaptionSize: CGFloat = 13
+    static let pvSubhead = Font.system(size: pvSubheadSize, weight: .regular)
+    static let pvCaption = Font.system(size: pvCaptionSize, weight: .regular)
     static let pvNumeric = Font.system(size: 17, weight: .semibold).monospacedDigit()
 
     // Immich heading scale (ImmichTextSize).

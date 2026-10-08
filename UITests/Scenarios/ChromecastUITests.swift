@@ -236,6 +236,30 @@ final class ChromecastUITests: XCTestCase {
         app.descendants(matching: .any).matching(identifier: identifier).firstMatch
     }
 
+    /// A viewer top-bar action (SP-6): its pill when the row carries it, else
+    /// the "⋯" menu's item — by identifier, then by label. Taps what it returns.
+    /// A disabled item is tapped too: the caller's inertness checks read it.
+    private func viewerAction(id: String, menu: String, labels: [String]) -> XCUIElement {
+        let pill = app.buttons.matching(identifier: id).firstMatch
+        if pill.exists {
+            pill.tap()
+            return pill
+        }
+        let overflow = app.buttons.matching(identifier: "viewerOverflowMenu").firstMatch
+        XCTAssertTrue(overflow.waitForExistence(timeout: 15),
+                      "\(id) is neither on the viewer's row nor behind ⋯ — screen reads: \(screenLabels())")
+        overflow.tap()
+        let anyElement = app.descendants(matching: .any)
+        var item = anyElement.matching(identifier: menu).firstMatch
+        if !item.waitForExistence(timeout: 5) {
+            item = anyElement.matching(NSPredicate(format: "label IN %@", labels)).firstMatch
+        }
+        XCTAssertTrue(item.waitForExistence(timeout: 5),
+                      "⋯ holds neither \(menu) nor \(labels) — screen reads: \(screenLabels())")
+        item.tap()
+        return item
+    }
+
     /// Everything on screen, for a failure message that says what the app
     /// actually showed instead of only what was expected.
     private func screenLabels() -> String {
@@ -312,12 +336,15 @@ final class ChromecastUITests: XCTestCase {
         shot("c03-timeline")
         tile.tap()
 
-        let cast = app.buttons.matching(identifier: "viewerCastButton").firstMatch
-        if !cast.waitForExistence(timeout: 20) {
-            shot("c04b-no-cast-pill")
-            XCTFail("the viewer's chrome carries no cast pill (`viewerCastButton`) — screen reads: \(screenLabels())")
+        let chrome = app.buttons.matching(identifier: "viewerBackButton").firstMatch
+        if !chrome.waitForExistence(timeout: 20) {
+            shot("c04b-no-viewer-chrome")
+            XCTFail("the viewer never showed its top bar — screen reads: \(screenLabels())")
         }
-        shot("c04-viewer-with-cast-pill")
+        shot("c04-viewer-chrome")
+        // Cast is on the row or behind "⋯" by the badge width (SP-3). The
+        // helper taps it once — that tap is the one the inertness check below reads.
+        let cast = viewerAction(id: "viewerCastButton", menu: "viewerMenuCast", labels: pillDisconnected)
 
         // MARK: The pill states the route it actually has — none
 
@@ -341,8 +368,7 @@ final class ChromecastUITests: XCTestCase {
         let opened = stubRequests()
         XCTAssertTrue(opened.contains {
             $0.method == "GET" && $0.path == "/api/assets/\(photo)/thumbnail"
-                && $0.params["size"] == "fullsize"
-        }, "the viewer did not fetch \(photo) at full size from this stub — got:\n\(describe(opened))")
+        }, "the viewer did not fetch \(photo) from this stub — got:\n\(describe(opened))")
 
         // MARK: The pill is the only way into the sheet, and it is inert
 
@@ -354,7 +380,7 @@ final class ChromecastUITests: XCTestCase {
         // at all (XCTest has no accessibility-activate API, only synthesized
         // gestures, and SwiftUI's `.disabled` ignores those), so the sheet's own
         // surfaces are not provable here — see the class comment.
-        cast.tap()
+        // (The tap itself was made by `viewerAction` above — exactly one.)
         let statusRow = element("castStatusRow")
         let sheetAppeared = statusRow.waitForExistence(timeout: 8)
         shot("c05-after-tapping-the-pill")

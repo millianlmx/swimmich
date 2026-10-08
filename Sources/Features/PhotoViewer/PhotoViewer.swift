@@ -10,6 +10,62 @@ struct PhotoViewerItem: Identifiable {
     var id: String { assets.indices.contains(index) ? assets[index].id : UUID().uuidString }
 }
 
+/// Pure top-bar layout decision for the viewer — no SwiftUI state, unit-testable.
+/// Row order: back · badge · slideshow · detected text · cast · details. The
+/// trailing actions are collapsed behind one "⋯" pill, from the last one, as
+/// the row gets narrower. The badge is two lines when the whole row fits, else
+/// one truncated line. Only the available width and the badge width are inputs.
+enum PhotoViewerTopBarLayout {
+    enum BadgeForm: Equatable { case twoLine, singleLineTruncated }
+    struct Plan: Equatable {
+        let collapsedActions: Int
+        let badge: BadgeForm
+    }
+
+    static let sidePadding: CGFloat = PVSpacing.s16
+    static let pill: CGFloat = 40
+    static let spacing: CGFloat = PVSpacing.s16
+    /// The two `Spacer(minLength: 0)` on either side of the badge.
+    static let spacerCount = 2
+    static let badgeHorizontalPadding: CGFloat = PVSpacing.s16 * 2
+
+    /// Width of the whole row with `collapsed` trailing actions behind "⋯".
+    /// A "⋯" pill occupies the place of one pill.
+    static func rowWidth(collapsed: Int, badgeWidth: CGFloat, actionCount: Int) -> CGFloat {
+        let live = actionCount - collapsed
+        let trailing = collapsed > 0 ? live + 1 : live
+        let items = 2 + spacerCount + trailing
+        return sidePadding * 2 + pill + badgeWidth
+            + CGFloat(trailing) * pill + spacing * CGFloat(items - 1)
+    }
+
+    /// The fewest collapsed actions whose row fits; the two-line badge if it
+    /// fits at all, else one truncated line with every action collapsed.
+    static func plan(availableWidth: CGFloat, badgeWidth: CGFloat, actionCount: Int) -> Plan {
+        for collapsed in 0...actionCount
+        where rowWidth(collapsed: collapsed, badgeWidth: badgeWidth, actionCount: actionCount) <= availableWidth {
+            return Plan(collapsedActions: collapsed, badge: .twoLine)
+        }
+        return Plan(collapsedActions: actionCount, badge: .singleLineTruncated)
+    }
+
+    /// Badge width = widest line (place at 15 semibold, date at 13) + 32 pt.
+    /// No place ⇒ the date alone decides.
+    static func badgeWidth(place: String?, date: String) -> CGFloat {
+        let placeWidth = place.map { measure($0, size: Font.pvSubheadSize, weight: .semibold) } ?? 0
+        let dateWidth = measure(date, size: Font.pvCaptionSize, weight: .regular)
+        return max(placeWidth, dateWidth) + badgeHorizontalPadding
+    }
+
+    /// Rounded up, plus 1 pt: `size(withAttributes:)` returns fractional sizes,
+    /// and an underestimate would let the badge be squeezed (the measured defect).
+    private static func measure(_ text: String, size: CGFloat, weight: UIFont.Weight) -> CGFloat {
+        guard !text.isEmpty else { return 0 }
+        let font = UIFont.systemFont(ofSize: size, weight: weight)
+        return ceil((text as NSString).size(withAttributes: [.font: font]).width) + 1
+    }
+}
+
 /// Pure swipe-decision thresholds for the viewer's gestures — unit-testable,
 /// no SwiftUI state:
 /// - Swipe down (1x): dismiss the viewer / close the open info panel.
@@ -266,7 +322,7 @@ struct PhotoViewer: View {
             // never touch the top bar or the filmstrip).
             .safeAreaInset(edge: .top, spacing: PVSpacing.s8) {
                 if showChrome, let asset = currentAsset {
-                    topBar(asset)
+                    topBar(asset, availableWidth: proxy.size.width)
                 }
             }
             .safeAreaInset(edge: .bottom, spacing: PVSpacing.s16) {
@@ -496,10 +552,75 @@ struct PhotoViewer: View {
         return String(localized: "No text found")
     }
 
-    // MARK: - Top bar (back · location+date glass · info)
+    // MARK: - Top bar (back · location+date glass · actions, trailing ones collapsible)
 
-    private func topBar(_ asset: AssetReactItem) -> some View {
-        GlassEffectContainer {
+    /// One trailing action. The same description drives its live pill and its
+    /// entry in the "⋯" menu, so the two cannot disagree on state or effect.
+    private struct TopBarAction: Identifiable {
+        let id: String        // pill accessibility identifier
+        let menuID: String    // identifier of its entry in the "⋯" menu
+        let title: LocalizedStringKey
+        let symbol: String
+        let tint: Color
+        let value: String?
+        let disabled: Bool
+        let perform: () -> Void
+    }
+
+    /// Trailing actions in row order (slideshow · detected text · cast · details).
+    /// Cast is absent in the trash: nothing there can leave the device.
+    private func topBarActions(_ asset: AssetReactItem) -> [TopBarAction] {
+        var actions = [
+            TopBarAction(
+                id: "viewerSlideshowButton", menuID: "viewerMenuSlideshow",
+                title: "Slideshow", symbol: "play.circle", tint: .white, value: nil,
+                disabled: localAssets.count < 2,
+                perform: { presentSlideshow() }
+            ),
+            // Detected-text toggle (ocr-text) — a video has no OCR to show.
+            TopBarAction(
+                id: "viewerOcrToggle", menuID: "viewerMenuOcr",
+                title: "Detected text", symbol: "text.viewfinder",
+                tint: showOcr ? .immichPrimary : .white,
+                value: showOcr ? "on" : "off",
+                disabled: !asset.isImage,
+                perform: { toggleOcr() }
+            ),
+        ]
+        // Gap G9: disabled when no external screen is reachable — the sheet
+        // explains that state.
+        if !isTrash {
+            actions.append(TopBarAction(
+                id: "viewerCastButton", menuID: "viewerMenuCast",
+                title: castService.isConnected ? "Casting" : "Cast",
+                symbol: castService.isConnected ? "airplayvideo.circle.fill" : "airplayvideo",
+                tint: castService.isConnected ? .immichPrimary : .white,
+                value: nil,
+                disabled: !castService.isAvailable,
+                perform: { showCastSheet = true }
+            ))
+        }
+        // Its label is translated, so the viewer's own tests reach it by identifier.
+        actions.append(TopBarAction(
+            id: "viewerDetailsButton", menuID: "viewerMenuDetails",
+            title: "Details", symbol: "info", tint: .white, value: nil, disabled: false,
+            perform: { openInfo() }
+        ))
+        return actions
+    }
+
+    private func topBar(_ asset: AssetReactItem, availableWidth: CGFloat) -> some View {
+        let actions = topBarActions(asset)
+        let plan = PhotoViewerTopBarLayout.plan(
+            availableWidth: availableWidth,
+            badgeWidth: PhotoViewerTopBarLayout.badgeWidth(
+                place: placeName(for: asset), date: headerDate(for: asset)
+            ),
+            actionCount: actions.count
+        )
+        let live = Array(actions.prefix(actions.count - plan.collapsedActions))
+        let collapsed = Array(actions.suffix(plan.collapsedActions))
+        return GlassEffectContainer {
             HStack(spacing: PVSpacing.s16) {
                 Button {
                     dismissAction()
@@ -514,96 +635,16 @@ struct PhotoViewer: View {
                 .accessibilityLabel("Back")
                 .accessibilityIdentifier("viewerBackButton")
 
-                Spacer()
+                Spacer(minLength: 0)
 
-                VStack(spacing: 2) {
-                    if let place = placeName(for: asset) {
-                        Text(place)
-                            .font(.pvSubhead.weight(.semibold))
-                            .foregroundStyle(Color.white)
-                            .lineLimit(1)
-                    }
-                    Text(headerDate(for: asset))
-                        .font(.pvCaption)
-                        .foregroundStyle(Color.white.opacity(0.8))
-                        .lineLimit(1)
+                topBarBadge(asset, form: plan.badge)
+
+                Spacer(minLength: 0)
+
+                ForEach(live) { topBarPill($0) }
+                if !collapsed.isEmpty {
+                    topBarOverflow(collapsed)
                 }
-                .padding(.horizontal, PVSpacing.s16)
-                .padding(.vertical, PVSpacing.s4)
-                .glassEffect(.regular.tint(.black.opacity(0.6)), in: Capsule())
-
-                Spacer()
-
-                Button {
-                    presentSlideshow()
-                } label: {
-                    Image(systemName: "play.circle")
-                        .font(.pvHeadline)
-                        .foregroundStyle(Color.white)
-                        .frame(width: 40, height: 40)
-                        .glassEffect(.regular.tint(.black.opacity(0.6)), in: Circle())
-                }
-                .buttonStyle(.plain)
-                .accessibilityLabel("Slideshow")
-                .disabled(localAssets.count < 2)
-
-                // Detected-text toggle (ocr-text) — same group and weight as
-                // Slideshow/Info; a video has no OCR to show.
-                Button {
-                    toggleOcr()
-                } label: {
-                    Image(systemName: "text.viewfinder")
-                        .font(.pvHeadline)
-                        .foregroundStyle(showOcr ? Color.immichPrimary : Color.white)
-                        .frame(width: 40, height: 40)
-                        .glassEffect(.regular.tint(.black.opacity(0.6)), in: Circle())
-                }
-                .buttonStyle(.plain)
-                .accessibilityLabel("Detected text")
-                .accessibilityValue(showOcr ? "on" : "off")
-                .accessibilityIdentifier("viewerOcrToggle")
-                .disabled(!asset.isImage)
-
-                // Gap G9: the cast badge sits between slideshow and details,
-                // the two other chrome actions. Hidden in the trash (nothing
-                // there can leave the device) and disabled when no external
-                // screen is reachable — the sheet explains that state.
-                if !isTrash {
-                    Button {
-                        showCastSheet = true
-                    } label: {
-                        Image(systemName: castService.isConnected ? "airplayvideo.circle.fill" : "airplayvideo")
-                            .font(.pvHeadline)
-                            .foregroundStyle(castService.isConnected ? Color.immichPrimary : Color.white)
-                            .frame(width: 40, height: 40)
-                            .glassEffect(.regular.tint(.black.opacity(0.6)), in: Circle())
-                            .contentTransition(.symbolEffect(.replace))
-                            .animation(
-                                PVMotion.adaptive(PVMotion.standard, reduceMotion: reduceMotion),
-                                value: castService.isConnected
-                            )
-                    }
-                    .buttonStyle(.plain)
-                    .accessibilityLabel(castService.isConnected ? "Casting" : "Cast")
-                    .accessibilityIdentifier("viewerCastButton")
-                    .disabled(!castService.isAvailable)
-                }
-
-                Button {
-                    openInfo()
-                } label: {
-                    Image(systemName: "info")
-                        .font(.pvHeadline)
-                        .foregroundStyle(Color.white)
-                        .frame(width: 40, height: 40)
-                        .glassEffect(.regular.tint(.black.opacity(0.6)), in: Circle())
-                }
-                .buttonStyle(.plain)
-                .accessibilityLabel("Details")
-                // Its label is translated ("Détails" / "Dettagli"…) and the
-                // simulator's language is not the source's: the rating scenario
-                // reaches the info panel by identifier, never by label.
-                .accessibilityIdentifier("viewerDetailsButton")
             }
         }
         .padding(.horizontal, PVSpacing.s16)
@@ -616,6 +657,96 @@ struct PhotoViewer: View {
             )
             .ignoresSafeArea(edges: .top)
         )
+    }
+
+    /// Location and date. Two lines (`viewerBadgePlace` over `viewerBadgeDate`)
+    /// when the row has room; otherwise one truncated line with both joined.
+    /// The two-line form is rigid: it never gives its width up to a squeeze.
+    @ViewBuilder
+    private func topBarBadge(_ asset: AssetReactItem, form: PhotoViewerTopBarLayout.BadgeForm) -> some View {
+        let place = placeName(for: asset)
+        let date = headerDate(for: asset)
+        switch form {
+        case .twoLine:
+            VStack(spacing: 2) {
+                if let place {
+                    Text(place)
+                        .font(.pvSubhead.weight(.semibold))
+                        .foregroundStyle(Color.white)
+                        .lineLimit(1)
+                        .accessibilityIdentifier("viewerBadgePlace")
+                }
+                Text(date)
+                    .font(.pvCaption)
+                    .foregroundStyle(Color.white.opacity(0.8))
+                    .lineLimit(1)
+                    .accessibilityIdentifier("viewerBadgeDate")
+            }
+            .fixedSize(horizontal: true, vertical: false)
+            .padding(.horizontal, PVSpacing.s16)
+            .padding(.vertical, PVSpacing.s4)
+            .glassEffect(.regular.tint(.black.opacity(0.6)), in: Capsule())
+        case .singleLineTruncated:
+            Text([place, date].compactMap { $0 }.joined(separator: " · "))
+                .font(.pvCaption)
+                .foregroundStyle(Color.white)
+                .lineLimit(1)
+                .truncationMode(.tail)
+                .padding(.horizontal, PVSpacing.s16)
+                .padding(.vertical, PVSpacing.s4)
+                .glassEffect(.regular.tint(.black.opacity(0.6)), in: Capsule())
+                .accessibilityIdentifier("viewerBadgeSingleLine")
+        }
+    }
+
+    /// A live trailing action: the 40 pt glass circle of the top bar.
+    @ViewBuilder
+    private func topBarPill(_ action: TopBarAction) -> some View {
+        let pill = Button(action: action.perform) {
+            Image(systemName: action.symbol)
+                .font(.pvHeadline)
+                .foregroundStyle(action.tint)
+                .frame(width: 40, height: 40)
+                .glassEffect(.regular.tint(.black.opacity(0.6)), in: Circle())
+                .contentTransition(.symbolEffect(.replace))
+                .animation(
+                    PVMotion.adaptive(PVMotion.standard, reduceMotion: reduceMotion),
+                    value: action.symbol
+                )
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel(action.title)
+        .accessibilityIdentifier(action.id)
+        .disabled(action.disabled)
+        if let value = action.value {
+            pill.accessibilityValue(value)
+        } else {
+            pill
+        }
+    }
+
+    /// The "⋯" pill: holds the collapsed actions, in row order, each keeping its
+    /// disabled state. Opening it and choosing an item runs the same action.
+    private func topBarOverflow(_ actions: [TopBarAction]) -> some View {
+        Menu {
+            ForEach(actions) { action in
+                Button {
+                    action.perform()
+                } label: {
+                    Label(action.title, systemImage: action.symbol)
+                }
+                .disabled(action.disabled)
+                .accessibilityIdentifier(action.menuID)
+            }
+        } label: {
+            Image(systemName: "ellipsis")
+                .font(.pvHeadline)
+                .foregroundStyle(Color.white)
+                .frame(width: 40, height: 40)
+                .glassEffect(.regular.tint(.black.opacity(0.6)), in: Circle())
+        }
+        .accessibilityLabel("Options")
+        .accessibilityIdentifier("viewerOverflowMenu")
     }
 
     /// Location label — `city`, else `country`, else nil (Photos hides it).
