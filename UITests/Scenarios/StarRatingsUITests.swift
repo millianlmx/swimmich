@@ -113,6 +113,31 @@ final class StarRatingsUITests: XCTestCase {
         XCTAssertEqual(body, "{\"provider\": \"\(mode)\"}")
     }
 
+    /// A viewer top-bar action (SP-6): its pill when the row carries it, else
+    /// the "⋯" menu's item — by identifier, then by label, because a menu item
+    /// may publish as `.menuItem` or `.button`. Taps what it returns.
+    private func viewerAction(id: String, menu: String, labels: [String]) -> XCUIElement {
+        let pill = app.buttons.matching(identifier: id).firstMatch
+        if pill.exists {
+            pill.tap()
+            return pill
+        }
+        let overflow = app.buttons.matching(identifier: "viewerOverflowMenu").firstMatch
+        XCTAssertTrue(overflow.waitForExistence(timeout: 15),
+                      "\(id) is neither on the viewer's row nor behind ⋯")
+        overflow.tap()
+        let anyElement = app.descendants(matching: .any)
+        var item = anyElement.matching(identifier: menu).firstMatch
+        if !item.waitForExistence(timeout: 5) {
+            item = anyElement.matching(NSPredicate(format: "label IN %@", labels)).firstMatch
+        }
+        XCTAssertTrue(item.waitForExistence(timeout: 5),
+                      "⋯ holds neither \(menu) nor \(labels) — screen reads: "
+                        + "\(anyElement.allElementsBoundByIndex.map(\.label))")
+        item.tap()
+        return item
+    }
+
     /// Waits for any button whose label contains `text` and taps it. Case
     /// sensitive on purpose: the keyboard's return key is labelled "continuer"
     /// in lowercase and would shadow the "Continuer" CTA.
@@ -379,14 +404,16 @@ final class StarRatingsUITests: XCTestCase {
         // MARK: The viewer, then its info panel
 
         tapTile(rated)
-        let details = app.buttons["viewerDetailsButton"]
-        if !details.waitForExistence(timeout: 20) {
-            shot("s04b-viewer-without-details-button")
+        let chrome = app.buttons.matching(identifier: "viewerBackButton").firstMatch
+        if !chrome.waitForExistence(timeout: 20) {
+            shot("s04b-viewer-without-chrome")
             XCTFail("the viewer never showed its chrome — buttons: "
                     + "\(app.buttons.allElementsBoundByIndex.map(\.identifier))")
         }
         shot("s04-viewer")
-        details.tap()
+        // Details sits on the row or behind "⋯", by the badge width (SP-3). The
+        // tap is the same action either way.
+        _ = viewerAction(id: "viewerDetailsButton", menu: "viewerMenuDetails", labels: ["Détails", "Details"])
 
         let star4 = star(4)
         if !star4.waitForExistence(timeout: 20) {

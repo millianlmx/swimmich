@@ -273,6 +273,33 @@ final class OcrTextUITests: XCTestCase {
         return XCTWaiter().wait(for: [expectation], timeout: timeout) == .completed
     }
 
+    /// A viewer top-bar action (SP-6): its pill when the row carries it, else
+    /// the "⋯" menu's item — by identifier, then by label, because a menu item
+    /// may publish as `.menuItem` or `.button`. Taps what it returns. The
+    /// caller reads `live` BEFORE calling: only a live pill publishes the
+    /// latched `value`; a menu item carries none.
+    private func viewerAction(id: String, menu: String, labels: [String]) -> XCUIElement {
+        let pill = app.buttons.matching(identifier: id).firstMatch
+        if pill.exists {
+            pill.tap()
+            return pill
+        }
+        let overflow = app.buttons.matching(identifier: "viewerOverflowMenu").firstMatch
+        XCTAssertTrue(overflow.waitForExistence(timeout: 15),
+                      "\(id) is neither on the viewer's row nor behind ⋯")
+        overflow.tap()
+        let anyElement = app.descendants(matching: .any)
+        var item = anyElement.matching(identifier: menu).firstMatch
+        if !item.waitForExistence(timeout: 5) {
+            item = anyElement.matching(NSPredicate(format: "label IN %@", labels)).firstMatch
+        }
+        XCTAssertTrue(item.waitForExistence(timeout: 5),
+                      "⋯ holds neither \(menu) nor \(labels) — screen reads: "
+                        + "\(app.descendants(matching: .any).allElementsBoundByIndex.map(\.label))")
+        item.tap()
+        return item
+    }
+
     /// One recognized-text element of the viewer's accessibility stand-in. The
     /// layer is `allowsHitTesting(false)` and drawn in a `Canvas`, so
     /// `accessibilityRepresentation` is the only thing that publishes these.
@@ -383,15 +410,22 @@ final class OcrTextUITests: XCTestCase {
         shot("04-timeline")
         firstPhoto.tap()
 
-        let ocrToggle = app.buttons.matching(identifier: "viewerOcrToggle").firstMatch
-        if !ocrToggle.waitForExistence(timeout: 25) {
-            shot("05b-viewer-without-ocr-toggle")
-            XCTFail("no detected-text button in the viewer's top bar for a photo; screen reads: \(screenCopy())")
+        let chrome = app.buttons.matching(identifier: "viewerBackButton").firstMatch
+        if !chrome.waitForExistence(timeout: 25) {
+            shot("05b-viewer-without-chrome")
+            XCTFail("the viewer never showed its top bar; screen reads: \(screenCopy())")
         }
         shot("05-viewer")
-        ocrToggle.tap()
-        XCTAssertTrue(waitForValue(ocrToggle, latchedCopy),
-                      "the detected-text button did not latch — it reads '\(ocrToggle.value ?? "nil")'")
+        // Live or behind ⋯ depending on the width (BR-3 step 4): the latch is
+        // read from the pill only; a menu item publishes no `value`, so the
+        // collapsed case is proven by the layer's boxes just below.
+        let ocrLive = app.buttons.matching(identifier: "viewerOcrToggle").firstMatch.exists
+        let ocrToggle = viewerAction(id: "viewerOcrToggle", menu: "viewerMenuOcr",
+                                     labels: ["Texte détecté", "Detected text"])
+        if ocrLive {
+            XCTAssertTrue(waitForValue(ocrToggle, latchedCopy),
+                          "the detected-text button did not latch — it reads '\(ocrToggle.value ?? "nil")'")
+        }
 
         // The layer announces its boxes: two confident ones, in reading order,
         // and NOT the faint third (drawn, but under the display threshold).
@@ -426,10 +460,15 @@ final class OcrTextUITests: XCTestCase {
         XCTAssertTrue(secondPhoto.waitForExistence(timeout: 25),
                       "the timeline lost its second photo — screen reads: \(screenCopy())")
         secondPhoto.tap()
-        XCTAssertTrue(ocrToggle.waitForExistence(timeout: 25), "the viewer did not open on the second photo")
-        ocrToggle.tap()
-        XCTAssertTrue(waitForValue(ocrToggle, latchedCopy),
-                      "the detected-text button did not latch on the second photo")
+        XCTAssertTrue(app.buttons.matching(identifier: "viewerBackButton").firstMatch.waitForExistence(timeout: 25),
+                      "the viewer did not open on the second photo")
+        let secondLive = app.buttons.matching(identifier: "viewerOcrToggle").firstMatch.exists
+        let secondToggle = viewerAction(id: "viewerOcrToggle", menu: "viewerMenuOcr",
+                                        labels: ["Texte détecté", "Detected text"])
+        if secondLive {
+            XCTAssertTrue(waitForValue(secondToggle, latchedCopy),
+                          "the detected-text button did not latch on the second photo")
+        }
 
         let status = app.descendants(matching: .any).matching(identifier: "viewerOcrStatusText").firstMatch
         XCTAssertTrue(status.waitForExistence(timeout: 25),

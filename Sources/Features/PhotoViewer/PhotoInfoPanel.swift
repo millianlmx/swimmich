@@ -111,6 +111,7 @@ struct PhotoInfoPanel: View {
             }
             .buttonStyle(.plain)
             .accessibilityLabel("Close details")
+            .accessibilityIdentifier("viewerInfoClose")
         }
     }
 

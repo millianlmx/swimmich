@@ -20,6 +20,7 @@ les pièges (toolbar invisible en AX, gestes idb bloquants, vidéos 404 du démo
 from __future__ import annotations
 
 import argparse
+import json
 import sys
 import time
 
@@ -70,6 +71,50 @@ def tour_context_menu(d: Driver) -> None:
     time.sleep(1.0)
 
 
+def open_viewer_action(d: Driver, identifier: str, labels: list[str], menu: str | None = None) -> bool:
+    """Tape une action de la barre haute du lecteur (SP-6) : la pilule si elle
+    est sur la rangée, sinon l'item du « ⋯ » — par identifiant, puis par libellé
+    (un item de menu peut se publier sous un autre type)."""
+    if d.tap_found(id=identifier):
+        return True
+    if not d.tap_found(id="viewerOverflowMenu"):
+        return False
+    time.sleep(1.0)
+    if menu and d.tap_found(id=menu):
+        return True
+    for label in labels:
+        if d.tap_found(label=label):
+            return True
+    return False
+
+
+def describe_at(d: Driver, x: float, y: float) -> dict | None:
+    """Élément AX sous (x, y). `describe-all` n'expose PAS la feuille « Détails »
+    (mesuré 2026-10-08 : 27 éléments, aucun viewerInfoClose, feuille affichée) ;
+    `describe-point` la voit (viewerInfoClose ≈ (360, 344) sur iPhone 17)."""
+    done = d.idb("ui", "describe-point", str(int(x)), str(int(y)))
+    try:
+        return json.loads(done.stdout)
+    except ValueError:
+        return None
+
+
+def close_viewer_info(d: Driver) -> bool:
+    """Ferme la feuille « Détails » via son chevron (`viewerInfoClose`, PhotoInfoPanel.swift:114).
+    Recherche par hit-test sur la colonne x=360 (glyphe ≈ 14 × 9 pt, pas de 6 pt) ;
+    repli sur le libellé « Fermer les détails ». False si rien : l'appelant échoue."""
+    el = d.find(id="viewerInfoClose")
+    if el:
+        d.tap_el(el)
+        return True
+    for y in range(300, 441, 6):
+        hit = describe_at(d, 360, y)
+        if hit and (hit.get("AXUniqueId") == "viewerInfoClose" or hit.get("AXLabel") == "Fermer les détails"):
+            d.tap_el(hit)
+            return True
+    return False
+
+
 def tour_viewer(d: Driver) -> None:
     d.launch_app()
     tiles = d.tiles()
@@ -85,12 +130,12 @@ def tour_viewer(d: Driver) -> None:
     d.step("viewer-chrome-masque")
     d.tap_xy(201, 437)
     time.sleep(1.0)
-    d.tap_found(id="viewerDetailsButton")
+    if not open_viewer_action(d, "viewerDetailsButton", ["Détails", "Details"], menu="viewerMenuDetails"):
+        raise RuntimeError("action Détails introuvable (ni pilule, ni « ⋯ »)")
     time.sleep(1.6)
     d.step("viewer-panneau-details", note="note, personnes, étiquettes, EXIF")
-    el = d.find(label="Fermer les détails") or d.find(contains="détails")
-    if el:
-        d.tap_el(el)
+    if not close_viewer_info(d):
+        raise RuntimeError("feuille Détails : viewerInfoClose introuvable (describe-all et describe-point)")
     time.sleep(1.2)
     d.tap_found(id="viewerShareButton")
     time.sleep(1.6)
