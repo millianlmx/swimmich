@@ -818,7 +818,7 @@ struct BackupSettingsView: View {
             case .excluded:
                 NavigationLink {
                     AlbumPickerView(
-                        title: "Albums to skip",
+                        title: String(localized: "Albums to skip"),
                         albums: vm.albums,
                         selection: $vm.settings.excludedAlbumIDs
                     )
@@ -834,7 +834,7 @@ struct BackupSettingsView: View {
             // no effect.
             NavigationLink {
                 AlbumPickerView(
-                    title: "Albums to mirror",
+                    title: String(localized: "Albums to mirror"),
                     albums: vm.albums.filter { !$0.isSmart },
                     selection: $vm.settings.syncedAlbumIDs
                 )

@@ -10,9 +10,9 @@ enum TimelineGroupBy: String, CaseIterable, Identifiable {
 
     var label: String {
         switch self {
-        case .day: return "Day"
-        case .month: return "Month"
-        case .none: return "Flat"
+        case .day: return String(localized: "Day")
+        case .month: return String(localized: "Month")
+        case .none: return String(localized: "Flat")
         }
     }
 }

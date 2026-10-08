@@ -223,7 +223,7 @@ private struct LockedFolderGridView: View {
     /// is open, and that state is visible and closable from here.
     private var statusBanner: some View {
         HStack(spacing: PVSpacing.s8) {
-            PVStatusBadge(text: "Unlocked", color: .immichSuccess, symbol: "lock.open.fill")
+            PVStatusBadge(text: String(localized: "Unlocked"), color: .immichSuccess, symbol: "lock.open.fill")
                 .accessibilityIdentifier("lockedFolderStatusBadge")
 
             Spacer()

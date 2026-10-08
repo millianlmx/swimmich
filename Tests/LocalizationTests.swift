@@ -86,6 +86,43 @@ final class LocalizationTests: XCTestCase {
         XCTAssertEqual(available, AppLanguage.supported.map(\.code))
     }
 
+    // MARK: - The pickers' enum labels
+
+    /// AC-3 : each option label the Preferences pickers and the slideshow menu
+    /// render is read from the catalog, key by key.
+    ///
+    /// `Text(label)` takes a `String`, not a `LocalizedStringKey`, so the call
+    /// site has to reach the catalog itself — a bare English literal there is
+    /// drawn verbatim and a French device shows "Day". Both sides of the
+    /// assertion resolve through the catalog for the process language, so the
+    /// test holds on an English destination and fails on a French one the
+    /// moment a branch goes back to the raw literal.
+    func test_enumLabelsComeFromTheCatalog() {
+        let labels: [(label: String, key: String)] = [
+            (TimelineGroupBy.day.label, "Day"),
+            (TimelineGroupBy.month.label, "Month"),
+            (TimelineGroupBy.none.label, "Flat"),
+            (SlideshowViewModel.SlideshowTransitionStyle.dissolve.label, "Dissolve"),
+            (SlideshowViewModel.SlideshowTransitionStyle.slide.label, "Slide"),
+            (SlideshowViewModel.SlideshowTransitionStyle.kenBurns.label, "Ken Burns"),
+            (AppTheme.system.label, "System"),
+            (AppTheme.light.label, "Light"),
+            (AppTheme.dark.label, "Dark"),
+            (AppAccent.immich.label, "Immich"),
+            (AppAccent.blue.label, "Blue"),
+            (AppAccent.green.label, "Green"),
+            (AppAccent.orange.label, "Orange"),
+            (AppAccent.pink.label, "Pink"),
+            (AppAccent.purple.label, "Purple"),
+        ]
+        for entry in labels {
+            XCTAssertEqual(entry.label, localizedString(entry.key),
+                           "AC-3 : '\(entry.key)' must be read from the catalog, not rendered as a raw "
+                           + "English literal — the label reads '\(entry.label)' where the catalog says "
+                           + "'\(localizedString(entry.key))'")
+        }
+    }
+
     // MARK: - Persisting the choice
 
     func test_selectingALanguagePersistsItForTheNextLaunch() throws {
