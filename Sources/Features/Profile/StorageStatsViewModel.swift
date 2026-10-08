@@ -47,7 +47,7 @@ final class StorageStatsViewModel {
             didLoad = true
             errorMessage = nil
         } catch {
-            errorMessage = error.localizedDescription
+            errorMessage = error.userFacingMessage
         }
     }
 

@@ -187,7 +187,7 @@ final class LocalLibraryViewModel {
             errorMessage = nil
         } catch {
             remoteSummary = nil
-            errorMessage = error.localizedDescription
+            errorMessage = error.userFacingMessage
         }
     }
 
@@ -264,7 +264,7 @@ final class LocalLibraryViewModel {
                     }
                 }
             } catch {
-                errorMessage = error.localizedDescription
+                errorMessage = error.userFacingMessage
                 return
             }
         }
@@ -295,7 +295,7 @@ final class LocalLibraryViewModel {
                 try await upload(asset)
                 sent.insert(asset.localIdentifier)
             } catch {
-                errorMessage = error.localizedDescription
+                errorMessage = error.userFacingMessage
             }
             uploadProgress = (done: index + 1, total: pending.count)
         }

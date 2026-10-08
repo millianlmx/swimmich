@@ -166,7 +166,7 @@ struct StackSheet: View {
             }
             await reload(stackId: stackId)
         } catch {
-            errorMessage = error.localizedDescription
+            errorMessage = error.userFacingMessage
         }
     }
 
@@ -175,7 +175,7 @@ struct StackSheet: View {
             stack = try await client.getStack(id: stackId)
             errorMessage = nil
         } catch {
-            errorMessage = error.localizedDescription
+            errorMessage = error.userFacingMessage
         }
     }
 

@@ -270,9 +270,9 @@ final class SearchViewModel {
         } catch {
             // Cancellation is a normal outcome of debounced live search
             // (rapid typing cancels the in-flight request). Never surface it.
-            if isCancellation(error) { return }
+            if UserFacingError.isCancellation(error) { return }
             guard gen == searchGeneration else { return }
-            errorMessage = error.localizedDescription
+            errorMessage = error.userFacingMessage
         }
     }
 
@@ -291,9 +291,9 @@ final class SearchViewModel {
             currentPage = nextPageNumber
             applyResponse(resp, append: true)
         } catch {
-            if isCancellation(error) { return }
+            if UserFacingError.isCancellation(error) { return }
             guard gen == searchGeneration else { return }
-            errorMessage = error.localizedDescription
+            errorMessage = error.userFacingMessage
         }
     }
 
@@ -401,23 +401,6 @@ final class SearchViewModel {
         recents.insert(trimmed, at: 0)
         recentSearches = Array(recents.prefix(recentsCapacity))
         recentsStore.save(recentSearches)
-    }
-
-    /// `true` when `error` represents cooperative Task cancellation — either a
-    /// `URLError(.cancelled)` (what `URLSession.data(for:)` throws when its
-    /// enclosing Task is cancelled) wrapped as `APIError.network`, or a raw
-    /// `CancellationError`. Cancellation is a normal outcome of debounced live
-    /// search and must never surface as a user-visible error.
-    ///
-    /// We check only the *error type*, not `Task.isCancelled`: `search()` runs
-    /// inside the very `searchTask` it cancels (`:100`), so `Task.isCancelled`
-    /// is true for the current search even when the dispatched request itself
-    /// failed with a genuine (non-cancellation) error.
-    private func isCancellation(_ error: Error) -> Bool {
-        if error is CancellationError { return true }
-        if let api = error as? APIError, api.isCancellation { return true }
-        if let url = error as? URLError, url.code == .cancelled { return true }
-        return false
     }
 
     /// Builds the right DTO for the current mode + dispatches.
@@ -540,8 +523,8 @@ final class SearchViewModel {
             // Enrich counts concurrently; updates are visible progressively.
             await enrichPlaceCounts()
         } catch {
-            if isCancellation(error) { return }
-            errorMessage = error.localizedDescription
+            if UserFacingError.isCancellation(error) { return }
+            errorMessage = error.userFacingMessage
         }
     }
 

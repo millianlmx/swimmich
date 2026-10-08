@@ -280,7 +280,7 @@ final class EditorViewModelTests: XCTestCase {
 
         XCTAssertNil(vm.originalImage)
         XCTAssertNotNil(vm.errorMessage)
-        XCTAssertTrue(vm.errorMessage?.contains("401") == true, "got \(vm.errorMessage ?? "")")
+        XCTAssertEqual(vm.errorMessage, UserFacingError.sessionExpiredMessage)
     }
 
     func test_AC_617_loadOriginal_invalid_data() async {

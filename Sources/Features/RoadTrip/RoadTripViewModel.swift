@@ -81,7 +81,7 @@ final class RoadTripViewModel {
             let response = try await client.searchMetadata(dto: dto)
             assets = response.assets.items.map(AssetReactItem.init(from:))
         } catch {
-            errorMessage = error.localizedDescription
+            errorMessage = error.userFacingMessage
             isPreparing = false
             return
         }
@@ -386,8 +386,13 @@ final class RoadTripViewModel {
                 self.isExporting = false
             } catch {
                 guard let self else { return }
-                self.exportState = .failed(error.localizedDescription)
                 self.isExporting = false
+                if let message = error.userFacingMessage {
+                    self.exportState = .failed(message)
+                } else {
+                    // Cancellation: no event, the export simply stops (SP-1).
+                    self.exportState = .idle
+                }
             }
         }
     }

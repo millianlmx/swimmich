@@ -481,12 +481,16 @@ final class BackupEngine {
                 if isCancelled { return await cancelStaging(&batch) }
                 continue
             } catch {
+                if UserFacingError.isCancellation(error) {
+                    if isCancelled { return await cancelStaging(&batch) }
+                    continue
+                }
                 failedCount += 1
-                lastError = error.localizedDescription
+                lastError = error.userFacingMessage ?? UserFacingError.genericMessage
                 failures.append(BackupFailure(
                     assetID: candidate.id,
                     name: candidate.fileName,
-                    reason: error.localizedDescription,
+                    reason: error.userFacingMessage ?? UserFacingError.genericMessage,
                     fileSize: candidate.fileSize
                 ))
                 notifyProgress()
@@ -688,17 +692,22 @@ final class BackupEngine {
             }
         } catch {
             Self.removeStaged(current)
-            failedCount += current.count
             release(current.count)
+            if UserFacingError.isCancellation(error) {
+                if isCancelled { phase = .cancelled }
+                notifyProgress()
+                return
+            }
+            failedCount += current.count
             for entry in current {
                 failures.append(BackupFailure(
                     assetID: entry.candidate.id,
                     name: entry.candidate.fileName,
-                    reason: error.localizedDescription,
+                    reason: error.userFacingMessage ?? UserFacingError.genericMessage,
                     fileSize: Self.stagedFileSize(entry)
                 ))
             }
-            lastError = error.localizedDescription
+            lastError = error.userFacingMessage ?? UserFacingError.genericMessage
             notifyProgress()
             if isCancelled { phase = .cancelled }
             return
@@ -750,17 +759,18 @@ final class BackupEngine {
                 } catch {
                     // Without the video the still would be a dead Live Photo on
                     // the server, and forever rejected by checksum afterwards.
-                    failedCount += 1
-                    lastError = error.localizedDescription
-                    failures.append(BackupFailure(
-                        assetID: entry.candidate.id,
-                        name: entry.candidate.fileName,
-                        reason: "Live Photo video: \(error.localizedDescription)",
-                        fileSize: Self.stagedFileSize(entry)
-                    ))
                     Self.removeStaged([entry])
                     release()
                     notifyProgress()
+                    if UserFacingError.isCancellation(error) { continue }
+                    failedCount += 1
+                    lastError = error.userFacingMessage ?? UserFacingError.genericMessage
+                    failures.append(BackupFailure(
+                        assetID: entry.candidate.id,
+                        name: entry.candidate.fileName,
+                        reason: error.userFacingMessage ?? UserFacingError.genericMessage,
+                        fileSize: Self.stagedFileSize(entry)
+                    ))
                     continue
                 }
             }
@@ -796,14 +806,18 @@ final class BackupEngine {
                     await albumSync.stage(assetID: uploaded.id, deviceAssetID: entry.candidate.id)
                 }
             } catch {
-                failedCount += 1
-                lastError = error.localizedDescription
-                failures.append(BackupFailure(
-                    assetID: entry.candidate.id,
-                    name: entry.candidate.fileName,
-                    reason: error.localizedDescription,
-                    fileSize: Self.stagedFileSize(entry)
-                ))
+                // A cancelled upload is not a failure: no count, no failure
+                // entry, no message. Its staged file is released below.
+                if !UserFacingError.isCancellation(error) {
+                    failedCount += 1
+                    lastError = error.userFacingMessage ?? UserFacingError.genericMessage
+                    failures.append(BackupFailure(
+                        assetID: entry.candidate.id,
+                        name: entry.candidate.fileName,
+                        reason: error.userFacingMessage ?? UserFacingError.genericMessage,
+                        fileSize: Self.stagedFileSize(entry)
+                    ))
+                }
             }
             Self.removeStaged([entry])
             statusMessage = nil
@@ -842,13 +856,15 @@ final class BackupEngine {
         } catch {
             // The still IS on the server, so this is a warning, not a failed
             // asset: recorded for the failures list, retried next run.
+            // A cancelled link is simply not done: nothing to record.
+            guard !UserFacingError.isCancellation(error) else { return }
             failures.append(BackupFailure(
                 assetID: entry.candidate.id,
                 name: entry.candidate.fileName,
-                reason: "Live Photo link: \(error.localizedDescription)",
+                reason: error.userFacingMessage ?? UserFacingError.genericMessage,
                 fileSize: Self.stagedFileSize(entry)
             ))
-            lastError = error.localizedDescription
+            lastError = error.userFacingMessage ?? UserFacingError.genericMessage
         }
     }
 

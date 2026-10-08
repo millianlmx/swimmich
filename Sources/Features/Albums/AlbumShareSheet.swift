@@ -22,7 +22,7 @@ struct AlbumShareSheet: View {
                 if vm.isBusy && vm.users.isEmpty {
                     ProgressView()
                         .frame(maxWidth: .infinity, maxHeight: .infinity)
-                } else if vm.users.isEmpty && vm.errorMessage != nil {
+                } else if vm.users.isEmpty && vm.loadErrorMessage != nil {
                     errorState
                 } else {
                     peopleList
@@ -37,12 +37,12 @@ struct AlbumShareSheet: View {
             }
             .task { await vm.load() }
             .alert("Error", isPresented: Binding(
-                get: { vm.errorMessage != nil && !vm.users.isEmpty },
-                set: { if !$0 { vm.errorMessage = nil } }
+                get: { vm.actionErrorMessage != nil },
+                set: { if !$0 { vm.actionErrorMessage = nil } }
             )) {
                 Button("OK", role: .cancel) {}
             } message: {
-                Text(vm.errorMessage ?? "")
+                Text(vm.actionErrorMessage ?? "")
             }
             .confirmationDialog(
                 "Remove \(pendingRevokeUser?.name ?? "") from this album?",
@@ -69,7 +69,7 @@ struct AlbumShareSheet: View {
         ContentUnavailableView {
             Label("Couldn't Load Users", systemImage: "person.2.slash")
         } description: {
-            Text(vm.errorMessage ?? "")
+            Text(vm.loadErrorMessage ?? "")
         } actions: {
             Button("Try Again") { Task { await vm.load() } }
         }
@@ -79,6 +79,12 @@ struct AlbumShareSheet: View {
 
     private var peopleList: some View {
         List {
+            if !vm.users.isEmpty, let message = vm.loadErrorMessage {
+                Section {
+                    InlineErrorBadge(message: message, retry: { Task { await vm.load() } })
+                        .listRowBackground(Color.clear)
+                }
+            }
             if let owner = vm.owner {
                 Section {
                     ownerRow(owner)
@@ -97,7 +103,7 @@ struct AlbumShareSheet: View {
             Section {
                 inviteRow
             } footer: {
-                if vm.errorMessage == nil {
+                if vm.loadErrorMessage == nil {
                     Text("People you share with can view this album. Editors can also add and remove photos.")
                 }
             }
@@ -221,12 +227,12 @@ private struct AlbumInvitePeopleView: View {
         .navigationTitle("Invite People")
         .navigationBarTitleDisplayMode(.inline)
         .alert("Error", isPresented: Binding(
-            get: { vm.errorMessage != nil && !vm.inviteCandidates.isEmpty },
-            set: { if !$0 { vm.errorMessage = nil } }
+            get: { vm.actionErrorMessage != nil },
+            set: { if !$0 { vm.actionErrorMessage = nil } }
         )) {
             Button("OK", role: .cancel) {}
         } message: {
-            Text(vm.errorMessage ?? "")
+            Text(vm.actionErrorMessage ?? "")
         }
     }
 

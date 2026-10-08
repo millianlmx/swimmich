@@ -105,7 +105,7 @@ struct AddToAlbumPickerSheet: View {
 
     private func add(to albumId: String) async {
         await albumsVM.addAssets(ids: Array(selectedAssetIds), toAlbumId: albumId)
-        if albumsVM.errorMessage == nil {
+        if albumsVM.actionErrorMessage == nil {
             addedAlbumId = albumId
             lastAddTick &+= 1
             await albumsVM.refresh()

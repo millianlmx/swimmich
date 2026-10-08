@@ -80,7 +80,7 @@ final class ChangePasswordViewModel {
             if case .serverError(400, _) = APIError.from(error) {
                 errorMessage = String(localized: "That password is not right.")
             } else {
-                errorMessage = error.localizedDescription
+                errorMessage = error.userFacingMessage
             }
             return nil
         }

@@ -30,11 +30,11 @@ struct SharedLinksView: View {
     var body: some View {
         NavigationStack {
             Group {
-                if vm.sharedLinks.isEmpty && vm.errorMessage != nil && !vm.isLoading {
+                if vm.sharedLinks.isEmpty && vm.loadErrorMessage != nil && !vm.isLoading {
                     ContentUnavailableView {
                         Label("Couldn't load shared links", systemImage: "wifi.exclamationmark")
                     } description: {
-                        Text(vm.errorMessage ?? "")
+                        Text(vm.loadErrorMessage ?? "")
                     } actions: {
                         Button("Try Again") { Task { await vm.refresh() } }
                             .buttonStyle(PVPrimaryButtonStyle())
@@ -125,12 +125,12 @@ struct SharedLinksView: View {
                 }
             }
             .alert("Error", isPresented: Binding(
-                get: { vm.errorMessage != nil && !vm.sharedLinks.isEmpty },
-                set: { if !$0 { vm.errorMessage = nil } }
+                get: { vm.actionErrorMessage != nil },
+                set: { if !$0 { vm.actionErrorMessage = nil } }
             )) {
                 Button("OK", role: .cancel) {}
             } message: {
-                Text(vm.errorMessage ?? "")
+                Text(vm.actionErrorMessage ?? "")
             }
         }
     }
@@ -143,6 +143,12 @@ struct SharedLinksView: View {
             externalDomain: auth.serverConfig?.externalDomain ?? ""
         )
         return List {
+            if let message = vm.loadErrorMessage {
+                Section {
+                    InlineErrorBadge(message: message, retry: { Task { await vm.refresh() } })
+                        .listRowBackground(Color.clear)
+                }
+            }
             ForEach(vm.sharedLinks, id: \.id) { link in
                 SharedLinkRow(
                     link: link,

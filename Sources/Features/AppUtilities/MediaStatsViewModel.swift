@@ -64,7 +64,7 @@ final class MediaStatsViewModel {
                 .map(Int64.init)
             errorMessage = nil
         } catch {
-            errorMessage = error.localizedDescription
+            errorMessage = error.userFacingMessage
         }
     }
 

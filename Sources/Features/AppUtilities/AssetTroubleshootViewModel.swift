@@ -57,7 +57,7 @@ final class AssetTroubleshootViewModel {
             duplicateRemoteAssetID = await duplicate(of: detail, assetID: assetID)
             backupState = isTracked(detail) ? .backedUp : .notTracked
         } catch {
-            errorMessage = error.localizedDescription
+            errorMessage = error.userFacingMessage
         }
     }
 

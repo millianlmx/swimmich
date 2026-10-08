@@ -124,7 +124,7 @@ final class LockedFolderViewModel {
             // The status route needs a session token: an account authenticated
             // with an API key is answered 400 and can never elevate, so say so
             // instead of showing a PIN field that would loop.
-            errorMessage = e.localizedDescription
+            errorMessage = e.userFacingMessage
             gate = pins.storedPIN(for: accountID) == nil ? .needsSetup : .locked
         }
         isBusy = false
@@ -157,7 +157,7 @@ final class LockedFolderViewModel {
             canUnlockWithBiometrics = biometricsAvailable && pins.storedPIN(for: accountID) != nil
             await loadFirstPage()
         } catch let e {
-            errorMessage = e.localizedDescription
+            errorMessage = e.userFacingMessage
         }
     }
 
@@ -219,7 +219,7 @@ final class LockedFolderViewModel {
             // device): drop it, or the button would loop on the same code.
             pins.clearPIN(for: accountID)
             canUnlockWithBiometrics = false
-            errorMessage = e.localizedDescription
+            errorMessage = e.userFacingMessage
         }
     }
 
@@ -262,7 +262,7 @@ final class LockedFolderViewModel {
             loadedIds = []
             await loadNextBucket()
         } catch let e {
-            errorMessage = e.localizedDescription
+            errorMessage = e.userFacingMessage
         }
     }
 
@@ -291,7 +291,7 @@ final class LockedFolderViewModel {
             }
             bucketIndex += 1
         } catch let e {
-            errorMessage = e.localizedDescription
+            errorMessage = e.userFacingMessage
         }
     }
 
@@ -326,7 +326,7 @@ final class LockedFolderViewModel {
             selectedIds.removeAll()
             selectionMode = false
         } catch let e {
-            errorMessage = e.localizedDescription
+            errorMessage = e.userFacingMessage
         }
     }
 }

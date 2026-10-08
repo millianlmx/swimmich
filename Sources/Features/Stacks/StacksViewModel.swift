@@ -71,7 +71,7 @@ final class StacksViewModel {
             stacks = try await client.searchStacks(primaryAssetId: nil)
             errorMessage = nil
         } catch {
-            errorMessage = error.localizedDescription
+            errorMessage = error.userFacingMessage
         }
     }
 
@@ -86,7 +86,7 @@ final class StacksViewModel {
             selectedStack = try await client.getStack(id: id)
             errorMessage = nil
         } catch {
-            errorMessage = error.localizedDescription
+            errorMessage = error.userFacingMessage
         }
     }
 
@@ -103,7 +103,7 @@ final class StacksViewModel {
             errorMessage = nil
             await loadStacks(force: true)
         } catch {
-            errorMessage = error.localizedDescription
+            errorMessage = error.userFacingMessage
         }
     }
 
@@ -114,7 +114,7 @@ final class StacksViewModel {
             if selectedStack?.id == id { selectedStack = nil }
             errorMessage = nil
         } catch {
-            errorMessage = error.localizedDescription
+            errorMessage = error.userFacingMessage
         }
     }
 
@@ -124,7 +124,7 @@ final class StacksViewModel {
             await refreshCover(inList: stackId)
             errorMessage = nil
         } catch {
-            errorMessage = error.localizedDescription
+            errorMessage = error.userFacingMessage
         }
     }
 
@@ -135,7 +135,7 @@ final class StacksViewModel {
             await refreshCover(inList: stackId)
             errorMessage = nil
         } catch {
-            errorMessage = error.localizedDescription
+            errorMessage = error.userFacingMessage
         }
     }
 
@@ -186,7 +186,7 @@ final class StacksViewModel {
             await loadStacks(force: true)
             return updated.id
         } catch {
-            errorMessage = error.localizedDescription
+            errorMessage = error.userFacingMessage
             return nil
         }
     }
@@ -245,7 +245,7 @@ final class StacksViewModel {
             pickerHasMore = response.assets.nextPage != nil
             errorMessage = nil
         } catch {
-            errorMessage = error.localizedDescription
+            errorMessage = error.userFacingMessage
         }
     }
 }

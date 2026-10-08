@@ -28,7 +28,7 @@ final class SharedLinksViewModelTests: XCTestCase {
         XCTAssertEqual(vm.sharedLinks.map(\.id), ["l1", "l2"])
         XCTAssertNil(mock.lastSharedLinksAlbumId, "cross-album list must pass albumId: nil")
         XCTAssertFalse(vm.isLoading)
-        XCTAssertNil(vm.errorMessage)
+        XCTAssertNil(vm.loadErrorMessage)
     }
 
     func test_load_error() async {
@@ -37,7 +37,7 @@ final class SharedLinksViewModelTests: XCTestCase {
         let vm = SharedLinksViewModel(client: mock)
         await vm.load()
         XCTAssertTrue(vm.sharedLinks.isEmpty)
-        XCTAssertNotNil(vm.errorMessage)
+        XCTAssertNotNil(vm.loadErrorMessage)
         XCTAssertFalse(vm.isLoading)
     }
 
@@ -49,7 +49,7 @@ final class SharedLinksViewModelTests: XCTestCase {
         let vm = SharedLinksViewModel(client: mock)
         await vm.refresh()
         XCTAssertEqual(vm.sharedLinks.count, 1)
-        XCTAssertNil(vm.errorMessage)
+        XCTAssertNil(vm.loadErrorMessage)
     }
 
     // MARK: - Revoke
@@ -63,7 +63,7 @@ final class SharedLinksViewModelTests: XCTestCase {
         XCTAssertTrue(ok)
         XCTAssertEqual(mock.lastDeleteSharedLinkId, "l1")
         XCTAssertEqual(vm.sharedLinks.map(\.id), ["l2"], "revoked link removed from list")
-        XCTAssertNil(vm.errorMessage)
+        XCTAssertNil(vm.actionErrorMessage)
     }
 
     func test_revoke_error_keepsLink() async {
@@ -75,7 +75,7 @@ final class SharedLinksViewModelTests: XCTestCase {
         let ok = await vm.revoke(id: "l1")
         XCTAssertFalse(ok)
         XCTAssertEqual(vm.sharedLinks.count, 1, "failed revoke must keep the link")
-        XCTAssertNotNil(vm.errorMessage)
+        XCTAssertNotNil(vm.actionErrorMessage)
     }
 
     // MARK: - Create album-typed link
@@ -90,7 +90,7 @@ final class SharedLinksViewModelTests: XCTestCase {
         XCTAssertEqual(mock.lastCreateSharedLinkDto?.description, "Trip")
         XCTAssertNil(mock.lastCreateSharedLinkDto?.password)
         XCTAssertEqual(vm.sharedLinks.count, 1, "created link appended to list")
-        XCTAssertNil(vm.errorMessage)
+        XCTAssertNil(vm.actionErrorMessage)
     }
 
     /// The create sheet shows the link on a "link ready" panel, so the call must
@@ -116,7 +116,7 @@ final class SharedLinksViewModelTests: XCTestCase {
         let sent = try? XCTUnwrap(mock.lastCreateSharedLinkDto?.expiresAt)
         XCTAssertEqual(iso.date(from: sent ?? "")?.timeIntervalSince1970 ?? 0, expiry.timeIntervalSince1970, accuracy: 1)
         XCTAssertEqual(vm.sharedLinks.first?.slug, "trip-2026", "the appended row is the created link")
-        XCTAssertNil(vm.errorMessage)
+        XCTAssertNil(vm.actionErrorMessage)
     }
 
     func test_createAlbumLink_whitespacePasswordTrimmedToNil() async {
@@ -145,7 +145,7 @@ final class SharedLinksViewModelTests: XCTestCase {
         let created = await vm.createAlbumLink(albumId: "a1", description: nil, password: nil)
         XCTAssertNil(created, "no link to show on the ready panel")
         XCTAssertTrue(vm.sharedLinks.isEmpty)
-        XCTAssertNotNil(vm.errorMessage)
+        XCTAssertNotNil(vm.actionErrorMessage)
     }
 
     // MARK: - Edit link (AC-1090)
@@ -174,7 +174,7 @@ final class SharedLinksViewModelTests: XCTestCase {
         XCTAssertEqual(mock.lastUpdateSharedLinkId, "l1")
         XCTAssertEqual(mock.lastUpdateSharedLinkDto, dto)
         XCTAssertEqual(vm.sharedLinks[0].description, "Trip photos", "row replaced with server response")
-        XCTAssertNil(vm.errorMessage)
+        XCTAssertNil(vm.actionErrorMessage)
     }
 
     func test_updateLink_failure_keepsRow() async {
@@ -189,6 +189,6 @@ final class SharedLinksViewModelTests: XCTestCase {
         XCTAssertFalse(ok)
         XCTAssertEqual(vm.sharedLinks.count, 1, "failed edit must keep the row")
         XCTAssertEqual(vm.sharedLinks[0].id, "l1")
-        XCTAssertNotNil(vm.errorMessage)
+        XCTAssertNotNil(vm.actionErrorMessage)
     }
 }

@@ -14,7 +14,8 @@ final class TimelineViewModel {
     /// (the timeline already starts at the newest bucket).
     var upperBucketIndex: Int = -1
     var isLoading: Bool = false
-    var errorMessage: String?
+    var loadErrorMessage: String?
+    var actionErrorMessage: String?
 
     /// Loaded item IDs for O(1) dedup (FM-1 / AC-006).
     private(set) var loadedIds: Set<String> = []
@@ -85,7 +86,7 @@ final class TimelineViewModel {
     /// Toggles favorite on a single asset via `updateAsset`, then patches
     /// `items` in place via `AssetReactItem.with(isFavorite:)`.
     /// Try-then-mutate discipline: on throw the `items` array is left untouched
-    /// and `errorMessage` is surfaced — UI never lies about server state.
+    /// and `actionErrorMessage` is surfaced — UI never lies about server state.
     @MainActor
     func toggleFavorite(id: String) async {
         guard let current = items.first(where: { $0.id == id }) else { return }
@@ -108,10 +109,10 @@ final class TimelineViewModel {
             if let idx = items.firstIndex(where: { $0.id == id }) {
                 items[idx] = items[idx].with(isFavorite: value)
             }
-            errorMessage = nil
+            actionErrorMessage = nil
             return true
         } catch let e {
-            errorMessage = e.localizedDescription
+            actionErrorMessage = e.userFacingMessage
             return false
         }
     }
@@ -120,7 +121,7 @@ final class TimelineViewModel {
 
     /// Deletes all selected assets. On success removes them from `items` +
     /// `loadedIds` and exits selection mode. On throw, state is preserved so
-    /// the user can retry (errorMessage set, selectedIds kept, selectionMode
+    /// the user can retry (actionErrorMessage set, selectedIds kept, selectionMode
     /// stays true). Empty selection is a no-op.
     @MainActor
     func deleteSelected() async {
@@ -133,7 +134,7 @@ final class TimelineViewModel {
             loadedIds.subtract(selectedIds)
             exitSelectionMode()
         } catch let e {
-            errorMessage = e.localizedDescription
+            actionErrorMessage = e.userFacingMessage
         }
     }
 
@@ -151,7 +152,7 @@ final class TimelineViewModel {
             loadedIds.subtract(selectedIds)
             exitSelectionMode()
         } catch let e {
-            errorMessage = e.localizedDescription
+            actionErrorMessage = e.userFacingMessage
         }
     }
 
@@ -167,7 +168,7 @@ final class TimelineViewModel {
             loadedIds.remove(id)
             return true
         } catch let e {
-            errorMessage = e.localizedDescription
+            actionErrorMessage = e.userFacingMessage
             return false
         }
     }
@@ -188,7 +189,7 @@ final class TimelineViewModel {
             loadedIds.subtract(selectedIds)
             exitSelectionMode()
         } catch let e {
-            errorMessage = e.localizedDescription
+            actionErrorMessage = e.userFacingMessage
         }
     }
 
@@ -200,7 +201,7 @@ final class TimelineViewModel {
             items.removeAll { $0.id == id }
             loadedIds.remove(id)
         } catch let e {
-            errorMessage = e.localizedDescription
+            actionErrorMessage = e.userFacingMessage
         }
     }
 
@@ -208,16 +209,11 @@ final class TimelineViewModel {
     func refresh() async {
         exitSelectionMode()
         isLoading = true
-        errorMessage = nil
+        loadErrorMessage = nil
         do {
-            buckets = try await client.getTimeBuckets(isFavorite: filterIsFavorite, isTrashed: filterIsTrashed, personId: nil, withPartners: filterWithPartners, visibility: filterVisibility, withStacked: withStacked, orderBy: nil)
-            bucketIndex = 0
-            upperBucketIndex = -1
-            items = []
-            loadedIds = []
-            await loadNextBucket()
+            try await reloadFirstPage()
         } catch let e {
-            errorMessage = e.localizedDescription
+            loadErrorMessage = e.userFacingMessage
         }
         isLoading = false
     }
@@ -225,18 +221,32 @@ final class TimelineViewModel {
     @MainActor
     func load() async {
         isLoading = true
-        errorMessage = nil
+        loadErrorMessage = nil
         do {
-            buckets = try await client.getTimeBuckets(isFavorite: filterIsFavorite, isTrashed: filterIsTrashed, personId: nil, withPartners: filterWithPartners, visibility: filterVisibility, withStacked: withStacked, orderBy: nil)
-            bucketIndex = 0
-            upperBucketIndex = -1
-            items = []
-            loadedIds = []
-            await loadNextBucket()
+            try await reloadFirstPage()
         } catch let e {
-            errorMessage = e.localizedDescription
+            loadErrorMessage = e.userFacingMessage
         }
         isLoading = false
+    }
+
+    /// Re-fetches the bucket list and the first page. The shown items are only
+    /// replaced once the first bucket has loaded: if that bucket fails or is
+    /// cancelled, the photos already on screen stay (SP-1 / SP-5).
+    @MainActor
+    private func reloadFirstPage() async throws {
+        buckets = try await client.getTimeBuckets(isFavorite: filterIsFavorite, isTrashed: filterIsTrashed, personId: nil, withPartners: filterWithPartners, visibility: filterVisibility, withStacked: withStacked, orderBy: nil)
+        bucketIndex = 0
+        upperBucketIndex = -1
+        let previousItems = items
+        let previousLoadedIds = loadedIds
+        items = []
+        loadedIds = []
+        await loadNextBucket()
+        if bucketIndex == 0 && !buckets.isEmpty {
+            items = previousItems
+            loadedIds = previousLoadedIds
+        }
     }
 
     @MainActor
@@ -255,7 +265,7 @@ final class TimelineViewModel {
             do {
                 buckets = try await client.getTimeBuckets(isFavorite: filterIsFavorite, isTrashed: filterIsTrashed, personId: nil, withPartners: filterWithPartners, visibility: filterVisibility, withStacked: withStacked, orderBy: nil)
             } catch let e {
-                errorMessage = e.localizedDescription
+                loadErrorMessage = e.userFacingMessage
                 return
             }
         }
@@ -269,7 +279,7 @@ final class TimelineViewModel {
             bucketIndex = index + 1
             upperBucketIndex = index - 1
         } catch let e {
-            errorMessage = e.localizedDescription
+            loadErrorMessage = e.userFacingMessage
         }
         isLoading = false
     }
@@ -290,7 +300,7 @@ final class TimelineViewModel {
             loadedIds.formUnion(newItems.map(\.id))
             upperBucketIndex -= 1
         } catch let e {
-            errorMessage = e.localizedDescription
+            loadErrorMessage = e.userFacingMessage
         }
     }
 
@@ -308,7 +318,7 @@ final class TimelineViewModel {
             }
             bucketIndex += 1
         } catch let e {
-            errorMessage = e.localizedDescription
+            loadErrorMessage = e.userFacingMessage
         }
     }
 
@@ -370,7 +380,7 @@ final class TimelineViewModel {
     /// Sets favorite uniformly across `ids` (skips ids already in the target
     /// state). Backs the selection-toolbar heart action. Same try-then-mutate
     /// discipline as `toggleFavorite`; first throw stops the batch and surfaces
-    /// `errorMessage` without mutating the remaining items.
+    /// `actionErrorMessage` without mutating the remaining items.
     /// - Returns: `true` when every id reached the target state, `false` on
     ///   error — callers exit selection mode only on success (audit fix).
     @MainActor
@@ -384,7 +394,7 @@ final class TimelineViewModel {
                     items[idx] = current.with(isFavorite: value)
                 }
             } catch let e {
-                errorMessage = e.localizedDescription
+                actionErrorMessage = e.userFacingMessage
                 return false
             }
         }
@@ -406,7 +416,7 @@ final class TimelineViewModel {
             loadedIds.remove(id)
             return true
         } catch let e {
-            errorMessage = e.localizedDescription
+            actionErrorMessage = e.userFacingMessage
             return false
         }
     }
@@ -432,7 +442,7 @@ final class TimelineViewModel {
             exitSelectionMode()
             await refresh()
         } catch let e {
-            errorMessage = e.localizedDescription
+            actionErrorMessage = e.userFacingMessage
         }
     }
 }

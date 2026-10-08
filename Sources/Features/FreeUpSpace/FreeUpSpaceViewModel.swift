@@ -218,7 +218,7 @@ final class FreeUpSpaceViewModel {
                 guard generation == scanGeneration else { return }
             }
         } catch {
-            errorMessage = error.localizedDescription
+            errorMessage = error.userFacingMessage
             return
         }
 
@@ -281,7 +281,7 @@ final class FreeUpSpaceViewModel {
             // The candidates stay: some batches may have gone through, and the
             // rest are still removable. Photos' own alert is what the user
             // answers; this is for when the library refuses the change.
-            errorMessage = error.localizedDescription
+            errorMessage = error.userFacingMessage
             return nil
         }
     }

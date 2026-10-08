@@ -206,7 +206,7 @@ final class VideoPlaybackViewModelTests: XCTestCase {
         guard case .failed(let message) = vm.status else {
             return XCTFail("expected failed")
         }
-        XCTAssertEqual(message, "stream unavailable")
+        XCTAssertEqual(message, UserFacingError.genericMessage)
     }
 
     // MARK: - Live Photo pair (P1)

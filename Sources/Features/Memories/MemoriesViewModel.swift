@@ -82,7 +82,7 @@ final class MemoriesViewModel {
             }
             errorMessage = nil
         } catch {
-            errorMessage = error.localizedDescription
+            errorMessage = error.userFacingMessage
         }
     }
 
@@ -107,7 +107,7 @@ final class MemoriesViewModel {
             }
             errorMessage = nil
         } catch {
-            errorMessage = error.localizedDescription
+            errorMessage = error.userFacingMessage
         }
     }
 
@@ -141,7 +141,7 @@ final class MemoriesViewModel {
             errorMessage = nil
             await load()
         } catch {
-            errorMessage = error.localizedDescription
+            errorMessage = error.userFacingMessage
         }
     }
 
@@ -153,7 +153,7 @@ final class MemoriesViewModel {
             memories.removeAll { $0.id == id }
             errorMessage = nil
         } catch {
-            errorMessage = error.localizedDescription
+            errorMessage = error.userFacingMessage
         }
     }
 
@@ -169,7 +169,7 @@ final class MemoriesViewModel {
             errorMessage = nil
             return true
         } catch {
-            errorMessage = error.localizedDescription
+            errorMessage = error.userFacingMessage
             return false
         }
     }
@@ -188,7 +188,7 @@ final class MemoriesViewModel {
             _ = try await client.removeAssetsFromMemory(id: id, assetIds: assetIds)
             errorMessage = nil
         } catch {
-            errorMessage = error.localizedDescription
+            errorMessage = error.userFacingMessage
             return true
         }
         guard let updated = try? await client.getMemory(id: id) else { return true }
@@ -256,7 +256,7 @@ final class MemoriesViewModel {
             pickerHasMore = response.assets.nextPage != nil
             errorMessage = nil
         } catch {
-            errorMessage = error.localizedDescription
+            errorMessage = error.userFacingMessage
         }
     }
 

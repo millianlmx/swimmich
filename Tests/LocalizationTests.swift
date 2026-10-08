@@ -72,6 +72,23 @@ final class LocalizationTests: XCTestCase {
         }
     }
 
+    /// AC-9: every error-copy key of SP-3 is translated in each shipped language.
+    func test_AC9_errorCopiesAreTranslatedInEveryShippedLanguage() throws {
+        let keys = [
+            "No network connection. Check your connection and try again.",
+            "The server ran into a problem. Please try again.",
+            "Your session has expired. Please sign in again.",
+            "Something went wrong. Please try again.",
+        ]
+        for key in keys {
+            for code in ["fr", "de", "es", "it"] {
+                let value = try localized(key, language: code)
+                XCTAssertFalse(value.isEmpty, "\(key) is empty in \(code)")
+                XCTAssertNotEqual(value, key, "\(key) is untranslated in \(code)")
+            }
+        }
+    }
+
     func test_languageNamesAreLocalizedAndNative() {
         let french = AppLanguage.language(for: "fr")
         XCTAssertEqual(french?.nativeName, "Français")

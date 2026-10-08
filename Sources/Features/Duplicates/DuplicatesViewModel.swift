@@ -27,7 +27,7 @@ final class DuplicatesViewModel {
             groups = try await client.getDuplicates()
             errorMessage = nil
         } catch {
-            errorMessage = error.localizedDescription
+            errorMessage = error.userFacingMessage
         }
     }
 
@@ -55,7 +55,7 @@ final class DuplicatesViewModel {
             groups.removeAll { $0.duplicateId == id }
             errorMessage = nil
         } catch {
-            errorMessage = error.localizedDescription
+            errorMessage = error.userFacingMessage
         }
     }
 }

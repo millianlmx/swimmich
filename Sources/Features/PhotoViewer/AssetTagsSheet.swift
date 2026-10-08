@@ -106,7 +106,7 @@ struct AssetTagsSheet: View {
             errorMessage = nil
             onChanged()
         } catch {
-            errorMessage = error.localizedDescription
+            errorMessage = error.userFacingMessage
         }
     }
 
@@ -121,7 +121,7 @@ struct AssetTagsSheet: View {
             await load()
             onChanged()
         } catch {
-            errorMessage = error.localizedDescription
+            errorMessage = error.userFacingMessage
         }
     }
 
@@ -136,7 +136,7 @@ struct AssetTagsSheet: View {
             appliedTagIDs = Set((assetDetail.tags ?? []).map(\.id))
             errorMessage = nil
         } catch {
-            errorMessage = error.localizedDescription
+            errorMessage = error.userFacingMessage
         }
     }
 

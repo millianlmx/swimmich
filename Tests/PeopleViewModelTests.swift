@@ -53,7 +53,7 @@ final class PeopleViewModelTests: XCTestCase {
         await vm.load()
 
         XCTAssertTrue(vm.people.isEmpty)
-        XCTAssertEqual(vm.errorMessage, "Server error 500: boom")
+        XCTAssertEqual(vm.errorMessage, UserFacingError.serverErrorMessage)
     }
 
     @MainActor
@@ -162,7 +162,7 @@ final class PeopleViewModelTests: XCTestCase {
 
         mock.peopleError = APIError.serverError(500, "boom")
         await vm.setBirthday(vm.people[0], to: "1990-05-12")
-        XCTAssertEqual(vm.errorMessage, "Server error 500: boom")
+        XCTAssertEqual(vm.errorMessage, UserFacingError.serverErrorMessage)
         XCTAssertEqual(vm.people, before)
     }
 
@@ -228,7 +228,7 @@ final class PeopleViewModelTests: XCTestCase {
 
         mock.peopleError = APIError.serverError(500, "boom")
         await vm.merge(["pX"], into: target)
-        XCTAssertEqual(vm.errorMessage, "Server error 500: boom")
+        XCTAssertEqual(vm.errorMessage, UserFacingError.serverErrorMessage)
     }
 
     // MARK: - Faces drill-down
@@ -259,8 +259,30 @@ final class PeopleViewModelTests: XCTestCase {
         await vm.load()
 
         await vm.select(vm.people[0])
-        XCTAssertEqual(vm.assetsError, "Server error 500: boom")
+        XCTAssertEqual(vm.assetsError, UserFacingError.serverErrorMessage)
         XCTAssertTrue(vm.personAssets.isEmpty)
+    }
+
+    /// AC-3: a technical failure (decoding or a raw 500 body) must surface as the
+    /// localized copy of its family, never as its transport or server text.
+    @MainActor
+    func test_AC3_technicalErrorShowsLocalizedCopyWithoutRawText() async {
+        let cases: [(error: Error, expected: String)] = [
+            (APIError.decoding("Decoding failed: unexpected key"), UserFacingError.genericMessage),
+            (APIError.serverError(500, "HTTP 500 <html>boom</html>"), UserFacingError.serverErrorMessage),
+        ]
+        let forbidden = ["Decoding failed", "Network error", "HTTP", "boom", "<html>", "The operation couldn't be completed"]
+        for (error, expected) in cases {
+            let mock = MockImmichClient()
+            mock.peopleError = error
+            let vm = makeVM(mock)
+            await vm.load()
+
+            XCTAssertEqual(vm.errorMessage, expected)
+            for fragment in forbidden {
+                XCTAssertFalse(vm.errorMessage?.contains(fragment) == true, "leaked \"\(fragment)\"")
+            }
+        }
     }
 
     @MainActor

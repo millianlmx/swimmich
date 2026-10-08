@@ -81,6 +81,8 @@ final class AuthViewModel: AuthSessionDelegate {
     // UI
     var isLoading: Bool = false
     var errorMessage: String?
+    /// True after a 401 on an authenticated session; cleared by a new sign-in.
+    private(set) var sessionExpired = false
 
     private let client: any ImmichClient
     private let keychain: KeychainStore
@@ -280,7 +282,7 @@ final class AuthViewModel: AuthSessionDelegate {
                 shouldChangePassword: response.shouldChangePassword
             )
         } catch let e {
-            errorMessage = e.localizedDescription
+            errorMessage = e.userFacingMessage
         }
         isLoading = false
     }
@@ -336,7 +338,7 @@ final class AuthViewModel: AuthSessionDelegate {
                 shouldChangePassword: response.shouldChangePassword
             )
         } catch let e {
-            errorMessage = e.localizedDescription
+            errorMessage = e.userFacingMessage
         }
     }
 
@@ -349,6 +351,7 @@ final class AuthViewModel: AuthSessionDelegate {
         self.userId = userId
         self.isAdmin = isAdmin
         self.shouldChangePassword = shouldChangePassword
+        sessionExpired = false
         keychain.saveToken(token)
         defaults.set(baseURL?.absoluteString ?? serverURLString, forKey: Self.serverURLDefaultsKey)
         if let email { defaults.set(email, forKey: Self.userEmailDefaultsKey) }
@@ -518,7 +521,21 @@ final class AuthViewModel: AuthSessionDelegate {
 
     func didReceiveUnauthorized() {
         Task { @MainActor in
-            resetSession()
+            self.handleSessionExpired()
         }
+    }
+
+    /// SP-4: a 401 on an authenticated session drops the user back to sign-in.
+    /// The stored token and identity are kept on purpose: only an explicit
+    /// logout (`resetSession()`) wipes them. A 401 while not authenticated
+    /// (e.g. a failed sign-in) must not override the message being shown.
+    private func handleSessionExpired() {
+        guard isAuthenticated else { return }
+        isLoading = false
+        accessToken = nil
+        errorMessage = UserFacingError.sessionExpiredMessage
+        sessionExpired = true
+        client.configure(baseURL: baseURL, token: nil)
+        realtime.disconnect()
     }
 }

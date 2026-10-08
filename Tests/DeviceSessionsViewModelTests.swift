@@ -251,7 +251,7 @@ final class DeviceSessionsViewModelTests: XCTestCase {
 
         XCTAssertEqual(mock.unlockedPINs, ["123456"])
         XCTAssertEqual(mock.authStatusCallCount, 1)
-        XCTAssertEqual(vm.errorMessage, BoomError().localizedDescription)
+        XCTAssertEqual(vm.errorMessage, UserFacingError.genericMessage)
         XCTAssertFalse(vm.isElevated)
     }
 
@@ -272,7 +272,7 @@ final class DeviceSessionsViewModelTests: XCTestCase {
         XCTAssertEqual(mock.authStatusCallCount, 1)
         XCTAssertFalse(vm.isElevated)
         XCTAssertTrue(vm.isElevationStale)
-        XCTAssertEqual(vm.errorMessage, ProbeError().localizedDescription)
+        XCTAssertEqual(vm.errorMessage, UserFacingError.genericMessage)
     }
 
     /// The mirror image: the last confirmed state was elevated, the lock call
@@ -311,6 +311,6 @@ final class DeviceSessionsViewModelTests: XCTestCase {
 
         XCTAssertEqual(mock.authStatusCallCount, 1)
         XCTAssertTrue(vm.isElevationStale)
-        XCTAssertEqual(vm.errorMessage, BoomError().localizedDescription)
+        XCTAssertEqual(vm.errorMessage, UserFacingError.genericMessage)
     }
 }

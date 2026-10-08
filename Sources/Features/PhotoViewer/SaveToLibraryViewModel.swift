@@ -83,7 +83,7 @@ final class SaveToLibraryViewModel {
                 savedKind = "image"
             }
         } catch let e {
-            errorMessage = e.localizedDescription
+            errorMessage = e.userFacingMessage
         }
     }
 
@@ -105,7 +105,7 @@ final class SaveToLibraryViewModel {
             }
             didPresentDownload = true
         } catch let e {
-            errorMessage = e.localizedDescription
+            errorMessage = e.userFacingMessage
         }
     }
 

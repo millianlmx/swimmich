@@ -928,7 +928,7 @@ struct PhotoViewer: View {
     /// The refusal of the last mutation this viewer performed itself — the
     /// presenting surface's callback is not consulted here, because a surface
     /// that provided one owns its own error surface.
-    private var actionError: String? { timeline.errorMessage ?? trash.errorMessage }
+    private var actionError: String? { timeline.actionErrorMessage ?? trash.actionErrorMessage }
 
     /// Starts the slideshow on the currently visible photo. The VM is created
     /// here (top bar button), never stored while inactive — closing the

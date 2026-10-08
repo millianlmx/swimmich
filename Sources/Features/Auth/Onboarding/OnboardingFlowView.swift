@@ -21,7 +21,20 @@ struct OnboardingFlowView: View {
         case welcome, serverURL, login
     }
 
-    @State private var path: [Step] = []
+    @State private var path: [Step]
+
+    /// `startsOnLogin` is set by the caller after a session expiry (SP-4 / BR-5):
+    /// the flow opens directly on LoginScreen, whose badge shows the expiry copy.
+    /// The caller passes it because `auth` comes from the environment, which is
+    /// unreadable in an init.
+    init(startsOnLogin: Bool = false) {
+        _path = State(initialValue: Self.initialPath(startsOnLogin: startsOnLogin))
+    }
+
+    /// Chemin initial du flow (SP-4 / AC-7) : une expiration de session ouvre directement LoginScreen.
+    static func initialPath(startsOnLogin: Bool) -> [Step] {
+        startsOnLogin ? [.serverURL, .login] : []
+    }
 
     var body: some View {
         NavigationStack(path: $path) {

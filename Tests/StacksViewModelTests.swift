@@ -46,7 +46,7 @@ final class StacksViewModelTests: XCTestCase {
         await vm.loadStacks()
 
         XCTAssertTrue(vm.stacks.isEmpty)
-        XCTAssertEqual(vm.errorMessage?.contains("boom"), true)
+        XCTAssertEqual(vm.errorMessage, UserFacingError.serverErrorMessage)
     }
 
     @MainActor
@@ -86,7 +86,7 @@ final class StacksViewModelTests: XCTestCase {
 
         XCTAssertTrue(vm.showCreate, "a failed create must leave the picker up")
         XCTAssertEqual(vm.selectedIds, ["x", "y"], "and keep the selection")
-        XCTAssertEqual(vm.errorMessage?.contains("nope"), true)
+        XCTAssertEqual(vm.errorMessage, UserFacingError.genericMessage)
     }
 
     @MainActor
@@ -157,7 +157,7 @@ final class StacksViewModelTests: XCTestCase {
         await vm.loadStack(id: "s1")
 
         XCTAssertNil(vm.selectedStack, "the detail screen renders its error state")
-        XCTAssertEqual(vm.errorMessage?.contains("gone"), true)
+        XCTAssertEqual(vm.errorMessage, UserFacingError.genericMessage)
     }
 
     // MARK: - Create picker
@@ -285,6 +285,6 @@ final class StacksViewModelTests: XCTestCase {
 
         XCTAssertNil(result, "the sheet stays open on failure")
         XCTAssertEqual(vm.selectedStack?.id, "old", "and the screen still shows the stack")
-        XCTAssertEqual(vm.errorMessage?.contains("nope"), true)
+        XCTAssertEqual(vm.errorMessage, UserFacingError.genericMessage)
     }
 }

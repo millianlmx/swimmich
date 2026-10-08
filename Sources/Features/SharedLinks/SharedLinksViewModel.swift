@@ -13,7 +13,8 @@ final class SharedLinksViewModel {
 
     var sharedLinks: [SharedLinkResponseDto] = []
     var isLoading = false
-    var errorMessage: String?
+    var loadErrorMessage: String?
+    var actionErrorMessage: String?
 
     init(client: any ImmichClient) {
         self.client = client
@@ -27,9 +28,9 @@ final class SharedLinksViewModel {
         do {
             // albumId: nil → list ALL shared links for the authenticated user.
             sharedLinks = try await client.getSharedLinks(albumId: nil)
-            errorMessage = nil
+            loadErrorMessage = nil
         } catch {
-            errorMessage = error.localizedDescription
+            loadErrorMessage = error.userFacingMessage
         }
     }
 
@@ -47,10 +48,10 @@ final class SharedLinksViewModel {
             try await client.deleteSharedLink(id: id)
             // try-then-mutate: remove only on success.
             sharedLinks.removeAll { $0.id == id }
-            errorMessage = nil
+            actionErrorMessage = nil
             return true
         } catch {
-            errorMessage = error.localizedDescription
+            actionErrorMessage = error.userFacingMessage
             return false
         }
     }
@@ -66,10 +67,10 @@ final class SharedLinksViewModel {
             if let idx = sharedLinks.firstIndex(where: { $0.id == id }) {
                 sharedLinks[idx] = updated
             }
-            errorMessage = nil
+            actionErrorMessage = nil
             return true
         } catch {
-            errorMessage = error.localizedDescription
+            actionErrorMessage = error.userFacingMessage
             return false
         }
     }
@@ -105,10 +106,10 @@ final class SharedLinksViewModel {
         do {
             let link = try await client.createSharedLink(dto: dto)
             sharedLinks.append(link)
-            errorMessage = nil
+            actionErrorMessage = nil
             return link
         } catch {
-            errorMessage = error.localizedDescription
+            actionErrorMessage = error.userFacingMessage
             return nil
         }
     }

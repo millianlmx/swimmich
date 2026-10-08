@@ -48,7 +48,7 @@ final class UserApiKeysViewModel {
             keys = try await client.getAPIKeys()
             errorMessage = nil
         } catch {
-            errorMessage = error.localizedDescription
+            errorMessage = error.userFacingMessage
         }
     }
 
@@ -76,7 +76,7 @@ final class UserApiKeysViewModel {
             await load()
             return true
         } catch {
-            errorMessage = error.localizedDescription
+            errorMessage = error.userFacingMessage
             return false
         }
     }
@@ -92,7 +92,7 @@ final class UserApiKeysViewModel {
             errorMessage = nil
             await load()
         } catch {
-            errorMessage = error.localizedDescription
+            errorMessage = error.userFacingMessage
         }
     }
 
@@ -103,7 +103,7 @@ final class UserApiKeysViewModel {
             errorMessage = nil
             await load()
         } catch {
-            errorMessage = error.localizedDescription
+            errorMessage = error.userFacingMessage
         }
     }
 

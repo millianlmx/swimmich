@@ -200,7 +200,7 @@ final class SharedLinkViewerViewModel {
         } catch {
             // The page that already rendered stays; the failure is reported
             // inline instead of blanking the grid.
-            message = Self.describe(error)
+            if let text = error.userFacingMessage { message = text }
         }
     }
 
@@ -235,9 +235,14 @@ final class SharedLinkViewerViewModel {
             // Reload so the visitor sees their own photo where it landed.
             await load()
         } catch {
+            guard let failure = UserFacingError.from(error) else {
+                // A cancelled upload is no event: it ends the attempt without an error.
+                uploadState = .idle
+                return
+            }
             let text = Self.isUploadRejection(error)
                 ? "This link does not allow uploads."
-                : Self.describe(error)
+                : failure.message
             uploadState = .failed(text)
             message = text
         }
@@ -263,7 +268,10 @@ final class SharedLinkViewerViewModel {
         /// issued (all three answer `"Invalid share key"` / `"Invalid share slug"`,
         /// because `AuthService.isValidSharedLink` collapses them).
         case deadLink
-        case other(String)
+        /// Cooperative cancellation: no event, so nothing changes on screen.
+        case cancelled
+        /// Anything else, already mapped to the copy the visitor sees.
+        case other(UserFacingError)
     }
 
     private func handle(_ error: Error, on call: Call) {
@@ -277,12 +285,14 @@ final class SharedLinkViewerViewModel {
         case .deadLink:
             phase = .deadLink
             message = nil
-        case .other(let text):
-            message = text
+        case .cancelled:
+            return
+        case .other(let failure):
+            message = failure.message
             // A first load that fails never reached the grid, so it belongs to
             // the entry form; later failures keep the grid on screen with the
             // error inline.
-            phase = link == nil ? .failed(text) : .opened
+            phase = link == nil ? .failed(failure.message) : .opened
         }
     }
 
@@ -291,10 +301,8 @@ final class SharedLinkViewerViewModel {
     /// discriminator the API offers — the web client keys off the same string
     /// (`loadSharedLink`: `error.data.message === 'Password required'`).
     nonisolated static func classify(_ error: Error, on call: Call = .readLink) -> Failure {
-        guard case APIError.serverError(let status, let body) = error else {
-            return .other(describe(error))
-        }
-        guard status == 401 else { return .other(describe(error)) }
+        guard let mapped = UserFacingError.from(error) else { return .cancelled }
+        guard case APIError.serverError(401, let body) = error else { return .other(mapped) }
         let text = body ?? ""
         switch call {
         case .readLink:
@@ -309,10 +317,6 @@ final class SharedLinkViewerViewModel {
     nonisolated static func isUploadRejection(_ error: Error) -> Bool {
         if case APIError.serverError(401, _) = error { return true }
         return false
-    }
-
-    nonisolated static func describe(_ error: Error) -> String {
-        (error as? LocalizedError)?.errorDescription ?? error.localizedDescription
     }
 
     /// The server formats this installation's clock; second precision is all the

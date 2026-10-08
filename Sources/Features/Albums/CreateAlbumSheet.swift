@@ -45,7 +45,7 @@ struct CreateAlbumSheet: View {
                                 description: description.isEmpty ? nil : description,
                                 assetIds: preselectedAssetIds
                             )
-                            if vm.errorMessage == nil {
+                            if vm.actionErrorMessage == nil {
                                 createTick &+= 1
                                 dismiss()
                             }

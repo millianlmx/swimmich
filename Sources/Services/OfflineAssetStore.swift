@@ -56,7 +56,7 @@ enum OfflineStoreError: LocalizedError, Equatable {
                 localized: "This file is \(Self.format(size)) — larger than the \(Self.format(limit)) offline budget."
             )
         case let .badStatus(code):
-            return String(localized: "Server returned \(code).")
+            return UserFacingError.from(code == 401 ? APIError.unauthorized : APIError.http(code))?.message
         case .emptyPayload:
             return String(localized: "The downloaded file was empty.")
         }

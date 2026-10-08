@@ -82,7 +82,7 @@ final class StorageStatsViewModelTests: XCTestCase {
         await vm.load()
 
         XCTAssertFalse(vm.didLoad)
-        XCTAssertEqual(vm.errorMessage, "Server error 500: boom")
+        XCTAssertEqual(vm.errorMessage, UserFacingError.serverErrorMessage)
         XCTAssertEqual(vm.usage, 0)
         XCTAssertFalse(vm.isLoading)
     }

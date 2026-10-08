@@ -141,7 +141,7 @@ final class ChangePasswordViewModelTests: XCTestCase {
 
         _ = await vm.submit()
 
-        XCTAssertEqual(vm.errorMessage, offline.localizedDescription, "an unreachable server is not a wrong password")
+        XCTAssertEqual(vm.errorMessage, UserFacingError.offlineMessage, "an unreachable server is not a wrong password")
         XCTAssertNotEqual(vm.errorMessage, localizedString("That password is not right."))
         XCTAssertEqual(vm.currentPassword, "current-secret")
     }

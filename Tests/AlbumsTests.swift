@@ -54,7 +54,7 @@ final class AlbumsTests: XCTestCase {
         await vm.load()
         XCTAssertEqual(vm.albums.count, 3)
         XCTAssertFalse(vm.isLoading)
-        XCTAssertNil(vm.errorMessage)
+        XCTAssertNil(vm.loadErrorMessage)
     }
 
     func test_AC_506b_load_error() async {
@@ -63,7 +63,7 @@ final class AlbumsTests: XCTestCase {
         let vm = AlbumsViewModel(client: mock)
         await vm.load()
         XCTAssertTrue(vm.albums.isEmpty)
-        XCTAssertNotNil(vm.errorMessage)
+        XCTAssertNotNil(vm.loadErrorMessage)
         XCTAssertFalse(vm.isLoading)
     }
 
@@ -77,7 +77,7 @@ final class AlbumsTests: XCTestCase {
         XCTAssertEqual(mock.lastCreateAlbumDto?.albumName, "Test")
         XCTAssertEqual(mock.lastCreateAlbumDto?.description, "Desc")
         XCTAssertEqual(mock.lastCreateAlbumDto?.assetIds, ["x", "y"])
-        XCTAssertNil(vm.errorMessage)
+        XCTAssertNil(vm.actionErrorMessage)
     }
 
     func test_AC_507b_createAlbum_error() async {
@@ -86,7 +86,7 @@ final class AlbumsTests: XCTestCase {
         let vm = AlbumsViewModel(client: mock)
         await vm.createAlbum(name: "Test")
         XCTAssertTrue(vm.albums.isEmpty)
-        XCTAssertNotNil(vm.errorMessage)
+        XCTAssertNotNil(vm.actionErrorMessage)
     }
 
     func test_AC_507c_createAlbum_emptyNameRejected() async {
@@ -94,7 +94,7 @@ final class AlbumsTests: XCTestCase {
         let vm = AlbumsViewModel(client: mock)
         await vm.createAlbum(name: "   ")
         XCTAssertTrue(vm.albums.isEmpty)
-        XCTAssertNotNil(vm.errorMessage)
+        XCTAssertNotNil(vm.actionErrorMessage)
         XCTAssertNil(mock.lastCreateAlbumDto) // no server call
     }
 
@@ -108,7 +108,7 @@ final class AlbumsTests: XCTestCase {
         await vm.load()
         XCTAssertEqual(vm.album?.albumName, "Holiday")
         XCTAssertEqual(vm.assets.count, 2)
-        XCTAssertNil(vm.errorMessage)
+        XCTAssertNil(vm.loadErrorMessage)
         XCTAssertEqual(mock.lastMetadataSearchDto?.albumIds, ["alb"]) // FM-2 dispatch via albumIds
     }
 
@@ -119,7 +119,7 @@ final class AlbumsTests: XCTestCase {
         await vm.load()
         XCTAssertNil(vm.album)
         XCTAssertTrue(vm.assets.isEmpty)
-        XCTAssertNotNil(vm.errorMessage)
+        XCTAssertNotNil(vm.loadErrorMessage)
     }
 
     func test_AC_508c_detailLoad_assetsError() async {
@@ -132,7 +132,7 @@ final class AlbumsTests: XCTestCase {
         XCTAssertNotNil(vm.album)
         XCTAssertEqual(vm.album?.albumName, "Holiday")
         XCTAssertTrue(vm.assets.isEmpty)
-        XCTAssertNotNil(vm.errorMessage)
+        XCTAssertNotNil(vm.loadErrorMessage)
     }
 
     // MARK: - AC-509 addAssets
@@ -146,7 +146,7 @@ final class AlbumsTests: XCTestCase {
         XCTAssertEqual(mock.lastAddAssetsAlbumId, "alb")
         XCTAssertEqual(mock.lastAddAssetsIds, ["new-1", "new-2"])
         XCTAssertEqual(vm.assets.count, 2) // refreshed from server
-        XCTAssertNil(vm.errorMessage)
+        XCTAssertNil(vm.actionErrorMessage)
     }
 
     func test_AC_509b_addAssets_error() async {
@@ -156,7 +156,7 @@ final class AlbumsTests: XCTestCase {
         await vm.addAssets(ids: ["new-1"])
         XCTAssertTrue(vm.assets.isEmpty)
         XCTAssertEqual(mock.lastAddAssetsAlbumId, "alb")
-        XCTAssertNotNil(vm.errorMessage)
+        XCTAssertNotNil(vm.actionErrorMessage)
     }
 
     // MARK: - AC-510 removeAssets
@@ -173,7 +173,7 @@ final class AlbumsTests: XCTestCase {
         XCTAssertEqual(mock.lastRemoveAssetsIds, ["a2"])
         XCTAssertEqual(vm.assets.count, 2)
         XCTAssertFalse(vm.assets.contains { $0.id == "a2" })
-        XCTAssertNil(vm.errorMessage)
+        XCTAssertNil(vm.actionErrorMessage)
     }
 
     func test_AC_510b_removeAssets_error() async {
@@ -186,7 +186,7 @@ final class AlbumsTests: XCTestCase {
         let countBefore = vm.assets.count
         await vm.removeAssets(ids: ["a1"])
         XCTAssertEqual(vm.assets.count, countBefore) // unchanged on error
-        XCTAssertNotNil(vm.errorMessage)
+        XCTAssertNotNil(vm.actionErrorMessage)
     }
 
     // MARK: - AC-511 deleteAlbum
@@ -198,7 +198,7 @@ final class AlbumsTests: XCTestCase {
         XCTAssertEqual(mock.deleteAlbumCallCount, 1)
         XCTAssertEqual(mock.lastDeletedAlbumId, "alb")
         XCTAssertTrue(vm.isDeleted)
-        XCTAssertNil(vm.errorMessage)
+        XCTAssertNil(vm.actionErrorMessage)
     }
 
     func test_AC_511b_deleteAlbum_error() async {
@@ -207,7 +207,7 @@ final class AlbumsTests: XCTestCase {
         let vm = AlbumDetailViewModel(client: mock, albumId: "alb")
         await vm.deleteAlbum()
         XCTAssertFalse(vm.isDeleted)
-        XCTAssertNotNil(vm.errorMessage)
+        XCTAssertNotNil(vm.actionErrorMessage)
     }
 
     // MARK: - AC-512 createSharedLink
@@ -220,7 +220,7 @@ final class AlbumsTests: XCTestCase {
         XCTAssertEqual(mock.lastCreateSharedLinkDto?.albumId, "alb")
         XCTAssertNil(mock.lastCreateSharedLinkDto?.password)
         XCTAssertEqual(vm.sharedLinks.count, 1)
-        XCTAssertNil(vm.errorMessage)
+        XCTAssertNil(vm.actionErrorMessage)
     }
 
     func test_AC_512b_createSharedLink_withPassword() async {
@@ -268,7 +268,7 @@ final class AlbumsTests: XCTestCase {
         XCTAssertEqual(mock.lastUpdateSharedLinkId, "link-1")
         XCTAssertEqual(mock.lastUpdateSharedLinkDto, dto)
         XCTAssertEqual(vm.sharedLinks[0].password, "x", "row replaced with server response")
-        XCTAssertNil(vm.errorMessage)
+        XCTAssertNil(vm.actionErrorMessage)
     }
 
     func test_updateSharedLink_failure_keepsRow() async {
@@ -282,7 +282,7 @@ final class AlbumsTests: XCTestCase {
 
         XCTAssertFalse(ok)
         XCTAssertEqual(vm.sharedLinks.count, 1, "failed edit must keep the row")
-        XCTAssertNotNil(vm.errorMessage)
+        XCTAssertNotNil(vm.actionErrorMessage)
     }
 
     // MARK: - AC-1100 update album details
@@ -302,7 +302,7 @@ final class AlbumsTests: XCTestCase {
         XCTAssertEqual(mock.lastUpdateAlbumDto?.description, "Trip")
         XCTAssertEqual(mock.lastUpdateAlbumDto?.isActivityEnabled, true)
         XCTAssertEqual(vm.album?.albumName, "New Name", "album replaced with server response")
-        XCTAssertNil(vm.errorMessage)
+        XCTAssertNil(vm.actionErrorMessage)
     }
 
     func test_updateAlbumDetails_failure_keepsAlbum() async {
@@ -316,7 +316,7 @@ final class AlbumsTests: XCTestCase {
 
         XCTAssertFalse(ok)
         XCTAssertEqual(vm.album?.albumName, "Old Name", "failed edit must keep the album")
-        XCTAssertNotNil(vm.errorMessage)
+        XCTAssertNotNil(vm.actionErrorMessage)
     }
 
     // MARK: - AC-717 AlbumsViewModel.addAssets (V1.5 polish — no searchMetadata round-trip)
@@ -327,7 +327,7 @@ final class AlbumsTests: XCTestCase {
         await vm.addAssets(ids: ["a-1", "a-2"], toAlbumId: "alb-7")
         XCTAssertEqual(mock.lastAddAssetsAlbumId, "alb-7")
         XCTAssertEqual(mock.lastAddAssetsIds, ["a-1", "a-2"])
-        XCTAssertNil(vm.errorMessage)
+        XCTAssertNil(vm.actionErrorMessage)
         // V1.5 guarantee: picker path does NOT trigger a wasted searchMetadata call.
         XCTAssertNil(mock.lastMetadataSearchDto)
     }
@@ -339,24 +339,24 @@ final class AlbumsTests: XCTestCase {
         await vm.addAssets(ids: ["a-1"], toAlbumId: "alb-7")
         XCTAssertEqual(mock.lastAddAssetsAlbumId, "alb-7")
         XCTAssertEqual(mock.lastAddAssetsIds, ["a-1"])
-        XCTAssertNotNil(vm.errorMessage)
+        XCTAssertNotNil(vm.actionErrorMessage)
     }
 
-    func test_AC_717c_addAssets_albumsVM_clearsStaleErrorMessage() async {
-        // SUG-1 challenger amendment: a stale load error must not cause the picker to
-        // falsely report an add failure. addAssets clears errorMessage before the API call,
-        // so a successful add leaves errorMessage nil.
+    func test_AC_717c_addAssets_albumsVM_clearsStaleActionErrorMessage() async {
+        // SUG-1 challenger amendment: a stale action error must not cause the picker to
+        // falsely report an add failure. addAssets clears actionErrorMessage before the API call,
+        // so a successful add leaves actionErrorMessage nil.
         let mock = MockImmichClient()
         let vm = AlbumsViewModel(client: mock)
-        // Seed a stale error from a prior load failure.
-        mock.albumsError = Boom()
-        await vm.load()
-        XCTAssertNotNil(vm.errorMessage, "precondition: stale error seeded")
-        // Now perform a successful add — error must be cleared.
-        mock.albumsError = nil
+        // Seed a stale action error from a prior failed add.
+        mock.addAssetsError = Boom()
+        await vm.addAssets(ids: ["a-1"], toAlbumId: "alb-7")
+        XCTAssertNotNil(vm.actionErrorMessage, "precondition: stale action error seeded")
+        // Now perform a successful add — action error must be cleared.
+        mock.addAssetsError = nil
         await vm.addAssets(ids: ["a-1"], toAlbumId: "alb-7")
         XCTAssertEqual(mock.lastAddAssetsAlbumId, "alb-7")
-        XCTAssertNil(vm.errorMessage, "successful add must clear stale error")
+        XCTAssertNil(vm.actionErrorMessage, "successful add must clear stale action error")
     }
 
     func test_AC_717d_addAssets_albumsVM_emptyIdsNoOp() async {
@@ -404,7 +404,7 @@ final class AlbumsTests: XCTestCase {
         XCTAssertEqual(vm.assets.map(\.id), ["a2"])
         XCTAssertFalse(vm.selectionMode)
         XCTAssertTrue(vm.selectedIds.isEmpty)
-        XCTAssertNil(vm.errorMessage)
+        XCTAssertNil(vm.actionErrorMessage)
     }
 
     func test_AC_520c_removeSelected_error() async {
@@ -423,7 +423,7 @@ final class AlbumsTests: XCTestCase {
         XCTAssertEqual(vm.assets.count, 2)
         XCTAssertTrue(vm.selectionMode)
         XCTAssertEqual(vm.selectedIds, ["a1"])
-        XCTAssertNotNil(vm.errorMessage)
+        XCTAssertNotNil(vm.actionErrorMessage)
     }
 
     func test_AC_520d_deleteSelected_success() async {
@@ -443,7 +443,7 @@ final class AlbumsTests: XCTestCase {
         XCTAssertEqual(vm.assets.map(\.id), ["a3"])
         XCTAssertFalse(vm.selectionMode)
         XCTAssertTrue(vm.selectedIds.isEmpty)
-        XCTAssertNil(vm.errorMessage)
+        XCTAssertNil(vm.actionErrorMessage)
     }
 
     func test_AC_520e_deleteSelected_error() async {
@@ -462,7 +462,7 @@ final class AlbumsTests: XCTestCase {
         XCTAssertEqual(vm.assets.count, 2)
         XCTAssertTrue(vm.selectionMode)
         XCTAssertEqual(vm.selectedIds, ["a1"])
-        XCTAssertNotNil(vm.errorMessage)
+        XCTAssertNotNil(vm.actionErrorMessage)
     }
 
     func test_AC_520f_batchSetFavorite() async {
@@ -481,7 +481,7 @@ final class AlbumsTests: XCTestCase {
         // Set iteration order is nondeterministic — the mock only records the
         // last id, so just assert it was one of the selected ids.
         XCTAssertTrue(mock.lastUpdateAssetId == "a1" || mock.lastUpdateAssetId == "a2")
-        XCTAssertNil(vm.errorMessage)
+        XCTAssertNil(vm.actionErrorMessage)
     }
 
     func test_AC_520g_load_clearsSelection() async {
@@ -528,7 +528,7 @@ final class AlbumsTests: XCTestCase {
         XCTAssertEqual(vm.assets.map(\.id), ["a1", "a3"])
         XCTAssertEqual(vm.selectedIds, ["a1"], "removed asset leaves the selection set")
         XCTAssertTrue(vm.selectionMode, "context-menu remove does not exit selection mode")
-        XCTAssertNil(vm.errorMessage)
+        XCTAssertNil(vm.actionErrorMessage)
     }
 
     func test_AC_520j_removeAssets_errorKeepsSelection() async {
@@ -547,7 +547,7 @@ final class AlbumsTests: XCTestCase {
 
         XCTAssertEqual(vm.assets.count, 3, "no local mutation on throw")
         XCTAssertEqual(vm.selectedIds, ["a1", "a2"], "selection untouched on failure")
-        XCTAssertNotNil(vm.errorMessage)
+        XCTAssertNotNil(vm.actionErrorMessage)
     }
 
     // MARK: - Cover change (setCover)
@@ -565,7 +565,7 @@ final class AlbumsTests: XCTestCase {
         XCTAssertEqual(mock.lastUpdateAlbumId, "alb")
         XCTAssertEqual(mock.lastUpdateAlbumDto?.albumThumbnailAssetId, "a2")
         XCTAssertEqual(vm.album?.albumThumbnailAssetId, "a2", "album must reflect the new cover on success")
-        XCTAssertNil(vm.errorMessage)
+        XCTAssertNil(vm.actionErrorMessage)
     }
 
     func test_setCover_error_keepsOldCover() async {
@@ -581,7 +581,7 @@ final class AlbumsTests: XCTestCase {
         XCTAssertFalse(ok)
         XCTAssertEqual(mock.lastUpdateAlbumId, "alb")
         XCTAssertNil(vm.album?.albumThumbnailAssetId, "cover must not change on error")
-        XCTAssertNotNil(vm.errorMessage)
+        XCTAssertNotNil(vm.actionErrorMessage)
     }
 
     func test_setCover_nonMemberNoOp() async {
@@ -609,7 +609,7 @@ final class AlbumsTests: XCTestCase {
 
         XCTAssertEqual(vm.album?.albumName, "Renamed")
         XCTAssertFalse(vm.isLoading, "refresh must not flip the skeleton spinner")
-        XCTAssertNil(vm.errorMessage)
+        XCTAssertNil(vm.loadErrorMessage)
     }
 
     func test_makeShareViewModel_seedsCurrentMembership() async {
@@ -632,5 +632,34 @@ final class AlbumsTests: XCTestCase {
             id: "u1", name: "Alice", email: "alice@example.com",
             profileImagePath: "", avatarColor: "#FF0000", profileChangedAt: "2024-01-01T00:00:00.000Z"
         )
+    }
+
+    // MARK: - AC-8 / AC-1 — two error channels, cancellation is silent
+
+    func test_AC8_userActionFailureSetsActionErrorOnly() async {
+        let mock = MockImmichClient()
+        mock.createAlbumError = Boom()
+        let vm = AlbumsViewModel(client: mock)
+        await vm.createAlbum(name: "Test")
+        XCTAssertEqual(vm.actionErrorMessage, UserFacingError.genericMessage)
+        XCTAssertNil(vm.loadErrorMessage)
+    }
+
+    func test_AC8_backgroundRefreshFailureSetsLoadErrorOnly() async {
+        let mock = MockImmichClient()
+        mock.albumsError = URLError(.notConnectedToInternet)
+        let vm = AlbumsViewModel(client: mock)
+        await vm.refresh()
+        XCTAssertEqual(vm.loadErrorMessage, UserFacingError.offlineMessage)
+        XCTAssertNil(vm.actionErrorMessage)
+    }
+
+    func test_AC1_cancelledAlbumsRefreshIsSilent() async {
+        let mock = MockImmichClient()
+        mock.albumsError = URLError(.cancelled)
+        let vm = AlbumsViewModel(client: mock)
+        await vm.refresh()
+        XCTAssertNil(vm.loadErrorMessage)
+        XCTAssertNil(vm.actionErrorMessage)
     }
 }

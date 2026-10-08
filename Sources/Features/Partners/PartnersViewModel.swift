@@ -82,7 +82,7 @@ final class PartnersViewModel {
             sharing = try await client.getPartners(direction: .sharedBy)
             errorMessage = nil
         } catch {
-            errorMessage = error.localizedDescription
+            errorMessage = error.userFacingMessage
         }
     }
 
@@ -102,7 +102,7 @@ final class PartnersViewModel {
             selectedCandidateId = nil
             errorMessage = nil
         } catch {
-            errorMessage = error.localizedDescription
+            errorMessage = error.userFacingMessage
         }
     }
 
@@ -130,7 +130,7 @@ final class PartnersViewModel {
             errorMessage = nil
             return true
         } catch {
-            errorMessage = error.localizedDescription
+            errorMessage = error.userFacingMessage
             return false
         }
     }
@@ -145,7 +145,7 @@ final class PartnersViewModel {
             sharedWithMe[index] = try await client.updatePartner(id: partnerId, isInTimeline: enabled)
             errorMessage = nil
         } catch {
-            errorMessage = error.localizedDescription
+            errorMessage = error.userFacingMessage
         }
     }
 
@@ -161,7 +161,7 @@ final class PartnersViewModel {
             sharing.removeAll { $0.id == partnerId }
             errorMessage = nil
         } catch {
-            errorMessage = error.localizedDescription
+            errorMessage = error.userFacingMessage
         }
     }
 }
