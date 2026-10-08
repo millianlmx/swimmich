@@ -12,7 +12,7 @@ import Observation
 /// The current user (album owner) is never listed. Every action is
 /// immediate (no Save button) and try-then-mutate: local state changes only
 /// after the server call succeeds; on failure the row stays as-is and
-/// `errorMessage` is surfaced.
+/// `actionErrorMessage` is surfaced; a load failure goes to `loadErrorMessage`.
 @MainActor
 @Observable
 final class AlbumShareViewModel {
@@ -59,7 +59,8 @@ final class AlbumShareViewModel {
     private(set) var busyUserIds: Set<String> = []
 
     var isBusy = false
-    var errorMessage: String?
+    var loadErrorMessage: String?
+    var actionErrorMessage: String?
 
     /// Test-visible capture of the exact payloads dispatched.
     private(set) var lastAddDto: AddUsersDto?
@@ -116,9 +117,9 @@ final class AlbumShareViewModel {
             }
             users = directory
             isDirectoryHidden = !isAdmin && directory.isEmpty
-            errorMessage = nil
+            loadErrorMessage = nil
         } catch let e {
-            errorMessage = e.localizedDescription
+            loadErrorMessage = e.userFacingMessage
         }
     }
 
@@ -142,9 +143,9 @@ final class AlbumShareViewModel {
             lastAddDto = dto
             _ = try await client.addUsersToAlbum(albumId: albumId, dto: dto)
             roles[user.id] = role
-            errorMessage = nil
+            actionErrorMessage = nil
         } catch let e {
-            errorMessage = e.localizedDescription
+            actionErrorMessage = e.userFacingMessage
         }
     }
 
@@ -156,9 +157,9 @@ final class AlbumShareViewModel {
             try await client.removeUserFromAlbum(albumId: albumId, userId: userId)
             lastRemovedUserId = userId
             roles.removeValue(forKey: userId)
-            errorMessage = nil
+            actionErrorMessage = nil
         } catch let e {
-            errorMessage = e.localizedDescription
+            actionErrorMessage = e.userFacingMessage
         }
     }
 
@@ -174,9 +175,9 @@ final class AlbumShareViewModel {
             lastRoleUpdateUserId = userId
             try await client.updateAlbumUserRole(albumId: albumId, userId: userId, dto: dto)
             roles[userId] = role
-            errorMessage = nil
+            actionErrorMessage = nil
         } catch let e {
-            errorMessage = e.localizedDescription
+            actionErrorMessage = e.userFacingMessage
         }
     }
 }

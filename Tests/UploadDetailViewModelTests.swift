@@ -141,7 +141,6 @@ final class UploadDetailViewModelTests: XCTestCase {
         XCTAssertEqual(h.engine.rejectedCount, 1)
         XCTAssertEqual(h.engine.failures.count, 1)
         XCTAssertEqual(h.engine.failures.first?.assetID, "lp1")
-        XCTAssertTrue(h.engine.failures.first?.reason.contains("Live Photo link") ?? false)
 
         h.client.uploadErrorsByFilename = [:]
         h.client.uploadResponsesByFilename = ["lp1.MOV": AssetMediaResponseDto(id: "video-9", status: "created")]

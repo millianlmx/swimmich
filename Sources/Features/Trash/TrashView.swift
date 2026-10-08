@@ -36,6 +36,9 @@ struct TrashView: View {
                 content
             }
             .refreshable { await vm.refresh() }
+            .safeAreaInset(edge: .top, spacing: 0) {
+                trashLoadErrorBanner
+            }
             .scrollDismissesKeyboard(.immediately)
             .navigationTitle(Text(verbatim: ""))
             .navigationBarTitleDisplayMode(.inline)
@@ -75,12 +78,12 @@ struct TrashView: View {
                 Text("All items in trash will be permanently deleted. Action cannot be undone.")
             }
             .alert("Something went wrong", isPresented: Binding(
-                get: { vm.errorMessage != nil },
-                set: { if !$0 { vm.errorMessage = nil } }
+                get: { vm.actionErrorMessage != nil },
+                set: { if !$0 { vm.actionErrorMessage = nil } }
             )) {
                 Button("OK", role: .cancel) {}
             } message: {
-                Text(verbatim: vm.errorMessage ?? "")
+                Text(verbatim: vm.actionErrorMessage ?? "")
             }
         }
         .task {
@@ -111,15 +114,24 @@ struct TrashView: View {
     // MARK: - Content
 
     @ViewBuilder
+    private var trashLoadErrorBanner: some View {
+        if !vm.items.isEmpty, let message = vm.loadErrorMessage {
+            InlineErrorBadge(message: message, retry: { Task { await vm.refresh() } })
+                .padding(PVSpacing.s16)
+                .transition(.opacity)
+        }
+    }
+
+    @ViewBuilder
     private var content: some View {
         if vm.items.isEmpty {
             if vm.isLoading {
                 ProgressView().padding(.top, 80)
-            } else if vm.errorMessage != nil {
+            } else if vm.loadErrorMessage != nil {
                 ContentUnavailableView {
                     Label("Couldn't load trash", systemImage: "wifi.exclamationmark")
                 } description: {
-                    Text(verbatim: vm.errorMessage ?? "")
+                    Text(verbatim: vm.loadErrorMessage ?? "")
                 } actions: {
                     Button("Try Again") { Task { await vm.refresh() } }
                         .buttonStyle(PVPrimaryButtonStyle())

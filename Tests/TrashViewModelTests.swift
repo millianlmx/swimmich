@@ -61,7 +61,7 @@ final class TrashViewModelTests: XCTestCase {
 
         XCTAssertTrue(vm.items.isEmpty, "items empty on error")
         XCTAssertTrue(vm.buckets.isEmpty)
-        XCTAssertNotNil(vm.errorMessage)
+        XCTAssertEqual(vm.loadErrorMessage, localizedString("Something went wrong. Please try again."))
         XCTAssertFalse(vm.isLoading)
     }
 
@@ -120,7 +120,7 @@ final class TrashViewModelTests: XCTestCase {
         XCTAssertEqual(vm.buckets.count, bucketsBefore)
         XCTAssertEqual(vm.loadedIds, loadedBefore)
         XCTAssertEqual(vm.bucketIndex, indexBefore)
-        XCTAssertNotNil(vm.errorMessage)
+        XCTAssertEqual(vm.actionErrorMessage, localizedString("Something went wrong. Please try again."))
     }
 
     // MARK: - AC-303: deletePermanently(id:) success
@@ -180,7 +180,7 @@ final class TrashViewModelTests: XCTestCase {
         XCTAssertEqual(vm.buckets.count, bucketsBefore, "buckets preserved")
         XCTAssertEqual(vm.loadedIds, loadedBefore, "loadedIds preserved")
         XCTAssertEqual(vm.bucketIndex, indexBefore, "bucketIndex preserved")
-        XCTAssertNotNil(vm.errorMessage)
+        XCTAssertEqual(vm.actionErrorMessage, localizedString("Something went wrong. Please try again."))
     }
 
     // MARK: - AC-305: refresh() resets + first bucket only + error path
@@ -211,8 +211,8 @@ final class TrashViewModelTests: XCTestCase {
         await vm.refresh()
 
         // Throw at getTimeBuckets happens BEFORE any mutation, so prior state
-        // is preserved; only errorMessage is set.
-        XCTAssertNotNil(vm.errorMessage)
+        // is preserved; only loadErrorMessage is set.
+        XCTAssertEqual(vm.loadErrorMessage, localizedString("Something went wrong. Please try again."))
         XCTAssertFalse(vm.isLoading)
         XCTAssertEqual(vm.items.count, beforeCount, "items preserved on refresh error")
         XCTAssertFalse(vm.buckets.isEmpty, "buckets preserved on refresh error")
@@ -281,7 +281,7 @@ final class TrashViewModelTests: XCTestCase {
         XCTAssertEqual(mock.lastRestoreTrashAssetsIds, ["a1"], "call still fired")
         XCTAssertEqual(vm.items.count, itemsBefore, "items unchanged on throw")
         XCTAssertEqual(vm.loadedIds, loadedBefore, "loadedIds unchanged on throw")
-        XCTAssertNotNil(vm.errorMessage)
+        XCTAssertEqual(vm.actionErrorMessage, localizedString("Something went wrong. Please try again."))
     }
 
     // MARK: - AC-314: deletePermanently(id:) error preserves state
@@ -301,6 +301,6 @@ final class TrashViewModelTests: XCTestCase {
         XCTAssertEqual(mock.lastDeleteBody?.force, true)
         XCTAssertEqual(vm.items.count, itemsBefore, "items unchanged on throw")
         XCTAssertEqual(vm.loadedIds, loadedBefore, "loadedIds unchanged on throw")
-        XCTAssertNotNil(vm.errorMessage)
+        XCTAssertEqual(vm.actionErrorMessage, localizedString("Something went wrong. Please try again."))
     }
 }

@@ -11,7 +11,8 @@ final class AlbumsViewModel {
 
     var albums: [AlbumResponseDto] = []
     var isLoading = false
-    var errorMessage: String?
+    var loadErrorMessage: String?
+    var actionErrorMessage: String?
     var isCreating = false
 
     init(client: any ImmichClient) {
@@ -27,9 +28,9 @@ final class AlbumsViewModel {
             let result = try await client.getAlbums()
             // try-then-mutate: only mutate on success.
             albums = result
-            errorMessage = nil
+            loadErrorMessage = nil
         } catch {
-            errorMessage = error.localizedDescription
+            loadErrorMessage = error.userFacingMessage
         }
     }
 
@@ -42,7 +43,7 @@ final class AlbumsViewModel {
     func createAlbum(name: String, description: String? = nil, assetIds: [String]? = nil) async {
         let trimmed = name.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else {
-            errorMessage = String(localized: "Album name cannot be empty.")
+            actionErrorMessage = String(localized: "Album name cannot be empty.")
             return
         }
         isCreating = true
@@ -52,9 +53,9 @@ final class AlbumsViewModel {
             let created = try await client.createAlbum(dto: dto)
             // try-then-mutate: append only on success.
             albums.append(created)
-            errorMessage = nil
+            actionErrorMessage = nil
         } catch {
-            errorMessage = error.localizedDescription
+            actionErrorMessage = error.userFacingMessage
         }
     }
 
@@ -66,13 +67,13 @@ final class AlbumsViewModel {
     /// shared albums list via `refresh()` if needed.
     func addAssets(ids: [String], toAlbumId albumId: String) async {
         guard !ids.isEmpty else { return }
-        // SUG-1: clear any stale errorMessage so the picker's nil-check reflects THIS call.
-        errorMessage = nil
+        // SUG-1: clear any stale actionErrorMessage so the picker's nil-check reflects THIS call.
+        actionErrorMessage = nil
         do {
             _ = try await client.addAssetsToAlbum(albumId: albumId, dto: BulkIdsDto(ids: ids))
-            errorMessage = nil
+            actionErrorMessage = nil
         } catch {
-            errorMessage = error.localizedDescription
+            actionErrorMessage = error.userFacingMessage
         }
     }
 }

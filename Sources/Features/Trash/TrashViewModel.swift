@@ -15,7 +15,8 @@ final class TrashViewModel {
     var items: [AssetReactItem] = []
     var bucketIndex: Int = 0
     var isLoading: Bool = false
-    var errorMessage: String?
+    var loadErrorMessage: String?
+    var actionErrorMessage: String?
 
     /// Loaded item IDs for O(1) dedup (mirrors TimelineViewModel.loadedIds).
     private(set) var loadedIds: Set<String> = []
@@ -33,7 +34,7 @@ final class TrashViewModel {
     @MainActor
     func load() async {
         isLoading = true
-        errorMessage = nil
+        loadErrorMessage = nil
         do {
             buckets = try await client.getTimeBuckets(isFavorite: nil, isTrashed: true, personId: nil, withPartners: nil, visibility: nil, withStacked: nil, orderBy: nil)
             bucketIndex = 0
@@ -41,7 +42,7 @@ final class TrashViewModel {
             loadedIds = []
             await loadNextBucket()
         } catch let e {
-            errorMessage = e.localizedDescription
+            loadErrorMessage = e.userFacingMessage
         }
         isLoading = false
     }
@@ -49,7 +50,7 @@ final class TrashViewModel {
     @MainActor
     func refresh() async {
         isLoading = true
-        errorMessage = nil
+        loadErrorMessage = nil
         do {
             buckets = try await client.getTimeBuckets(isFavorite: nil, isTrashed: true, personId: nil, withPartners: nil, visibility: nil, withStacked: nil, orderBy: nil)
             bucketIndex = 0
@@ -57,7 +58,7 @@ final class TrashViewModel {
             loadedIds = []
             await loadNextBucket()
         } catch let e {
-            errorMessage = e.localizedDescription
+            loadErrorMessage = e.userFacingMessage
         }
         isLoading = false
     }
@@ -81,7 +82,7 @@ final class TrashViewModel {
             }
             bucketIndex += 1
         } catch let e {
-            errorMessage = e.localizedDescription
+            loadErrorMessage = e.userFacingMessage
         }
     }
 
@@ -99,7 +100,7 @@ final class TrashViewModel {
 
     /// Restores a single asset. Removes it from `items` + `loadedIds` only
     /// after the network call succeeds (try-then-mutate). On throw the local
-    /// state is preserved and `errorMessage` is surfaced.
+    /// state is preserved and `actionErrorMessage` is surfaced.
     /// - Returns: `true` when the server accepted the restore. The photo
     ///   viewer's own path (no `onRestore` callback) needs the outcome to
     ///   decide whether the surface it came from should re-read.
@@ -112,7 +113,7 @@ final class TrashViewModel {
             loadedIds.remove(id)
             return true
         } catch let e {
-            errorMessage = e.localizedDescription
+            actionErrorMessage = e.userFacingMessage
             return false
         }
     }
@@ -125,7 +126,7 @@ final class TrashViewModel {
             _ = try await client.restoreAllTrash()
             resetAllState()
         } catch let e {
-            errorMessage = e.localizedDescription
+            actionErrorMessage = e.userFacingMessage
         }
     }
 
@@ -144,7 +145,7 @@ final class TrashViewModel {
             loadedIds.remove(id)
             return true
         } catch let e {
-            errorMessage = e.localizedDescription
+            actionErrorMessage = e.userFacingMessage
             return false
         }
     }
@@ -160,7 +161,7 @@ final class TrashViewModel {
             _ = try await client.emptyTrash()
             resetAllState()
         } catch let e {
-            errorMessage = e.localizedDescription
+            actionErrorMessage = e.userFacingMessage
         }
     }
 

@@ -162,7 +162,7 @@ final class DownloadQueueViewModel {
                 )
             }
         } catch {
-            errorMessage = Self.message(for: error)
+            errorMessage = error.userFacingMessage
         }
     }
 
@@ -190,7 +190,7 @@ final class DownloadQueueViewModel {
                 plan: .asset(id: asset.id)
             )
         } catch {
-            errorMessage = Self.message(for: error)
+            errorMessage = error.userFacingMessage
         }
     }
 
@@ -290,7 +290,7 @@ final class DownloadQueueViewModel {
         } catch {
             // A cancel is not a failure: the row was already parked at
             // `.cancelled`, and this path must not turn it into an error.
-            if Self.isCancellation(error) {
+            if UserFacingError.isCancellation(error) {
                 if let index = items.firstIndex(where: { $0.id == id }),
                    items[index].status == .running {
                     items[index].status = .cancelled
@@ -329,7 +329,7 @@ final class DownloadQueueViewModel {
         guard let index = items.firstIndex(where: { $0.id == id }) else { return }
         guard items[index].status != .cancelled else { return }
         items[index].status = .failed
-        items[index].errorMessage = Self.message(for: error)
+        items[index].errorMessage = error.userFacingMessage
     }
 
     /// Moves the streamed temp file to its final home and closes the row.
@@ -410,19 +410,5 @@ final class DownloadQueueViewModel {
         formatter.locale = Locale(identifier: "en_US_POSIX")
         formatter.dateFormat = "yyyy-MM-dd"
         return formatter.string(from: .now)
-    }
-
-    /// Cooperative cancellation, whichever way it surfaced: `URLSession`
-    /// throws `URLError(.cancelled)`, a cancelled `Task` throws
-    /// `CancellationError`, and `APIError.from` wraps both.
-    private static func isCancellation(_ error: Error) -> Bool {
-        if error is CancellationError { return true }
-        if let urlError = error as? URLError, urlError.code == .cancelled { return true }
-        return (error as? APIError)?.isCancellation == true
-    }
-
-    /// The message a row or the queue shows for a failure.
-    private static func message(for error: Error) -> String {
-        (error as? LocalizedError)?.errorDescription ?? error.localizedDescription
     }
 }

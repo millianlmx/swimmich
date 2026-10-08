@@ -99,7 +99,7 @@ final class AssetDetailViewModelTests: XCTestCase {
         let vm = AssetDetailViewModel(asset: makeAssetWithLocation(), client: mock)
         await vm.setLocation(latitude: 45.5, longitude: 6.8)
 
-        XCTAssertEqual(vm.errorMessage, "Server error 500: boom")
+        XCTAssertEqual(vm.errorMessage, UserFacingError.serverErrorMessage)
         XCTAssertNil(vm.detail)
     }
 
@@ -159,5 +159,28 @@ final class AssetDetailViewModelTests: XCTestCase {
         XCTAssertEqual(vm.rating, 3)
         XCTAssertNotNil(vm.errorMessage)
         XCTAssertFalse(vm.isSavingRating)
+    }
+
+    // AC-3: whatever the transport or the server failed with, the screen shows
+    // only catalog copy: no decoding detail, transport text, HTTP code or body.
+    @MainActor
+    func test_AC3_technicalFailuresNeverReachTheScreen() async {
+        let technical: [Error] = [
+            APIError.decoding("Decoding failed: keyNotFound(isFavorite) <html>secret-body</html>"),
+            APIError.serverError(500, "secret-body SQL error"),
+            APIError.http(404),
+        ]
+        for failure in technical {
+            let mock = MockImmichClient()
+            mock.globalError = failure
+            let vm = AssetDetailViewModel(asset: makeAssetWithLocation(), client: mock)
+            await vm.setLocation(latitude: 45.5, longitude: 6.8)
+
+            let message = vm.errorMessage ?? ""
+            XCTAssertFalse(message.isEmpty, "\(failure) must surface a message")
+            for leak in ["Decoding failed", "Network error", "HTTP", "secret-body", "SQL error"] {
+                XCTAssertFalse(message.contains(leak), "\(failure) leaked \"\(leak)\" into: \(message)")
+            }
+        }
     }
 }

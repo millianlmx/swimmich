@@ -58,12 +58,12 @@ final class PhotoShareViewModel {
         do {
             users = try await client.getUsers().filter { $0.id != asset.ownerId }
         } catch let e {
-            errorMessage = e.localizedDescription
+            errorMessage = e.userFacingMessage
         }
         do {
             albums = try await client.getAlbums()
         } catch let e {
-            errorMessage = e.localizedDescription
+            errorMessage = e.userFacingMessage
         }
         isBusy = false
     }
@@ -96,7 +96,7 @@ final class PhotoShareViewModel {
             albumName = ""
             selectedUserIds = []
         } catch let e {
-            errorMessage = e.localizedDescription
+            errorMessage = e.userFacingMessage
         }
         isBusy = false
     }
@@ -110,7 +110,7 @@ final class PhotoShareViewModel {
             _ = try await client.addAssetsToAlbum(albumId: id, dto: BulkIdsDto(ids: [asset.id]))
             lastAddedAlbumId = id
         } catch let e {
-            errorMessage = e.localizedDescription
+            errorMessage = e.userFacingMessage
         }
         isBusy = false
     }
@@ -133,7 +133,7 @@ final class PhotoShareViewModel {
             linkURL = SharedLinkURL(serverURL: baseURL, externalDomain: externalDomain)
                 .urlString(slug: link.slug, key: link.key)
         } catch let e {
-            errorMessage = e.localizedDescription
+            errorMessage = e.userFacingMessage
         }
         isBusy = false
     }

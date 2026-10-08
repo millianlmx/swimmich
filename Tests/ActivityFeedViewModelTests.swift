@@ -52,7 +52,7 @@ final class ActivityFeedViewModelTests: XCTestCase {
         await vm.load()
 
         XCTAssertTrue(vm.activities.isEmpty)
-        XCTAssertEqual(vm.errorMessage?.contains("Boom"), true)
+        XCTAssertEqual(vm.errorMessage, UserFacingError.genericMessage)
     }
 
     // MARK: - Comments
@@ -96,7 +96,7 @@ final class ActivityFeedViewModelTests: XCTestCase {
         let ok = await vm.addComment("Will fail")
         XCTAssertFalse(ok)
         XCTAssertTrue(vm.activities.isEmpty)
-        XCTAssertEqual(vm.errorMessage?.contains("Boom"), true)
+        XCTAssertEqual(vm.errorMessage, UserFacingError.genericMessage)
     }
 
     // MARK: - Likes
@@ -171,7 +171,7 @@ final class ActivityFeedViewModelTests: XCTestCase {
         mock.activitiesError = Boom()
         await vm.deleteActivity(id: "c1")
         XCTAssertEqual(vm.activities.map(\.id), ["c1"])
-        XCTAssertEqual(vm.errorMessage?.contains("Boom"), true)
+        XCTAssertEqual(vm.errorMessage, UserFacingError.genericMessage)
     }
 }
 

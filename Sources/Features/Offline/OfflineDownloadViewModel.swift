@@ -137,7 +137,7 @@ final class OfflineDownloadViewModel {
         } catch let error as OfflineStoreError {
             errorMessage = error.errorDescription
         } catch {
-            errorMessage = error.localizedDescription
+            errorMessage = error.userFacingMessage
         }
     }
 

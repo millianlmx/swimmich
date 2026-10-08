@@ -295,7 +295,7 @@ final class TimelineViewModelTests: XCTestCase {
 
         XCTAssertEqual(vm.items.count, before, "items unchanged on throw")
         XCTAssertEqual(vm.loadedIds, loadedBefore, "loadedIds unchanged on throw")
-        XCTAssertNotNil(vm.errorMessage, "error surfaced to UI")
+        XCTAssertEqual(vm.actionErrorMessage, localizedString("Something went wrong. Please try again."), "error surfaced to UI")
         XCTAssertEqual(vm.selectedIds, ["a1", "a3"], "selection preserved for retry")
         XCTAssertTrue(vm.selectionMode, "still in selection mode so user can retry")
     }
@@ -322,7 +322,7 @@ final class TimelineViewModelTests: XCTestCase {
         let succeeded = await vm.batchSetFavorite(vm.selectedIds, favorite: true)
 
         XCTAssertFalse(succeeded, "failed batch must report failure to the view")
-        XCTAssertNotNil(vm.errorMessage, "error surfaced to UI")
+        XCTAssertEqual(vm.actionErrorMessage, localizedString("Something went wrong. Please try again."), "error surfaced to UI")
         XCTAssertTrue(vm.selectionMode, "selection survives so the user can retry")
         XCTAssertEqual(vm.selectedIds, ["a1", "a2"])
         XCTAssertFalse(vm.items.first { $0.id == "a1" }?.isFavorite ?? true, "no mutation on throw")
@@ -345,7 +345,7 @@ final class TimelineViewModelTests: XCTestCase {
         let succeeded = await vm.batchSetFavorite(vm.selectedIds, favorite: true)
 
         XCTAssertTrue(succeeded, "successful batch must report success so the view can exit")
-        XCTAssertNil(vm.errorMessage)
+        XCTAssertNil(vm.actionErrorMessage)
         XCTAssertTrue(vm.items.allSatisfy { $0.id != "a1" || $0.isFavorite })
     }
 
@@ -458,7 +458,7 @@ final class TimelineViewModelTests: XCTestCase {
 
         XCTAssertEqual(vm.items.map(\.id), ["a1", "a2", "a3"], "failure keeps items for retry")
         XCTAssertTrue(vm.selectionMode, "selection survives failure")
-        XCTAssertEqual(vm.errorMessage, "Server error 500: boom")
+        XCTAssertEqual(vm.actionErrorMessage, localizedString("The server ran into a problem. Please try again."))
     }
 
     @MainActor
@@ -557,7 +557,7 @@ final class TimelineViewModelTests: XCTestCase {
 
         await vm.setFilter(isFavorite: true, visibility: nil)
 
-        XCTAssertEqual(vm.errorMessage, "Server error 500: boom")
+        XCTAssertEqual(vm.loadErrorMessage, localizedString("The server ran into a problem. Please try again."))
     }
 
     @MainActor
@@ -680,5 +680,66 @@ final class TimelineViewModelTests: XCTestCase {
 
         XCTAssertEqual(mock.lastCreateStackIds, ["a2", "a3"], "grid order, not Set order")
         XCTAssertFalse(vm.selectionMode)
+    }
+
+    // MARK: - AC-10 / AC-1 / AC-2: a cancelled load is silent and keeps what is shown (SP-1, SP-7)
+
+    /// Refreshed VM holding one non-empty bucket: the starting point of every cancelled-load test.
+    @MainActor
+    private func makeRefreshedVM(_ mock: MockImmichClient) async -> TimelineViewModel {
+        mock.bucketsResponse = [TimeBucketsResponseDto(timeBucket: "2024-07-01", count: 2)]
+        mock.bucketResponses = [
+            "2024-07-01": columnar(ids: ["a1", "a2"], ratios: [1.0, 1.0], thumbhashes: [nil, nil], favorites: [false, false])
+        ]
+        let vm = TimelineViewModel(client: mock)
+        await vm.refresh()
+        return vm
+    }
+
+    @MainActor
+    func test_AC10_cancelledLoadIsSilentAndKeepsShownPhotos() async {
+        let mock = MockImmichClient()
+        let vm = await makeRefreshedVM(mock)
+        let shownIds = vm.items.map(\.id)
+        XCTAssertFalse(shownIds.isEmpty, "precondition: a non-empty bucket is on screen")
+
+        mock.globalError = URLError(.cancelled)
+        await vm.refresh()
+
+        XCTAssertNil(vm.loadErrorMessage, "a cancelled refresh writes no banner")
+        XCTAssertNil(vm.actionErrorMessage, "a cancelled refresh never raises the modal")
+        XCTAssertFalse(vm.isLoading)
+        XCTAssertEqual(vm.items.map(\.id), shownIds, "photos already shown stay")
+    }
+
+    @MainActor
+    func test_AC2_cancelledLoadNewerIsSilent() async {
+        let mock = MockImmichClient()
+        let vm = await makeRefreshedVM(mock)
+        vm.upperBucketIndex = 0
+        let shownIds = vm.items.map(\.id)
+
+        mock.globalError = URLError(.cancelled)
+        await vm.loadNewer()
+
+        XCTAssertNil(vm.loadErrorMessage, "a cancelled loadNewer writes no banner")
+        XCTAssertNil(vm.actionErrorMessage)
+        XCTAssertFalse(vm.isLoading)
+        XCTAssertEqual(vm.items.map(\.id), shownIds, "photos already shown stay")
+    }
+
+    @MainActor
+    func test_AC1_scrollToTopCancellationKeepsPhotosAndNoBanner() async {
+        let mock = MockImmichClient()
+        let vm = await makeRefreshedVM(mock)
+        let shownIds = vm.items.map(\.id)
+
+        mock.globalError = URLError(.cancelled)
+        await vm.jump(toDay: "2024-07-01")
+
+        XCTAssertNil(vm.loadErrorMessage, "a cancelled jump writes no banner")
+        XCTAssertNil(vm.actionErrorMessage)
+        XCTAssertFalse(vm.isLoading)
+        XCTAssertEqual(vm.items.map(\.id), shownIds, "photos already shown stay")
     }
 }

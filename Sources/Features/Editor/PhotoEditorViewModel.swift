@@ -92,13 +92,14 @@ final class PhotoEditorViewModel {
         do {
             (data, response) = try await urlSession.data(for: request)
         } catch {
-            errorMessage = String(localized: "Network error: \(error.localizedDescription)")
+            errorMessage = error.userFacingMessage
             return
         }
 
         if let http = response as? HTTPURLResponse,
            !(200..<300).contains(http.statusCode) {
-            errorMessage = String(localized: "Server returned \(http.statusCode)")
+            let failure: APIError = http.statusCode == 401 ? .unauthorized : .http(http.statusCode)
+            errorMessage = failure.userFacingMessage
             return
         }
 

@@ -13,18 +13,7 @@ enum APIError: Error, LocalizedError, Equatable {
     /// before it reached the wire (gap G17).
     case readOnlyMode
 
-    var errorDescription: String? {
-        switch self {
-        case .unauthorized: return "Unauthorized (401). Please sign in again."
-        case .network(let e): return "Network error: \(e.localizedDescription)"
-        case .serverError(let code, let msg): return "Server error \(code): \(msg ?? "no detail")"
-        case .decoding(let m): return "Decoding failed: \(m)"
-        case .invalidURL: return "Invalid server URL."
-        case .multipartEncoding(let m): return "Multipart encoding failed: \(m)"
-        case .http(let code): return "HTTP \(code)"
-        case .readOnlyMode: return String(localized: "Read-only mode is on. Turn it off in Me to change your library.")
-        }
-    }
+    var errorDescription: String? { UserFacingError.from(self)?.message }
 
     /// `true` when this error represents cooperative `Task` cancellation (a
     /// `URLError(.cancelled)` surfacing from `URLSession.data(for:)` when the

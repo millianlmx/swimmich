@@ -21,7 +21,8 @@ final class AlbumDetailViewModel {
     // spinner, not the "Album Unavailable" fallback (`.task` runs after the
     // initial body evaluation). `load()` re-sets it and clears it on exit.
     var isLoading = true
-    var errorMessage: String?
+    var loadErrorMessage: String?
+    var actionErrorMessage: String?
     var isDeleted = false
 
     init(client: any ImmichClient, albumId: String) {
@@ -68,15 +69,15 @@ final class AlbumDetailViewModel {
             assets.removeAll { removeSet.contains($0.id) }
             loadedIds.subtract(removeSet)
             exitSelectionMode()
-            errorMessage = nil
+            actionErrorMessage = nil
         } catch {
-            errorMessage = error.localizedDescription
+            actionErrorMessage = error.userFacingMessage
         }
     }
 
     /// Sets favorite uniformly across `ids` (skips ids already in the target
     /// state). Same try-then-mutate discipline as `removeAssets`; first throw
-    /// stops the batch and surfaces `errorMessage` without mutating the rest.
+    /// stops the batch and surfaces `actionErrorMessage` without mutating the rest.
     /// - Returns: `true` on full success, `false` on error — callers exit
     ///   selection mode only on success (audit fix).
     @MainActor
@@ -90,7 +91,7 @@ final class AlbumDetailViewModel {
                     assets[idx] = current.with(isFavorite: value)
                 }
             } catch {
-                errorMessage = error.localizedDescription
+                actionErrorMessage = error.userFacingMessage
                 return false
             }
         }
@@ -99,7 +100,7 @@ final class AlbumDetailViewModel {
 
     /// Deletes all selected assets from the library. On success removes them
     /// from `assets` + `loadedIds` and exits selection mode. On throw, state is
-    /// preserved so the user can retry (errorMessage set, selection kept).
+    /// preserved so the user can retry (actionErrorMessage set, selection kept).
     func deleteSelected() async {
         guard !selectedIds.isEmpty else { return }
         let ids = Array(selectedIds)
@@ -111,7 +112,7 @@ final class AlbumDetailViewModel {
             loadedIds.subtract(removeSet)
             exitSelectionMode()
         } catch {
-            errorMessage = error.localizedDescription
+            actionErrorMessage = error.userFacingMessage
         }
     }
 
@@ -130,10 +131,10 @@ final class AlbumDetailViewModel {
         // Phase 1: album metadata.
         do {
             album = try await client.getAlbum(id: albumId)
-            errorMessage = nil
+            loadErrorMessage = nil
         } catch {
             // Album fetch failed: nothing else to do.
-            errorMessage = error.localizedDescription
+            loadErrorMessage = error.userFacingMessage
             return
         }
 
@@ -149,7 +150,7 @@ final class AlbumDetailViewModel {
         } catch {
             // Album metadata already populated; surface asset-fetch error but
             // keep `album` intact (try-then-mutate discipline).
-            errorMessage = error.localizedDescription
+            loadErrorMessage = error.userFacingMessage
         }
     }
 
@@ -172,9 +173,9 @@ final class AlbumDetailViewModel {
             _ = try await client.addAssetsToAlbum(albumId: albumId, dto: BulkIdsDto(ids: ids))
             // Refresh assets from server after a successful add.
             await fetchAssets()
-            errorMessage = nil
+            actionErrorMessage = nil
         } catch {
-            errorMessage = error.localizedDescription
+            actionErrorMessage = error.userFacingMessage
         }
     }
 
@@ -191,9 +192,9 @@ final class AlbumDetailViewModel {
             // Keep the selection set consistent when a selected asset is
             // removed via the context menu (audit fix — stale "N selected").
             selectedIds.subtract(removeSet)
-            errorMessage = nil
+            actionErrorMessage = nil
         } catch {
-            errorMessage = error.localizedDescription
+            actionErrorMessage = error.userFacingMessage
         }
     }
 
@@ -204,9 +205,9 @@ final class AlbumDetailViewModel {
             try await client.deleteAlbum(id: albumId)
             // 204 No Content handled by sendAuthedRaw — no decode crash (AC-518).
             isDeleted = true
-            errorMessage = nil
+            actionErrorMessage = nil
         } catch {
-            errorMessage = error.localizedDescription
+            actionErrorMessage = error.userFacingMessage
         }
     }
 
@@ -225,10 +226,10 @@ final class AlbumDetailViewModel {
                 dto: UpdateAlbumDto(albumName: nil, description: nil, albumThumbnailAssetId: assetId, isActivityEnabled: nil, order: nil)
             )
             album = updated
-            errorMessage = nil
+            actionErrorMessage = nil
             return true
         } catch {
-            errorMessage = error.localizedDescription
+            actionErrorMessage = error.userFacingMessage
             return false
         }
     }
@@ -247,10 +248,10 @@ final class AlbumDetailViewModel {
                 )
             )
             album = updated
-            errorMessage = nil
+            actionErrorMessage = nil
             return true
         } catch {
-            errorMessage = error.localizedDescription
+            actionErrorMessage = error.userFacingMessage
             return false
         }
     }
@@ -260,9 +261,9 @@ final class AlbumDetailViewModel {
     func refreshAlbum() async {
         do {
             album = try await client.getAlbum(id: albumId)
-            errorMessage = nil
+            loadErrorMessage = nil
         } catch {
-            errorMessage = error.localizedDescription
+            loadErrorMessage = error.userFacingMessage
         }
     }
 
@@ -284,9 +285,9 @@ final class AlbumDetailViewModel {
     func loadSharedLinks() async {
         do {
             sharedLinks = try await client.getSharedLinks(albumId: albumId)
-            errorMessage = nil
+            loadErrorMessage = nil
         } catch {
-            errorMessage = error.localizedDescription
+            loadErrorMessage = error.userFacingMessage
         }
     }
 
@@ -310,9 +311,9 @@ final class AlbumDetailViewModel {
         do {
             let link = try await client.createSharedLink(dto: dto)
             sharedLinks.append(link)
-            errorMessage = nil
+            actionErrorMessage = nil
         } catch {
-            errorMessage = error.localizedDescription
+            actionErrorMessage = error.userFacingMessage
         }
     }
 
@@ -320,9 +321,9 @@ final class AlbumDetailViewModel {
         do {
             try await client.deleteSharedLink(id: id)
             sharedLinks.removeAll { $0.id == id }
-            errorMessage = nil
+            actionErrorMessage = nil
         } catch {
-            errorMessage = error.localizedDescription
+            actionErrorMessage = error.userFacingMessage
         }
     }
 
@@ -335,10 +336,10 @@ final class AlbumDetailViewModel {
             if let idx = sharedLinks.firstIndex(where: { $0.id == id }) {
                 sharedLinks[idx] = updated
             }
-            errorMessage = nil
+            actionErrorMessage = nil
             return true
         } catch {
-            errorMessage = error.localizedDescription
+            actionErrorMessage = error.userFacingMessage
             return false
         }
     }

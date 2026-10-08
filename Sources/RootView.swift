@@ -41,7 +41,7 @@ struct RootView: View {
                     AuthenticatedRoot(container: container, session: auth, accountID: auth.activeAccountID ?? "")
                         .id(auth.activeAccountID)
                 } else {
-                    OnboardingFlowView()
+                    OnboardingFlowView(startsOnLogin: auth.sessionExpired)
                 }
             }
             .environment(auth)

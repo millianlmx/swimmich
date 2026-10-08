@@ -251,7 +251,59 @@ final class BackupEngineTests: XCTestCase {
         XCTAssertEqual(engine.failedCount, 2)
         XCTAssertEqual(engine.uploadedCount, 0)
         XCTAssertEqual(engine.processedCount, 2)
-        XCTAssertEqual(engine.lastError, "Server error 500: boom")
+        XCTAssertEqual(engine.lastError, UserFacingError.serverErrorMessage)
+    }
+
+    /// AC-2 : une annulation réseau n'est pas un échec du run.
+    @MainActor
+    func test_AC2_cancelledUploadIsNotCountedAsFailure() async {
+        let mock = MockImmichClient()
+        mock.uploadError = URLError(.cancelled)
+        let source = MockBackupAssetSource()
+        source.candidates = [candidate("c1")]
+        mock.bulkUploadCheckResponse = AssetBulkUploadCheckResponse(
+            results: [AssetBulkUploadCheckResponse.Result(id: "c1", action: "accept")]
+        )
+        let engine = BackupEngine(client: mock, source: source, environment: MockBackupEnvironment())
+
+        await engine.run(settings: settings())
+
+        XCTAssertEqual(engine.phase, .done)
+        XCTAssertEqual(engine.failedCount, 0, "une annulation n'est pas un échec")
+        XCTAssertTrue(engine.failures.isEmpty)
+        XCTAssertNil(engine.lastError)
+    }
+
+    /// AC-3 : le message d'échec est la copie localisée, jamais le texte brut.
+    @MainActor
+    func test_AC3_backupFailureMessageIsLocalizedCopyNotRawText() async {
+        let mock = MockImmichClient()
+        mock.uploadErrorsByFilename = [
+            "c1.jpg": APIError.decoding("Decoding failed"),
+            "c2.jpg": APIError.serverError(500, "HTTP 500 Network error"),
+        ]
+        let source = MockBackupAssetSource()
+        source.candidates = [candidate("c1"), candidate("c2")]
+        mock.bulkUploadCheckResponse = AssetBulkUploadCheckResponse(
+            results: [
+                AssetBulkUploadCheckResponse.Result(id: "c1", action: "accept"),
+                AssetBulkUploadCheckResponse.Result(id: "c2", action: "accept"),
+            ]
+        )
+        let engine = BackupEngine(client: mock, source: source, environment: MockBackupEnvironment())
+
+        await engine.run(settings: settings())
+
+        XCTAssertEqual(engine.failedCount, 2)
+        XCTAssertEqual(engine.failures.map(\.reason), [
+            UserFacingError.genericMessage,
+            UserFacingError.serverErrorMessage,
+        ])
+        XCTAssertEqual(engine.lastError, UserFacingError.serverErrorMessage)
+        for raw in ["Decoding failed", "Network error", "HTTP"] {
+            XCTAssertFalse(engine.lastError?.contains(raw) ?? false, "texte brut « \(raw) » interdit")
+            XCTAssertFalse(engine.failures.contains { $0.reason.contains(raw) })
+        }
     }
 
     @MainActor

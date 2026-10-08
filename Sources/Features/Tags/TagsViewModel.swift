@@ -22,7 +22,7 @@ final class TagsViewModel {
             tags = try await client.getAllTags()
             errorMessage = nil
         } catch {
-            errorMessage = error.localizedDescription
+            errorMessage = error.userFacingMessage
         }
     }
 
@@ -34,7 +34,7 @@ final class TagsViewModel {
             errorMessage = nil
             await load(force: true)
         } catch {
-            errorMessage = error.localizedDescription
+            errorMessage = error.userFacingMessage
         }
     }
 
@@ -44,7 +44,7 @@ final class TagsViewModel {
             errorMessage = nil
             await load(force: true)
         } catch {
-            errorMessage = error.localizedDescription
+            errorMessage = error.userFacingMessage
         }
     }
 }

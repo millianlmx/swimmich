@@ -38,7 +38,7 @@ final class OcrOverlayViewModel {
             errorMessage = nil
             didLoad = true
         } catch {
-            guard !Self.isCancellation(error) else { return }
+            guard !UserFacingError.isCancellation(error) else { return }
             errorMessage = String(localized: "Detected text unavailable")
         }
     }
@@ -48,16 +48,5 @@ final class OcrOverlayViewModel {
     private static func readingOrder(_ a: AssetOcrResponseDto, _ b: AssetOcrResponseDto) -> Bool {
         if a.textScore != b.textScore { return a.textScore > b.textScore }
         return a.quad.topLeft.y < b.quad.topLeft.y
-    }
-
-    /// `true` for cooperative cancellation — a `CancellationError`, or the
-    /// `URLError(.cancelled)` (wrapped as `APIError.network`) that URLSession
-    /// throws when the enclosing task is cancelled. Paging away mid-fetch is a
-    /// normal outcome and must never surface as a user-visible error.
-    private static func isCancellation(_ error: Error) -> Bool {
-        if error is CancellationError { return true }
-        if let api = error as? APIError, api.isCancellation { return true }
-        if let url = error as? URLError, url.code == .cancelled { return true }
-        return false
     }
 }

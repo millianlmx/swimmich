@@ -37,7 +37,7 @@ final class ActivityFeedViewModel {
             activities = fetched.sorted { $0.createdAt > $1.createdAt }
             errorMessage = nil
         } catch {
-            errorMessage = error.localizedDescription
+            errorMessage = error.userFacingMessage
         }
     }
 
@@ -55,7 +55,7 @@ final class ActivityFeedViewModel {
             errorMessage = nil
             return true
         } catch {
-            errorMessage = error.localizedDescription
+            errorMessage = error.userFacingMessage
             return false
         }
     }
@@ -78,7 +78,7 @@ final class ActivityFeedViewModel {
             await load()
             errorMessage = nil
         } catch {
-            errorMessage = error.localizedDescription
+            errorMessage = error.userFacingMessage
         }
     }
 
@@ -88,7 +88,7 @@ final class ActivityFeedViewModel {
             await load()
             errorMessage = nil
         } catch {
-            errorMessage = error.localizedDescription
+            errorMessage = error.userFacingMessage
         }
     }
 
@@ -100,7 +100,7 @@ final class ActivityFeedViewModel {
             activities.removeAll { $0.id == id }
             errorMessage = nil
         } catch {
-            errorMessage = error.localizedDescription
+            errorMessage = error.userFacingMessage
         }
     }
 }

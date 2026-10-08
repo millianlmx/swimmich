@@ -281,7 +281,7 @@ final class MapViewModel {
             await persist(dtos)
         } catch {
             print("[MapVM] fetch failed: \(error.localizedDescription)")
-            errorMessage = error.localizedDescription
+            errorMessage = error.userFacingMessage
         }
     }
 

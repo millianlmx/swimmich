@@ -74,12 +74,12 @@ struct SharedLinkSheet: View {
                 }
             }
             .alert("Error", isPresented: Binding(
-                get: { vm.errorMessage != nil },
-                set: { if !$0 { vm.errorMessage = nil } }
+                get: { vm.actionErrorMessage != nil },
+                set: { if !$0 { vm.actionErrorMessage = nil } }
             )) {
                 Button("OK", role: .cancel) {}
             } message: {
-                Text(vm.errorMessage ?? "")
+                Text(vm.actionErrorMessage ?? "")
             }
         }
     }

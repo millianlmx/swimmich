@@ -183,6 +183,9 @@ struct TimelineView: View {
                     }
                 }
                 .refreshable { await vm.refresh() }
+                .safeAreaInset(edge: .top, spacing: 0) {
+                    loadErrorBanner
+                }
                 // Cross-tab "view in timeline" teleport: jump to the target
                 // day when the asset isn't already loaded, then scroll to it.
                 .onChange(of: scrollTargetID) { _, newID in
@@ -313,12 +316,12 @@ struct TimelineView: View {
         }
         // D3: surface VM errors (favorite/delete/load failures) — never swallow silently.
         .alert("Something went wrong", isPresented: Binding(
-            get: { vm.errorMessage != nil },
-            set: { if !$0 { vm.errorMessage = nil } }
+            get: { vm.actionErrorMessage != nil },
+            set: { if !$0 { vm.actionErrorMessage = nil } }
         )) {
             Button("OK", role: .cancel) {}
         } message: {
-            Text(verbatim: vm.errorMessage ?? "")
+            Text(verbatim: vm.actionErrorMessage ?? "")
         }
         // D5: single-asset context-menu delete confirmation.
         .alert("Delete this asset?", isPresented: Binding(
@@ -397,6 +400,16 @@ struct TimelineView: View {
 
     // MARK: - Content (skeleton / empty / grid)
 
+    /// Non-blocking banner for a failed refresh/load over photos already shown.
+    @ViewBuilder
+    private var loadErrorBanner: some View {
+        if !vm.items.isEmpty, let message = vm.loadErrorMessage {
+            InlineErrorBadge(message: message, retry: { Task { await vm.refresh() } })
+                .padding(PVSpacing.s16)
+                .transition(.opacity)
+        }
+    }
+
     @ViewBuilder
     private var content: some View {
         if vm.items.isEmpty {
@@ -404,11 +417,11 @@ struct TimelineView: View {
                 PVSkeletonGrid(rows: 4, columnCount: columnCount)
                     .padding(.horizontal, PVSpacing.s4)
                     .padding(.top, PVSpacing.s4)
-            } else if vm.errorMessage != nil {
+            } else if vm.loadErrorMessage != nil {
                 ContentUnavailableView {
                     Label("Couldn't load photos", systemImage: "wifi.exclamationmark")
                 } description: {
-                    Text(verbatim: vm.errorMessage ?? "")
+                    Text(verbatim: vm.loadErrorMessage ?? "")
                 } actions: {
                     Button("Try Again") { Task { await vm.refresh() } }
                         .buttonStyle(PVPrimaryButtonStyle())

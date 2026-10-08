@@ -114,7 +114,7 @@ final class ProfilePictureViewModel {
             profile = try await client.getMyUser()
             errorMessage = nil
         } catch {
-            errorMessage = error.localizedDescription
+            errorMessage = error.userFacingMessage
         }
     }
 
@@ -239,7 +239,7 @@ final class ProfilePictureViewModel {
             cropRect = CGRect(x: 0, y: 0, width: 1, height: 1)
             errorMessage = nil
         } catch {
-            errorMessage = error.localizedDescription
+            errorMessage = error.userFacingMessage
         }
     }
 
@@ -255,7 +255,7 @@ final class ProfilePictureViewModel {
             profile?.profileImagePath = ""
             errorMessage = nil
         } catch {
-            errorMessage = error.localizedDescription
+            errorMessage = error.userFacingMessage
         }
     }
 

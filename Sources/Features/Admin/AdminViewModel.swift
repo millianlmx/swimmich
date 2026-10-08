@@ -38,7 +38,7 @@ final class AdminViewModel {
             self.libraries = libraries
             errorMessage = nil
         } catch {
-            errorMessage = error.localizedDescription
+            errorMessage = error.userFacingMessage
         }
     }
 
@@ -59,7 +59,7 @@ final class AdminViewModel {
             errorMessage = nil
             await load(force: true)
         } catch {
-            errorMessage = error.localizedDescription
+            errorMessage = error.userFacingMessage
         }
     }
 
@@ -69,7 +69,7 @@ final class AdminViewModel {
             errorMessage = nil
             await load(force: true)
         } catch {
-            errorMessage = error.localizedDescription
+            errorMessage = error.userFacingMessage
         }
     }
 
@@ -79,7 +79,7 @@ final class AdminViewModel {
             errorMessage = nil
             await load(force: true)
         } catch {
-            errorMessage = error.localizedDescription
+            errorMessage = error.userFacingMessage
         }
     }
 
@@ -91,7 +91,7 @@ final class AdminViewModel {
             errorMessage = nil
             await load(force: true)
         } catch {
-            errorMessage = error.localizedDescription
+            errorMessage = error.userFacingMessage
         }
     }
 
@@ -102,7 +102,7 @@ final class AdminViewModel {
             try await client.scanLibrary(id: library.id)
             errorMessage = nil
         } catch {
-            errorMessage = error.localizedDescription
+            errorMessage = error.userFacingMessage
         }
     }
 
@@ -112,7 +112,7 @@ final class AdminViewModel {
             errorMessage = nil
             await load(force: true)
         } catch {
-            errorMessage = error.localizedDescription
+            errorMessage = error.userFacingMessage
         }
     }
 }

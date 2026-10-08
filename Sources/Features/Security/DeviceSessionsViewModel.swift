@@ -81,7 +81,7 @@ final class DeviceSessionsViewModel {
             }
             errorMessage = nil
         } catch {
-            errorMessage = error.localizedDescription
+            errorMessage = error.userFacingMessage
         }
     }
 
@@ -154,7 +154,7 @@ final class DeviceSessionsViewModel {
                 failure = errorMessage
             }
         } catch {
-            failure = error.localizedDescription
+            failure = error.userFacingMessage
         }
         if let probeFailure = await probeElevation() {
             failure = failure ?? probeFailure
@@ -171,7 +171,7 @@ final class DeviceSessionsViewModel {
             return nil
         } catch {
             isElevationStale = true
-            return error.localizedDescription
+            return error.userFacingMessage
         }
     }
 

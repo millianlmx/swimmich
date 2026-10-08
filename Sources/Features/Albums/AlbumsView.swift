@@ -23,7 +23,7 @@ struct AlbumsView: View {
     var body: some View {
         NavigationStack {
             Group {
-                if vm.albums.isEmpty && vm.errorMessage != nil && !vm.isLoading {
+                if vm.albums.isEmpty && vm.loadErrorMessage != nil && !vm.isLoading {
                     errorState
                 } else if vm.isLoading && vm.albums.isEmpty {
                     ScrollView {
@@ -50,12 +50,12 @@ struct AlbumsView: View {
                 CreateAlbumSheet(vm: vm, preselectedAssetIds: nil)
             }
             .alert("Error", isPresented: Binding(
-                get: { vm.errorMessage != nil && !vm.albums.isEmpty },
-                set: { if !$0 { vm.errorMessage = nil } }
+                get: { vm.actionErrorMessage != nil },
+                set: { if !$0 { vm.actionErrorMessage = nil } }
             )) {
                 Button("OK", role: .cancel) {}
             } message: {
-                Text(vm.errorMessage ?? "")
+                Text(vm.actionErrorMessage ?? "")
             }
         }
     }
@@ -66,7 +66,7 @@ struct AlbumsView: View {
         ContentUnavailableView {
             Label("Couldn't load albums", systemImage: "wifi.exclamationmark")
         } description: {
-            Text(vm.errorMessage ?? "")
+            Text(vm.loadErrorMessage ?? "")
         } actions: {
             Button("Try Again") { Task { await vm.refresh() } }
                 .buttonStyle(PVPrimaryButtonStyle())
@@ -93,25 +93,34 @@ struct AlbumsView: View {
 
     private var albumGrid: some View {
         ScrollView {
-            LazyVGrid(columns: columns, spacing: PVSpacing.s16) {
-                ForEach(vm.albums, id: \.id) { album in
-                    NavigationLink {
-                        AlbumDetailView(album: album)
-                            .zoomNavigationTransitioniOS27(sourceID: album.id, in: zoomNamespace)
-                    } label: {
-                        AlbumCard(
-                            album: album,
-                            baseURL: auth.baseURL ?? defaultBaseURL,
-                            token: auth.accessToken,
-                            showsShadow: colorScheme == .light,
-                            zoomNamespace: zoomNamespace
-                        )
+            VStack(spacing: PVSpacing.s16) {
+                if let message = vm.loadErrorMessage {
+                    Section {
+                        InlineErrorBadge(message: message, retry: { Task { await vm.refresh() } })
                     }
-                    .buttonStyle(AlbumCardPressStyle(reduceMotion: reduceMotion))
+                    .padding(.horizontal, PVSpacing.s4)
+                    .padding(.top, PVSpacing.s4)
                 }
+                LazyVGrid(columns: columns, spacing: PVSpacing.s16) {
+                    ForEach(vm.albums, id: \.id) { album in
+                        NavigationLink {
+                            AlbumDetailView(album: album)
+                                .zoomNavigationTransitioniOS27(sourceID: album.id, in: zoomNamespace)
+                        } label: {
+                            AlbumCard(
+                                album: album,
+                                baseURL: auth.baseURL ?? defaultBaseURL,
+                                token: auth.accessToken,
+                                showsShadow: colorScheme == .light,
+                                zoomNamespace: zoomNamespace
+                            )
+                        }
+                        .buttonStyle(AlbumCardPressStyle(reduceMotion: reduceMotion))
+                    }
+                }
+                .padding(.horizontal, PVSpacing.s4)
+                .padding(.top, PVSpacing.s4)
             }
-            .padding(.horizontal, PVSpacing.s4)
-            .padding(.top, PVSpacing.s4)
         }
     }
 

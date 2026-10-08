@@ -262,6 +262,47 @@ final class AuthViewModelTests: XCTestCase {
         XCTAssertEqual(mock.requestCount, 0, "no validation without a session")
     }
 
+    // AC-7: a 401 on a signed-in session shows the expiry copy, returns to
+    // sign-in and keeps the stored session (token + identity) intact.
+    @MainActor
+    func test_AC7_unauthorizedShowsSessionExpiredAndKeepsStoredToken() async {
+        let (defaults, suite) = makeIsolatedDefaults()
+        defer { defaults.removePersistentDomain(forName: suite) }
+        let keychain = MockKeychainStore()
+        let mock = MockImmichClient()
+        mock.loginResponse = LoginResponseDto(
+            accessToken: "jwt", userId: "u1", userEmail: "alice@example.com", name: "Alice",
+            profileImagePath: "", isAdmin: false, shouldChangePassword: false, isOnboarded: true
+        )
+        let auth = AuthViewModel(client: mock, keychain: keychain, defaults: defaults)
+        auth.serverURLString = "https://photos.example.com"
+        _ = auth.baseURL
+        await auth.login(email: "alice@example.com", password: "secret")
+        XCTAssertTrue(auth.isAuthenticated, "precondition: signed in")
+
+        auth.didReceiveUnauthorized()
+        // The handler runs in a @MainActor Task: let it settle before asserting.
+        for _ in 0..<100 where auth.isAuthenticated { await Task.yield() }
+
+        XCTAssertFalse(auth.isAuthenticated)
+        XCTAssertTrue(auth.sessionExpired)
+        XCTAssertEqual(auth.errorMessage, localizedString("Your session has expired. Please sign in again."))
+        XCTAssertNotNil(keychain.getToken(), "a 401 must not wipe the stored token")
+        XCTAssertFalse(auth.savedAccounts.isEmpty, "saved accounts must survive a 401")
+        XCTAssertEqual(defaults.string(forKey: AuthViewModel.userEmailDefaultsKey), "alice@example.com")
+    }
+
+    // AC-7: after a session expiry the onboarding flow opens directly on LoginScreen
+    // (path [.serverURL, .login]), not on WelcomeScreen; a normal launch starts empty.
+    @MainActor
+    func test_AC7_sessionExpiredOpensOnLoginScreen() {
+        XCTAssertEqual(
+            OnboardingFlowView.initialPath(startsOnLogin: true),
+            [OnboardingFlowView.Step.serverURL, .login]
+        )
+        XCTAssertEqual(OnboardingFlowView.initialPath(startsOnLogin: false), [])
+    }
+
     // AC-721: login persists server URL + user identity for next relaunch.
     @MainActor
     func test_login_persistsServerURLAndIdentity() async {
@@ -505,7 +546,7 @@ final class AuthViewModelTests: XCTestCase {
         await auth.startOAuthFlow()
 
         XCTAssertNil(auth.accessToken)
-        XCTAssertEqual(auth.errorMessage?.contains("boom"), true)
+        XCTAssertEqual(auth.errorMessage, localizedString("The server ran into a problem. Please try again."))
     }
 
     @MainActor

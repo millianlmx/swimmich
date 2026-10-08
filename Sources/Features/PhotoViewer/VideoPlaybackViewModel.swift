@@ -61,8 +61,8 @@ final class VideoPlaybackViewModel {
                 self.status = .ended
             }
         }
-        engine.onFailure = { [weak self] message in
-            self?.status = .failed(message)
+        engine.onFailure = { [weak self] _ in
+            self?.status = .failed(UserFacingError.genericMessage)
         }
     }
 
@@ -119,7 +119,13 @@ final class VideoPlaybackViewModel {
         do {
             try await engine.prepare(url: url, token: token)
         } catch {
-            status = .failed(error.localizedDescription)
+            // A cancelled preparation is no event, but `.preparing` would block
+            // every later `prepare` (guard above): fall back to `.idle` (SP-1).
+            guard let failure = UserFacingError.from(error) else {
+                if status == .preparing { status = .idle }
+                return
+            }
+            status = .failed(failure.message)
         }
     }
 

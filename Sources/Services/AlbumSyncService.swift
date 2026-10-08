@@ -160,7 +160,7 @@ actor AlbumSyncService: AlbumSyncServicing {
                     // batches: everything not yet sent stays counted as failed
                     // and the flush goes on.
                     outcome.failed += chunk.count
-                    if outcome.lastError == nil { outcome.lastError = error.localizedDescription }
+                    if outcome.lastError == nil { outcome.lastError = error.userFacingMessage }
                 }
             }
         }
@@ -189,7 +189,7 @@ actor AlbumSyncService: AlbumSyncServicing {
 
     private func recordFailure(_ error: Error) {
         outcome.failed += 1
-        if outcome.lastError == nil { outcome.lastError = error.localizedDescription }
+        if outcome.lastError == nil { outcome.lastError = error.userFacingMessage }
     }
 
     // MARK: - Catch-up

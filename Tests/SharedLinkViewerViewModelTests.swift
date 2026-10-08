@@ -245,13 +245,31 @@ final class SharedLinkViewerViewModelTests: XCTestCase {
 
         vm.linkText = "https://photos.example.com/share/\(key)"
         await vm.openLink()
-        XCTAssertEqual(vm.phase, .failed("Server error 500: boom"))
+        XCTAssertEqual(vm.phase, .failed(UserFacingError.serverErrorMessage))
 
         client.sharedLinkMineError = nil
         client.sharedLinkMineResponse = link(assets: [asset("a1")])
         await vm.load()
 
         XCTAssertEqual(vm.phase, .opened)
+    }
+
+    /// AC-3: a technical failure never reaches the visitor. The inline reason is
+    /// the localized copy for its family, with no transport or response-body text.
+    func test_AC3_technicalFailureShowsLocalizedCopyWithoutRawText() async {
+        let client = MockImmichClient()
+        client.sharedLinkMineError = APIError.serverError(500, "boom: stack trace")
+        let vm = makeVM(client: client)
+
+        vm.linkText = "https://photos.example.com/share/\(key)"
+        await vm.openLink()
+
+        guard case .failed(let text) = vm.phase else {
+            return XCTFail("expected .failed, got \(vm.phase)")
+        }
+        XCTAssertEqual(text, localizedString("The server ran into a problem. Please try again."))
+        XCTAssertFalse(text.contains("boom"))
+        XCTAssertFalse(text.contains("500"))
     }
 
     // MARK: - Album links

@@ -111,7 +111,7 @@ final class FolderViewModel {
             hasRootLevelAssets = tree.hasRootLevelAssets
             treeError = nil
         } catch {
-            treeError = error.localizedDescription
+            treeError = error.userFacingMessage
         }
         isBuildingTree = false
     }
@@ -136,7 +136,7 @@ final class FolderViewModel {
             assetsByPath[path] = ordered(dtos.map { AssetReactItem(from: $0) })
             errorByPath[path] = nil
         } catch {
-            errorByPath[path] = error.localizedDescription
+            errorByPath[path] = error.userFacingMessage
         }
         loadingPaths.remove(path)
     }

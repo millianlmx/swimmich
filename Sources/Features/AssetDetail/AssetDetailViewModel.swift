@@ -58,7 +58,7 @@ final class AssetDetailViewModel {
         do {
             detail = try await client.getAsset(id: asset.id)
             rating = detail?.exifInfo?.rating
-        } catch let e { errorMessage = e.localizedDescription }
+        } catch let e { errorMessage = e.userFacingMessage }
         isLoading = false
         await reverseGeocodeIfNeeded()
         await loadFaces()
@@ -90,7 +90,7 @@ final class AssetDetailViewModel {
             errorMessage = nil
             await loadFaces()
         } catch let e {
-            errorMessage = e.localizedDescription
+            errorMessage = e.userFacingMessage
         }
     }
 
@@ -103,7 +103,7 @@ final class AssetDetailViewModel {
             errorMessage = nil
             await loadFaces()
         } catch let e {
-            errorMessage = e.localizedDescription
+            errorMessage = e.userFacingMessage
         }
     }
 
@@ -136,7 +136,7 @@ final class AssetDetailViewModel {
             isFavorite = updated.isFavorite
             detail = updated
         } catch let e {
-            errorMessage = e.localizedDescription
+            errorMessage = e.userFacingMessage
         }
     }
 
@@ -163,7 +163,7 @@ final class AssetDetailViewModel {
             errorMessage = nil
         } catch let e {
             rating = previous
-            errorMessage = e.localizedDescription
+            errorMessage = e.userFacingMessage
         }
     }
 
@@ -178,7 +178,7 @@ final class AssetDetailViewModel {
             let updated = try await client.updateAsset(id: asset.id, dto: body)
             detail = updated
         } catch let e {
-            errorMessage = e.localizedDescription
+            errorMessage = e.userFacingMessage
         }
     }
 
@@ -200,7 +200,7 @@ final class AssetDetailViewModel {
             geocoded = false // FM-3 guard reset: the spot changed, re-geocode allowed.
             await reverseGeocodeIfNeeded()
         } catch let e {
-            errorMessage = e.localizedDescription
+            errorMessage = e.userFacingMessage
         }
     }
 }

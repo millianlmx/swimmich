@@ -191,8 +191,11 @@ final class ImmichAPIClientTests: XCTestCase {
         // Spin the runloop briefly so the MainActor Task in didReceiveUnauthorized runs.
         try await Task.sleep(nanoseconds: 300_000_000)
 
-        XCTAssertNil(keychain.savedToken, "Keychain should be cleared on 401")
+        // SP-4 / AC-7: a 401 expires the session but keeps the stored token.
+        XCTAssertEqual(keychain.savedToken, "expired-jwt", "401 must keep the stored session token")
         XCTAssertFalse(auth.isAuthenticated, "auth should be reset on 401")
+        XCTAssertTrue(auth.sessionExpired)
+        XCTAssertEqual(auth.errorMessage, localizedString("Your session has expired. Please sign in again."))
     }
 
     // AC-007: thumbnail URL via ImmichAssetURL helper.

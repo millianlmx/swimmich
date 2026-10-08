@@ -90,7 +90,7 @@ final class MemoriesViewModelTests: XCTestCase {
         await vm.load()
 
         XCTAssertTrue(vm.memories.isEmpty)
-        XCTAssertEqual(vm.errorMessage?.contains("boom"), true)
+        XCTAssertEqual(vm.errorMessage, UserFacingError.serverErrorMessage)
     }
 
     @MainActor
@@ -116,7 +116,7 @@ final class MemoriesViewModelTests: XCTestCase {
         await vm.load()
 
         XCTAssertEqual(vm.memories.map(\.id), ["m1"])
-        XCTAssertEqual(vm.errorMessage?.contains("boom"), true)
+        XCTAssertEqual(vm.errorMessage, UserFacingError.serverErrorMessage)
     }
 
     @MainActor
@@ -128,7 +128,7 @@ final class MemoriesViewModelTests: XCTestCase {
         await vm.load()
 
         XCTAssertTrue(vm.memories.isEmpty)
-        XCTAssertEqual(vm.errorMessage?.contains("memories boom"), true)
+        XCTAssertEqual(vm.errorMessage, UserFacingError.serverErrorMessage)
     }
 
     // MARK: - Save / unsave
@@ -177,7 +177,7 @@ final class MemoriesViewModelTests: XCTestCase {
         await vm.saveMemory(id: "m1")
 
         XCTAssertEqual(vm.memories.first?.isSaved, false)
-        XCTAssertEqual(vm.errorMessage?.contains("nope"), true)
+        XCTAssertEqual(vm.errorMessage, UserFacingError.serverErrorMessage)
     }
 
     // MARK: - Create
@@ -257,7 +257,7 @@ final class MemoriesViewModelTests: XCTestCase {
 
         XCTAssertTrue(vm.showCreate, "a failed create must leave the sheet up for a retry")
         XCTAssertEqual(vm.selectedIds, ["a1"])
-        XCTAssertEqual(vm.errorMessage?.contains("bad year"), true)
+        XCTAssertEqual(vm.errorMessage, UserFacingError.genericMessage)
     }
 
     // MARK: - Delete
@@ -286,7 +286,7 @@ final class MemoriesViewModelTests: XCTestCase {
         await vm.deleteMemory(id: "m1")
 
         XCTAssertEqual(vm.memories.map(\.id), ["m1"])
-        XCTAssertEqual(vm.errorMessage?.contains("forbidden"), true)
+        XCTAssertEqual(vm.errorMessage, UserFacingError.genericMessage)
     }
 
     // MARK: - Assets
@@ -321,7 +321,7 @@ final class MemoriesViewModelTests: XCTestCase {
 
         XCTAssertFalse(added)
         XCTAssertEqual(vm.memories.first?.assets.count, 2)
-        XCTAssertEqual(vm.errorMessage?.contains("not yours"), true)
+        XCTAssertEqual(vm.errorMessage, UserFacingError.genericMessage)
     }
 
     /// Dropping the last photo deletes the memory from the client's point of
@@ -369,7 +369,7 @@ final class MemoriesViewModelTests: XCTestCase {
 
         XCTAssertTrue(stillExists, "a failed removal must not dismiss the screen")
         XCTAssertEqual(vm.memories.first?.assets.count, 1)
-        XCTAssertEqual(vm.errorMessage?.contains("nope"), true)
+        XCTAssertEqual(vm.errorMessage, UserFacingError.serverErrorMessage)
     }
 
     // MARK: - Picker

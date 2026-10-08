@@ -55,7 +55,7 @@ final class AlbumShareViewModelTests: XCTestCase {
         let vm = makeVM(mock: mock, currentUserId: "me")
         await vm.load()
         XCTAssertEqual(vm.users.map(\.id), ["u1"])
-        XCTAssertNil(vm.errorMessage)
+        XCTAssertNil(vm.loadErrorMessage)
     }
 
     func test_load_keepsGrantedUserMissingFromDirectory() async {
@@ -80,7 +80,7 @@ final class AlbumShareViewModelTests: XCTestCase {
         )
         await vm.load()
         XCTAssertTrue(vm.users.isEmpty)
-        XCTAssertNotNil(vm.errorMessage)
+        XCTAssertNotNil(vm.loadErrorMessage)
         XCTAssertEqual(vm.role(for: "u1"), .editor, "roles must survive a directory failure")
     }
 
@@ -94,7 +94,8 @@ final class AlbumShareViewModelTests: XCTestCase {
         await vm.load()
         XCTAssertTrue(vm.users.isEmpty)
         XCTAssertTrue(vm.isDirectoryHidden, "non-admin without publicUsers gets an empty directory")
-        XCTAssertNil(vm.errorMessage, "empty directory is not an error")
+        XCTAssertNil(vm.loadErrorMessage, "empty directory is not an error")
+        XCTAssertNil(vm.actionErrorMessage, "empty directory is not an error")
     }
 
     func test_load_adminWithEmptyInstance_notMarkedHidden() async {
@@ -194,7 +195,7 @@ final class AlbumShareViewModelTests: XCTestCase {
         XCTAssertEqual(vm.role(for: "u1"), .viewer)
         XCTAssertEqual(mock.lastAddUsersAlbumId, "al")
         XCTAssertEqual(mock.lastAddUsersDto?.albumUsers, [AlbumUserDto(userId: "u1", role: .viewer)])
-        XCTAssertNil(vm.errorMessage)
+        XCTAssertNil(vm.actionErrorMessage)
     }
 
     func test_grant_withExplicitRole() async {
@@ -211,7 +212,7 @@ final class AlbumShareViewModelTests: XCTestCase {
         let vm = makeVM(mock: mock)
         await vm.grant(makeUser(id: "u1", name: "Alice"))
         XCTAssertNil(vm.role(for: "u1"), "failed grant must not appear granted")
-        XCTAssertNotNil(vm.errorMessage)
+        XCTAssertNotNil(vm.actionErrorMessage)
     }
 
     func test_revoke_removesRole() async {
@@ -224,7 +225,7 @@ final class AlbumShareViewModelTests: XCTestCase {
         XCTAssertNil(vm.role(for: "u1"))
         XCTAssertEqual(mock.lastRemovedUserAlbumId, "al")
         XCTAssertEqual(mock.lastRemovedUserId, "u1")
-        XCTAssertNil(vm.errorMessage)
+        XCTAssertNil(vm.actionErrorMessage)
     }
 
     func test_revoke_error_keepsRole() async {
@@ -236,7 +237,7 @@ final class AlbumShareViewModelTests: XCTestCase {
         )
         await vm.revoke(userId: "u1")
         XCTAssertEqual(vm.role(for: "u1"), .viewer, "failed revoke must keep access")
-        XCTAssertNotNil(vm.errorMessage)
+        XCTAssertNotNil(vm.actionErrorMessage)
     }
 
     func test_toggleAccess_grantsThenRevokes() async {
@@ -262,7 +263,7 @@ final class AlbumShareViewModelTests: XCTestCase {
         XCTAssertEqual(mock.lastRoleUpdateAlbumId, "al")
         XCTAssertEqual(mock.lastRoleUpdateUserId, "u1")
         XCTAssertEqual(mock.lastRoleUpdateDto, UpdateAlbumUserDto(role: .editor))
-        XCTAssertNil(vm.errorMessage)
+        XCTAssertNil(vm.actionErrorMessage)
     }
 
     func test_setRole_error_keepsOldRole() async {
@@ -274,7 +275,7 @@ final class AlbumShareViewModelTests: XCTestCase {
         )
         await vm.setRole(.editor, for: "u1")
         XCTAssertEqual(vm.role(for: "u1"), .viewer, "failed role change must keep the old role")
-        XCTAssertNotNil(vm.errorMessage)
+        XCTAssertNotNil(vm.actionErrorMessage)
     }
 
     func test_setRole_noopForUngrantedUser() async {

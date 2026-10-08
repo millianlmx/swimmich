@@ -66,12 +66,18 @@ struct AlbumDetailView: View {
             if vm.isDeleted {
                 ContentUnavailableView("Album Deleted", systemImage: "trash")
             } else if let album = vm.album {
-                content(for: album)
+                VStack(spacing: 0) {
+                    if let message = vm.loadErrorMessage {
+                        InlineErrorBadge(message: message, retry: { Task { await vm.load() } })
+                            .padding(PVSpacing.s16)
+                    }
+                    content(for: album)
+                }
             } else if vm.isLoading {
                 // First frame: hero renders from the grid-known DTO so the zoom
                 // transition lands on real content; skeleton below while loading.
                 loadingContent
-            } else if vm.errorMessage != nil {
+            } else if vm.loadErrorMessage != nil {
                 errorState
             } else {
                 ContentUnavailableView("Album Unavailable", systemImage: "rectangle.stack")
@@ -299,12 +305,12 @@ struct AlbumDetailView: View {
             Button("Cancel", role: .cancel) {}
         }
         .alert("Error", isPresented: Binding(
-            get: { vm.errorMessage != nil && vm.album != nil },
-            set: { if !$0 { vm.errorMessage = nil } }
+            get: { vm.actionErrorMessage != nil },
+            set: { if !$0 { vm.actionErrorMessage = nil } }
         )) {
             Button("OK", role: .cancel) {}
         } message: {
-            Text(vm.errorMessage ?? "")
+            Text(vm.actionErrorMessage ?? "")
         }
         .alert("Delete \(vm.selectedIds.count) asset(s)?", isPresented: $pendingDeleteSelected) {
             Button("Delete", role: .destructive) {
@@ -374,7 +380,7 @@ struct AlbumDetailView: View {
         ContentUnavailableView {
             Label("Couldn't load album", systemImage: "wifi.exclamationmark")
         } description: {
-            Text(vm.errorMessage ?? "")
+            Text(vm.loadErrorMessage ?? "")
         } actions: {
             Button("Try Again") { Task { await vm.load() } }
                 .buttonStyle(PVPrimaryButtonStyle())

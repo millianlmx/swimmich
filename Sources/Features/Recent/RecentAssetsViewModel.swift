@@ -78,7 +78,7 @@ final class RecentAssetsViewModel {
             hasMore = true
             await loadNextBucket()
         } catch let e {
-            errorMessage = e.localizedDescription
+            errorMessage = e.userFacingMessage
         }
         isLoading = false
     }
@@ -129,7 +129,7 @@ final class RecentAssetsViewModel {
             bucketIndex += 1
             hasMore = bucketIndex < buckets.count && !zipped.isEmpty
         } catch let e {
-            errorMessage = e.localizedDescription
+            errorMessage = e.userFacingMessage
         }
     }
 }

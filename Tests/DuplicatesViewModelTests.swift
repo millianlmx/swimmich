@@ -39,7 +39,7 @@ final class DuplicatesViewModelTests: XCTestCase {
         await vm.load()
 
         XCTAssertTrue(vm.groups.isEmpty)
-        XCTAssertEqual(vm.errorMessage?.contains("boom"), true)
+        XCTAssertEqual(vm.errorMessage, UserFacingError.serverErrorMessage)
     }
 
     @MainActor
@@ -88,7 +88,7 @@ final class DuplicatesViewModelTests: XCTestCase {
         await vm.deleteGroup(id: "g1")
 
         XCTAssertEqual(vm.groups.count, 1)
-        XCTAssertEqual(vm.errorMessage?.contains("boom"), true)
+        XCTAssertEqual(vm.errorMessage, UserFacingError.serverErrorMessage)
     }
 
     @MainActor

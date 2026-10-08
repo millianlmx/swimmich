@@ -59,7 +59,7 @@ final class PeopleViewModel {
             total = page.total
             errorMessage = nil
         } catch {
-            errorMessage = error.localizedDescription
+            errorMessage = error.userFacingMessage
         }
     }
 
@@ -138,7 +138,7 @@ final class PeopleViewModel {
             if let i = people.firstIndex(where: { $0.id == id }) { people[i] = updated }
             errorMessage = nil
         } catch {
-            errorMessage = error.localizedDescription
+            errorMessage = error.userFacingMessage
         }
     }
 
@@ -153,7 +153,7 @@ final class PeopleViewModel {
             await load(force: true)
             await loadAssets()
         } catch {
-            errorMessage = error.localizedDescription
+            errorMessage = error.userFacingMessage
         }
     }
 
@@ -186,7 +186,7 @@ final class PeopleViewModel {
             personAssets = resp.assets.items.map { AssetReactItem(from: $0) }
             assetsError = nil
         } catch {
-            assetsError = error.localizedDescription
+            assetsError = error.userFacingMessage
         }
     }
 
