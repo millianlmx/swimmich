@@ -1,6 +1,6 @@
 # AGENTS.md
 
-<!-- mem0:brief v3 -->
+<!-- mem0:brief v5 -->
 ## Mémoire du projet
 
 Une mémoire persistante (mem0) est branchée sur ce projet. Un rappel automatique
@@ -32,6 +32,13 @@ fusionnée. Relis-la : si la fusion est mauvaise, réécris l'entrée avec
 Le dépôt fait toujours autorité contre un souvenir : s'il le contredit, le souvenir
 est périmé — corrige-le (`mem0_update`) ou supprime-le (`mem0_forget`), ne
 travaille pas dessus.
+
+- **Checkpoint automatique** — au-delà de 15 explorations (read, grep, glob, lsp)
+  sans écriture avec `mem0_add`, un message "mem0 checkpoint" t'est envoyé.
+  C'est un appel à écrire : tu as collecté des informations durables, enregistre-les
+  maintenant. Le compteur repart à zéro après chaque `mem0_add`. En fin de session,
+  une relance unique te demande aussi de mémoriser ce qui a été produit — fichiers
+  modifiés, ou discussion de besoins/specs/archi sans édition.
 
 Règles complètes et exemples : `.omp/mem0-brief.md` — lis-le avant ton premier
 `mem0_add` dans ce projet.
