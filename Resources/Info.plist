@@ -9,7 +9,7 @@
 	<key>CFBundleDevelopmentRegion</key>
 	<string>$(DEVELOPMENT_LANGUAGE)</string>
 	<key>CFBundleDisplayName</key>
-	<string>Immich</string>
+	<string>Swimmich</string>
 	<key>CFBundleExecutable</key>
 	<string>$(EXECUTABLE_NAME)</string>
 	<key>CFBundleIdentifier</key>
@@ -39,13 +39,13 @@
 		<true/>
 	</dict>
 	<key>NSCameraUsageDescription</key>
-	<string>Immich uses the camera to scan server configuration QR codes.</string>
+	<string>Swimmich uses the camera to scan server configuration QR codes.</string>
 	<key>NSFaceIDUsageDescription</key>
-	<string>PhotoVault uses Face ID to unlock the app.</string>
+	<string>Swimmich uses Face ID to unlock the app.</string>
 	<key>NSPhotoLibraryAddUsageDescription</key>
-	<string>Immich needs Photos access to add uploaded assets.</string>
+	<string>Swimmich needs Photos access to add uploaded assets.</string>
 	<key>NSPhotoLibraryUsageDescription</key>
-	<string>Immich needs Photos access to upload and back up your library.</string>
+	<string>Swimmich needs Photos access to upload and back up your library.</string>
 	<key>NSSupportsLiveActivities</key>
 	<true/>
 	<key>NSSupportsLiveActivitiesFrequentUpdates</key>

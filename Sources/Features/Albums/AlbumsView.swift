@@ -13,6 +13,7 @@ struct AlbumsView: View {
     @Bindable var vm: AlbumsViewModel
     @Environment(AuthViewModel.self) private var auth
     @Environment(\.openProfile) private var openProfile
+    @Environment(\.openSyncStatus) private var openSyncStatus
     @Environment(\.colorScheme) private var colorScheme
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @State private var presentingCreate = false
@@ -40,7 +41,8 @@ struct AlbumsView: View {
             .navigationTitle("Albums")
             .navigationBarTitleDisplayMode(.large)
             .toolbar {
-                ToolbarItem(placement: .topBarTrailing) {
+                ToolbarItemGroup(placement: .topBarTrailing) {
+                    SyncStatusButton { openSyncStatus() }
                     ProfileAvatarButton { openProfile() }
                 }
             }

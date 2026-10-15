@@ -46,7 +46,8 @@ final class UploadViewModelLiveActivityTests: XCTestCase {
         let vm = UploadViewModel(
             client: client, photos: MockPhotoLibraryService(),
             engine: engine, settings: makeEnabledStore(),
-            scheduler: scheduler, activityService: activity
+            scheduler: scheduler, activityService: activity,
+            readOnly: .ephemeral()
         )
 
         await vm.runBackup()
@@ -86,7 +87,8 @@ final class UploadViewModelLiveActivityTests: XCTestCase {
         let vm = UploadViewModel(
             client: client, photos: MockPhotoLibraryService(),
             engine: engine, settings: makeEnabledStore(),
-            scheduler: scheduler, activityService: activity
+            scheduler: scheduler, activityService: activity,
+            readOnly: .ephemeral()
         )
 
         await vm.runBackup()
@@ -107,7 +109,8 @@ final class UploadViewModelLiveActivityTests: XCTestCase {
         let vm = UploadViewModel(
             client: client, photos: MockPhotoLibraryService(),
             engine: engine, settings: store,
-            scheduler: MockBackupScheduler(), activityService: activity
+            scheduler: MockBackupScheduler(), activityService: activity,
+            readOnly: .ephemeral()
         )
 
         await vm.runBackup()
@@ -134,7 +137,8 @@ final class UploadViewModelLiveActivityTests: XCTestCase {
         let vm = UploadViewModel(
             client: client, photos: MockPhotoLibraryService(),
             engine: engineOffline, settings: store,
-            scheduler: MockBackupScheduler(), activityService: activity
+            scheduler: MockBackupScheduler(), activityService: activity,
+            readOnly: .ephemeral()
         )
 
         await vm.runBackup()
@@ -153,7 +157,8 @@ final class UploadViewModelLiveActivityTests: XCTestCase {
         let vm = UploadViewModel(
             client: client, photos: MockPhotoLibraryService(),
             engine: engine, settings: makeEnabledStore(),
-            scheduler: MockBackupScheduler(), activityService: MockBackupLiveActivityService()
+            scheduler: MockBackupScheduler(), activityService: MockBackupLiveActivityService(),
+            readOnly: .ephemeral()
         )
 
         await vm.runBackup()
@@ -188,7 +193,8 @@ final class UploadViewModelLiveActivityTests: XCTestCase {
         let vm = UploadViewModel(
             client: client, photos: MockPhotoLibraryService(),
             engine: engine, settings: makeEnabledStore(),
-            scheduler: MockBackupScheduler(), activityService: activity
+            scheduler: MockBackupScheduler(), activityService: activity,
+            readOnly: .ephemeral()
         )
 
         await vm.runBackup()
@@ -231,7 +237,8 @@ final class UploadViewModelLiveActivityTests: XCTestCase {
         let vm = UploadViewModel(
             client: client, photos: MockPhotoLibraryService(),
             engine: engine, settings: makeEnabledStore(),
-            scheduler: MockBackupScheduler(), activityService: activity
+            scheduler: MockBackupScheduler(), activityService: activity,
+            readOnly: .ephemeral()
         )
 
         await vm.runBackup()

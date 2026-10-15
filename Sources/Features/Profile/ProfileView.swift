@@ -21,7 +21,6 @@ struct ProfileView: View {
     @State var offline: OfflineDownloadViewModel
     @State var recentTaken: RecentAssetsViewModel
     @State var recentAdded: RecentAssetsViewModel
-    @State var syncStatus: SyncStatusViewModel
     @State var notifications: NotificationsViewModel
     @State var language: LanguageSettingsViewModel
     /// Connected devices (gap G19). Built by the composition root and owned by
@@ -145,15 +144,6 @@ struct ProfileView: View {
                         Label("Backup", systemImage: "icloud.and.arrow.up")
                     }
                 .accessibilityIdentifier("backupRow")
-
-                    // Right after Backup: this screen reads the ledger that
-                    // screen feeds.
-                    NavigationLink {
-                        SyncStatusView(vm: syncStatus)
-                    } label: {
-                        Label("Sync Status", systemImage: "arrow.triangle.2.circlepath")
-                    }
-                    .accessibilityIdentifier("syncStatusRow")
 
                     // Next to Backup on purpose: the only notification this app
                     // posts is the end of a backup run.

@@ -324,8 +324,8 @@ final class ShareExtensionUITests: XCTestCase {
     ///   newest asset is the last one;
     /// * the detail view's share button is
     ///   `PUOneUpBarButtonItemIdentifierShare`, and the sheet's activity for
-    ///   this extension is a cell identified `shareCell` labelled "Immich"
-    ///   (its `CFBundleDisplayName`).
+    ///   this extension is a cell identified `shareCell` labelled "Swimmich"
+    ///   (its `CFBundleDisplayName`, renamed from "Immich" on 2026-09-16).
     ///
     /// A grid tile answers `isHittable == false` even when it is plainly on
     /// screen, so it is tapped at its own centre.
@@ -346,9 +346,11 @@ final class ShareExtensionUITests: XCTestCase {
 
     /// Photos' activity for this extension, scrolled into reach if the app row
     /// is full. Matched by LABEL, never by cell identifier: `shareCell` is the
-    /// identifier every app's activity carries.
+    /// identifier every app's activity carries — and the label is the
+    /// extension's `CFBundleDisplayName` (`Swimmich`, renamed from `Immich` on
+    /// 2026-09-16).
     private func shareActivity(_ photos: XCUIApplication, _ springboard: XCUIApplication) -> XCUIElement? {
-        let predicate = NSPredicate(format: "label == 'Immich'")
+        let predicate = NSPredicate(format: "label == 'Swimmich'")
         for attempt in 0..<3 {
             for root in [photos as XCUIElement, springboard as XCUIElement] {
                 let match = root.descendants(matching: .any).matching(predicate).firstMatch
@@ -440,8 +442,8 @@ final class ShareExtensionUITests: XCTestCase {
         shareButton.tap()
 
         guard let activity = shareActivity(photos, springboard) else {
-            shot("s06b-no-immich-activity")
-            XCTFail("the share sheet has no Immich activity — the extension is not registered, or "
+            shot("s06b-no-swimmich-activity")
+            XCTFail("the share sheet has no Swimmich activity — the extension is not registered, or "
                     + "its row is out of reach (sheet reads: \(screenLabels(photos)))")
             return
         }
@@ -452,7 +454,7 @@ final class ShareExtensionUITests: XCTestCase {
 
         let serverLabel = photos.staticTexts.matching(identifier: "shareExtensionServerLabel").firstMatch
         XCTAssertTrue(serverLabel.waitForExistence(timeout: 40),
-                      "the Immich share sheet never presented itself after the activity was tapped "
+                      "the Swimmich share sheet never presented itself after the activity was tapped "
                       + "(screen: \(screenLabels(photos)))")
         shot("s07-extension")
         // The app half, proven from the other process: this label is built from

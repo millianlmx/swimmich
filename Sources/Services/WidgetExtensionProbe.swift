@@ -19,8 +19,13 @@ enum WidgetExtensionProbe {
     static let subsystem = "app.immich.swiftui"
     static let category = "widget-probe"
 
-    /// The bundle identifier whose keychain group the widget shares.
-    private static let sharedBundleIdentifier = "fr.millianlmx.immich-ios"
+    /// The keychain group the three entitlements declare — shared by the app,
+    /// the widget and the share extension.
+    ///
+    /// It is NOT derived from a bundle identifier: the whole point of naming it
+    /// after the product is that renaming a target's bundle id leaves the group
+    /// (and therefore everyone's stored session) alone.
+    private static let sharedKeychainGroup = "fr.millianlmx.swimmich"
 
     /// A single line, meant to be pasted into a report.
     static func report(logger: Logger = Logger(subsystem: subsystem, category: category)) -> String {
@@ -38,17 +43,15 @@ enum WidgetExtensionProbe {
         }
         return verdict(
             extensionName: appex,
-            profileEntitlements: profile,
-            bundleIdentifier: Bundle.main.bundleIdentifier
+            profileEntitlements: profile
         )
     }
 
     /// The decision, separated from the file reading so it can be tested: given
-    /// what Apple granted and who the app is, is the widget's group covered?
+    /// what Apple granted, is the group the shared session lives in covered?
     static func verdict(
         extensionName: String,
-        profileEntitlements profile: [String: Any],
-        bundleIdentifier: String?
+        profileEntitlements profile: [String: Any]
     ) -> String {
         // `ApplicationIdentifierPrefix` is the reliable source: a team profile
         // carries `application-identifier = <team>.*` for a wildcard App ID, so
@@ -57,7 +60,7 @@ enum WidgetExtensionProbe {
             return "widget: \(extensionName) present; profile has no ApplicationIdentifierPrefix — cannot derive the keychain group"
         }
 
-        let sharedGroup = teamPrefix + sharedBundleIdentifier
+        let sharedGroup = teamPrefix + sharedKeychainGroup
         let authorised = profile["keychain-access-groups"] as? [String] ?? []
         // A team profile authorises `<team>.*`, which covers every group of that
         // team — comparing strings exactly would report a mismatch that is not

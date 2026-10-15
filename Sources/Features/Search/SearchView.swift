@@ -18,6 +18,7 @@ struct SearchView: View {
     @Bindable var mapVM: MapViewModel
     @Environment(AuthViewModel.self) private var auth
     @Environment(\.openProfile) private var openProfile
+    @Environment(\.openSyncStatus) private var openSyncStatus
 
     @State private var viewerItem: PhotoViewerItem? // Full-screen photo viewer
     @State private var showSaveSearch = false
@@ -66,10 +67,11 @@ struct SearchView: View {
                 // empty `LocalizedStringKey` would be extracted as a `""` key.
                 .navigationTitle(Text(verbatim: ""))
                 .navigationBarTitleDisplayMode(.inline)
-                // Search-mode menu + avatar as a nav-bar row (topBarTrailing):
-                // iOS 26 renders its own Liquid-Glass chrome, so no manual
-                // glassEffect — a manual circle on the label would double-glass
-                // and clip. Menu only in results mode; avatar always visible.
+                // Search-mode menu + sync status + avatar as a nav-bar row
+                // (topBarTrailing): iOS 26 renders its own Liquid-Glass chrome,
+                // so no manual glassEffect — a manual circle on the label would
+                // double-glass and clip. Menu only in results mode; the two
+                // pinned buttons are always visible.
                 .toolbar {
                     ToolbarItemGroup(placement: .topBarTrailing) {
                         if vm.viewMode == .results {
@@ -86,6 +88,7 @@ struct SearchView: View {
                             .disabled(vm.query.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
                             .accessibilityLabel("Save search")
                         }
+                        SyncStatusButton { openSyncStatus() }
                         ProfileAvatarButton { openProfile() }
                     }
                 }

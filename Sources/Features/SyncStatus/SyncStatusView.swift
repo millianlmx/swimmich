@@ -1,8 +1,10 @@
 import SwiftUI
 
-/// Sync status screen — reached from `ProfileView`'s Management section, which
-/// already owns a navigation stack, so this view declares none of its own (a
-/// second one would draw two navigation bars).
+/// Sync status screen — raised by the `SyncStatusButton` every tab's bar
+/// carries, and presented in a sheet by `RootView`. The sheet owns the
+/// navigation stack (this view declares none of its own: a second one would draw
+/// two navigation bars), and "Done" only closes the screen — a run it started
+/// keeps going.
 ///
 /// Every figure on screen is a projection of the ledger, of the current run or
 /// of the offline index, all read through `SyncStatusViewModel`: the screen
@@ -12,6 +14,7 @@ import SwiftUI
 struct SyncStatusView: View {
     @Bindable var vm: SyncStatusViewModel
 
+    @Environment(\.dismiss) private var dismiss
     @State private var showResetLedgerConfirm = false
     @State private var showClearOfflineConfirm = false
 
@@ -42,6 +45,16 @@ struct SyncStatusView: View {
         .background(Color.bgPrimary)
         .navigationTitle("Sync Status")
         .navigationBarTitleDisplayMode(.inline)
+        // The only way out: the screen is a sheet now, and its destructive
+        // actions are behind confirmation dialogs a swipe-down would dismiss
+        // mid-question.
+        .toolbar {
+            ToolbarItem(placement: .confirmationAction) {
+                Button("Done") { dismiss() }
+                    .fontWeight(.semibold)
+                    .accessibilityIdentifier("syncStatusDone")
+            }
+        }
         .task { await vm.refresh() }
         .refreshable { await vm.refresh() }
         .confirmationDialog(

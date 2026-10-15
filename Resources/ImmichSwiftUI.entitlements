@@ -4,7 +4,7 @@
 <dict>
 	<key>keychain-access-groups</key>
 	<array>
-		<string>$(AppIdentifierPrefix)fr.millianlmx.immich-ios</string>
+		<string>$(AppIdentifierPrefix)fr.millianlmx.swimmich</string>
 	</array>
 </dict>
 </plist>

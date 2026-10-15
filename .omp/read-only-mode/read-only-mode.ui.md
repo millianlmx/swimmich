@@ -3,6 +3,16 @@
 > Compagnon de `.omp/read-only-mode/read-only-mode.specs.md` (écrit le 2026-09-15). Ne pas dupliquer la spec :
 > ce document ne décrit que la **surface** — placement, hiérarchie de vues, gestes, états, tokens.
 
+> **Révision du 2026-09-16 — l'avatar a grossi.** `ProfileAvatarButton` était un disque de 30 pt dans un
+> cadre de 44 pt ; c'est désormais un disque de **44 pt** (cadre et cible de tap de la même taille : le
+> `contentShape(Circle())` s'inscrit sur le cercle, plus sur une couronne de padding). Initiales passées de
+> 13 à 18 pt. Demande de l'utilisateur, déclenchée par le bouton de synchronisation posé à sa gauche le même
+> jour : le disque de verre de ce dernier fait 44 pt, et l'avatar de 30 pt paraissait plus petit que lui.
+> Conséquence sur cette fiche : le cadenas est désormais ancré en `.overlay(alignment: .bottomTrailing)` du
+> **cercle** (et non du cadre paddé) et passe de 10 à 12 pt — il chevauche le rim bas-droit, vérifié au
+> scénario `ReadOnlyModeUITests` (`/tmp/shot-03-long-press-read-only-on.png`). La hauteur du bouton ne
+> change pas : l'empreinte en barre reste 44 pt, seul le disque dessiné grandit.
+
 ## Design Philosophy
 
 Le mode lecture seule est un **état de l'appareil**, pas un écran. Sa surface doit donc répondre à trois
@@ -11,7 +21,7 @@ exigences, dans cet ordre :
 1. **Rien ne subsiste qui puisse détruire.** Quand le mode est actif, les affordances destructrices ne sont
    pas désactivées : elles **n'existent plus**. Un bouton grisé sans phrase d'explication est un bug d'UI —
    l'utilisateur doit pouvoir conclure « cette app ne me laisse pas supprimer en ce moment » sans deviner.
-2. **L'état actif est visible sans occuper l'écran.** Un seul marqueur permanent : un cadenas de 10 pt sur
+2. **L'état actif est visible sans occuper l'écran.** Un seul marqueur permanent : un cadenas de 12 pt sur
    l'avatar. **Aucun bandeau permanent**, aucune bannière, aucun filigrane, aucune barre teintée : le mode
    est fait pour durer des semaines, il ne doit pas crier en permanence.
 3. **Sortir du mode tient en un geste.** Le même appui long qui l'a activé le désactive, ou le `Toggle` du
@@ -43,7 +53,7 @@ ProfileAvatarButton                       (barre de navigation de CHAQUE onglet)
     │   .accessibilityIdentifier("profileAvatar")  .accessibilityAddTraits(.isButton)
     │   .accessibilityLabel("Profile")  .accessibilityValue(isEnabled ? "Read-only" : "")
     ├── UserAvatarCircle
-    └── Image(systemName: "lock.fill")    10 pt, coin bas-droit, UNIQUEMENT si readOnly.isEnabled
+    └── Image(systemName: "lock.fill")    12 pt, coin bas-droit, UNIQUEMENT si readOnly.isEnabled
         .accessibilityHidden(true)        ← décoratif : l'état est porté par la value de l'avatar
 
 ProfileView  (feuille « Me », NavigationStack déjà porté par ProfileView:23)
@@ -82,7 +92,7 @@ Réutiliser, ne pas créer :
 | Corbeille vide | `ContentUnavailableView` — l'état vide existant, sans CTA en mode lecture seule |
 | Réglage | `Toggle` nu dans le `Form` de `ProfileView` (même forme que « Require Face ID ») — pas de `PVInputGroup`, pas de `PVFieldSurface` : ce n'est pas un formulaire de saisie |
 
-Le seul composant **neuf** est le cadenas d'avatar : une `Image` de 10 pt, `Color.immichWarning`, avec un
+Le seul composant **neuf** est le cadenas d'avatar : une `Image` de 12 pt, `Color.immichWarning`, avec un
 liseré de 1 pt en `Color.bgPrimary` pour rester lisible sur n'importe quelle photo. Aucun `glassEffect`.
 
 ## Interactions
@@ -115,7 +125,7 @@ liseré de 1 pt en `Color.bgPrimary` pour rester lisible sur n'importe quelle ph
 
 Pas de `glassEffect` sur cette feature. Le verre du dépôt est réservé aux surfaces **flottantes** ; l'avatar
 vit déjà dans une barre de navigation dont le système gère le matériau, et un `GlassEffectContainer` autour
-d'un cadenas de 10 pt serait du bruit. Le liseré `bgPrimary` du badge suffit à le détacher d'une photo claire.
+d'un cadenas de 12 pt serait du bruit. Le liseré `bgPrimary` du badge suffit à le détacher d'une photo claire.
 Le `PVStatusBadge` du hub est un badge ordinaire (fond `bgSecondary`), pas une surface en verre.
 
 ## Accessibilité

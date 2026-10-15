@@ -44,17 +44,17 @@ targets:
     info:
       path: Resources/Info.plist
       properties:
-        CFBundleDisplayName: Immich
+        CFBundleDisplayName: Swimmich
         CFBundleShortVersionString: "$(MARKETING_VERSION)"
         CFBundleVersion: "$(CURRENT_PROJECT_VERSION)"
         UILaunchScreen:
           UIColorName: AccentColor
         UISupportedInterfaceOrientations:
           - UIInterfaceOrientationPortrait
-        NSPhotoLibraryUsageDescription: "Immich needs Photos access to upload and back up your library."
-        NSPhotoLibraryAddUsageDescription: "Immich needs Photos access to add uploaded assets."
-        NSFaceIDUsageDescription: "PhotoVault uses Face ID to unlock the app."
-        NSCameraUsageDescription: "Immich uses the camera to scan server configuration QR codes."
+        NSPhotoLibraryUsageDescription: "Swimmich needs Photos access to upload and back up your library."
+        NSPhotoLibraryAddUsageDescription: "Swimmich needs Photos access to add uploaded assets."
+        NSFaceIDUsageDescription: "Swimmich uses Face ID to unlock the app."
+        NSCameraUsageDescription: "Swimmich uses the camera to scan server configuration QR codes."
         NSSupportsLiveActivities: true
         NSSupportsLiveActivitiesFrequentUpdates: true
         BGTaskSchedulerPermittedIdentifiers:
@@ -73,11 +73,19 @@ targets:
         PRODUCT_BUNDLE_IDENTIFIER: fr.millianlmx.immich-ios
         DEVELOPMENT_TEAM: 2MJF39L8VY
         INFOPLIST_FILE: Resources/Info.plist
-        # Keychain group shared with the widget extension (widgets-homescreen):
-        # the app writes the widget session, the extension reads it. The group is
-        # the app-id-derived one, so the app keeps writing with no explicit
-        # access group and the extension lists that group to be allowed to read
-        # it. The entitlements files must stay comment-free: Xcode re-serialises
+        # Keychain group shared with the widget and the share extension: the app
+        # writes the widget session, both extensions read it. All three
+        # entitlements declare the SAME group, and it is deliberately not the
+        # bundle-id-derived one — renaming a target's bundle id no longer moves
+        # it. Apple's rule for `kSecAttrAccessGroup` is what lets the code stay
+        # group-agnostic: an app's access groups are, in order, the keychain
+        # entitlement's strings, then the app ID; a write with no explicit group
+        # lands in the FIRST of them. So the app's writes go to this group and
+        # the extensions, which list it, read them.
+        # The profile must authorise the group for each App ID (Keychain Sharing
+        # capability), or iOS refuses to launch the extension at all — silently;
+        # `WidgetExtensionProbe` says so at launch.
+        # The entitlements files must stay comment-free: Xcode re-serialises
         # them during the build, and the build fails if its input changed.
         CODE_SIGN_ENTITLEMENTS: Resources/ImmichSwiftUI.entitlements
         ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
@@ -117,7 +125,7 @@ targets:
     info:
       path: ImmichWidgets/Info.plist
       properties:
-        CFBundleDisplayName: Immich
+        CFBundleDisplayName: Swimmich
         # Same versions as the containing app. xcodegen hardcodes 1.0/1 here
         # otherwise, and an extension whose version does not match its app is a
         # launch-and-store problem waiting to happen (the app ships 0.1.0).
@@ -164,7 +172,7 @@ targets:
     info:
       path: ImmichShareExtension/Info.plist
       properties:
-        CFBundleDisplayName: Immich
+        CFBundleDisplayName: Swimmich
         # Same versions as the containing app, for the same reason as the
         # widget: an extension whose version drifts from its app is a
         # launch-and-store rejection waiting to happen.

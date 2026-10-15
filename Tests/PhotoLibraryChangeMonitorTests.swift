@@ -64,7 +64,8 @@ final class PhotoLibraryChangeMonitorTests: XCTestCase {
         let engine = BackupEngine(client: client, source: source, environment: MockBackupEnvironment())
         let vm = UploadViewModel(
             client: client, photos: MockPhotoLibraryService(), engine: engine, settings: settings,
-            scheduler: MockBackupScheduler(), activityService: MockBackupLiveActivityService()
+            scheduler: MockBackupScheduler(), activityService: MockBackupLiveActivityService(),
+            readOnly: .ephemeral()
         )
         let monitor = MockLibraryMonitor()
         let firstWake = expectation(description: "premier réveil terminé")
@@ -110,7 +111,8 @@ final class PhotoLibraryChangeMonitorTests: XCTestCase {
         let engine = BackupEngine(client: client, source: source, environment: MockBackupEnvironment())
         let vm = UploadViewModel(
             client: client, photos: MockPhotoLibraryService(), engine: engine, settings: settings,
-            scheduler: MockBackupScheduler(), activityService: MockBackupLiveActivityService()
+            scheduler: MockBackupScheduler(), activityService: MockBackupLiveActivityService(),
+            readOnly: .ephemeral()
         )
         // Fire the insertion wake-up from inside the running run: the engine is
         // already in `.checking`, so the kick must be a no-op.
@@ -136,7 +138,8 @@ final class PhotoLibraryChangeMonitorTests: XCTestCase {
         let engine = BackupEngine(client: client, source: source, environment: MockBackupEnvironment())
         let vm = UploadViewModel(
             client: client, photos: MockPhotoLibraryService(), engine: engine, settings: settings,
-            scheduler: MockBackupScheduler(), activityService: MockBackupLiveActivityService()
+            scheduler: MockBackupScheduler(), activityService: MockBackupLiveActivityService(),
+            readOnly: .ephemeral()
         )
 
         await vm.kickOffAutoBackupIfConfigured()

@@ -22,7 +22,8 @@ ProfileView                                   (hub « Me », porte le Navigation
 └── Form (listStyle .insetGrouped)
     ├── Section header: Text("General")                       ← section neuve
     │   └── NavigationLink → PreferencesView       id: preferencesRow
-    └── Sections Language / Backup / Notifications / Administration / Sync Status : inchangées
+    └── Sections Language / Backup / Notifications / Administration : inchangées
+        (Sync Status a quitté ce hub le 2026-09-16 : bouton de barre à côté de l'avatar de profil)
 
 PreferencesView                               (poussée, AUCUN NavigationStack)
 └── Form

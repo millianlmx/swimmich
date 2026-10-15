@@ -479,7 +479,8 @@ final class AlbumSyncServiceTests: XCTestCase {
         settings.syncedAlbumIDs = ["dev-vac"]
         let vm = UploadViewModel(
             client: mock, photos: MockPhotoLibraryService(), engine: engine, settings: settings,
-            scheduler: MockBackupScheduler(), activityService: MockBackupLiveActivityService()
+            scheduler: MockBackupScheduler(), activityService: MockBackupLiveActivityService(),
+            readOnly: .ephemeral()
         )
         mock.bulkUploadCheckResponse = AssetBulkUploadCheckResponse(results: [
             .init(id: "a1", action: "reject", reason: nil, assetId: "srv-a1", isTrashed: false)

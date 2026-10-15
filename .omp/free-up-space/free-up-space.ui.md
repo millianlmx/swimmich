@@ -20,7 +20,8 @@ visuelle** avant l'action, pas un compteur.
 - Poussé depuis **`ProfileView`** (hub « Me »), section `Management`, **après** la ligne Offline Storage
   (`ProfileView.swift:107-112`, dernière de la section), avec `.accessibilityIdentifier("freeUpSpaceRow")` :
   c'est la seconde ligne qui agit sur **ce que l'appareil contient**, et le cluster Backup / Sync Status
-  (ce qui monte) reste au-dessus, intact.
+  (ce qui monte) reste au-dessus, intact. (Le cluster a perdu sa seconde ligne le 2026-09-16 : Sync Status
+  est devenu un bouton de barre à côté de l'avatar de profil. L'ancrage décrit ici ne bouge pas.)
 - `FreeUpSpaceView` **ne déclare aucun `NavigationStack`** — `ProfileView` en porte un (`:25`).
   `CleanupReviewView` non plus : poussée par `NavigationLink` depuis `FreeUpSpaceView`, même pile.
 - Retour natif. Après une suppression réussie, la revue se **dismiss** et le récapitulatif s'affiche sur

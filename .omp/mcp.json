@@ -11,6 +11,14 @@
       "args": [
         "mcpbridge"
       ]
+    },
+    "ios-simulator": {
+      "type": "stdio",
+      "command": "bunx",
+      "args": [
+        "-y",
+        "ios-mcp-server"
+      ]
     }
   }
 }

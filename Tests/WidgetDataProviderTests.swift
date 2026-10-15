@@ -267,12 +267,11 @@ final class WidgetDataProviderTests: XCTestCase {
 
         let verdict = WidgetExtensionProbe.verdict(
             extensionName: "ImmichWidgets.appex",
-            profileEntitlements: profile,
-            bundleIdentifier: "fr.millianlmx.immich-ios"
+            profileEntitlements: profile
         )
 
         XCTAssertTrue(verdict.hasPrefix("widget: MISMATCH"), verdict)
-        XCTAssertTrue(verdict.contains("2MJF39L8VY.fr.millianlmx.immich-ios"), "the group the widget needs must be named")
+        XCTAssertTrue(verdict.contains("2MJF39L8VY.fr.millianlmx.swimmich"), "the group the widget needs must be named")
     }
 
     func test_probe_acceptsATeamProfileWildcard() {
@@ -286,8 +285,7 @@ final class WidgetDataProviderTests: XCTestCase {
 
         let verdict = WidgetExtensionProbe.verdict(
             extensionName: "ImmichWidgets.appex",
-            profileEntitlements: profile,
-            bundleIdentifier: "fr.millianlmx.immich-ios"
+            profileEntitlements: profile
         )
 
         XCTAssertTrue(verdict.hasPrefix("widget: ok"), verdict)
@@ -298,15 +296,14 @@ final class WidgetDataProviderTests: XCTestCase {
             "application-identifier": "2MJF39L8VY.fr.millianlmx.immich-ios",
             "ApplicationIdentifierPrefix": ["2MJF39L8VY."],
             "keychain-access-groups": [
-                "2MJF39L8VY.fr.millianlmx.immich-ios",
+                "2MJF39L8VY.fr.millianlmx.swimmich",
                 "2MJF39L8VY.fr.millianlmx.immich-ios.other",
             ],
         ]
 
         let verdict = WidgetExtensionProbe.verdict(
             extensionName: "ImmichWidgets.appex",
-            profileEntitlements: profile,
-            bundleIdentifier: "fr.millianlmx.immich-ios"
+            profileEntitlements: profile
         )
 
         XCTAssertTrue(verdict.hasPrefix("widget: ok"), verdict)
@@ -315,8 +312,7 @@ final class WidgetDataProviderTests: XCTestCase {
     func test_probe_survivesAProfileWithoutAnApplicationIdentifier() {
         let verdict = WidgetExtensionProbe.verdict(
             extensionName: "ImmichWidgets.appex",
-            profileEntitlements: [:],
-            bundleIdentifier: "fr.millianlmx.immich-ios"
+            profileEntitlements: [:]
         )
 
         XCTAssertTrue(verdict.contains("ApplicationIdentifierPrefix"), verdict)

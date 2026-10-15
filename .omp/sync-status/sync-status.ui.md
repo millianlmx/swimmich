@@ -3,6 +3,30 @@
 > Compagnon de `.omp/sync-status/sync-status.specs.md` (écrit le 2026-09-15). Ne pas dupliquer la spec :
 > ce document ne décrit que la **surface** — placement, hiérarchie de vues, gestes, états, tokens.
 
+> **Révision du 2026-09-16 — changement de porte et de présentation.** L'écran ne s'ouvre plus depuis la
+> section Management du hub « Me » (la ligne `syncStatusRow` a été retirée : le hub porte déjà Backup, et
+> deux surfaces de sauvegarde dans le même `Form` se lisaient comme un doublon). Il s'ouvre depuis
+> `SyncStatusButton` — un bouton de barre posé à **gauche de l'avatar de profil**, dans les quatre barres
+> d'onglet (Photos n'en a pas : le bouton rejoint l'overlay `topTrailing`, à droite de la pastille
+> « Select » et à gauche de l'avatar) et **présenté en feuille** par `RootView`, comme le hub lui-même. La
+> barre d'outils gagne donc un `Button("Done")` (`syncStatusDone`, `.confirmationAction`) : c'est la seule
+> sortie explicite d'une feuille dont les actions destructives sont derrière un dialogue de confirmation.
+> L'anneau de progression du run, qui entourait l'avatar de profil dans l'onglet Photos, entoure désormais
+> le bouton de synchronisation — le bouton de profil ne porte plus aucun état de synchronisation.
+> Identifiant du bouton : `syncStatusButton` (libellé VoiceOver « Sync Status », traduit).
+>
+> Geometrie de la paire (2026-09-16) : le disque de verre de `SyncStatusButton` fait 44 pt, et
+> `ProfileAvatarButton` a été porté le même jour d'un disque de 30 pt (dans un cadre de 44) à un disque de
+> **44 pt** — même diamètre, cible de tap inchangée à 44 pt. Les deux cercles se lisent comme une paire ;
+> réduire l'un des deux casse cet équilibre.
+>
+> Glyphe du bouton (2026-09-16) : `icloud.and.arrow.up` — le « cloud backup » demandé par l'utilisateur, et
+> le glyphe de sauvegarde du dépôt (ligne Backup du hub, `AppIntents`, Live Activity). L'ancien
+> `arrow.triangle.2.circlepath` n'avait été choisi que pour ne pas concurrencer la ligne Backup dans la même
+> liste du hub ; le bouton ayant quitté cette liste, la contrainte est tombée. Les glyphes **internes** à
+> l'écran ne changent pas (`Run now` / `Check server` / l'état vide gardent `arrow.triangle.2.circlepath`,
+> c'est-à-dire l'action de relancer, pas la sauvegarde).
+
 ## Design Philosophy
 
 L'écran répond à une seule question, en trois secondes : **« où en est ma sauvegarde, et qu'est-ce qui
@@ -48,8 +72,10 @@ SyncStatusView                            (poussée par ProfileView)
             └── DisclosureGroup « N failed » → lignes nom de fichier + raison
 ```
 
-- **Barre d'outils** : `ToolbarItem(placement: .principal) { ImmichAppBar(title: "Sync Status") }`,
-  `.navigationBarTitleDisplayMode(.inline)`.
+- **Barre d'outils** : `ToolbarItem(placement: .principal) { ImmichAppBar(title: "Sync Status") }` à
+  l'intérieur de la feuille, `.navigationBarTitleDisplayMode(.inline)`, et — la feuille étant la seule
+  sortie — un `ToolbarItem(placement: .confirmationAction) { Button("Done") }` (`syncStatusDone`), comme
+  `DownloadInfoView` : « Done » ne fait que refermer l'écran, un run lancé ici continue.
 - **Progression vivante** : quand `vm.isRunning`, insérer entre les statistiques et les actions une
   `ProgressView(value: vm.progressFraction)` (barre déterminée) suivie du nom du fichier courant en
   `.pvCaption` — la même grammaire que le segment bar de `BackupSettingsView`, jamais un `ProgressView()`
@@ -120,11 +146,16 @@ Pas de `glassEffect` sur cet écran. Précédent du dépôt : le verre est rése
 (barres de recherche, bandeaux, îlot Live Activity), pas aux écrans de contenu poussés — `StackView` et
 `OfflineAssetsView` n'en utilisent pas non plus. Les séparateurs `Color.separatorPV` et les fonds
 `bgSecondary` suffisent ; ajouter du verre ici casserait la cohérence des écrans du hub « Me ».
+Une seule exception, et elle est hors de l'écran : dans l'onglet Photos, le bouton de synchronisation
+n'est pas dans une barre de navigation — iOS n'y dessine donc pas le chrome — et il porte un disque
+`glassEffect(.regular, in: Circle())`, de la même famille que la pastille « Select » voisine. Dans les
+quatre onglets à barre, un `glassEffect` manuel **doublerait** le verre système et se ferait rogner
+(mesure de `SearchView`) : le bouton y reste un glyphe nu.
 
 ## Accessibilité
 
 - **Identifiants** (sur les éléments interactifs, jamais sur un conteneur qui en contient) :
-  `syncStatusRow` (ligne du hub), `syncStatusRunButton`, `syncStatusCancelButton`, `syncStatusReconcileButton`,
+  `syncStatusButton` (bouton de barre, `RootView`), `syncStatusDone` (sortie de la feuille), `syncStatusRunButton`, `syncStatusCancelButton`, `syncStatusReconcileButton`,
   `syncStatusResetButton`, `syncStatusPurgeOfflineButton`, `syncStatusTrackedValue`, `syncStatusPendingValue`,
   `syncStatusStagedValue`, `syncStatusUploadedValue`, `syncStatusAlreadyOnServerValue`, `syncStatusFailedValue`,
   `syncStatusOfflineValue`, `syncStatusOfflineBytesValue`, `syncStatusLastRunValue`, `syncStatusLastCheckValue`,
@@ -136,7 +167,7 @@ Pas de `glassEffect` sur cet écran. Précédent du dépôt : le verre est rése
 - **Cibles** ≥ 44 pt : boutons en pleine largeur pour la section Actions.
 - **Reduce Motion** : `contentTransition(.numericText())` est neutralisé automatiquement ; aucune autre
   animation n'est introduite.
-- Le libellé de la ligne du hub reste « Sync Status » ; les autres chaînes sont des clés anglaises
+- Le libellé du bouton de barre reste « Sync Status » ; les autres chaînes sont des clés anglaises
   (`Tracked`, `Waiting`, `Ready to upload`, `Already on server`, `Failed`, `Offline`, `Last run`,
   `Last server check`, `Never`, `Run now`, `Stop`, `Check server`, `Reset tracking`, `Purge offline cache`,
   `Nothing to sync yet`).
@@ -159,8 +190,9 @@ transforme pas, il se met à jour.
 - NEW `Sources/Features/SyncStatus/SyncStatusViewModel.swift` — projections calculées + délégation (voir la spec).
 - NEW `Tests/SyncStatusViewModelTests.swift` — 8 cas nommés.
 - EDIT `Sources/DependencyContainer.swift` — `makeSyncStatusViewModel(upload:offline:)`.
-- EDIT `Sources/RootView.swift` — `@State private var syncStatus` + passage à `ProfileView`.
-- EDIT `Sources/Features/Profile/ProfileView.swift` — `@State var syncStatus` + ligne `syncStatusRow` dans Management.
+- EDIT `Sources/RootView.swift` — `@State private var syncStatus`, clé d'environnement `openSyncStatus`, `SyncStatusButton` (déclaration + `syncStatusButton`), la feuille `NavigationStack { SyncStatusView(vm:) }`, et le bouton posé dans les barres d'Albums / Memories / SharedLinks / Search.
+- EDIT `Sources/Features/Timeline/TimelineView.swift` — `SyncStatusButton` dans l'overlay `topTrailing` (disque de verre) et `backupProgressRing` déplacé de l'avatar vers ce bouton.
+- REMOVED `Sources/Features/Profile/ProfileView.swift` — la propriété `syncStatus` et la ligne `syncStatusRow` de Management.
 
 ## Erreurs à ne pas faire (mesurées dans ce dépôt)
 
@@ -170,13 +202,21 @@ transforme pas, il se met à jour.
    ViewModels existants.
 2. **Poser un `accessibilityIdentifier` sur le conteneur de tuiles** : il écraserait les identifiants des
    valeurs (mesuré sur `languageRelaunchToast`, où le bouton devenait introuvable).
-3. **Déclarer un `NavigationStack` dans `SyncStatusView`** : elle est poussée par `ProfileView`, qui en a un.
-4. **Afficher un `ProgressView()` indéterminé** pendant un run : `progressFraction` est disponible, la barre
+3. **Déclarer un `NavigationStack` dans `SyncStatusView`** : c'est la feuille de `RootView` qui porte le
+   sien (même règle que `DownloadInfoView`), un second dessinerait deux barres de navigation.
+4. **Poser un `glassEffect` manuel sur le bouton dans une barre de navigation** : iOS 26 y dessine déjà son
+   verre ; un disque manuel double la couche et se fait rogner (mesuré sur `SearchView`). Le seul site qui
+   en a besoin est l'overlay de l'onglet Photos, qui n'a pas de barre.
+5. **Attendre les deux boutons dans la barre de résultats de l'onglet Search** : cette barre déborde déjà en
+   menu « … » sans le bouton de synchronisation (mesuré le 2026-09-16 par A/B : avec et sans lui, la barre
+   montre quatre icônes puis « … », l'avatar compris dans le menu). Le bouton y est atteignable, pas visible
+   en clair — ce n'est pas une régression, et l'onglet Search hors mode résultats montre bien les deux.
+6. **Afficher un `ProgressView()` indéterminé** pendant un run : `progressFraction` est disponible, la barre
    doit être déterminée, avec le nom du fichier courant.
-5. **Recalculer une mise en forme de bytes ou de date dans la vue** : deux implémentations divergent
+7. **Recalculer une mise en forme de bytes ou de date dans la vue** : deux implémentations divergent
    (une seule existe aujourd'hui, `OfflineDownloadViewModel.formattedUsage(_:)`).
-6. **Écrire un littéral français dans la vue** : la clé du catalogue est la chaîne anglaise.
-7. **Rendre les actions destructives sans confirmation** : `resetLedger()` et `clearOfflineCache()` passent
+8. **Écrire un littéral français dans la vue** : la clé du catalogue est la chaîne anglaise.
+9. **Rendre les actions destructives sans confirmation** : `resetLedger()` et `clearOfflineCache()` passent
    par un `confirmationDialog` (le hub utilise déjà ce motif pour « Delete user? »).
-8. **Lire le compteur « Failed » comme une liste d'assets cliquable** : la navigation par asset appartient
+10. **Lire le compteur « Failed » comme une liste d'assets cliquable** : la navigation par asset appartient
    à `upload-detail` ; ici on affiche une liste dépliable, sans promesse d'écran qui n'existe pas.

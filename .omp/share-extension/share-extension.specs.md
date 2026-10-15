@@ -1,5 +1,14 @@
 # Task: share-extension
 
+> **Révision du 2026-09-16 — le groupe Keychain a été renommé.** Les trois entitlements (`ImmichSwiftUI`, `ImmichWidgets`,
+> `ImmichShareExtension`) déclarent désormais `$(AppIdentifierPrefix)fr.millianlmx.swimmich` au lieu de
+> `…fr.millianlmx.immich-ios`, et les trois `CFBundleDisplayName` valent `Swimmich`. Le groupe n'est donc plus dérivé d'un bundle id :
+> c'est volontaire, il ne bougera plus si un bundle id change. Le mécanisme qui permet au code de ne citer aucun groupe est la règle
+> Apple de `kSecAttrAccessGroup` (les groupes d'une app sont, dans l'ordre, ceux de l'entitlement puis son app ID ; une écriture sans
+> groupe va dans le PREMIER) — conséquence à connaître : le groupe doit être autorisé par le profil (capacité Keychain Sharing) pour
+> chacun des trois App IDs, sinon iOS refuse de lancer l'extension sans le dire. `WidgetExtensionProbe` le vérifie au lancement sur
+> appareil. Le scénario `ShareExtensionUITests` a suivi : l'activité de la feuille de partage est matchée par le libellé `Swimmich`.
+
 > **Audit 2026-09-15 — écart G21** : l'app ne peut rien recevoir depuis la feuille de partage d'iOS — `project.yml` ne déclare que 5 cibles
 > (`ImmichSwiftUI`, `ImmichSharedKit`, `ImmichWidgets`, les deux bundles de tests) et **aucune** extension `com.apple.share-services`, alors qu'Immich
 > Flutter embarque une cible `ShareExtension` ; preuve upstream : `mobile/ios/ShareExtension/Info.plist` @ `e55ac299` porte `NSExtensionPointIdentifier =
@@ -79,9 +88,11 @@ uploade elle-même depuis son processus avec la session lue dans le Keychain.
 ## Étapes
 
 1. **Entitlements de l'extension** — NEW `Resources/ImmichShareExtension.entitlements` : unique clé `keychain-access-groups =
-   ["$(AppIdentifierPrefix)fr.millianlmx.immich-ios"]`, copie de `Resources/ImmichWidgets.entitlements`. Fichier sans commentaire (Xcode le re-sérialise
+   ["$(AppIdentifierPrefix)fr.millianlmx.swimmich"]` (valeur du 2026-09-16 ; elle était `…fr.millianlmx.immich-ios` à la livraison), copie de
+   `Resources/ImmichWidgets.entitlements`. Fichier sans commentaire (Xcode le re-sérialise
    au build et échoue si son entrée a changé — commentaire déjà présent dans `project.yml` côté cible app).
-2. **Info.plist de l'extension** — NEW `ImmichShareExtension/Info.plist` : `CFBundleDisplayName: Immich`, `CFBundleShortVersionString`/`CFBundleVersion`
+2. **Info.plist de l'extension** — NEW `ImmichShareExtension/Info.plist` : `CFBundleDisplayName: Swimmich` (`Immich` à la livraison, renommé le
+   2026-09-16 — c'est ce libellé que Photos affiche dans sa feuille de partage), `CFBundleShortVersionString`/`CFBundleVersion`
    sur `$(MARKETING_VERSION)`/`$(CURRENT_PROJECT_VERSION)` (comme `ImmichWidgets`, project.yml:95-99), `NSAppTransportSecurity.NSAllowsArbitraryLoads:
    true` (un Immich auto-hébergé est souvent en HTTP simple sur le LAN ; le loopback est exempt d'ATS, donc rien ne le détecte en test simulateur), puis
    `NSExtension` = `NSExtensionPointIdentifier: com.apple.share-services`, `NSExtensionPrincipalClass: $(PRODUCT_MODULE_NAME).ShareViewController`,
