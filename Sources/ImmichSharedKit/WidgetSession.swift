@@ -61,12 +61,13 @@ public protocol WidgetSessionStoring: Sendable {
 
 /// Keychain-backed store, shared by app and widget through the
 /// `keychain-access-groups` entitlement both targets declare
-/// (`Resources/ImmichSwiftUI.entitlements`, `Resources/ImmichWidgets.entitlements`).
+/// (`Resources/ImmichSwiftUI.entitlements`, `Resources/ImmichWidgets.entitlements`,
+/// plus the share extension's) — the group is `fr.millianlmx.swimmich`.
 ///
 /// No `kSecAttrAccessGroup` is passed on purpose: the item lands in the process'
-/// default group, which is the app-id-derived group both entitlements list, so
-/// the widget process reads exactly what the app wrote without either side
-/// hardcoding a Team ID.
+/// default group, and keychain services defines that as the FIRST entry of the
+/// entitlement's array — the one all three binaries list — so the widget process
+/// reads exactly what the app wrote without either side hardcoding a Team ID.
 ///
 /// Accessibility is `afterFirstUnlock` (not the app's stricter `whenUnlocked`):
 /// Lock Screen widgets refresh while the device is locked, and a
