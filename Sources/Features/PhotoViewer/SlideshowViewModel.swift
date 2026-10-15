@@ -33,14 +33,16 @@ final class SlideshowViewModel {
 
         var id: String { rawValue }
 
-        /// English catalog key, like every other user-facing string in the app
-        /// (the catalog extracts it at build time); the Preferences picker and
-        /// the slideshow's own menu show the same label.
+        /// The English literal **is** the catalog key and is extracted at build
+        /// time — but the key only reaches the screen through
+        /// `String(localized:)`: the Preferences picker and the slideshow's own
+        /// menu render `Text(label)`, and a bare literal there would stay
+        /// English on a French device.
         var label: String {
             switch self {
-            case .dissolve: return "Dissolve"
-            case .slide: return "Slide"
-            case .kenBurns: return "Ken Burns"
+            case .dissolve: return String(localized: "Dissolve")
+            case .slide: return String(localized: "Slide")
+            case .kenBurns: return String(localized: "Ken Burns")
             }
         }
     }

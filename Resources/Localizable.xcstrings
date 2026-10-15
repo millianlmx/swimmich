@@ -589,34 +589,6 @@
         }
       }
     },
-    "Added long ago" : {
-      "localizations" : {
-        "fr" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Ajoutées il y a longtemps"
-          }
-        },
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Vor langer Zeit hinzugefügt"
-          }
-        },
-        "es" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Añadidas hace tiempo"
-          }
-        },
-        "it" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Aggiunte molto tempo fa"
-          }
-        }
-      }
-    },
     "Advanced" : {
       "localizations" : {
         "fr" : {
@@ -1033,34 +1005,6 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Aspetto"
-          }
-        }
-      }
-    },
-    "Applies to Metadata search" : {
-      "localizations" : {
-        "fr" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "S'applique à la recherche Metadata"
-          }
-        },
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Gilt für die Metadata-Suche"
-          }
-        },
-        "es" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Se aplica a la búsqueda Metadata"
-          }
-        },
-        "it" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Si applica alla ricerca Metadata"
           }
         }
       }
@@ -2157,62 +2101,6 @@
         }
       }
     },
-    "Comfortable" : {
-      "localizations" : {
-        "fr" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Confortable"
-          }
-        },
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Komfortabel"
-          }
-        },
-        "es" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Cómoda"
-          }
-        },
-        "it" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Comoda"
-          }
-        }
-      }
-    },
-    "Compact" : {
-      "localizations" : {
-        "fr" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Compacte"
-          }
-        },
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Kompakt"
-          }
-        },
-        "es" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Compacta"
-          }
-        },
-        "it" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Compatto"
-          }
-        }
-      }
-    },
     "Completed" : {
       "localizations" : {
         "fr" : {
@@ -2885,34 +2773,6 @@
         }
       }
     },
-    "Density" : {
-      "localizations" : {
-        "fr" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Densité"
-          }
-        },
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Dichte"
-          }
-        },
-        "es" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Densidad"
-          }
-        },
-        "it" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Densità"
-          }
-        }
-      }
-    },
     "Deselect all" : {
       "localizations" : {
         "fr" : {
@@ -3077,34 +2937,6 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Dimensioni"
-          }
-        }
-      }
-    },
-    "Display" : {
-      "localizations" : {
-        "fr" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Affichage"
-          }
-        },
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Anzeige"
-          }
-        },
-        "es" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Visualización"
-          }
-        },
-        "it" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Visualizzazione"
           }
         }
       }
@@ -4677,34 +4509,6 @@
         }
       }
     },
-    "Large" : {
-      "localizations" : {
-        "fr" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Grande"
-          }
-        },
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Groß"
-          }
-        },
-        "es" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Grande"
-          }
-        },
-        "it" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Grande"
-          }
-        }
-      }
-    },
     "Last %lld days" : {
       "localizations" : {
         "fr" : {
@@ -5009,6 +4813,34 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Chiaro"
+          }
+        }
+      }
+    },
+    "Live Photo" : {
+      "localizations" : {
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Live Photo"
+          }
+        },
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Live-Foto"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Live Photo"
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Live Photo"
           }
         }
       }
@@ -5853,34 +5685,6 @@
         }
       }
     },
-    "Newest first" : {
-      "localizations" : {
-        "fr" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Plus récentes d'abord"
-          }
-        },
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Neueste zuerst"
-          }
-        },
-        "es" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Más recientes primero"
-          }
-        },
-        "it" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Più recenti prima"
-          }
-        }
-      }
-    },
     "No API keys yet" : {
       "localizations" : {
         "fr" : {
@@ -6549,34 +6353,6 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Dimensione offline"
-          }
-        }
-      }
-    },
-    "Oldest first" : {
-      "localizations" : {
-        "fr" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Plus anciennes d'abord"
-          }
-        },
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Älteste zuerst"
-          }
-        },
-        "es" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Más antiguas primero"
-          }
-        },
-        "it" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Più vecchie prima"
           }
         }
       }
@@ -9213,34 +8989,6 @@
         }
       }
     },
-    "Sort" : {
-      "localizations" : {
-        "fr" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Tri"
-          }
-        },
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Sortierung"
-          }
-        },
-        "es" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Orden"
-          }
-        },
-        "it" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Ordinamento"
-          }
-        }
-      }
-    },
     "Sort: Newest first" : {
       "localizations" : {
         "fr" : {
@@ -9293,34 +9041,6 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Ordinamento: più vecchi prima"
-          }
-        }
-      }
-    },
-    "Sorting requires Immich 3.2 or later." : {
-      "localizations" : {
-        "fr" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Le tri nécessite Immich 3.2 ou une version ultérieure."
-          }
-        },
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Das Sortieren erfordert Immich 3.2 oder neuer."
-          }
-        },
-        "es" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "La ordenación requiere Immich 3.2 o posterior."
-          }
-        },
-        "it" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "L'ordinamento richiede Immich 3.2 o successivo."
           }
         }
       }
@@ -10809,34 +10529,6 @@
         }
       }
     },
-    "Uploading %lld%" : {
-      "localizations" : {
-        "fr" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Envoi %lld %"
-          }
-        },
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Upload %lld %"
-          }
-        },
-        "es" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Subiendo %lld %"
-          }
-        },
-        "it" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Caricamento %lld %"
-          }
-        }
-      }
-    },
     "Uploading %lld%%" : {
       "localizations" : {
         "fr" : {
@@ -11540,9 +11232,6 @@
         }
       }
     },
-    "%@" : {
-
-    },
     "%@ • Full (%@ limit)" : {
       "extractionState" : "stale",
       "localizations" : {
@@ -11841,9 +11530,6 @@
           }
         }
       }
-    },
-    "%@%%" : {
-
     },
     "%lld" : {
       "extractionState" : "stale",
@@ -12675,9 +12361,6 @@
         }
       }
     },
-    "+%@" : {
-
-    },
     "+%lld" : {
       "extractionState" : "stale",
       "localizations" : {
@@ -13375,35 +13058,6 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Aggiungi account"
-          }
-        }
-      }
-    },
-    "Add API key" : {
-      "extractionState" : "stale",
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "API-Schlüssel hinzufügen"
-          }
-        },
-        "es" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Añadir clave de API"
-          }
-        },
-        "fr" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Ajouter une clé API"
-          }
-        },
-        "it" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Aggiungi chiave API"
           }
         }
       }
@@ -14324,35 +13978,6 @@
       }
     },
 
-    "API Keys (%lld)" : {
-      "extractionState" : "stale",
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "API-Schlüssel (%lld)"
-          }
-        },
-        "es" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Claves de API (%lld)"
-          }
-        },
-        "fr" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Clés API (%lld)"
-          }
-        },
-        "it" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Chiavi API (%lld)"
-          }
-        }
-      }
-    },
     "App Language" : {
       "localizations" : {
         "de" : {
@@ -15844,35 +15469,6 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Copia link"
-          }
-        }
-      }
-    },
-    "Couldn't back up" : {
-      "extractionState" : "stale",
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Backup fehlgeschlagen"
-          }
-        },
-        "es" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "No se pudo hacer la copia de seguridad"
-          }
-        },
-        "fr" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Impossible de sauvegarder"
-          }
-        },
-        "it" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Impossibile eseguire il backup"
           }
         }
       }
@@ -18069,34 +17665,6 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Ogni foto resta nella cronologia — viene rimossa solo la raggruppazione."
-          }
-        }
-      }
-    },
-    "Every photo was backed up." : {
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Für jedes Foto wurde ein Backup erstellt."
-          }
-        },
-        "es" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Se hizo copia de seguridad de todas las fotos."
-          }
-        },
-        "fr" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Toutes les photos ont été sauvegardées."
-          }
-        },
-        "it" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Il backup di tutte le foto è completato."
           }
         }
       }
@@ -20691,35 +20259,6 @@
         }
       }
     },
-    "New API Key" : {
-      "extractionState" : "stale",
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Neuer API-Schlüssel"
-          }
-        },
-        "es" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Nueva clave API"
-          }
-        },
-        "fr" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Nouvelle clé API"
-          }
-        },
-        "it" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Nuova chiave API"
-          }
-        }
-      }
-    },
     "New Link" : {
       "localizations" : {
         "de" : {
@@ -21090,35 +20629,6 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Nessun duplicato"
-          }
-        }
-      }
-    },
-    "No failures" : {
-      "extractionState" : "stale",
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Keine Fehler"
-          }
-        },
-        "es" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Sin fallos"
-          }
-        },
-        "fr" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Aucun échec"
-          }
-        },
-        "it" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Nessun errore"
           }
         }
       }
@@ -29047,6 +28557,34 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Video"
+          }
+        }
+      }
+    },
+    "Video, %@" : {
+      "localizations" : {
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Vidéo, %@"
+          }
+        },
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Video, %@"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Vídeo, %@"
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Video, %@"
           }
         }
       }

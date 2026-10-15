@@ -150,6 +150,14 @@ xcodebuild test -destination 'platform=iOS Simulator,name=iPhone 17'
 - 886 unit tests in `Tests/` (dernier relevé : 2026-09-14, `-only-testing:ImmichSwiftUITests`) (plus committed end-to-end UI scenarios in `UITests/`, each with its Python stub under `UITests/stubs/`); every view model is tested with a `MockImmichClient` injected via `init(client:)`.
 - **Trap:** the test target sources the entire `Tests/` folder — a new `Tests/*.swift` file is only compiled after `xcodegen generate`. Without regeneration, tests pass "green" by omission.
 
+### String catalog audit
+
+```bash
+python3 Scripts/i18n-audit.py
+```
+
+`Scripts/i18n-audit.py` guards `Resources/Localizable.xcstrings` against the three ways it drifts: a catalog key no build target claims (**dead**), a key the code claims that the catalog is missing (**missing**), and a claimed key with no `fr`, `de`, `es` or `it` translation (**untranslated**). It renders its verdict from a real extraction — a virgin DerivedData build with `SWIFT_EMIT_LOC_STRINGS=YES` (~40 s, its own DerivedData, `--derived-data <path>` to move it) — and never edits the catalog or a source: it names the offending keys, the fix stays manual. Exit codes: `0` all three sets empty, `1` at least one offending key (listed by section), `2` tooling — no valid `DEVELOPER_DIR`, build failure, incomplete extraction, unreadable catalog. A `.swift` compiled without its `.stringsdata` is an exit `2`, never a clean verdict.
+
 ## Contributing
 
 Development follows an **acceptance card** (AC) methodology. Backlog: [`.omp/backlog/ImmichSwiftUI-backlog.md`](.omp/backlog/ImmichSwiftUI-backlog.md).

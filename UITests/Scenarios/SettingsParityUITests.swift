@@ -324,14 +324,50 @@ final class SettingsParityUITests: XCTestCase {
         XCTAssertTrue(tile(assetId).waitForExistence(timeout: 15), "not back on the timeline after the Me sheet")
     }
 
+    /// Resolves a catalog key the way the app does, for the language the
+    /// simulator runs in — an expectation written as `"Day"` would assert the
+    /// English source and stop proving the localization, which is this
+    /// feature's whole subject.
+    ///
+    /// Deliberately NOT a membership list of accepted labels (`latchedCopy` in
+    /// `OcrTextUITests`): a set of several forms would still pass if the app
+    /// drew the raw English literal. Reading the catalog keeps the assertion
+    /// discriminating — on a `fr-FR` slot, expecting `Mois` fails the moment
+    /// the picker reads `Month`.
+    private func catalogLabel(_ key: String) -> String {
+        var root = URL(fileURLWithPath: #filePath)
+        while root.path != "/" {
+            if FileManager.default.fileExists(atPath: root.appendingPathComponent("project.yml").path) {
+                break
+            }
+            root.deleteLastPathComponent()
+        }
+        let catalog = root.appendingPathComponent("Resources/Localizable.xcstrings")
+        guard let data = try? Data(contentsOf: catalog),
+              let payload = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+              let strings = payload["strings"] as? [String: Any],
+              let entry = strings[key] as? [String: Any] else {
+            XCTFail("cannot read the catalog entry for '\(key)' in \(catalog.path)")
+            return key
+        }
+        let language = String((Locale.preferredLanguages.first ?? "en").prefix { $0 != "-" })
+        guard let localizations = entry["localizations"] as? [String: Any],
+              let unit = localizations[language] as? [String: Any],
+              let stringUnit = unit["stringUnit"] as? [String: Any],
+              let value = stringUnit["value"] as? String, !value.isEmpty else {
+            // Not shipped in this language: the app falls back to the key.
+            return key
+        }
+        return value
+    }
+
     /// The option a menu picker currently shows.
     ///
     /// Measured shape (this run): XCUITest exposes a `Form` picker as a **Button**
     /// whose label joins the row's name and the selected option's — `Grouper par,
-    /// Day` on the French slot — and whose `value` is EMPTY. The option half is
-    /// the enum's own word, not a catalog entry (`Text(grouping.label)` takes a
-    /// `String`, so it is verbatim), which is why only the tail is compared: the
-    /// row's own name is localized, the option is not.
+    /// Jour` on the French slot — and whose `value` is EMPTY. Only the tail is
+    /// compared: the row's own name (`Group By`) is not what this helper is
+    /// about, the option is (and both now come from the catalog).
     private func pickerValue(_ identifier: String) -> String {
         let control = element(identifier)
         XCTAssertTrue(control.waitForExistence(timeout: 15), "\(identifier) is not on the Preferences form")
@@ -360,9 +396,8 @@ final class SettingsParityUITests: XCTestCase {
     }
 
     /// Opens a menu-style picker and clicks one of its options. The option is
-    /// matched EXACTLY, and on the enum's own word: the menu item's label is the
-    /// same verbatim string the picker row shows after it ("Day"/"Month"/"Flat"),
-    /// where the row's own name around it is localized.
+    /// matched EXACTLY, on `catalogLabel`'s value for the running language: the
+    /// menu item and the picker row show the same localized label.
     private func select(_ option: String, inPicker identifier: String) {
         let control = element(identifier)
         XCTAssertTrue(control.waitForExistence(timeout: 15), "\(identifier) is not on the Preferences form")
@@ -529,7 +564,7 @@ final class SettingsParityUITests: XCTestCase {
 
         openViewer()
         let previewFetched = waitForWire(20) { log in
-            log.contains { $0.path.hasSuffix("/thumbnail") && $0.params["size"] == "fullsize" }
+            log.contains { $0.path.hasSuffix("/thumbnail") && $0.params["size"] == "preview" }
         }
         XCTAssertTrue(previewFetched,
                       "the viewer never asked for its preview — got:\n\(describe(Array(stubRequests().suffix(12))))")
@@ -545,7 +580,7 @@ final class SettingsParityUITests: XCTestCase {
 
         openPreferences()
         shot("p06-preferences-defauts")
-        assertPicker("preferencesGroupPicker", is: "Day",
+        assertPicker("preferencesGroupPicker", is: catalogLabel("Day"),
                      "a fresh install must offer Day, the grouping the timeline had before the feature")
         assertSwitch("preferencesLoadOriginalToggle", is: "0",
                      "'Load Full Quality' must default to off: it is the behavior the viewer had before")
@@ -553,12 +588,12 @@ final class SettingsParityUITests: XCTestCase {
         // MARK: Change them on the real screen
 
         let beforeChange = stubRequests().count
-        select("Month", inPicker: "preferencesGroupPicker")
+        select(catalogLabel("Month"), inPicker: "preferencesGroupPicker")
         flip("preferencesLoadOriginalToggle")
         shot("p07-preferences-modifiees")
         XCTAssertEqual(stubRequests().dropFirst(beforeChange).filter { $0.method != "GET" }.count, 0,
                        "writing a preference must not send a request to the server")
-        assertPicker("preferencesGroupPicker", is: "Month",
+        assertPicker("preferencesGroupPicker", is: catalogLabel("Month"),
                      "the picker must read back the option that was just chosen")
         assertSwitch("preferencesLoadOriginalToggle", is: "1",
                      "the toggle must read back the state that was just set")
@@ -598,7 +633,7 @@ final class SettingsParityUITests: XCTestCase {
         shot("p11-apres-relance-timeline")
 
         openPreferences()
-        assertPicker("preferencesGroupPicker", is: "Month",
+        assertPicker("preferencesGroupPicker", is: catalogLabel("Month"),
                      "the grouping chosen before the relaunch must still be the one on screen")
         assertSwitch("preferencesLoadOriginalToggle", is: "1",
                      "the image quality chosen before the relaunch must still be on")
@@ -631,7 +666,7 @@ final class SettingsParityUITests: XCTestCase {
         scrollFormToTop()
         let resetOnScreen = waitUntil(10) { (self.element("preferencesLoadOriginalToggle").value as? String) == "0" }
         XCTAssertTrue(resetOnScreen, "Reset left 'Load Full Quality' on — the store did not go back to its defaults")
-        assertPicker("preferencesGroupPicker", is: "Day", "Reset must bring the grouping back to Day")
+        assertPicker("preferencesGroupPicker", is: catalogLabel("Day"), "Reset must bring the grouping back to Day")
 
         leavePreferencesAndHub()
         assertPinnedHeader(is: "day", "Reset must give the timeline its default grouping back, in the same session")
