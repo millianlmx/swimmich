@@ -29,6 +29,7 @@ struct TimelineView: View {
     @Binding var scrollTargetDay: String?
     @Environment(AuthViewModel.self) private var auth
     @Environment(\.openProfile) private var openProfile
+    @Environment(\.openSyncStatus) private var openSyncStatus
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     /// App preferences (gap G22): the persisted density and grouping live in
     /// the store, so the pinch gesture, the Preferences stepper and this grid
@@ -151,11 +152,12 @@ struct TimelineView: View {
                     }
                 }
                 .overlay(alignment: .topTrailing) {
-                    // Profile avatar + the explicit "Select" entry point
-                    // (Photos-style): a liquid glass pill that rides alongside
-                    // the pinned date header. Long-press entry still works;
-                    // this makes selection discoverable for mass/bulk actions.
-                    // Hidden once selection mode is active (toolbar takes over).
+                    // Sync status + profile avatar + the explicit "Select" entry
+                    // point (Photos-style): a liquid glass pill that rides
+                    // alongside the pinned date header. Long-press entry still
+                    // works; this makes selection discoverable for mass/bulk
+                    // actions. Hidden once selection mode is active (toolbar
+                    // takes over).
                     if !vm.selectionMode {
                         HStack(spacing: PVSpacing.s8) {
                             if !vm.items.isEmpty {
@@ -174,8 +176,14 @@ struct TimelineView: View {
                                 }
                                 .accessibilityIdentifier("selectButton")
                             }
+                            // No bar to draw the chrome, so the button brings its
+                            // own disc — the gesture of the glass pill next to it.
+                            // The run's live ring rides THIS button, not the
+                            // avatar: the profile button carries no sync state.
+                            SyncStatusButton { openSyncStatus() }
+                                .glassEffect(.regular, in: Circle())
+                                .overlay { backupProgressRing }
                             ProfileAvatarButton { openProfile() }
-                                .overlay { avatarBackupRing }
                         }
                         .padding(.trailing, PVSpacing.s16)
                         .padding(.top, PVSpacing.s8)
@@ -369,14 +377,14 @@ struct TimelineView: View {
     }
 
     // MARK: - Backup progress ring (AC-BK05/BK06)
-    // Backup progress as a circular ring around the profile avatar, on every
+    // Backup progress as a circular ring around the sync-status button, on every
     // device. iOS never shows an app's OWN Live Activity in the Dynamic
     // Island while that app is frontmost — and this ring is only ever visible
     // while the app IS frontmost — so the ring and the island never compete:
     // island (or notification panel) out of app, ring in app. The ring
     // vanishes the moment the run finishes.
     @ViewBuilder
-    private var avatarBackupRing: some View {
+    private var backupProgressRing: some View {
         let engine = upload.engine
         if engine.phase == .checking || engine.phase == .uploading {
             Circle()

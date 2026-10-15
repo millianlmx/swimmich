@@ -4,21 +4,34 @@ Status: planifié — **aucune AC ouverte** (écart G4 du registre `.omp/backlog
 
 ## Plan (résumé)
 
-**Objectif** : écran « Sync Status » accessible depuis le hub « Me », agrégant l'état réel de la
+**Objectif** : écran « Sync Status », agrégant l'état réel de la
 synchronisation locale : compteurs du ledger, file du run courant, échecs, index hors-ligne, dernière
 exécution, dernière confrontation serveur — plus les actions relancer / arrêter / confronter / réinitialiser
 le suivi / purger le cache hors-ligne.
 
 **Approche retenue** : A — un `SyncStatusViewModel` qui **compose** les deux ViewModels de processus déjà
 existants (`UploadViewModel` pour le ledger et le moteur, `OfflineDownloadViewModel` pour l'index
-hors-ligne), sans état propre, plus une vue stateless poussée depuis la section Management de `ProfileView`.
+hors-ligne), sans état propre, plus une vue stateless présentée en feuille depuis la racine authentifiée,
+ouverte par un bouton de barre à côté de l'avatar de profil.
 
 **Étapes** : (1) NEW `SyncStatusViewModel.swift` ; (2) NEW `SyncStatusView.swift` ; (3)
 EDIT `DependencyContainer.swift` (`makeSyncStatusViewModel(upload:offline:)`) ; (4) EDIT `RootView.swift`
-(`@State syncStatus` + passage à `ProfileView`) ; (5) EDIT `ProfileView.swift` (ligne `syncStatusRow` dans
-Management) ; (6) NEW `Tests/SyncStatusViewModelTests.swift` (8 cas) ; (7) `xcodegen generate` + suite.
+(`@State syncStatus` + clé d'environnement `openSyncStatus` + feuille `NavigationStack { SyncStatusView(vm:) }`) ; (5) EDIT les
+cinq barres (les quatre onglets + l'overlay Photos) pour y poser `SyncStatusButton` ; (6) NEW
+`Tests/SyncStatusViewModelTests.swift` (8 cas) ; (7) `xcodegen generate` + suite.
 
-**Incertitudes** : libellé et icône exacts de la ligne du hub ; comportement de `refresh()` pendant un run
+> **Révision du 2026-09-16** — le point d'entrée a quitté le hub « Me ». La ligne `syncStatusRow` de la
+> section Management a été retirée : le hub porte déjà Backup, et un relevé du ledger deux lignes sous
+> l'écran qui l'alimente se lisait comme la même fonctionnalité énoncée deux fois. L'écran s'ouvre
+> désormais depuis `SyncStatusButton`, un bouton de barre à gauche de l'avatar de profil dans les quatre
+> onglets à barre de navigation et dans l'overlay de l'onglet Photos. Conséquences : l'écran est présenté
+> en feuille par `RootView` (il porte donc un bouton « Done », `syncStatusDone`), et l'anneau de
+> progression du run, qui entourait l'avatar, entoure maintenant le bouton de synchronisation
+> (`TimelineView.backupProgressRing`) — le bouton de profil ne porte plus aucun état de synchronisation.
+> AC-5033 et AC-5034 sont réécrites ci-dessous ; les autres restent valides.
+
+**Incertitudes** : libellé et icône exacts du bouton de barre (voir la révision : son `accessibilityLabel`
+reste « Sync Status ») ; comportement de `refresh()` pendant un run
 (voir `.omp/sync-status/sync-status.specs.md` § Incertitudes) ; profondeur du lien vers les échecs tant que
 `upload-detail` (AC-5040–5049) n'existe pas.
 
@@ -51,18 +64,20 @@ Post-state attendu: PASS
 
 ```
 ### AC-5033 [type: new]
-Assertion: RootView possède l'instance (un seul ViewModel pour toute la session, comme UploadViewModel/OfflineDownloadViewModel) et la passe à ProfileView.
-Check post-impl: sh -c 'f=Sources/RootView.swift; grep -qE "syncStatus: SyncStatusViewModel" "$f" && grep -qE "makeSyncStatusViewModel" "$f" && grep -qE "syncStatus: syncStatus" "$f" && echo PASS || echo FAIL'
+Assertion: RootView possède l'instance (un seul ViewModel pour toute la session, comme UploadViewModel/OfflineDownloadViewModel) et l'injecte dans la feuille qui présente SyncStatusView.
+Check post-impl: sh -c 'f=Sources/RootView.swift; grep -qE "syncStatus: SyncStatusViewModel" "$f" && grep -qE "makeSyncStatusViewModel" "$f" && grep -qE "NavigationStack \{ SyncStatusView\(vm: syncStatus\) \}" "$f" && echo PASS || echo FAIL'
 Pre-state attendu: FAIL
 Post-state attendu: PASS
+Note: l'assertion visait « la passe à ProfileView » avant la révision du 2026-09-16 ; le hub ne la reçoit plus, la feuille si.
 ```
 
 ```
 ### AC-5034 [type: new]
-Assertion: la ligne « Sync Status » existe dans la section Management de ProfileView, avec son identifiant, et pousse SyncStatusView sans NavigationStack propre.
-Check post-impl: sh -c 'f=Sources/Features/Profile/ProfileView.swift; grep -qE "SyncStatusView\(vm:" "$f" && grep -qE "syncStatusRow" "$f" && grep -qE "var syncStatus: SyncStatusViewModel" "$f" && echo PASS || echo FAIL'
+Assertion: l'écran s'ouvre depuis un bouton de barre à côté de l'avatar de profil — `SyncStatusButton` est déclaré dans RootView, posé dans les cinq surfaces qui portent l'avatar (quatre barres d'onglet + l'overlay Photos), la racine le câble à une feuille, et aucune ligne `Sync Status` ne subsiste dans le hub « Me ».
+Check post-impl: sh -c 'g=Sources/RootView.swift; p=Sources/Features/Profile/ProfileView.swift; test "$(grep -rl "SyncStatusButton { openSyncStatus() }" Sources/Features | wc -l | tr -d " ")" -eq 5 && grep -qE "struct SyncStatusButton: View" "$g" && grep -qE "accessibilityIdentifier\(\"syncStatusButton\"\)" "$g" && grep -qE "openSyncStatus" "$g" && grep -qE "showSyncStatus" "$g" && ! grep -qE "syncStatusRow|SyncStatusView|SyncStatusViewModel" "$p" && echo PASS || echo FAIL'
 Pre-state attendu: FAIL
 Post-state attendu: PASS
+Note: le check vise les CINQ surfaces (Albums, Memories, SharedLinks, Search, Timeline) : un bouton posé sur une seule barre laisserait quatre onglets sans point d'entrée. Le `!` sur ProfileView est la moitié load-bearing de la carte — c'est le retrait de la ligne du hub qui répond à la demande.
 ```
 
 ```

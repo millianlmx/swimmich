@@ -3,8 +3,9 @@ import XCTest
 /// End-to-end scenario for the "Sync Status" screen (gap G4) — the one screen
 /// that reports what the backup run actually did.
 ///
-/// It drives the real app: onboarding → SSO → the "Me" hub → "Sync Status"
-/// (empty, nothing recorded yet) → a real backup run against this stub, seeded
+/// It drives the real app: onboarding → SSO → the sync-status button in the
+/// bar → "Sync Status" (empty, nothing recorded yet) → a real backup run
+/// against this stub, seeded
 /// with two photos → the counters → "Check server" → a fresh open of the same
 /// screen. Every figure on that screen is a projection of the ledger, of the
 /// run and of the offline index: the scenario therefore asserts on the WIRE what
@@ -26,6 +27,16 @@ import XCTest
 /// neighbour (leftover media would add candidates, a leftover ledger would fill
 /// the counters before the run).
 ///
+/// The seeded photos are recognised on the wire by the ORIGINAL file name the
+/// multipart carries (`filename=photo-a.png`), not by the DCIM name Photos
+/// gives them and not by their creation date: `simctl addmedia` dates an
+/// imported asset from the file's **birth** time (`stat -f %SB`) and a plain
+/// `touch` does not move it, so a date-based check silently expires overnight —
+/// measured on 2026-09-16, when the run uploaded both seeded files and a
+/// "created today" assertion failed on `createdAt=2026-09-15`. Anything that
+/// only needs the library to be non-empty works; the files just have to be real
+/// images.
+///
 /// The stub inherits `immich_stub_base` (OAuth handshake, server config, user,
 /// ordinary timeline, real PNG thumbnails) and adds the two routes a run needs;
 /// see its docstring. It remembers the checksums it was given, so the same
@@ -41,8 +52,9 @@ final class SyncStatusUITests: XCTestCase {
     private var app: XCUIApplication!
 
     /// The files `uitest.sh --media` seeds into the slot's photo library. Photos
-    /// imports them under its own DCIM name, so they are recognised on the wire
-    /// by their creation date (the day of the run), never by a file name.
+    /// imports them under its own DCIM name, but the app uploads the resource's
+    /// ORIGINAL name in the multipart's `filename` field, so the wire keeps the
+    /// identity the launcher gave them.
     private let seededFiles = ["photo-a.png", "photo-b.png"]
 
     override func setUpWithError() throws {
@@ -224,19 +236,6 @@ final class SyncStatusUITests: XCTestCase {
     /// One timeline tile, by the identity the grid gives it.
     private func tile(_ assetId: String) -> XCUIElement {
         app.descendants(matching: .any).matching(identifier: "assetTile_\(assetId)").firstMatch
-    }
-
-    /// A row of the "Me" hub, by IDENTIFIER (its label is localized: "Sync
-    /// Status" / "Statut de synchronisation"). A `Form` only publishes what it
-    /// rendered, so the row is scrolled into view first, letting each swipe
-    /// settle.
-    private func hubRow(_ identifier: String) -> XCUIElement {
-        let row = app.buttons.matching(identifier: identifier).firstMatch
-        for _ in 0..<6 where !row.exists {
-            app.swipeUp()
-            sleep(1)
-        }
-        return row
     }
 
     // MARK: - Screen helpers
@@ -463,22 +462,19 @@ final class SyncStatusUITests: XCTestCase {
                       + "\(app.staticTexts.allElementsBoundByIndex.map(\.label))")
         shot("s04-timeline")
 
-        // MARK: The "Me" hub → Sync Status, BEFORE any run
+        // MARK: The bar's sync button → Sync Status, BEFORE any run
 
-        let hub = app.buttons.matching(identifier: "profileAvatar").firstMatch
-        XCTAssertTrue(hub.waitForExistence(timeout: 15), "Profile avatar missing")
-        hub.tap()
-        sleep(4) // the sheet animates in; the Form is not hittable before it does
-
-        let syncRow = hubRow("syncStatusRow")
-        if !syncRow.waitForExistence(timeout: 10) {
-            shot("s05b-me-hub-without-sync-row")
-            XCTFail("Sync Status row missing in the Me hub:\n\(app.debugDescription)")
-        }
-        shot("s05-me-hub")
+        // The entry point is a sibling of the avatar in the bar, not a row of
+        // the Me hub: that hub already carries Backup, and a read-out of the
+        // ledger sitting under the screen that feeds it read as the same
+        // feature stated twice.
+        let syncButton = app.buttons.matching(identifier: "syncStatusButton").firstMatch
+        XCTAssertTrue(syncButton.waitForExistence(timeout: 15), "Sync Status button missing from the bar")
+        shot("s04b-sync-button")
 
         let beforeOpen = stubRequests().count
-        syncRow.tap()
+        syncButton.tap()
+        sleep(4) // the sheet animates in; the screen is not hittable before it does
 
         // Nothing has ever been recorded: the screen says so instead of showing
         // a grid of zeros that would read as a finished, empty library.
@@ -520,21 +516,20 @@ final class SyncStatusUITests: XCTestCase {
         let uploads = waitForUploads(from: beforeRun, count: checked.count)
         XCTAssertEqual(uploads.count, checked.count,
                        "every accepted asset must be uploaded — got:\n\(describe(checks + uploads))\nscreen reads:\n\(screenDump())")
-        // The seeded photos are the only assets of the slot's library created
-        // today: Photos renames an imported file to its DCIM name (measured:
-        // `photo-a.png` arrives as `IMG_0007.PNG`), so a file NAME cannot
-        // identify them — their creation date can, and the run publishes it.
-        let utcDay: String = {
-            let format = DateFormatter()
-            format.calendar = Calendar(identifier: .gregorian)
-            format.locale = Locale(identifier: "en_US_POSIX")
-            format.timeZone = TimeZone(identifier: "UTC")
-            format.dateFormat = "yyyy-MM-dd"
-            return format.string(from: Date())
-        }()
-        let seeded = uploads.filter { ($0.fileCreatedAt ?? "").hasPrefix(utcDay) }
-        XCTAssertGreaterThanOrEqual(seeded.count, seededFiles.count,
-                      "the photos seeded for this run (the only ones created today, \(utcDay)) must be among the uploads — got:\n\(describe(uploads))")
+        // The seeded photos are the ones the launcher handed to `simctl
+        // addmedia`, and the run names them on the wire: the multipart's
+        // `filename` field carries the ORIGINAL name (`photo-a.png`) even though
+        // Photos itself imports them under a DCIM name (`IMG_0007.PNG`) — the
+        // run publishes the identity the launcher gave them.
+        //
+        // By name, not by date: a date-based check ("the only photos created
+        // today") fails on media born the previous day, and it failed exactly
+        // that way on 2026-09-16 while both files had been uploaded — `simctl
+        // addmedia` takes the creation date from the file's birth time, not its
+        // mtime, so `touch` cannot even repair it.
+        let seeded = uploads.filter { seededFiles.contains($0.fileName ?? "") }
+        XCTAssertEqual(Set(seeded.compactMap(\.fileName)), Set(seededFiles),
+                      "the photos the launcher seeded must be among the uploads — got:\n\(describe(uploads))")
         XCTAssertEqual(Set(uploads.compactMap(\.deviceAssetId)), Set(checked),
                        "the run must upload exactly the assets it checked — got:\n\(describe(checks + uploads))")
         XCTAssertEqual(Set(uploads.compactMap(\.serverAssetId)).count, checked.count,
@@ -608,14 +603,16 @@ final class SyncStatusUITests: XCTestCase {
 
         // MARK: A fresh open — the counters survive a re-render
 
-        let back = app.navigationBars.firstMatch.buttons.firstMatch
-        XCTAssertTrue(back.waitForExistence(timeout: 10), "no way back from the Sync Status screen")
-        back.tap()
+        let done = app.buttons.matching(identifier: "syncStatusDone").firstMatch
+        XCTAssertTrue(done.waitForExistence(timeout: 10), "no way out of the Sync Status sheet")
+        done.tap()
         sleep(2)
 
-        let rowAgain = hubRow("syncStatusRow")
-        XCTAssertTrue(rowAgain.waitForExistence(timeout: 10), "Sync Status row missing in the Me hub again")
-        rowAgain.tap()
+        let openedAgain = app.buttons.matching(identifier: "syncStatusButton").firstMatch
+        XCTAssertTrue(openedAgain.waitForExistence(timeout: 10),
+                      "Sync Status button missing from the bar again")
+        openedAgain.tap()
+        sleep(4) // the sheet animates in again
         XCTAssertTrue(waitUntil(25) { self.statValue("syncStatusTrackedValue") == expected },
                       "a fresh open must show the same counters — it reads:\n\(counters())")
         XCTAssertEqual(statValue("syncStatusUploadedValue"), expected,

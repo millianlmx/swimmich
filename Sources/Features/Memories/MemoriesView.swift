@@ -14,6 +14,7 @@ struct MemoriesView: View {
     @Bindable var vm: MemoriesViewModel
     @Environment(AuthViewModel.self) private var auth
     @Environment(\.openProfile) private var openProfile
+    @Environment(\.openSyncStatus) private var openSyncStatus
 
     /// Id rather than the DTO: the moment view is presented from a *copy*, and a
     /// memory whose assets were just edited (or emptied) must not be shown stale.
@@ -90,7 +91,8 @@ struct MemoriesView: View {
                     }
                     .accessibilityIdentifier("memoriesCreateButton")
                 }
-                ToolbarItem(placement: .topBarTrailing) {
+                ToolbarItemGroup(placement: .topBarTrailing) {
+                    SyncStatusButton { openSyncStatus() }
                     ProfileAvatarButton { openProfile() }
                 }
             }

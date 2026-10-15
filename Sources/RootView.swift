@@ -184,6 +184,7 @@ private struct AuthenticatedRoot: View {
     @State private var showCreateAlbum = false
     @State private var showCreateSharedLink = false
     @State private var showProfile = false
+    @State private var showSyncStatus = false
     @State private var showWhatsNew = false
     @State private var showDownloadInfo = false
 
@@ -262,6 +263,7 @@ private struct AuthenticatedRoot: View {
         .immichBottomBar()
         .environment(upload)
         .environment(\.openProfile) { showProfile = true }
+        .environment(\.openSyncStatus) { showSyncStatus = true }
         .environment(\.openInTimeline) { assetID, day in
             pendingTimelineScrollID = assetID
             pendingTimelineScrollDay = day
@@ -373,7 +375,6 @@ private struct AuthenticatedRoot: View {
                 offline: offline,
                 recentTaken: recentTaken,
                 recentAdded: recentAdded,
-                syncStatus: syncStatus,
                 notifications: notifications,
                 language: language,
                 deviceSessions: deviceSessions,
@@ -402,7 +403,7 @@ private struct AuthenticatedRoot: View {
             // one level up (`auth`, `appSettings`, on `RootView`'s own body) do
             // arrive, which is why the hub itself always looked fine. Re-stating
             // them here is what makes the whole hub tree — Backup, Offline
-            // Storage, Folders, On this device, Free Up Space, Sync Status, the
+            // Storage, Folders, On this device, Free Up Space, the
             // rest — see the same instances the tabs use, instead of silently
             // getting nothing.
             .environment(upload)
@@ -411,6 +412,13 @@ private struct AuthenticatedRoot: View {
             .environment(offline)
             .environment(container.offlineIndex)
             .environment(container.cloudStatus)
+        }
+        // Sync Status, presented from the same stable root presenter as the Me
+        // sheet: its button rides in five navigation bars, and a presentation
+        // declared by a tab view would be torn down with that tab. The stack is
+        // the sheet's — `SyncStatusView` declares none.
+        .sheet(isPresented: $showSyncStatus) {
+            NavigationStack { SyncStatusView(vm: syncStatus) }
         }
         // What's New (gap G23): presented from the stable root presenter, like
         // the Me sheet above — never from a tab view that comes and goes.
@@ -524,6 +532,20 @@ extension EnvironmentValues {
     }
 }
 
+/// Presentation action injected by AuthenticatedRoot so the sync-status button
+/// that every tab's bar carries can raise its screen from the same stable
+/// presenter as the Me sheet (same iOS 26 constraint).
+private struct OpenSyncStatusKey: EnvironmentKey {
+    static let defaultValue: () -> Void = {}
+}
+
+extension EnvironmentValues {
+    var openSyncStatus: () -> Void {
+        get { self[OpenSyncStatusKey.self] }
+        set { self[OpenSyncStatusKey.self] = newValue }
+    }
+}
+
 /// Circular initials avatar pinned to the trailing corner of every tab's
 /// navigation bar. Tapping presents the Me section (`ProfileView`) as a sheet
 /// from AuthenticatedRoot.
@@ -536,22 +558,22 @@ struct ProfileAvatarButton: View {
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     var body: some View {
-        ZStack(alignment: .bottomTrailing) {
-            ZStack {
-                Circle().fill(Color.immichPrimary)
-                Text(UserAvatarCircle.initials(from: auth.userName ?? "?"))
-                    .font(.system(size: 13, weight: .semibold))
-                    .foregroundStyle(Color.white)
-            }
-            .frame(width: 30, height: 30)
-            .padding(7)
-
-            // The mode's only permanent marker: 10 pt, on the control that
-            // toggles it, hidden from VoiceOver (the state is carried by the
-            // avatar's own accessibility value — one announcement, not two).
+        ZStack {
+            Circle().fill(Color.immichPrimary)
+            Text(UserAvatarCircle.initials(from: auth.userName ?? "?"))
+                .font(.system(size: 18, weight: .semibold))
+                .foregroundStyle(Color.white)
+        }
+        .frame(width: 44, height: 44)
+        // The mode's only permanent marker: 12 pt, pinned to the CIRCLE's own
+        // corner rather than to a padded frame's — the avatar no longer keeps a
+        // ring of dead space, it IS the 44 pt target. Hidden from VoiceOver (the
+        // state is carried by the avatar's own accessibility value — one
+        // announcement, not two).
+        .overlay(alignment: .bottomTrailing) {
             if readOnly.isEnabled {
                 Image(systemName: "lock.fill")
-                    .font(.system(size: 10))
+                    .font(.system(size: 12))
                     .foregroundStyle(Color.immichWarning)
                     .padding(2)
                     .background(Circle().fill(Color.bgPrimary))
@@ -577,5 +599,39 @@ struct ProfileAvatarButton: View {
         // The label is translated, so the UI tests reach for the identifier
         // instead of a string that changes with the language.
         .accessibilityIdentifier("profileAvatar")
+    }
+}
+
+/// Standalone entry to the Sync Status screen, pinned immediately to the left of
+/// the profile avatar in every tab's bar. It is a sibling of the avatar, not a
+/// row of the Me hub where it was born: that hub already carries Backup, and a
+/// read-out of the ledger two rows under the screen that feeds it read as the
+/// same feature stated twice.
+///
+/// The glyph is the whole control. Inside a navigation bar iOS 26 draws the
+/// chrome itself — a manual `glassEffect` there double-glasses and clips
+/// (measured on `SearchView`) — so the Photos overlay, the one call site with no
+/// bar under it, is the only one that brings a surface of its own.
+struct SyncStatusButton: View {
+    let action: () -> Void
+
+    var body: some View {
+        Button(action: action) {
+            // Cloud backup, the app's own vocabulary for this feature: the same
+            // glyph as the Backup row (`icloud.and.arrow.up`) and the Live
+            // Activity. It used to be `arrow.triangle.2.circlepath`, chosen only
+            // to stay distinct from that row while the two sat in the same list —
+            // the button lives in the bar now, and "back up to the cloud" is
+            // what it opens.
+            Image(systemName: "icloud.and.arrow.up")
+                .font(.system(size: 17, weight: .semibold))
+                // 44 pt target, the same circle as the avatar next door: in the
+                // Photos overlay both discs are drawn, and a smaller one would
+                // read as a second-class control.
+                .frame(width: 44, height: 44)
+                .contentShape(Circle())
+        }
+        .accessibilityLabel("Sync Status")
+        .accessibilityIdentifier("syncStatusButton")
     }
 }
