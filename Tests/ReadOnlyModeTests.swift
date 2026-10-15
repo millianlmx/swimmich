@@ -315,3 +315,17 @@ final class ReadOnlyModeTests: XCTestCase {
         )
     }
 }
+
+extension ReadOnlyModeStore {
+    /// A store no device can influence.
+    ///
+    /// Unit tests run INSIDE the app host, so the app's own store reads
+    /// `UserDefaults.standard` — including the `readOnlyModeEnabled` flag a UI
+    /// scenario left behind. A suite that ran after `ReadOnlyModeUITests` then
+    /// saw every `runBackup()` refuse at `UploadViewModel.swift`'s first guard:
+    /// 20 failures in `SyncStatusViewModelTests` on 2026-09-16, with no code
+    /// change to blame. Every harness therefore passes one of these.
+    static func ephemeral() -> ReadOnlyModeStore {
+        ReadOnlyModeStore(defaults: UserDefaults(suiteName: "read-only-tests-\(UUID().uuidString)")!)
+    }
+}

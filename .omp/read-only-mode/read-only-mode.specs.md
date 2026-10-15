@@ -1,5 +1,12 @@
 # Task: read-only-mode
 
+> **Révision du 2026-09-16 — le store est un paramètre OBLIGATOIRE d'`UploadViewModel`.** Il était `readOnly: ReadOnlyModeStore? = nil`
+> avec, en repli, `ReadOnlyModeStore()`, c'est-à-dire `UserDefaults.standard` : les tests unitaires tournant DANS le processus de
+> l'app, un harness qui ne l'injectait pas lisait le drapeau `readOnlyModeEnabled` laissé sur le simulateur par un scénario UI, et
+> `runBackup()` refusait tout — 20 échecs dans `SyncStatusViewModelTests` le 2026-09-16 sans qu'une ligne de code ait changé. La
+> signature n'a plus de défaut : chaque appelant nomme le mode qu'il veut (le conteneur le store de l'app, un test
+> `ReadOnlyModeStore.ephemeral()`). Ajouter un harness qui appelle un run demande donc, au compilateur, de trancher.
+
 > **Audit 2026-09-15 — écart G17** (`.omp/backlog/ImmichSwiftUI-backlog.md` §2.17, phase P5) : le client Flutter a un mode lecture seule —
 > `mobile/lib/providers/infrastructure/readonly_mode.provider.dart` (vérifié sur `immich-app/immich@main`, 2026-09-15) définit
 > `class ReadOnlyModeNotifier extends Notifier<bool>`, alimenté par `AppSettingsService.getSetting(AppSettingsEnum.readonlyModeEnabled)`,
@@ -98,7 +105,7 @@ qui jette `APIError.readOnlyMode` sur les 22 méthodes d'écriture listées et r
 6. **Le geste sur l'avatar** — EDIT `Sources/RootView.swift` (`struct ProfileAvatarButton`) : ajouter `@Environment(ReadOnlyModeStore.self) private var readOnly`.
    Le `Button(action:)` devient le même glyphe portant `contentShape(Circle())`, `.onTapGesture(perform: action)`, `.onLongPressGesture(minimumDuration: 0.5) { readOnly.toggle() }` et `.accessibilityAddTraits(.isButton)` —
    la paire tap/long-press de SwiftUI fait échouer le tap quand l'appui dépasse sa durée, donc l'appui long n'ouvre pas la feuille « Me » ; un `Button` avec `.simultaneousGesture(LongPressGesture…)` déclencherait les deux.
-   `.accessibilityIdentifier("profileAvatar")` et `.accessibilityLabel("Profile")` sont conservés (le test UI s'y accroche), et un badge `Image(systemName: "lock.fill")` de 10 pt est superposé en bas à droite du cercle **uniquement** quand `readOnly.isEnabled` : l'appui long a alors un effet visible immédiatement, sur le contrôle lui-même.
+   `.accessibilityIdentifier("profileAvatar")` et `.accessibilityLabel("Profile")` sont conservés (le test UI s'y accroche), et un badge `Image(systemName: "lock.fill")` de 12 pt est superposé sur le coin bas-droit du cercle **uniquement** quand `readOnly.isEnabled` (12 pt depuis le 2026-09-16, quand l'avatar est passé d'un disque de 30 pt à un disque de 44 pt : le badge est ancré sur le cercle lui-même, plus sur une couronne de padding) : l'appui long a alors un effet visible immédiatement, sur le contrôle lui-même.
 7. **Le réglage** — EDIT `Sources/Features/Profile/ProfileView.swift` : ajouter `@State var readOnly: ReadOnlyModeStore` aux propriétés stockées (après `language`, `:19`), puis dans la section Security qui porte déjà `Toggle("Require Face ID", isOn: $appLockEnabled)` (`:132`) une ligne
    `Toggle("Read-only Mode", isOn: Binding(get: { readOnly.isEnabled }, set: { readOnly.setEnabled($0) }))` portant `.accessibilityIdentifier("readOnlyModeToggle")`, avec `Text("Prevents deleting, editing and uploading. Browsing stays available.")` en pied de section.
    Le placement dans Security est délibéré : `ProfileView` n'a pas de section « Advanced » (contrairement à l'upstream, dont le hub de réglages est un écran séparé) et ce réglage est une préférence d'appareil au même titre que Face ID juste au-dessus.

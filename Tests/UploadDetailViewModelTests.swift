@@ -57,7 +57,8 @@ final class UploadDetailViewModelTests: XCTestCase {
         let upload = UploadViewModel(
             client: client, photos: MockPhotoLibraryService(), engine: engine,
             settings: settings, scheduler: MockBackupScheduler(),
-            activityService: MockBackupLiveActivityService()
+            activityService: MockBackupLiveActivityService(),
+            readOnly: .ephemeral()
         )
         return Harness(
             client: client, source: source, environment: environment,

@@ -1111,7 +1111,7 @@ final class BackupSettingsStoreTests: XCTestCase {
         let settings = BackupSettingsStore(suiteName: "backup-vm-test-\(UUID().uuidString)")
         settings.isEnabled = true
         let activity = MockBackupLiveActivityService()
-        let vm = UploadViewModel(client: mockClient, photos: photos, engine: engine, settings: settings, scheduler: scheduler, activityService: activity)
+        let vm = UploadViewModel(client: mockClient, photos: photos, engine: engine, settings: settings, scheduler: scheduler, activityService: activity, readOnly: .ephemeral())
 
         await vm.runBackup()
 

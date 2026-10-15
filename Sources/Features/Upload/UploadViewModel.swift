@@ -259,11 +259,13 @@ final class UploadViewModel {
         notifications: any NotificationServicing = NotificationService(),
         cloudStatus: CloudBackupStatusIndex? = nil,
         albumSync: (any AlbumSyncServicing)? = nil,
-        // Defaulted rather than required: a caller that does not know the mode
-        // (a test, a future preview) still gets a real store. `nil` because a
-        // default argument is evaluated in the caller's context, which is not
-        // the main actor — the store is built here instead.
-        readOnly: ReadOnlyModeStore? = nil,
+        // REQUIRED on purpose. The store is the app's persisted
+        // `readOnlyModeEnabled` flag, and this initializer is reached from unit
+        // tests that run inside the app host: a default here would have them
+        // read whatever the last UI scenario left on the device, and `runBackup`
+        // refuses the whole run when the mode is on. Every caller names the mode
+        // it wants — the container the app's store, a test `.ephemeral()`.
+        readOnly: ReadOnlyModeStore,
         userID: (@MainActor () -> String?)? = nil
     ) {
         self.client = client
@@ -280,7 +282,7 @@ final class UploadViewModel {
         self.activityService = activityService
         self.notifications = notifications
         self.cloudStatus = cloudStatus
-        self.readOnly = readOnly ?? ReadOnlyModeStore()
+        self.readOnly = readOnly
     }
 
     /// Pushes the "Show backup status on thumbnails" preference into the badge

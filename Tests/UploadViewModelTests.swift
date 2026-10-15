@@ -78,7 +78,8 @@ private func makeVM(
     let engine = BackupEngine(client: client, source: source, environment: MockBackupEnvironment())
     let vm = UploadViewModel(
         client: client, photos: photos, engine: engine, settings: settings,
-        scheduler: MockBackupScheduler(), activityService: MockBackupLiveActivityService()
+        scheduler: MockBackupScheduler(), activityService: MockBackupLiveActivityService(),
+        readOnly: .ephemeral()
     )
     return (vm, engine)
 }
@@ -440,7 +441,8 @@ final class BackupAutoChainTests: XCTestCase {
         let engine = BackupEngine(client: client, source: source, environment: MockBackupEnvironment())
         let vm = UploadViewModel(
             client: client, photos: MockPhotoLibraryService(), engine: engine, settings: settings,
-            scheduler: MockBackupScheduler(), activityService: MockBackupLiveActivityService()
+            scheduler: MockBackupScheduler(), activityService: MockBackupLiveActivityService(),
+            readOnly: .ephemeral()
         )
 
         await vm.kickOffAutoBackupIfConfigured()
@@ -461,7 +463,8 @@ final class BackupAutoChainTests: XCTestCase {
         let engine = BackupEngine(client: client, source: source, environment: MockBackupEnvironment())
         let vm = UploadViewModel(
             client: client, photos: MockPhotoLibraryService(), engine: engine, settings: settings,
-            scheduler: MockBackupScheduler(), activityService: MockBackupLiveActivityService()
+            scheduler: MockBackupScheduler(), activityService: MockBackupLiveActivityService(),
+            readOnly: .ephemeral()
         )
 
         await vm.kickOffAutoBackupIfConfigured()
@@ -486,7 +489,8 @@ final class BackupAutoChainTests: XCTestCase {
         let engine = BackupEngine(client: client, source: source, environment: MockBackupEnvironment())
         let vm = UploadViewModel(
             client: client, photos: MockPhotoLibraryService(), engine: engine, settings: settings,
-            scheduler: scheduler, activityService: MockBackupLiveActivityService()
+            scheduler: scheduler, activityService: MockBackupLiveActivityService(),
+            readOnly: .ephemeral()
         )
 
         await vm.runBackup(manual: true)
@@ -510,7 +514,8 @@ final class BackupAutoChainTests: XCTestCase {
         let engine = BackupEngine(client: client, source: source, environment: MockBackupEnvironment())
         let vm = UploadViewModel(
             client: client, photos: MockPhotoLibraryService(), engine: engine, settings: settings,
-            scheduler: scheduler, activityService: MockBackupLiveActivityService()
+            scheduler: scheduler, activityService: MockBackupLiveActivityService(),
+            readOnly: .ephemeral()
         )
 
         await vm.runBackup(manual: true)
