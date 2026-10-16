@@ -12,7 +12,7 @@ settings:
   base:
     SWIFT_VERSION: "5.9"
     IPHONEOS_DEPLOYMENT_TARGET: "26.0"
-    MARKETING_VERSION: "0.1.0"
+    MARKETING_VERSION: "1.0.0"
     CURRENT_PROJECT_VERSION: "1"
     ENABLE_USER_SCRIPT_SANDBOXING: NO
     SWIFT_STRICT_CONCURRENCY: minimal
@@ -47,6 +47,8 @@ targets:
         CFBundleDisplayName: Swimmich
         CFBundleShortVersionString: "$(MARKETING_VERSION)"
         CFBundleVersion: "$(CURRENT_PROJECT_VERSION)"
+        # Export compliance: the only encryption is the system TLS stack (URLSession), which is exempt.
+        ITSAppUsesNonExemptEncryption: false
         UILaunchScreen:
           UIColorName: AccentColor
         UISupportedInterfaceOrientations:
@@ -72,6 +74,7 @@ targets:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: fr.millianlmx.immich-ios
         DEVELOPMENT_TEAM: 2MJF39L8VY
+        CODE_SIGN_STYLE: Automatic
         INFOPLIST_FILE: Resources/Info.plist
         # Keychain group shared with the widget and the share extension: the app
         # writes the widget session, both extensions read it. All three
@@ -90,6 +93,13 @@ targets:
         CODE_SIGN_ENTITLEMENTS: Resources/ImmichSwiftUI.entitlements
         ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
         ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME: AccentColor
+      configs:
+        Release:
+          # xcodegen's iOS application preset writes CODE_SIGN_IDENTITY = "iPhone
+          # Developer" in every configuration and a preset key cannot be removed from
+          # here. Release overrides it with the iphoneos SDK default, which is what
+          # the committed project resolves to once that line is deleted there.
+          CODE_SIGN_IDENTITY: Apple Development
     dependencies:
       - target: ImmichSharedKit
         embed: true
@@ -128,9 +138,10 @@ targets:
         CFBundleDisplayName: Swimmich
         # Same versions as the containing app. xcodegen hardcodes 1.0/1 here
         # otherwise, and an extension whose version does not match its app is a
-        # launch-and-store problem waiting to happen (the app ships 0.1.0).
+        # launch-and-store problem waiting to happen.
         CFBundleShortVersionString: "$(MARKETING_VERSION)"
         CFBundleVersion: "$(CURRENT_PROJECT_VERSION)"
+        ITSAppUsesNonExemptEncryption: false
         # Same policy as the app, and for the same reason: a self-hosted Immich
         # is usually plain HTTP on the LAN, which App Transport Security blocks
         # in the extension process. Loopback is exempt from ATS, so a simulator
@@ -143,6 +154,7 @@ targets:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: fr.millianlmx.immich-ios.widgets
         DEVELOPMENT_TEAM: 2MJF39L8VY
+        CODE_SIGN_STYLE: Automatic
         # Read side of the same sharing; see the app target's comment.
         CODE_SIGN_ENTITLEMENTS: Resources/ImmichWidgets.entitlements
     dependencies:
@@ -178,6 +190,7 @@ targets:
         # launch-and-store rejection waiting to happen.
         CFBundleShortVersionString: "$(MARKETING_VERSION)"
         CFBundleVersion: "$(CURRENT_PROJECT_VERSION)"
+        ITSAppUsesNonExemptEncryption: false
         # Same policy as the app and the widget: a self-hosted Immich is usually
         # plain HTTP on the LAN, which App Transport Security blocks in the
         # extension process. Loopback is exempt from ATS, so a simulator run
@@ -199,6 +212,7 @@ targets:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: fr.millianlmx.immich-ios.share-extension
         DEVELOPMENT_TEAM: 2MJF39L8VY
+        CODE_SIGN_STYLE: Automatic
         # Write side is the app, read side is this extension; same derived
         # keychain group, so no access group is hardcoded anywhere.
         CODE_SIGN_ENTITLEMENTS: Resources/ImmichShareExtension.entitlements
