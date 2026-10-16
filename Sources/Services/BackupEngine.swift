@@ -218,6 +218,8 @@ final class BackupEngine {
     private func notifyProgress() { onProgressUpdate?(processedCount, total) }
 
     private var isCancelled = false
+    /// The pipeline Task of the run in flight (nil when idle).
+    private var activeRun: Task<Bool, Never>?
     /// Chunk size for every batched server call a run makes: the dedup check,
     /// the ledger reconciliation, and the album mirror's batch size (which the
     /// service receives from here, never a copy of its own).
@@ -287,6 +289,20 @@ final class BackupEngine {
         isCancelling = true
     }
 
+    /// Stops the run in flight, if any, and returns once it has fully wound
+    /// down: network calls are cancelled, so nothing reaches the ledger after
+    /// this returns. Unlike `cancel()` it re-arms the engine afterwards — the
+    /// next `run` is accepted (a signed-out user may sign in and back up again).
+    /// No run in flight → no-op.
+    func stopAndWait() async {
+        guard let work = activeRun else { return }
+        cancel()
+        work.cancel()
+        _ = await work.value
+        isCancelled = false
+        isCancelling = false
+    }
+
     /// Surfaces a pre-run error to the UI (e.g. missing Photos permission)
     /// without entering the pipeline.
     func reportError(_ message: String) {
@@ -344,6 +360,22 @@ final class BackupEngine {
         reset()
         lastError = nil
         phase = .checking
+        // The pipeline runs in a stored Task so `stopAndWait()` can cancel the
+        // in-flight network calls and join it. The caller's own cancellation is
+        // forwarded to that Task, exactly as when the body ran inline.
+        let work = Task { await self.runPipeline(settings: settings, manual: manual, only: assetIDs) }
+        activeRun = work
+        let entered = await withTaskCancellationHandler {
+            await work.value
+        } onCancel: {
+            work.cancel()
+        }
+        activeRun = nil
+        return entered
+    }
+
+    /// Body of `run` after the guards and the synchronous phase transition.
+    private func runPipeline(settings: BackupSettings, manual: Bool, only assetIDs: [String]) async -> Bool {
         let restricted = !assetIDs.isEmpty
         if !restricted {
             // Confront the ledger with the server BEFORE scanning: an asset

@@ -215,10 +215,21 @@ final class DependencyContainer {
         AuthViewModel(
             client: libraryClient,
             keychain: keychain,
+            // The very store the API client's TLS delegate reads, so the logout
+            // purge and the next handshake agree on what is trusted.
+            trustStore: trustedServers,
             realtime: realtime,
             // Widgets read the session from the shared keychain group, not from
             // this process (issue #19).
-            widgetSession: WidgetSessionStore()
+            widgetSession: WidgetSessionStore(),
+            localData: LocalDataPurger(
+                backupEngine: upload.engine,
+                offlineStore: offlineStore,
+                offlineIndex: offlineIndex,
+                imageCache: .shared,
+                imageDiskCache: AuthenticatedAsyncImage.imageDiskCache,
+                apiClient: client
+            )
         )
     }
 

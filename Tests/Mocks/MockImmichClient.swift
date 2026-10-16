@@ -1129,6 +1129,10 @@ final class MockImmichClient: ImmichClient, @unchecked Sendable {
         if let e = globalError ?? deleteProfileImageError { throw e }
     }
 
+    /// Optional suspension point right after the upload is recorded — lets a test
+    /// hold an upload in flight (e.g. a sleep that only a cancellation ends).
+    var uploadGate: (() async throws -> Void)?
+
     func uploadAsset(
         fileURL: URL, fileCreatedAt: String, fileModifiedAt: String, filename: String,
         duration: Int?, isFavorite: Bool, visibility: AssetVisibility, livePhotoVideoId: String?,
@@ -1148,6 +1152,7 @@ final class MockImmichClient: ImmichClient, @unchecked Sendable {
         lastUploadDeviceId = deviceId
         uploads.append((filename: filename, visibility: visibility,
                         livePhotoVideoId: livePhotoVideoId, deviceAssetId: deviceAssetId))
+        if let gate = uploadGate { try await gate() }
         if let e = globalError ?? uploadError { throw e }
         if let e = uploadErrorsByFilename[filename] { throw e }
         if let r = uploadResponsesByFilename[filename] { return r }

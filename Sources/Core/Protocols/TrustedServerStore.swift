@@ -7,4 +7,6 @@ protocol TrustedServerStore: AnyObject {
     func contains(_ host: String) -> Bool
     /// Persists `host` as trusted.
     func add(_ host: String)
+    /// Forgets every trusted host (voluntary logout wipes local data).
+    func removeAll()
 }

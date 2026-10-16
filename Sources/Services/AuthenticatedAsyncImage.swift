@@ -137,6 +137,9 @@ struct AuthenticatedAsyncImage: View {
             return
         }
 
+        // Read before the network await: a purge that lands while the request is
+        // in flight bumps the epoch and `store` then drops this stale image.
+        let epoch = await ImageCache.shared.epoch
         do {
             var request = URLRequest(url: url)
             if let token {
@@ -153,24 +156,27 @@ struct AuthenticatedAsyncImage: View {
                 return
             }
             // Populate both tiers for subsequent hits.
-            await ImageCache.shared.store(img, for: url)
+            await ImageCache.shared.store(img, for: url, epoch: epoch)
             self.image = img
         } catch {
             if self.image == nil { didFail = true }
         }
     }
 
+    /// Disk tier of the image pipeline. Exposed so the voluntary-logout purge can
+    /// empty it (`LocalDataPurger`).
+    static let imageDiskCache = URLCache(
+        memoryCapacity: 50 * 1024 * 1024,   // 50MB
+        diskCapacity: 200 * 1024 * 1024,    // 200MB
+        diskPath: "immich-image-cache"
+    )
+
     /// Shared image session with a generous URLCache so the OS dedups HTTP
     /// traffic across scroll churn. Bearer header is per-request, and the
     /// delegate re-applies Authorization on HTTP redirects.
     private static let imageSession: URLSession = {
-        let cache = URLCache(
-            memoryCapacity: 50 * 1024 * 1024,   // 50MB
-            diskCapacity: 200 * 1024 * 1024,    // 200MB
-            diskPath: "immich-image-cache"
-        )
         let config = URLSessionConfiguration.default
-        config.urlCache = cache
+        config.urlCache = imageDiskCache
         config.requestCachePolicy = .returnCacheDataElseLoad
         config.timeoutIntervalForRequest = 20
         return URLSession(configuration: config, delegate: AuthenticatedImageRedirectDelegate(), delegateQueue: nil)

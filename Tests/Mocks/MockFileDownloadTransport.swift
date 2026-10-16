@@ -17,6 +17,13 @@ final class MockFileDownloadTransport: FileDownloadTransport, @unchecked Sendabl
     var error: Error?
     /// Progress pairs replayed before the download returns.
     var progressSteps: [(Int64, Int64)] = []
+    /// Awaited after the call is counted and before any file is written, so a
+    /// test can hold a transfer in flight (and cancel or release it).
+    var gate: (@Sendable () async throws -> Void)? {
+        get { lock.lock(); defer { lock.unlock() }; return _gate }
+        set { lock.lock(); _gate = newValue; lock.unlock() }
+    }
+    private var _gate: (@Sendable () async throws -> Void)?
 
     private let lock = NSLock()
     private(set) var downloadCount = 0
@@ -35,6 +42,8 @@ final class MockFileDownloadTransport: FileDownloadTransport, @unchecked Sendabl
         let steps = progressSteps
         let error = self.error
         lock.unlock()
+
+        if let gate = self.gate { try await gate() }
 
         if let error { throw error }
 

@@ -27,7 +27,14 @@ actor ImageCache {
         cache.object(forKey: url.absoluteString as NSString)
     }
 
-    func store(_ image: UIImage, for url: URL) {
+    /// Monotonic purge counter. Loaders read it before their network await and
+    /// pass it to `store`, so a load that straddles `removeAll()` can't
+    /// repopulate the cache with pre-purge data.
+    private(set) var epoch = 0
+
+    /// Stores `image` only if no `removeAll()` happened since `epoch` was read.
+    func store(_ image: UIImage, for url: URL, epoch: Int) {
+        guard epoch == self.epoch else { return }
         // Cost ≈ decoded bytes; falls back to 1 if size unknown.
         let cost = Int(image.size.width * image.size.height * image.scale * image.scale)
         cache.setObject(image, forKey: url.absoluteString as NSString, cost: cost)
@@ -41,6 +48,7 @@ actor ImageCache {
 
     /// Clears the entire cache.
     func removeAll() {
+        epoch += 1
         cache.removeAllObjects()
     }
 }

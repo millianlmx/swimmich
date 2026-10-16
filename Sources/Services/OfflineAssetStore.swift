@@ -98,6 +98,10 @@ actor OfflineAssetStore {
 
     private var index: [String: CachedAssetInfo] = [:]
     private var didLoadIndex = false
+    /// Bumped by `clearAll()`. A download that captured an older value must not
+    /// write anything: its payload belongs to a cache that no longer exists.
+    private var generation = 0
+    private var inFlight: [UUID: Task<DownloadedFile, Error>] = [:]
 
     /// The folder every store writes to unless a test injects its own.
     static func defaultFolderURL(fileManager: FileManager = .default) -> URL {
@@ -170,7 +174,32 @@ actor OfflineAssetStore {
             request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
         }
 
-        let downloaded = try await transport.download(request, onProgress: onProgress)
+        // The transport runs in a registered Task so `clearAll()` can cancel it.
+        // The actor is re-entrant across this await: `generation` tells us after
+        // the fact whether a purge happened meanwhile, even when the transport
+        // ignores the cancellation and finishes anyway.
+        let startGeneration = generation
+        let transport = self.transport
+        let transferID = UUID()
+        let transfer = Task { try await transport.download(request, onProgress: onProgress) }
+        inFlight[transferID] = transfer
+        let downloaded: DownloadedFile
+        do {
+            downloaded = try await withTaskCancellationHandler {
+                try await transfer.value
+            } onCancel: {
+                transfer.cancel()
+            }
+        } catch {
+            inFlight[transferID] = nil
+            if startGeneration != generation { throw CancellationError() }
+            throw error
+        }
+        inFlight[transferID] = nil
+        guard startGeneration == generation else {
+            try? fileManager.removeItem(at: downloaded.url)
+            throw CancellationError()
+        }
         if let status = downloaded.statusCode, !(200..<300).contains(status) {
             try? fileManager.removeItem(at: downloaded.url)
             throw OfflineStoreError.badStatus(status)
@@ -259,7 +288,11 @@ actor OfflineAssetStore {
         saveIndex()
     }
 
+    /// Wipes the cache and aborts every transfer still in flight: each pending
+    /// `download` throws a cancellation and writes nothing (see `generation`).
     func clearAll() {
+        generation += 1
+        for task in inFlight.values { task.cancel() }
         try? loadIndexIfNeeded()
         index.removeAll()
         for url in (try? fileManager.contentsOfDirectory(

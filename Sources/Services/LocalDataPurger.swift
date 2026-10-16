@@ -1,0 +1,53 @@
+import Foundation
+
+/// Wipes what the app keeps on disk and in memory *about the account*, when the
+/// user signs out on purpose: backup ledger, offline copies, thumbnail caches
+/// and the network connections of the API client.
+///
+/// Transfers are stopped first — a backup or an offline download still running
+/// would otherwise write into the stores right after they were emptied. The
+/// order is the contract; see `purgeAll()`.
+///
+/// Credentials, the registered-accounts list and the trusted-servers list are
+/// not owned here: `AuthViewModel.logout()` clears them itself.
+@MainActor
+final class LocalDataPurger {
+    private let backupEngine: BackupEngine
+    private let offlineStore: OfflineAssetStore
+    private let offlineIndex: OfflineAssetIndex
+    private let imageCache: ImageCache
+    private let imageDiskCache: URLCache
+    private let apiClient: ImmichAPIClient
+
+    init(
+        backupEngine: BackupEngine,
+        offlineStore: OfflineAssetStore,
+        offlineIndex: OfflineAssetIndex,
+        imageCache: ImageCache,
+        imageDiskCache: URLCache,
+        apiClient: ImmichAPIClient
+    ) {
+        self.backupEngine = backupEngine
+        self.offlineStore = offlineStore
+        self.offlineIndex = offlineIndex
+        self.imageCache = imageCache
+        self.imageDiskCache = imageDiskCache
+        self.apiClient = apiClient
+    }
+
+    func purgeAll() async {
+        // 1. Stop the backup run and wait for it: no `markBackedUp` / `save()`
+        //    may reach the ledger after step 4.
+        await backupEngine.stopAndWait()
+        // 2. Offline copies: cancels in-flight downloads, then wipes disk + index.
+        await offlineStore.clearAll()
+        offlineIndex.removeAll()
+        // 3. Thumbnails: memory tier (its epoch drops loads in flight) + disk tier.
+        await imageCache.removeAll()
+        imageDiskCache.removeAllCachedResponses()
+        // 4. Backup ledger (also refreshes the cloud-status badges).
+        backupEngine.forgetAllBackedUp()
+        // 5. Fresh sockets, so the next connection faces a new TLS challenge.
+        await apiClient.resetConnections()
+    }
+}

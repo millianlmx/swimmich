@@ -60,6 +60,8 @@ struct ProfileView: View {
     @State var appLog: AppLogViewModel
     @State var mediaStats: MediaStatsViewModel
     @State var downloadInfo: DownloadInfoViewModel
+    /// Drives the logout confirmation dialog (SP-4).
+    @State private var showLogoutConfirm = false
 
     var body: some View {
         NavigationStack {
@@ -371,14 +373,30 @@ struct ProfileView: View {
 
                 Section {
                     Button(role: .destructive) {
-                        Task { await auth.logout() }
+                        showLogoutConfirm = true
                     } label: {
                         Label("Log Out", systemImage: "rectangle.portrait.and.arrow.right")
                     }
                     .disabled(auth.isLoading)
+                    .accessibilityIdentifier("logoutButton")
                 }
             }
             .navigationTitle("Me")
+            // Logging out purges offline photos, caches and saved servers
+            // (deconnexion-laisse-donnees): nothing is erased before this is
+            // confirmed. An alert, not a confirmationDialog: on iOS 26 a
+            // confirmationDialog is a popover anchored to its source and drops
+            // the cancel button (measured on the iPhone 17 / iOS 26.4 simulator),
+            // while the alert always shows both actions.
+            .alert("Log out?", isPresented: $showLogoutConfirm) {
+                Button("Log Out", role: .destructive) {
+                    Task { await auth.logout() }
+                }
+                .accessibilityIdentifier("logoutConfirmButton")
+                Button("Cancel", role: .cancel) {}
+            } message: {
+                Text("Photos downloaded for offline use and the cache will be deleted from this device, along with saved servers and accounts.")
+            }
             .navigationBarTitleDisplayMode(.inline)
             .task { await storage.load() }
             // The flag is a server fact, not a login-only event: re-read it

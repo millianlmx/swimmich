@@ -25,6 +25,12 @@ final class TrustedServerStoreImpl: TrustedServerStore, @unchecked Sendable {
         defaults.set(Array(hosts), forKey: Self.defaultsKey)
     }
 
+    func removeAll() {
+        lock.lock()
+        defer { lock.unlock() }
+        defaults.removeObject(forKey: Self.defaultsKey)
+    }
+
     private static func load(from defaults: UserDefaults) -> Set<String> {
         Set(defaults.stringArray(forKey: defaultsKey) ?? [])
     }
