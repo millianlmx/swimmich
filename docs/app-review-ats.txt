@@ -1,0 +1,19 @@
+App Transport Security: why NSAllowsArbitraryLoads is set
+
+Swimmich is a client for Immich, a photo and video server that people host themselves (on a home NAS, a personal server or a private cloud). Swimmich does not run any server of its own. At sign-in, the user types the address of their own Immich server (or scans it from a QR code), and the app connects to that server.
+
+NSAppTransportSecurity > NSAllowsArbitraryLoads = true is declared in the Info.plist of all three bundles we ship:
+- the app (Swimmich),
+- the widget extension (home screen widgets that show photos from the user's server),
+- the Share Extension (uploads photos and videos shared from other apps to the user's server).
+Each runs in its own process and connects directly to the same user-chosen server, so each needs the same App Transport Security policy.
+
+Why a per-domain exception list (NSExceptionDomains) is not possible:
+- The server address is chosen by the user at runtime. It is unknown when the app is built, so it cannot be listed in advance.
+- Many self-hosted servers are reached over plain HTTP on the local network, by IP address (for example http://192.168.1.20:2283) or by a private host name (for example http://nas.home.lan, a *.home.arpa name, or a VPN name such as *.ts.net).
+- NSAllowsLocalNetworking does not cover these cases: it only allows unqualified names, .local names and IP addresses, so plain HTTP to a private fully qualified domain name would still be blocked. And when NSAllowsLocalNetworking is present, iOS ignores NSAllowsArbitraryLoads, so the two keys cannot be combined.
+
+How users stay protected:
+- HTTPS is the default. An address entered without a scheme (for example demo.immich.app) is opened as https://. Plain HTTP is used only when the user explicitly enters an http:// address for their own server.
+- HTTPS certificates go through the standard system trust evaluation. A server whose certificate cannot be verified (for example a self-signed certificate) is never accepted silently: the app asks "Trust this server?", and only after the user confirms is that server's own certificate chain pinned for that host. Any other untrusted certificate is rejected.
+- The relaxed policy exists only so that users can reach a server they run themselves.

@@ -63,6 +63,14 @@ targets:
           - processing
         UIApplicationSceneManifest:
           UIApplicationSupportsMultipleScenes: false
+        # NSAllowsArbitraryLoads is deliberate and must stay. Swimmich talks to a
+        # self-hosted Immich server whose URL the user types at sign-in: it is
+        # unknown at build time, so it cannot be listed in NSExceptionDomains, and
+        # it is often plain HTTP on the LAN or behind a private domain name
+        # (nas.home.lan, *.home.arpa, *.ts.net). NSAllowsLocalNetworking is no
+        # alternative: it still blocks HTTP to private FQDNs, and its presence makes
+        # iOS ignore NSAllowsArbitraryLoads. HTTPS stays the default for input
+        # without a scheme. App Review justification: docs/app-review-ats.txt.
         NSAppTransportSecurity:
           NSAllowsArbitraryLoads: true
         CFBundleURLTypes:
@@ -131,10 +139,13 @@ targets:
         # launch-and-store problem waiting to happen (the app ships 0.1.0).
         CFBundleShortVersionString: "$(MARKETING_VERSION)"
         CFBundleVersion: "$(CURRENT_PROJECT_VERSION)"
-        # Same policy as the app, and for the same reason: a self-hosted Immich
-        # is usually plain HTTP on the LAN, which App Transport Security blocks
-        # in the extension process. Loopback is exempt from ATS, so a simulator
-        # test against 127.0.0.1 never noticed (issue #19 follow-up).
+        # Same policy as the app, and for the same reason: the widget loads from the
+        # user's self-hosted Immich server, whose URL the user types at sign-in and
+        # is unknown at build time (often plain HTTP on the LAN or a private domain
+        # name), so neither NSExceptionDomains nor NSAllowsLocalNetworking can
+        # replace it. ATS applies to the extension process on its own. Loopback is
+        # exempt from ATS, so a simulator test against 127.0.0.1 never noticed
+        # (issue #19 follow-up). See docs/app-review-ats.txt.
         NSAppTransportSecurity:
           NSAllowsArbitraryLoads: true
         NSExtension:
@@ -178,10 +189,13 @@ targets:
         # launch-and-store rejection waiting to happen.
         CFBundleShortVersionString: "$(MARKETING_VERSION)"
         CFBundleVersion: "$(CURRENT_PROJECT_VERSION)"
-        # Same policy as the app and the widget: a self-hosted Immich is usually
-        # plain HTTP on the LAN, which App Transport Security blocks in the
-        # extension process. Loopback is exempt from ATS, so a simulator run
-        # against 127.0.0.1 never notices.
+        # Same policy as the app and the widget: uploads go to the user's
+        # self-hosted Immich server, whose URL the user types at sign-in and is
+        # unknown at build time (often plain HTTP on the LAN or a private domain
+        # name), so neither NSExceptionDomains nor NSAllowsLocalNetworking can
+        # replace it. ATS applies to the extension process on its own. Loopback is
+        # exempt from ATS, so a simulator run against 127.0.0.1 never notices.
+        # See docs/app-review-ats.txt.
         NSAppTransportSecurity:
           NSAllowsArbitraryLoads: true
         NSExtension:

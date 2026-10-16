@@ -182,5 +182,6 @@ Conventions to follow:
 |---|---|
 | `docs/mobile-features-vs-flutter.md` | Upstream Flutter client reference (parity target) |
 | `docs/feature-parity-plan.md` | Flutter parity plan |
+| `docs/app-review-ats.txt` | App Review justification for `NSAllowsArbitraryLoads` (app, widget, Share Extension), ready to paste into App Store Connect |
 | `.omp/backlog/ImmichSwiftUI-backlog.md` | Backlog: phases, AC cards, missing endpoints |
 | `.omp/<feature>/` | Specs + UI briefs + acceptance cards per feature |
