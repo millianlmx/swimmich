@@ -589,6 +589,34 @@
         }
       }
     },
+    "Account Deletion" : {
+      "localizations" : {
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Suppression du compte"
+          }
+        },
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Kontolöschung"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Eliminación de la cuenta"
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Eliminazione dell'account"
+          }
+        }
+      }
+    },
     "Advanced" : {
       "localizations" : {
         "fr" : {
@@ -7253,6 +7281,34 @@
         }
       }
     },
+    "Privacy Policy" : {
+      "localizations" : {
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Politique de confidentialité"
+          }
+        },
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Datenschutzerklärung"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Política de privacidad"
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Informativa sulla privacy"
+          }
+        }
+      }
+    },
     "Profile Picture" : {
       "localizations" : {
         "fr" : {
@@ -9209,6 +9265,62 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Trasmetti originale"
+          }
+        }
+      }
+    },
+    "Support" : {
+      "localizations" : {
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Assistance"
+          }
+        },
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hilfe"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Soporte"
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Assistenza"
+          }
+        }
+      }
+    },
+    "Swimmich doesn't create any account. Your account lives on your Immich server: to delete it, contact that server's administrator." : {
+      "localizations" : {
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Swimmich ne crée aucun compte. Votre compte se trouve sur votre serveur Immich : pour le supprimer, adressez-vous à l'administrateur de ce serveur."
+          }
+        },
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Swimmich erstellt kein Konto. Dein Konto liegt auf deinem Immich-Server: Wende dich zum Löschen an die Administration dieses Servers."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Swimmich no crea ninguna cuenta. Tu cuenta está en tu servidor de Immich: para eliminarla, ponte en contacto con el administrador de ese servidor."
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Swimmich non crea alcun account. Il tuo account si trova sul tuo server Immich: per eliminarlo, rivolgiti all'amministratore di quel server."
           }
         }
       }
