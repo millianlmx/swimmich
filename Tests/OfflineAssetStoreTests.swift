@@ -331,4 +331,44 @@ final class OfflineAssetStoreTests: XCTestCase {
 
         XCTAssertNil(ImageDownsampler.videoPoster(at: url, maxPixelSize: 128))
     }
+
+    // MARK: - Purge while a download is in flight
+
+    /// `clearAll()` must win even over a transport that ignores the cancellation
+    /// and hands a finished file back: nothing may be written afterwards.
+    func test_clearAll_dropsADownloadThatFinishesDespiteTheCancellation() async throws {
+        transport.gate = {
+            // Not cancelled by the parent: models a transport that finishes anyway.
+            await Task.detached { try? await Task.sleep(for: .milliseconds(300)) }.value
+        }
+        let store = self.store!
+        let pending = Task { () -> Result<CachedAssetInfo, Error> in
+            do {
+                return .success(try await store.download(
+                    assetID: "late", url: URL(string: "https://example.com/late")!, token: nil,
+                    fileName: "late.jpg", isVideo: false, ratio: 1, fileCreatedAt: "", duration: nil,
+                    thumbhash: nil, announcedSize: nil
+                ))
+            } catch { return .failure(error) }
+        }
+        while transport.downloadCount == 0 { try await Task.sleep(for: .milliseconds(10)) }
+
+        await store.clearAll()
+
+        guard case .failure(let error) = await pending.value else {
+            return XCTFail("a download overtaken by clearAll() must not succeed")
+        }
+        XCTAssertTrue(UserFacingError.isCancellation(error), "got \(error)")
+        let cached = await store.allCached()
+        XCTAssertTrue(cached.isEmpty)
+        let payloads = ((try? FileManager.default.contentsOfDirectory(atPath: folder.path)) ?? [])
+            .filter { $0 != "index.json" }
+        XCTAssertTrue(payloads.isEmpty, "no payload may be written after the purge: \(payloads)")
+
+        // A download started after the purge works normally.
+        transport.gate = nil
+        try await download("after")
+        let after = await store.isCached(assetID: "after")
+        XCTAssertTrue(after)
+    }
 }

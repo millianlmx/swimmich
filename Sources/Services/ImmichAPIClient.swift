@@ -61,6 +61,16 @@ final class ImmichAPIClient: ImmichClient, @unchecked Sendable {
         _token = token
     }
 
+    /// Drops every open connection, cache and credential of this client's own
+    /// session, so the next request opens a fresh socket and a fresh TLS
+    /// handshake — hence a fresh trust challenge. Used by the voluntary-logout
+    /// purge: a previously trusted self-signed host must be asked about again.
+    /// `URLSession.shared` belongs to the whole process and is never reset.
+    func resetConnections() async {
+        guard session !== URLSession.shared else { return }
+        await session.reset()
+    }
+
     var baseURL: URL? { lock.lock(); defer { lock.unlock() }; return _baseURL }
     var token: String? { lock.lock(); defer { lock.unlock() }; return _token }
 

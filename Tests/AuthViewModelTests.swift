@@ -763,4 +763,381 @@ final class AuthViewModelTests: XCTestCase {
         XCTAssertFalse(auth.isAuthenticated)
         XCTAssertEqual(auth.serverURLString, "")
     }
+
+    // MARK: - Voluntary logout purges local data (deconnexion-laisse-donnees)
+
+    @MainActor
+    private func waitUntil(
+        _ what: String,
+        timeout: TimeInterval = 2,
+        file: StaticString = #filePath,
+        line: UInt = #line,
+        _ condition: @MainActor () -> Bool
+    ) async {
+        let deadline = Date().addingTimeInterval(timeout)
+        while !condition() {
+            if Date() > deadline {
+                XCTFail("timed out waiting for \(what)", file: file, line: line)
+                return
+            }
+            try? await Task.sleep(for: .milliseconds(20))
+        }
+    }
+
+    @MainActor
+    private func assertLocalStoresIntact(_ fx: LogoutFixture, file: StaticString = #filePath, line: UInt = #line) async {
+        let image = await fx.imageCache.image(for: fx.thumbURL)
+        XCTAssertNotNil(image, "ImageCache must keep its thumbnail", file: file, line: line)
+        XCTAssertNotNil(fx.diskCache.cachedResponse(for: fx.diskRequest), "disk image tier must be kept", file: file, line: line)
+        let offline = await fx.offlineStore.allCached()
+        XCTAssertEqual(offline.count, 1, "OfflineAssetStore must keep its asset", file: file, line: line)
+        XCTAssertFalse(fx.offlineIndex.isEmpty, file: file, line: line)
+        XCTAssertEqual(fx.ledger.trackedCount(), 1, "BackupLedger must keep its entry", file: file, line: line)
+        XCTAssertTrue(fx.trustStore.contains(LogoutFixture.host), "TrustedServerStore must keep its host", file: file, line: line)
+    }
+
+    // AC-1, AC-2, AC-3 — a confirmed logout empties the 5 stores, the server address
+    // and every registered account's keychain token; a relaunch starts blank.
+    @MainActor
+    func test_AC1_AC2_AC3_logout_purgesEveryLocalStoreSavedAccountsAndTokens() async throws {
+        let fx = await LogoutFixture.make()
+        defer { fx.cleanup() }
+        // Preconditions: everything is really there before the logout.
+        await assertLocalStoresIntact(fx)
+        XCTAssertEqual(fx.auth.savedAccounts.count, 2)
+        XCTAssertNotNil(fx.defaults.string(forKey: AuthViewModel.serverURLDefaultsKey))
+        XCTAssertNotNil(fx.defaults.data(forKey: AuthViewModel.serverListDefaultsKey))
+        XCTAssertEqual(fx.keychain.getToken(for: fx.alice.id), "alice-jwt")
+        XCTAssertEqual(fx.keychain.getToken(for: fx.bob.id), "bob-jwt")
+        XCTAssertTrue(FileManager.default.fileExists(atPath: fx.ledgerFile.path))
+        // The server-side `/logout` fails (offline): the local purge must happen anyway.
+        fx.mock.globalError = URLError(.notConnectedToInternet)
+
+        await fx.auth.logout()
+        fx.mock.globalError = nil
+
+        // AC-1 — the 5 stores.
+        let image = await fx.imageCache.image(for: fx.thumbURL)
+        XCTAssertNil(image, "AC-1: no thumbnail left")
+        XCTAssertNil(fx.diskCache.cachedResponse(for: fx.diskRequest), "AC-1: disk image tier emptied")
+        let offline = await fx.offlineStore.allCached()
+        XCTAssertTrue(offline.isEmpty, "AC-1: no offline asset left")
+        let offlineBytes = await fx.offlineStore.totalBytes()
+        XCTAssertEqual(offlineBytes, 0)
+        XCTAssertTrue(fx.offlineIndex.isEmpty)
+        let leftovers = ((try? FileManager.default.contentsOfDirectory(atPath: fx.offlineFolder.path)) ?? [])
+            .filter { $0 != "index.json" }
+        XCTAssertTrue(leftovers.isEmpty, "AC-1: no payload on disk, found \(leftovers)")
+        let reopened = OfflineAssetStore(folderURL: fx.offlineFolder, transport: fx.transport, defaults: fx.offlineDefaults)
+        let reopenedCached = await reopened.allCached()
+        XCTAssertTrue(reopenedCached.isEmpty, "AC-1: a fresh store on the folder finds nothing")
+        XCTAssertEqual(fx.ledger.trackedCount(), 0, "AC-1: no ledger entry")
+        await waitUntil("ledger file removal") { !FileManager.default.fileExists(atPath: fx.ledgerFile.path) }
+        XCTAssertFalse(fx.trustStore.contains(LogoutFixture.host), "AC-1: no trusted server")
+        XCTAssertNil(fx.defaults.object(forKey: TrustedServerStoreImpl.defaultsKey))
+        XCTAssertTrue(fx.auth.savedAccounts.isEmpty, "AC-1: no registered account")
+        XCTAssertNil(fx.defaults.object(forKey: AuthViewModel.serverListDefaultsKey))
+        XCTAssertNil(fx.defaults.object(forKey: AuthViewModel.serverURLDefaultsKey), "AC-1: server address gone")
+        XCTAssertEqual(fx.auth.serverURLString, "")
+
+        // AC-2 — no token of any registered account is readable any more.
+        XCTAssertNil(fx.keychain.getToken(for: fx.alice.id), "AC-2: alice's token")
+        XCTAssertNil(fx.keychain.getToken(for: fx.bob.id), "AC-2: bob's token")
+        XCTAssertNil(fx.keychain.getToken())
+
+        // Existing behaviour kept.
+        XCTAssertFalse(fx.auth.isAuthenticated)
+        XCTAssertNil(fx.auth.userEmail)
+        XCTAssertFalse(fx.auth.isLoading)
+        XCTAssertNil(fx.defaults.string(forKey: AuthViewModel.userEmailDefaultsKey))
+
+        // A relaunch on the same defaults starts blank.
+        let relaunched = AuthViewModel(client: MockImmichClient(), keychain: fx.keychain, defaults: fx.defaults)
+        XCTAssertEqual(relaunched.serverURLString, "")
+        XCTAssertTrue(relaunched.savedAccounts.isEmpty)
+
+        // AC-3 — back on the login screen: nothing is offered, the URL has to be
+        // retyped, and the self-signed certificate is asked about again.
+        fx.mock.pingError = URLError(.serverCertificateUntrusted)
+        fx.auth.serverURLString = "https://\(LogoutFixture.host)"
+        await fx.auth.connectServer()
+        XCTAssertEqual(fx.auth.pendingUntrustedHost, LogoutFixture.host, "AC-3: trust is asked again")
+    }
+
+    // AC-6 (backup) — a run in flight is stopped, nothing is written into the ledger
+    // after the purge, and the engine accepts a new run afterwards.
+    @MainActor
+    func test_AC6_logout_stopsInFlightBackup_ledgerStaysEmptyAndEngineRearms() async throws {
+        let fx = await LogoutFixture.make()
+        defer { fx.cleanup() }
+        fx.source.candidates = [BackupCandidate(
+            id: "c1", kind: .image, fileName: "c1.jpg",
+            fileCreatedAt: "2024-07-01T00:00:00.000Z", fileModifiedAt: "2024-07-01T00:00:00.000Z",
+            duration: nil, isFavorite: false
+        )]
+        fx.source.dataProvider = { _ in Data(repeating: 1, count: 16) }
+        fx.mock.bulkUploadCheckResponse = AssetBulkUploadCheckResponse(results: [.init(id: "c1", action: "accept")])
+        fx.mock.uploadGate = { try await Task.sleep(for: .seconds(30)) }
+
+        let engine = fx.engine
+        let run = Task { @MainActor in await engine.run(settings: BackupSettings(isEnabled: true)) }
+        await waitUntil("upload in flight") { fx.mock.uploads.count == 1 }
+        XCTAssertEqual(engine.phase, .uploading)
+
+        await fx.auth.logout()
+        _ = await run.value
+
+        XCTAssertEqual(engine.phase, .cancelled)
+        // Quelques secondes après la purge: still empty.
+        try await Task.sleep(for: .milliseconds(300))
+        XCTAssertEqual(fx.ledger.trackedCount(), 0, "AC-6: nothing written into the ledger")
+        await waitUntil("ledger file removal") { !FileManager.default.fileExists(atPath: fx.ledgerFile.path) }
+        XCTAssertEqual(fx.mock.uploads.count, 1, "the cancelled upload was not retried")
+
+        // Re-armed: the next run is accepted and finishes (a later sign-in can back up again).
+        fx.mock.uploadGate = nil
+        let accepted = await engine.run(settings: BackupSettings(isEnabled: true))
+        XCTAssertTrue(accepted)
+        XCTAssertEqual(engine.phase, .done)
+    }
+
+    // AC-6 (offline) — a download in flight is cancelled and writes nothing, neither
+    // into the store nor into the thumbnail cache.
+    @MainActor
+    func test_AC6_logout_cancelsInFlightOfflineDownload_storeStaysEmpty() async throws {
+        let fx = await LogoutFixture.make()
+        defer { fx.cleanup() }
+        fx.transport.gate = { try await Task.sleep(for: .seconds(30)) }
+        let staleEpoch = await fx.imageCache.epoch
+
+        let store = fx.offlineStore
+        let download = Task { () -> Result<CachedAssetInfo, Error> in
+            do { return .success(try await fx.downloadOffline("inflight", into: store)) } catch { return .failure(error) }
+        }
+        await waitUntil("download in flight") { fx.transport.downloadCount == 2 }
+
+        await fx.auth.logout()
+
+        guard case .failure(let error) = await download.value else {
+            return XCTFail("the in-flight download must not succeed")
+        }
+        XCTAssertTrue(UserFacingError.isCancellation(error), "got \(error)")
+        // A thumbnail load that began before the purge cannot repopulate the cache.
+        await fx.imageCache.store(LogoutFixture.makeImage(), for: fx.thumbURL, epoch: staleEpoch)
+        try await Task.sleep(for: .milliseconds(300))
+        let cached = await fx.offlineStore.allCached()
+        XCTAssertTrue(cached.isEmpty)
+        let leftovers = ((try? FileManager.default.contentsOfDirectory(atPath: fx.offlineFolder.path)) ?? [])
+            .filter { $0 != "index.json" }
+        XCTAssertTrue(leftovers.isEmpty, "no payload on disk, found \(leftovers)")
+        let reopened = OfflineAssetStore(folderURL: fx.offlineFolder, transport: fx.transport, defaults: fx.offlineDefaults)
+        let reopenedCached = await reopened.allCached()
+        XCTAssertTrue(reopenedCached.isEmpty)
+        let image = await fx.imageCache.image(for: fx.thumbURL)
+        XCTAssertNil(image, "AC-6: ImageCache still empty")
+    }
+
+    // AC-7 — 401: stores, address, registry and tokens stay as they are.
+    @MainActor
+    func test_AC7_unauthorized_keepsLocalStores() async {
+        let fx = await LogoutFixture.make()
+        defer { fx.cleanup() }
+        let list = fx.defaults.data(forKey: AuthViewModel.serverListDefaultsKey)
+
+        fx.auth.didReceiveUnauthorized()
+        for _ in 0..<100 where fx.auth.isAuthenticated { await Task.yield() }
+
+        XCTAssertFalse(fx.auth.isAuthenticated)
+        await assertLocalStoresIntact(fx)
+        XCTAssertEqual(fx.defaults.string(forKey: AuthViewModel.serverURLDefaultsKey), "https://photos.example.com")
+        XCTAssertEqual(fx.defaults.data(forKey: AuthViewModel.serverListDefaultsKey), list)
+        XCTAssertEqual(fx.keychain.getToken(for: fx.alice.id), "alice-jwt")
+        XCTAssertEqual(fx.keychain.getToken(for: fx.bob.id), "bob-jwt")
+    }
+
+    // AC-7 — switching account: the address follows the account, nothing else is purged.
+    @MainActor
+    func test_AC7_switchToAccount_keepsLocalStores() async {
+        let fx = await LogoutFixture.make()
+        defer { fx.cleanup() }
+        let list = fx.defaults.data(forKey: AuthViewModel.serverListDefaultsKey)
+
+        await fx.auth.switchToAccount(fx.bob)
+
+        XCTAssertTrue(fx.auth.isAuthenticated)
+        await assertLocalStoresIntact(fx)
+        XCTAssertEqual(fx.defaults.string(forKey: AuthViewModel.serverURLDefaultsKey), fx.bob.url, "address = the new account's, as before")
+        XCTAssertEqual(fx.defaults.data(forKey: AuthViewModel.serverListDefaultsKey), list)
+        XCTAssertEqual(fx.keychain.getToken(for: fx.alice.id), "alice-jwt")
+        XCTAssertEqual(fx.keychain.getToken(for: fx.bob.id), "bob-jwt")
+    }
+
+    // AC-7 — adding a server: stores, address and registry untouched.
+    @MainActor
+    func test_AC7_addNewServer_keepsLocalStores() async {
+        let fx = await LogoutFixture.make()
+        defer { fx.cleanup() }
+        let list = fx.defaults.data(forKey: AuthViewModel.serverListDefaultsKey)
+
+        fx.auth.addNewServer()
+
+        XCTAssertFalse(fx.auth.isAuthenticated)
+        await assertLocalStoresIntact(fx)
+        XCTAssertEqual(fx.defaults.string(forKey: AuthViewModel.serverURLDefaultsKey), "https://photos.example.com")
+        XCTAssertEqual(fx.defaults.data(forKey: AuthViewModel.serverListDefaultsKey), list)
+        XCTAssertEqual(fx.keychain.getToken(for: fx.alice.id), "alice-jwt")
+        XCTAssertEqual(fx.keychain.getToken(for: fx.bob.id), "bob-jwt")
+    }
+
+    // AC-7 — removing a registered account drops only that account.
+    @MainActor
+    func test_AC7_removeSavedAccount_keepsLocalStores() async {
+        let fx = await LogoutFixture.make()
+        defer { fx.cleanup() }
+
+        fx.auth.removeSavedAccount(fx.bob)
+
+        XCTAssertEqual(fx.auth.savedAccounts.map(\.id), [fx.alice.id])
+        XCTAssertTrue(fx.auth.isAuthenticated, "the active account stays signed in")
+        await assertLocalStoresIntact(fx)
+        XCTAssertEqual(fx.defaults.string(forKey: AuthViewModel.serverURLDefaultsKey), "https://photos.example.com")
+        XCTAssertEqual(Self.accountIDs(in: fx.defaults), [fx.alice.id])
+        XCTAssertNil(fx.keychain.getToken(for: fx.bob.id), "only the removed account's token goes")
+        XCTAssertEqual(fx.keychain.getToken(for: fx.alice.id), "alice-jwt")
+    }
+
+    // AC-7 — a restore that finds the token invalid keeps stores and address.
+    @MainActor
+    func test_AC7_restoreSessionInvalidToken_keepsLocalStores() async {
+        let fx = await LogoutFixture.make()
+        defer { fx.cleanup() }
+        let list = fx.defaults.data(forKey: AuthViewModel.serverListDefaultsKey)
+        fx.mock.validateError = APIError.unauthorized
+
+        await fx.auth.restoreSession()
+
+        XCTAssertFalse(fx.auth.isAuthenticated)
+        await assertLocalStoresIntact(fx)
+        XCTAssertEqual(fx.defaults.string(forKey: AuthViewModel.serverURLDefaultsKey), "https://photos.example.com")
+        XCTAssertEqual(fx.defaults.data(forKey: AuthViewModel.serverListDefaultsKey), list)
+        XCTAssertEqual(fx.keychain.getToken(for: fx.bob.id), "bob-jwt")
+    }
+
+    private static func accountIDs(in defaults: UserDefaults) -> [String] {
+        guard let data = defaults.data(forKey: AuthViewModel.serverListDefaultsKey),
+              let accounts = try? JSONDecoder.immich.decode([SavedAccount].self, from: data) else { return [] }
+        return accounts.map(\.id)
+    }
+}
+
+/// A signed-in app container on temp folders and UUID suites: two registered accounts
+/// with keychain tokens, a thumbnail (memory + disk tier), an offline asset, a ledger
+/// entry (persisted), a trusted host and a stored server address. `purger` is wired
+/// to a real `ImmichAPIClient` with a trust store, so `resetConnections()` really
+/// runs `URLSession.reset()` on a non-shared session.
+@MainActor
+private final class LogoutFixture {
+    static let host = "photos.example.com"
+
+    let root: URL
+    let suites: [String]
+    let defaults: UserDefaults
+    let offlineDefaults: UserDefaults
+    let mock = MockImmichClient()
+    let keychain = MockKeychainStore()
+    let trustStore: TrustedServerStoreImpl
+    let imageCache = ImageCache()
+    let diskCache: URLCache
+    let transport = MockFileDownloadTransport()
+    let offlineStore: OfflineAssetStore
+    let offlineIndex = OfflineAssetIndex()
+    let ledger: BackupLedger
+    let source = MockBackupAssetSource()
+    let engine: BackupEngine
+    let purger: LocalDataPurger
+    let auth: AuthViewModel
+    let alice = SavedAccount(url: "https://photos.example.com", email: "alice@example.com", name: "Alice", userId: "u1", isAdmin: false)
+    let bob = SavedAccount(url: "https://other.example.com", email: "bob@example.com", name: "Bob", userId: "u2", isAdmin: false)
+    let thumbURL = URL(string: "https://photos.example.com/api/assets/t1/thumbnail")!
+    let diskRequest: URLRequest
+
+    var offlineFolder: URL { root.appendingPathComponent("offline", isDirectory: true) }
+    var ledgerFile: URL { root.appendingPathComponent("ledger.json") }
+
+    static func makeImage() -> UIImage {
+        UIGraphicsImageRenderer(size: CGSize(width: 8, height: 8)).image { ctx in
+            UIColor.red.setFill()
+            ctx.fill(CGRect(x: 0, y: 0, width: 8, height: 8))
+        }
+    }
+
+    private init() {
+        root = FileManager.default.temporaryDirectory
+            .appendingPathComponent("logout-purge-\(UUID().uuidString)", isDirectory: true)
+        try? FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
+        let authSuite = "logout-auth-\(UUID().uuidString)"
+        let offlineSuite = "logout-offline-\(UUID().uuidString)"
+        suites = [authSuite, offlineSuite]
+        defaults = UserDefaults(suiteName: authSuite)!
+        offlineDefaults = UserDefaults(suiteName: offlineSuite)!
+
+        trustStore = TrustedServerStoreImpl(defaults: defaults)
+        diskCache = URLCache(
+            memoryCapacity: 1 << 20, diskCapacity: 4 << 20,
+            directory: root.appendingPathComponent("urlcache", isDirectory: true)
+        )
+        diskRequest = URLRequest(url: thumbURL)
+        offlineStore = OfflineAssetStore(folderURL: root.appendingPathComponent("offline", isDirectory: true), transport: transport, defaults: offlineDefaults)
+        ledger = BackupLedger(fileURL: root.appendingPathComponent("ledger.json"))
+        engine = BackupEngine(client: mock, source: source, environment: MockBackupEnvironment(), ledger: ledger)
+        purger = LocalDataPurger(
+            backupEngine: engine, offlineStore: offlineStore, offlineIndex: offlineIndex,
+            imageCache: imageCache, imageDiskCache: diskCache,
+            apiClient: ImmichAPIClient(trustStore: trustStore)
+        )
+
+        // Two registered accounts with a token each; alice signs in for real below.
+        defaults.set(try! JSONEncoder.immich.encode([bob]), forKey: AuthViewModel.serverListDefaultsKey)
+        keychain.saveToken("bob-jwt", for: bob.id)
+        mock.loginResponse = LoginResponseDto(
+            accessToken: "alice-jwt", userId: "u1", userEmail: "alice@example.com", name: "Alice",
+            profileImagePath: "", isAdmin: false, shouldChangePassword: false, isOnboarded: true
+        )
+        auth = AuthViewModel(client: mock, keychain: keychain, defaults: defaults, trustStore: trustStore, localData: purger)
+    }
+
+    static func make() async -> LogoutFixture {
+        let fx = LogoutFixture()
+        fx.auth.serverURLString = "https://photos.example.com"
+        _ = fx.auth.baseURL
+        await fx.auth.login(email: "alice@example.com", password: "secret")
+
+        await fx.imageCache.store(makeImage(), for: fx.thumbURL, epoch: await fx.imageCache.epoch)
+        let response = HTTPURLResponse(url: fx.thumbURL, statusCode: 200, httpVersion: nil, headerFields: nil)!
+        fx.diskCache.storeCachedResponse(CachedURLResponse(response: response, data: Data(repeating: 7, count: 64)), for: fx.diskRequest)
+        _ = try? await fx.downloadOffline("offline-1", into: fx.offlineStore)
+        await fx.offlineIndex.refresh(from: fx.offlineStore)
+        fx.ledger.markBackedUp(id: "seed", signature: "sig", checksum: "sum", serverAssetId: nil)
+        fx.ledger.save()
+        fx.trustStore.add(host)
+        // The ledger file lands on a background queue.
+        for _ in 0..<100 where !FileManager.default.fileExists(atPath: fx.ledgerFile.path) {
+            try? await Task.sleep(for: .milliseconds(20))
+        }
+        return fx
+    }
+
+    func downloadOffline(_ id: String, into store: OfflineAssetStore) async throws -> CachedAssetInfo {
+        try await store.download(
+            assetID: id,
+            url: URL(string: "https://photos.example.com/api/assets/\(id)/original")!,
+            token: "alice-jwt", fileName: "\(id).jpg", isVideo: false, ratio: 1,
+            fileCreatedAt: "2024-07-01T10:00:00.000Z", duration: nil, thumbhash: nil, announcedSize: nil
+        )
+    }
+
+    func cleanup() {
+        try? FileManager.default.removeItem(at: root)
+        for suite in suites { UserDefaults(suiteName: suite)?.removePersistentDomain(forName: suite) }
+    }
 }

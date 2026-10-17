@@ -186,6 +186,7 @@ final class RoadTripViewModel {
         var offset = 0
         while offset < assets.count {
             if Task.isCancelled { break }
+            let epoch = await ImageCache.shared.epoch
             let chunk = Array(assets[offset..<min(offset + chunkSize, assets.count)])
             let results = await withTaskGroup(of: (String, UIImage?, Double?).self) { group in
                 for asset in chunk {
@@ -205,7 +206,7 @@ final class RoadTripViewModel {
                 }
                 let asset = assets.first { $0.id == id }
                 let url = ImmichAssetURL.thumbnail(assetId: id, thumbhash: asset?.thumbhash ?? "", baseURL: base, size: .preview)
-                await ImageCache.shared.store(image, for: url)
+                await ImageCache.shared.store(image, for: url, epoch: epoch)
             }
             offset += chunkSize
         }

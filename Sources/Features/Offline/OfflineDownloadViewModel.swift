@@ -134,6 +134,8 @@ final class OfflineDownloadViewModel {
             )
             await reload()
             lastDownloadedID = info.id
+        } catch where UserFacingError.isCancellation(error) {
+            // Cancelled by a purge (logout / "Clear All"): not a failure to report.
         } catch let error as OfflineStoreError {
             errorMessage = error.errorDescription
         } catch {

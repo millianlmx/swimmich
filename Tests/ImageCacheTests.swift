@@ -23,7 +23,7 @@ final class ImageCacheTests: XCTestCase {
         let pre = await cache.image(for: url)
         XCTAssertNil(pre)
 
-        await cache.store(img, for: url)
+        await cache.store(img, for: url, epoch: await cache.epoch)
         let hit = await cache.image(for: url)
         XCTAssertNotNil(hit)
         // Reference equality — NSCache retains the stored object.
@@ -36,7 +36,7 @@ final class ImageCacheTests: XCTestCase {
         await cache.removeAll()
         let a = URL(string: "https://example.com/a")!
         let b = URL(string: "https://example.com/b")!
-        await cache.store(makeImage(), for: a)
+        await cache.store(makeImage(), for: a, epoch: await cache.epoch)
 
         let miss = await cache.image(for: b)
         XCTAssertNil(miss)
@@ -48,13 +48,14 @@ final class ImageCacheTests: XCTestCase {
     func test_cacheThreadSafety() async {
         let cache = ImageCache()
         await cache.removeAll()
+        let epoch = await cache.epoch
 
         let urls = (0..<60).map { URL(string: "https://example.com/c/\($0)")! }
         let images = urls.map { _ in makeImage() }
 
         // Seed half the entries, leave the other half missing.
         for i in stride(from: 0, to: urls.count, by: 2) {
-            await cache.store(images[i], for: urls[i])
+            await cache.store(images[i], for: urls[i], epoch: epoch)
         }
 
         await withTaskGroup(of: Void.self) { group in
@@ -64,7 +65,7 @@ final class ImageCacheTests: XCTestCase {
                 let url = urls[i]
                 let img = images[i]
                 group.addTask {
-                    await cache.store(img, for: url)
+                    await cache.store(img, for: url, epoch: epoch)
                 }
                 group.addTask {
                     _ = await cache.image(for: url)
@@ -77,5 +78,24 @@ final class ImageCacheTests: XCTestCase {
             let v = await cache.image(for: url)
             XCTAssertNotNil(v, "cache missing entry after concurrent seed: \(url)")
         }
+    }
+
+    // A load that read the epoch before a purge must not repopulate the cache
+    // with pre-purge data; a load that starts after the purge stores normally.
+    func test_storeWithStaleEpoch_isDroppedAfterRemoveAll() async {
+        let cache = ImageCache()
+        let url = URL(string: "https://example.com/img/stale")!
+        let staleEpoch = await cache.epoch
+
+        await cache.removeAll()
+        await cache.store(makeImage(), for: url, epoch: staleEpoch)
+        let dropped = await cache.image(for: url)
+        XCTAssertNil(dropped, "a store carrying a pre-purge epoch must be dropped")
+
+        let freshEpoch = await cache.epoch
+        XCTAssertNotEqual(freshEpoch, staleEpoch)
+        await cache.store(makeImage(), for: url, epoch: freshEpoch)
+        let stored = await cache.image(for: url)
+        XCTAssertNotNil(stored, "a store carrying the current epoch must succeed")
     }
 }

@@ -94,6 +94,8 @@ final class AuthViewModel: AuthSessionDelegate {
     /// account switch mirrors the session into the shared keychain.
     private let widgetSession: any WidgetSessionStoring
     private var _cachedBaseURL: URL?
+    /// The local stores wiped by a voluntary logout. `nil` = none attached.
+    private let localData: LocalDataPurger?
 
     init(
         client: any ImmichClient,
@@ -101,7 +103,8 @@ final class AuthViewModel: AuthSessionDelegate {
         defaults: UserDefaults = .standard,
         trustStore: TrustedServerStore = TrustedServerStoreImpl(),
         realtime: RealtimeService = RealtimeService(),
-        widgetSession: any WidgetSessionStoring = WidgetSessionStore()
+        widgetSession: any WidgetSessionStoring = WidgetSessionStore(),
+        localData: LocalDataPurger? = nil
     ) {
         self.client = client
         self.keychain = keychain
@@ -109,6 +112,7 @@ final class AuthViewModel: AuthSessionDelegate {
         self.trustStore = trustStore
         self.realtime = realtime
         self.widgetSession = widgetSession
+        self.localData = localData
         self.serverURLString = defaults.string(forKey: Self.serverURLDefaultsKey) ?? ""
         self.userEmail = defaults.string(forKey: Self.userEmailDefaultsKey)
         self.userName = defaults.string(forKey: Self.userNameDefaultsKey)
@@ -370,10 +374,25 @@ final class AuthViewModel: AuthSessionDelegate {
         addCurrentAccountToSaved()
     }
 
+    /// Voluntary, confirmed sign-out. Beyond `resetSession()` it wipes everything
+    /// the device kept about the account: the local stores (`localData`), the
+    /// trusted-servers list, every registered account's keychain token, the
+    /// registered-accounts list and the server address. Never reached by the
+    /// 401 / switch-account / add-server / remove-account paths, which share
+    /// `resetSession()` but must keep all of that.
     @MainActor
     func logout() async {
         isLoading = true
         _ = try? await client.logout()
+        // Transfers stop and the stores empty first, so nothing can write into
+        // a store after it was purged.
+        await localData?.purgeAll()
+        trustStore.removeAll()
+        for account in savedAccounts { keychain.deleteToken(for: account.id) }
+        savedAccounts = []
+        defaults.removeObject(forKey: Self.serverListDefaultsKey)
+        defaults.removeObject(forKey: Self.serverURLDefaultsKey)
+        serverURLString = ""
         resetSession()
         isLoading = false
     }

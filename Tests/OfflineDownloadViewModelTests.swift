@@ -91,6 +91,15 @@ final class OfflineDownloadViewModelTests: XCTestCase {
         XCTAssertNil(vm.lastDownloadedID)
     }
 
+    func test_downloadAsset_cancellationIsNotAnError() async {
+        transport.error = URLError(.cancelled)
+
+        await vm.downloadAsset(makeAsset(), baseURL: baseURL, token: "tok")
+
+        XCTAssertNil(vm.errorMessage, "a purge-cancelled download is not a failure to show")
+        XCTAssertFalse(vm.isDownloading("asset-1"))
+    }
+
     func test_downloadAsset_reportsDeterminateProgress() async {
         transport.payload = Data(repeating: 0x01, count: 100)
         transport.progressSteps = [(50, 100), (100, 100)]

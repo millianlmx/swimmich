@@ -5125,6 +5125,34 @@
         }
       }
     },
+    "Log out?" : {
+      "localizations" : {
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Se déconnecter ?"
+          }
+        },
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Abmelden?"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "¿Cerrar sesión?"
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Vuoi uscire?"
+          }
+        }
+      }
+    },
     "Log out %lld devices" : {
       "localizations" : {
         "fr" : {
@@ -6913,6 +6941,34 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Le foto di cui è stato eseguito il backup prima che Immich iniziasse a registrare i checksum non possono essere verificate sul server, quindi non vengono mai proposte qui."
+          }
+        }
+      }
+    },
+    "Photos downloaded for offline use and the cache will be deleted from this device, along with saved servers and accounts." : {
+      "localizations" : {
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Les photos téléchargées hors ligne et le cache seront supprimés de cet appareil, ainsi que les serveurs et comptes enregistrés."
+          }
+        },
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Offline heruntergeladene Fotos und der Cache werden von diesem Gerät gelöscht, ebenso gespeicherte Server und Konten."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Las fotos descargadas sin conexión y la caché se eliminarán de este dispositivo, junto con los servidores y las cuentas guardados."
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Le foto scaricate offline e la cache verranno eliminate da questo dispositivo, insieme ai server e agli account salvati."
           }
         }
       }
