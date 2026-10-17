@@ -68,9 +68,12 @@ struct ServerURLScreen: View {
 
                 // TODO: $PHASE_QR — scan a server QR code (AVFoundation/VisionKit)
                 // and pre-fill `auth.serverURLString` from the decoded payload.
-                // TODO: $PHASE_CERT — self-signed certificate validation. Today any
-                // HTTPS server is accepted (NSAllowsArbitraryLoads in Info.plist);
-                // a proper trust-evaluation + pinning flow is deferred.
+                // Certificates: HTTPS servers go through the standard trust
+                // evaluation (TrustEvaluatingURLSessionDelegate). A self-signed
+                // server is accepted only after the "Trust this server?" alert
+                // below, which pins its certificate chain. NSAllowsArbitraryLoads
+                // only relaxes App Transport Security (plain-HTTP self-hosted
+                // servers); it does not skip certificate validation.
 
                 Spacer(minLength: PVSpacing.s48)
             }
