@@ -23,6 +23,12 @@ targets:
     platform: iOS
     sources:
       - path: Sources
+        # `Sources/ImmichSharedKit` is compiled into this module as well, but its
+        # privacy manifest belongs to the framework bundle only: a second
+        # `PrivacyInfo.xcprivacy` in the app's resources collides with the app's
+        # own (Resources/PrivacyInfo.xcprivacy) at the bundle root.
+        excludes:
+          - "ImmichSharedKit/PrivacyInfo.xcprivacy"
       # The share sheet's model and its view model are compiled into the app
       # module as well. They hold no UI and no extension API — only the
       # protocol seam — and the card requires the tests that exercise them to
@@ -40,6 +46,14 @@ targets:
       # one, so a new folder is not copied until it is listed: without this the
       # Licenses screen cannot resolve a single file.
       - path: Resources/Acknowledgements
+        buildPhase: resources
+      # Privacy manifest (required-reason APIs). Every shipped bundle with code
+      # of ours carries its own: this one, ImmichWidgets/, ImmichShareExtension/
+      # and Sources/ImmichSharedKit/ — the last three are picked up by their
+      # target's source folder. Collected data types stay empty on purpose: no
+      # analytics, no tracking, and photos/email/device id only ever reach the
+      # Immich server the user signs in to, which we never get to read.
+      - path: Resources/PrivacyInfo.xcprivacy
         buildPhase: resources
     info:
       path: Resources/Info.plist
