@@ -80,6 +80,11 @@ targets:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: fr.millianlmx.immich-ios
         DEVELOPMENT_TEAM: 2MJF39L8VY
+        # iPhone only. xcodegen's iOS preset sets "1,2" at target level, which
+        # beats the project-level settings, so every target repeats "1". A
+        # universal binary with portrait-only orientations and no
+        # UIRequiresFullScreen is rejected at upload (ITMS-90474).
+        TARGETED_DEVICE_FAMILY: "1"
         INFOPLIST_FILE: Resources/Info.plist
         # Keychain group shared with the widget and the share extension: the app
         # writes the widget session, both extensions read it. All three
@@ -115,6 +120,7 @@ targets:
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: fr.millianlmx.immich-ios.sharedkit
+        TARGETED_DEVICE_FAMILY: "1"
         SKIP_INSTALL: YES
         GENERATE_INFOPLIST_FILE: YES
         CURRENT_PROJECT_VERSION: "1"
@@ -154,6 +160,7 @@ targets:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: fr.millianlmx.immich-ios.widgets
         DEVELOPMENT_TEAM: 2MJF39L8VY
+        TARGETED_DEVICE_FAMILY: "1"
         # Read side of the same sharing; see the app target's comment.
         CODE_SIGN_ENTITLEMENTS: Resources/ImmichWidgets.entitlements
     dependencies:
@@ -213,6 +220,7 @@ targets:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: fr.millianlmx.immich-ios.share-extension
         DEVELOPMENT_TEAM: 2MJF39L8VY
+        TARGETED_DEVICE_FAMILY: "1"
         # Write side is the app, read side is this extension; same derived
         # keychain group, so no access group is hardcoded anywhere.
         CODE_SIGN_ENTITLEMENTS: Resources/ImmichShareExtension.entitlements
@@ -229,6 +237,7 @@ targets:
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: app.immich.swiftui.tests
+        TARGETED_DEVICE_FAMILY: "1"
         GENERATE_INFOPLIST_FILE: YES
   ImmichSwiftUIUITests:
     type: bundle.ui-testing
@@ -249,6 +258,7 @@ targets:
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: app.immich.swiftui.uitests
+        TARGETED_DEVICE_FAMILY: "1"
         GENERATE_INFOPLIST_FILE: YES
         TEST_TARGET_NAME: ImmichSwiftUI
 schemes:
