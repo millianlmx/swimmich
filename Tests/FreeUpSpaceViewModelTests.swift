@@ -1,4 +1,5 @@
 import Foundation
+import Photos
 import XCTest
 @testable import ImmichSwiftUI
 
@@ -84,14 +85,16 @@ final class FreeUpSpaceViewModelTests: XCTestCase {
         client: MockImmichClient,
         ledger: BackupLedger,
         source: MockCleanupSource = MockCleanupSource(),
-        albums: [BackupAlbum] = []
+        albums: [BackupAlbum] = [],
+        photos: MockPhotoLibraryService = MockPhotoLibraryService(),
+        albumSource: MockBackupAssetSource = MockBackupAssetSource()
     ) -> FreeUpSpaceViewModel {
-        let albumSource = MockBackupAssetSource()
-        albumSource.albums = albums
+        if !albums.isEmpty { albumSource.albums = albums }
         return FreeUpSpaceViewModel(
             client: client,
             source: source,
             albumSource: albumSource,
+            photoLibrary: photos,
             ledger: ledger,
             settings: makeSettings()
         )
@@ -175,7 +178,12 @@ final class FreeUpSpaceViewModelTests: XCTestCase {
         let source = MockCleanupSource()
         source.candidates = [candidate("a")]
         source.skippedInSharedAlbum = 4
-        let vm = makeViewModel(client: client, ledger: ledger(["a"]), source: source)
+        // `scan()` now reads the albums first and prunes the kept ones absent
+        // from them: the album the test keeps has to exist in the library.
+        let vm = makeViewModel(
+            client: client, ledger: ledger(["a"]), source: source,
+            albums: [BackupAlbum(id: "album-1", name: "Trip", count: 1)]
+        )
         let cutoff = Date(timeIntervalSince1970: 1_600_000_000)
         vm.setKeepFavorites(false)
         vm.setKeepMediaType(.videos)
@@ -304,5 +312,125 @@ final class FreeUpSpaceViewModelTests: XCTestCase {
 
         XCTAssertNil(deleted)
         XCTAssertTrue(source.deletedIDs.isEmpty)
+    }
+
+    // MARK: - Photos access (AC-5, AC-6, AC-7)
+
+    @MainActor
+    func test_AC5_loadAlbums_withoutReadableAccess_readsNothingAndKeepsTheKeptAlbums() {
+        for status in [PHAuthorizationStatus.notDetermined, .denied, .restricted] {
+            let photos = MockPhotoLibraryService()
+            photos.status = status
+            let albumSource = MockBackupAssetSource()
+            albumSource.albums = [BackupAlbum(id: "other", name: "Other", count: 1)]
+            let vm = makeViewModel(
+                client: MockImmichClient(), ledger: BackupLedger.inMemory(),
+                photos: photos, albumSource: albumSource
+            )
+            vm.settings.keepAlbumIDs = ["kept"]
+
+            vm.loadAlbums()
+
+            XCTAssertEqual(albumSource.fetchAlbumsCallCount, 0, "\(status.rawValue) : aucune lecture PhotoKit")
+            XCTAssertEqual(photos.requestCount, 0, "\(status.rawValue) : aucun prompt sans geste")
+            XCTAssertEqual(vm.settings.keepAlbumIDs, ["kept"], "\(status.rawValue) : pas de prune sur une liste illisible")
+            XCTAssertFalse(vm.settings.defaultsInitialized, "\(status.rawValue) : les défauts ne sont pas consommés")
+            XCTAssertFalse(vm.hasLoadedAlbums)
+        }
+    }
+
+    @MainActor
+    func test_AC5_loadAlbums_withLimitedAccess_reads() {
+        let photos = MockPhotoLibraryService()
+        photos.status = .limited
+        let albumSource = MockBackupAssetSource()
+        let vm = makeViewModel(
+            client: MockImmichClient(), ledger: BackupLedger.inMemory(),
+            photos: photos, albumSource: albumSource
+        )
+
+        vm.loadAlbums()
+
+        XCTAssertEqual(albumSource.fetchAlbumsCallCount, 1)
+        XCTAssertTrue(vm.hasLoadedAlbums)
+    }
+
+    @MainActor
+    func test_AC6_scan_undeterminedThenGranted_loadsAlbumsBeforeTheFirstSearch() async {
+        let client = MockImmichClient()
+        client.bulkUploadCheckResponse = serverHolds(["a"])
+        let source = MockCleanupSource()
+        source.candidates = [candidate("a")]
+        let photos = MockPhotoLibraryService()
+        photos.status = .notDetermined
+        photos.statusAfterRequest = .authorized
+        let albumSource = MockBackupAssetSource()
+        albumSource.albums = [
+            BackupAlbum(id: "whatsapp-id", name: "WhatsApp", count: 12),
+            BackupAlbum(id: "camera-id", name: "Camera", count: 900),
+        ]
+        let vm = makeViewModel(
+            client: client, ledger: ledger(["a"]), source: source,
+            photos: photos, albumSource: albumSource
+        )
+        vm.setCutoff(Date())
+
+        await vm.scan()
+
+        XCTAssertEqual(photos.requestCount, 1)
+        XCTAssertEqual(albumSource.fetchAlbumsCallCount, 1)
+        XCTAssertEqual(source.lastKeepAlbumIDs, ["whatsapp-id"],
+                       "les albums de messagerie sont gardés dès le premier scan")
+        XCTAssertEqual(vm.candidates.map(\.id), ["a"])
+
+        await vm.scan()
+
+        XCTAssertEqual(albumSource.fetchAlbumsCallCount, 1, "les albums ne sont relus qu'une fois par VM")
+        XCTAssertEqual(photos.requestCount, 1)
+    }
+
+    @MainActor
+    func test_AC6_scan_undeterminedThenDenied_searchesNothing() async {
+        let client = MockImmichClient()
+        client.bulkUploadCheckResponse = serverHolds(["a"])
+        let source = MockCleanupSource()
+        source.candidates = [candidate("a")]
+        let photos = MockPhotoLibraryService()
+        photos.status = .notDetermined
+        photos.statusAfterRequest = .denied
+        let albumSource = MockBackupAssetSource()
+        let vm = makeViewModel(
+            client: client, ledger: ledger(["a"]), source: source,
+            photos: photos, albumSource: albumSource
+        )
+        vm.setCutoff(Date())
+
+        await vm.scan()
+
+        XCTAssertEqual(photos.requestCount, 1)
+        XCTAssertNil(source.lastCutoff, "cleanupCandidates n'est jamais appelé")
+        XCTAssertEqual(client.requestCount, 0, "aucune requête réseau")
+        XCTAssertFalse(vm.isScanning)
+        XCTAssertEqual(albumSource.fetchAlbumsCallCount, 0)
+        XCTAssertTrue(vm.isPhotoAccessDenied)
+        XCTAssertFalse(vm.canScan, "le bouton Scan est désactivé tant que l'accès est refusé")
+    }
+
+    @MainActor
+    func test_AC6_prepareAlbumPicker_undeterminedThenGranted_loadsAlbums() async {
+        let photos = MockPhotoLibraryService()
+        photos.status = .notDetermined
+        photos.statusAfterRequest = .authorized
+        let albumSource = MockBackupAssetSource()
+        albumSource.albums = [BackupAlbum(id: "trip", name: "Trip", count: 3)]
+        let vm = makeViewModel(
+            client: MockImmichClient(), ledger: BackupLedger.inMemory(),
+            photos: photos, albumSource: albumSource
+        )
+
+        await vm.prepareAlbumPicker()
+
+        XCTAssertEqual(photos.requestCount, 1)
+        XCTAssertEqual(vm.albums.map(\.id), ["trip"])
     }
 }

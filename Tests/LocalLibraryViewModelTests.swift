@@ -264,11 +264,55 @@ final class LocalLibraryViewModelTests: XCTestCase {
 
         XCTAssertTrue(returned, "loadThumbnail never resumed — the tile would hang forever")
     }
+
+    // MARK: - No read without a gesture (AC-5, AC-7)
+
+    func test_AC5_reload_undetermined_readsNoAlbumNorAssetAndNeverPrompts() async {
+        photos.status = .notDetermined
+        photos.library = [asset("L1")]
+        source.albums = [album("album/trip", "Trip", count: 1)]
+        let vmNotDetermined = LocalLibraryViewModel(photoLibrary: photos, albumSource: source, client: client)
+
+        await vmNotDetermined.reload()
+
+        XCTAssertEqual(photos.requestCount, 0)
+        XCTAssertEqual(source.fetchAlbumsCallCount, 0)
+        XCTAssertTrue(vmNotDetermined.assets.isEmpty)
+        XCTAssertFalse(vmNotDetermined.didLoad)
+        XCTAssertFalse(vmNotDetermined.canReadLibrary)
+    }
+
+    func test_AC5_reload_denied_stillReadsTheServerSummary() async {
+        photos.status = .denied
+        client.serverStatisticsResponse = ServerStatsResponseDto(
+            photos: 4, videos: 1, usage: 10, usagePhotos: 0, usageVideos: 0, usageByUser: []
+        )
+
+        await vm.reload()
+
+        XCTAssertEqual(source.fetchAlbumsCallCount, 0)
+        XCTAssertEqual(vm.remoteSummary?.photos, 4)
+    }
+
+    func test_AC5_reload_afterAccessIsGranted_loadsTheDevice() async {
+        photos.status = .notDetermined
+        photos.library = [asset("L1"), asset("L2")]
+        await vm.reload()
+        XCTAssertFalse(vm.didLoad)
+
+        photos.status = .limited
+        await vm.reload()
+
+        XCTAssertEqual(vm.assets.count, 2)
+        XCTAssertTrue(vm.didLoad)
+    }
 }
 
 /// Minimal `PhotoLibraryService` for this screen: tables instead of Photos.
 private final class LocalLibraryPhotoLibrary: PhotoLibraryService, @unchecked Sendable {
     var status: PHAuthorizationStatus = .authorized
+    /// How many times the Photos prompt was raised.
+    var requestCount = 0
     var library: [PHAsset] = []
     var scoped: [String: [PHAsset]] = [:]
     var checksums: [String: String] = [:]
@@ -276,7 +320,10 @@ private final class LocalLibraryPhotoLibrary: PhotoLibraryService, @unchecked Se
 
     func authorizationStatus() -> PHAuthorizationStatus { status }
 
-    func requestAuthorization(_ handler: @escaping (PHAuthorizationStatus) -> Void) { handler(status) }
+    func requestAuthorization(_ handler: @escaping (PHAuthorizationStatus) -> Void) {
+        requestCount += 1
+        handler(status)
+    }
 
     func fetchAssets() -> [PHAsset] { library }
 

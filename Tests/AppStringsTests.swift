@@ -68,6 +68,43 @@ final class AppStringsTests: XCTestCase {
         XCTAssertEqual(incomplete.sorted(), [], "Keys shipped without a translation")
     }
 
+    /// The four permission prompts show the Info.plist text, not the app
+    /// catalog. A `NS*UsageDescription` that is missing, empty, or still the
+    /// English source in a shipped language would put an English consent
+    /// dialog on an otherwise translated device (AC-4).
+    func test_infoPlistCatalog_translatesEveryUsageDescription() throws {
+        let catalogURL = Self.repoRoot.appendingPathComponent("Resources/InfoPlist.xcstrings")
+        let catalogObject = try JSONSerialization.jsonObject(with: Data(contentsOf: catalogURL))
+        let catalog = try XCTUnwrap(catalogObject as? [String: Any])
+        let strings = try XCTUnwrap(catalog["strings"] as? [String: Any])
+
+        let plistURL = Self.repoRoot.appendingPathComponent("Resources/Info.plist")
+        let plistObject = try PropertyListSerialization.propertyList(
+            from: Data(contentsOf: plistURL), options: [], format: nil
+        )
+        let infoPlist = try XCTUnwrap(plistObject as? [String: Any])
+
+        let usageKeys = [
+            "NSPhotoLibraryUsageDescription", "NSPhotoLibraryAddUsageDescription",
+            "NSFaceIDUsageDescription", "NSCameraUsageDescription"
+        ]
+        var incomplete: [String] = []
+        for key in usageKeys {
+            let english = try XCTUnwrap(infoPlist[key] as? String, "Info.plist lost \(key)")
+            let entry = strings[key] as? [String: Any]
+            let localizations = entry?["localizations"] as? [String: Any] ?? [:]
+            for language in Self.shippedTranslations {
+                let unit = (localizations[language] as? [String: Any])?["stringUnit"] as? [String: Any]
+                let value = unit?["value"] as? String
+                let trimmed = value?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+                if trimmed.isEmpty || value == english { incomplete.append("\(language): \(key)") }
+            }
+        }
+
+        XCTAssertEqual(incomplete, [], "Usage descriptions shipped without a translation")
+        XCTAssertEqual(Set(strings.keys), Set(usageKeys), "InfoPlist.xcstrings must hold exactly the four usage descriptions")
+    }
+
     func test_catalog_memoryCardKeysHaveFrenchTranslations() throws {
         let catalog = try Self.loadCatalog()
         let strings = try XCTUnwrap(catalog["strings"] as? [String: Any])

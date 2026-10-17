@@ -12,6 +12,8 @@ import SwiftUI
 struct FreeUpSpaceView: View {
     @Bindable var vm: FreeUpSpaceViewModel
     @State private var showSuccess = false
+    @Environment(\.openURL) private var openURL
+    @Environment(\.scenePhase) private var scenePhase
 
     var body: some View {
         Form {
@@ -23,6 +25,10 @@ struct FreeUpSpaceView: View {
         .navigationTitle("Free Up Space")
         .navigationBarTitleDisplayMode(.inline)
         .task { vm.loadAlbums() }
+        // Back from Settings: the status may have changed there.
+        .onChange(of: scenePhase) { _, newPhase in
+            if newPhase == .active { vm.loadAlbums() }
+        }
         .onChange(of: vm.lastDeletedCount) { _, count in
             guard count != nil else { return }
             // The deletion consumed the review: those assets are out of the
@@ -147,6 +153,7 @@ struct FreeUpSpaceView: View {
                         set: { vm.setKeepAlbums($0) }
                     )
                 )
+                .task { await vm.prepareAlbumPicker() }
             } label: {
                 LabeledContent("Keep albums", value: "\(vm.settings.keepAlbumIDs.count)")
             }
@@ -162,6 +169,18 @@ struct FreeUpSpaceView: View {
 
     private var scanSection: some View {
         Section {
+            if vm.isPhotoAccessDenied {
+                Label("Photo library access is off", systemImage: "lock")
+                    .accessibilityIdentifier("cleanupPhotoAccessDenied")
+                if let settingsURL = URL(string: UIApplication.openSettingsURLString) {
+                    Button {
+                        openURL(settingsURL)
+                    } label: {
+                        Label("Open Settings", systemImage: "gear")
+                    }
+                    .accessibilityIdentifier("cleanupOpenSettingsButton")
+                }
+            }
             Button("Scan") {
                 Task { await vm.scan() }
             }

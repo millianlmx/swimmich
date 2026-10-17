@@ -37,7 +37,14 @@ final class MockBackupAssetSource: BackupAssetSource, @unchecked Sendable {
 
     private let fetchLock = NSLock()
 
-    func fetchAlbums() -> [BackupAlbum] { albums }
+    /// How many times the albums were read from PhotoKit — a read made without
+    /// readable access is the implicit Photos prompt.
+    nonisolated(unsafe) private(set) var fetchAlbumsCallCount = 0
+
+    func fetchAlbums() -> [BackupAlbum] {
+        fetchAlbumsCallCount += 1
+        return albums
+    }
 
     func fetchCandidates(in albumIDs: Set<String>, excluding excludedAlbumIDs: Set<String>) -> [BackupCandidate] {
         fetchLock.lock()

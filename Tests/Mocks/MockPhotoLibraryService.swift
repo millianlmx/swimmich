@@ -8,8 +8,20 @@ final class MockPhotoLibraryService: PhotoLibraryService, @unchecked Sendable {
     nonisolated(unsafe) var savedIdentifier = "local://mock"
     nonisolated(unsafe) var saveError: Error?
 
-    func authorizationStatus() -> PHAuthorizationStatus { .authorized }
-    func requestAuthorization(_ handler: @escaping (PHAuthorizationStatus) -> Void) { handler(.authorized) }
+    /// The status the system reports. Defaults to the pre-existing behavior of
+    /// this mock (full access) so tests that don't care keep passing.
+    nonisolated(unsafe) var status: PHAuthorizationStatus = .authorized
+    /// What the system answers once the (simulated) prompt is answered.
+    nonisolated(unsafe) var statusAfterRequest: PHAuthorizationStatus = .authorized
+    /// How many times the prompt was raised.
+    nonisolated(unsafe) private(set) var requestCount = 0
+
+    func authorizationStatus() -> PHAuthorizationStatus { status }
+    func requestAuthorization(_ handler: @escaping (PHAuthorizationStatus) -> Void) {
+        requestCount += 1
+        status = statusAfterRequest
+        handler(status)
+    }
     func fetchAssets() -> [PHAsset] { [] }
     func loadData(for asset: PHAsset) async throws -> Data { Data() }
     func checksum(for asset: PHAsset) async throws -> String { "" }

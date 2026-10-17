@@ -29,18 +29,8 @@ struct LocalLibraryView: View {
             ToolbarItem(placement: .principal) { ImmichAppBar(title: "On this device") }
         }
         .safeAreaInset(edge: .bottom) { selectionBar }
-        .task { await reload() }
-        .refreshable { await reload() }
-    }
-
-    /// Re-reads the device and the server. The album the user is scoped to is
-    /// kept — a refresh must not silently move the grid back to the whole
-    /// library — while the selection and the verdict are dropped by
-    /// `loadAssets` (a verdict describes the assets it was asked about).
-    private func reload() async {
-        vm.loadAlbums()
-        await vm.loadAssets(albumID: vm.selectedAlbumID)
-        await vm.loadRemoteSummary()
+        .task { await vm.reload() }
+        .refreshable { await vm.reload() }
     }
 
     // MARK: - Summary
