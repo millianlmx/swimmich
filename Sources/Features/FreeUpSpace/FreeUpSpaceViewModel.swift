@@ -1,5 +1,6 @@
 import Foundation
 import Observation
+import Photos
 
 /// Drives "Free Up Space": scan, review, then delete the local originals of
 /// assets the server provably already holds.
@@ -26,6 +27,7 @@ final class FreeUpSpaceViewModel {
     let client: any ImmichClient
     let source: any LocalCleanupSource
     let albumSource: any BackupAssetSource
+    let photoLibrary: any PhotoLibraryService
     let ledger: any BackupLedgerStoring
     var settings: CleanupSettingsStore
 
@@ -35,6 +37,8 @@ final class FreeUpSpaceViewModel {
     private static let serverCheckChunkSize = 100
 
     var albums: [BackupAlbum] = []
+    /// True once a `loadAlbums` has read PhotoKit during this VM's life.
+    private(set) var hasLoadedAlbums = false
     var candidates: [CleanupCandidate] = []
     var isScanning = false
     var isDeleting = false
@@ -55,21 +59,26 @@ final class FreeUpSpaceViewModel {
         client: any ImmichClient,
         source: any LocalCleanupSource,
         albumSource: any BackupAssetSource,
+        photoLibrary: any PhotoLibraryService,
         ledger: any BackupLedgerStoring,
         settings: CleanupSettingsStore
     ) {
         self.client = client
         self.source = source
         self.albumSource = albumSource
+        self.photoLibrary = photoLibrary
         self.ledger = ledger
         self.settings = settings
+        self.photoAuthorization = photoLibrary.authorizationStatus()
     }
 
     // MARK: - Projections
 
     /// Without a cutoff there is nothing to scan: upstream's
     /// `cutoffDaysAgo == -1` short-circuits `scanAssets()`.
-    var canScan: Bool { settings.cutoffDate != nil && !isScanning && !isDeleting }
+    var canScan: Bool {
+        settings.cutoffDate != nil && !isScanning && !isDeleting && !isPhotoAccessDenied
+    }
 
     var reclaimableBytes: Int64 {
         candidates.reduce(0) { $0 + $1.byteSize }
@@ -108,13 +117,56 @@ final class FreeUpSpaceViewModel {
         return "\(kind), \(date), \(StorageStatsViewModel.format(candidate.byteSize))"
     }
 
+    // MARK: - Photos access
+
+    /// Photos authorization as last read. Mirrors `UploadViewModel`.
+    private(set) var photoAuthorization: PHAuthorizationStatus
+
+    /// `.limited` counts as readable.
+    var canReadPhotoLibrary: Bool {
+        photoAuthorization == .authorized || photoAuthorization == .limited
+    }
+
+    var isPhotoAccessDenied: Bool {
+        photoAuthorization == .denied || photoAuthorization == .restricted
+    }
+
+    /// Reads the current status. Never prompts.
+    func refreshPhotoAuthorization() {
+        photoAuthorization = photoLibrary.authorizationStatus()
+    }
+
+    /// Requests Photos access while it is undetermined (the prompt), waits for
+    /// the answer and returns true once the library is readable. Gesture-only.
+    func ensurePhotoAccess() async -> Bool {
+        if photoLibrary.authorizationStatus() == .notDetermined {
+            let answer = await withCheckedContinuation { continuation in
+                photoLibrary.requestAuthorization { continuation.resume(returning: $0) }
+            }
+            photoAuthorization = answer
+        } else {
+            refreshPhotoAuthorization()
+        }
+        return canReadPhotoLibrary
+    }
+
+    /// The album picker's entry point: opening it is the gesture.
+    func prepareAlbumPicker() async {
+        if await ensurePhotoAccess() { loadAlbums() }
+    }
+
     // MARK: - Albums
 
     /// Albums are read once per appearance. Pruning first keeps the picker and
     /// the stored set consistent; the messaging-app defaults are applied only
-    /// while they have never been applied.
+    /// while they have never been applied. Without readable access nothing is
+    /// read — and nothing is pruned: an empty list from an unreadable library
+    /// would wipe the user's kept albums.
     func loadAlbums() {
+        refreshPhotoAuthorization()
+        guard canReadPhotoLibrary else { return }
         albums = albumSource.fetchAlbums()
+        hasLoadedAlbums = true
         settings.pruneStaleAlbums(existing: Set(albums.map(\.id)))
         settings.applyDefaultKeepAlbums(albums)
     }
@@ -184,7 +236,17 @@ final class FreeUpSpaceViewModel {
         // A second call while one is in flight would clear the list under the
         // first and drop `isScanning` early. The button is disabled meanwhile,
         // but a double tap lands inside one render pass.
+        guard !isScanning, settings.cutoffDate != nil else { return }
+        // The scan is the gesture that may raise the Photos prompt. Denied:
+        // nothing below runs — no candidates, no request, no scanning state.
+        guard await ensurePhotoAccess() else { return }
+        // The prompt may have been up while a second tap or a filter change
+        // landed: re-check what the first guard read.
         guard !isScanning, let cutoff = settings.cutoffDate else { return }
+        // The kept-by-default messaging albums are applied by `loadAlbums`; a
+        // first scan must not run before they are, or it would offer to delete
+        // what the defaults protect.
+        if !hasLoadedAlbums { loadAlbums() }
         let generation = scanGeneration
         isScanning = true
         errorMessage = nil

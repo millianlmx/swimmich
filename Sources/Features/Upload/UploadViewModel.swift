@@ -283,6 +283,7 @@ final class UploadViewModel {
         self.notifications = notifications
         self.cloudStatus = cloudStatus
         self.readOnly = readOnly
+        self.photoAuthorization = photos.authorizationStatus()
     }
 
     /// Pushes the "Show backup status on thumbnails" preference into the badge
@@ -297,45 +298,52 @@ final class UploadViewModel {
         engine.phase == .checking || engine.phase == .uploading
     }
 
-    /// Requests Photos read access. Returns true once authorized/limited.
-    /// Manual runs call this first — without it `fetchCandidates` silently
-    /// returns nothing and the run "does nothing".
-    private func ensurePhotoAccess() async -> Bool {
-        let status = photos.authorizationStatus()
-        switch status {
-        case .authorized, .limited:
-            return true
-        case .notDetermined:
-            return await withCheckedContinuation { continuation in
-                photos.requestAuthorization { newStatus in
-                    continuation.resume(returning: newStatus == .authorized || newStatus == .limited)
-                }
+    /// Photos authorization as last read. Mirrors `LocalLibraryViewModel`'s
+    /// `authorization`: `.limited` counts as readable.
+    private(set) var photoAuthorization: PHAuthorizationStatus
+
+    var canReadPhotoLibrary: Bool {
+        photoAuthorization == .authorized || photoAuthorization == .limited
+    }
+
+    var isPhotoAccessDenied: Bool {
+        photoAuthorization == .denied || photoAuthorization == .restricted
+    }
+
+    /// Reads the current status. Never prompts.
+    func refreshPhotoAuthorization() {
+        photoAuthorization = photos.authorizationStatus()
+    }
+
+    /// Requests Photos read access when it is still undetermined (the prompt),
+    /// waits for the answer, and returns true once the library is readable.
+    /// Only a user gesture may call this. Manual runs call it first — without
+    /// it `fetchCandidates` silently returns nothing and the run "does nothing".
+    func ensurePhotoAccess() async -> Bool {
+        if photos.authorizationStatus() == .notDetermined {
+            let answer = await withCheckedContinuation { continuation in
+                photos.requestAuthorization { continuation.resume(returning: $0) }
             }
-        default:
-            return false
+            photoAuthorization = answer
+        } else {
+            refreshPhotoAuthorization()
         }
+        return canReadPhotoLibrary
     }
 
     /// Photo access with a user-visible consequence: prompts when not
     /// determined; sends the user to the system settings when denied, so a
     /// silently-dead "Auto backup" toggle is impossible (the previous
     /// behavior: requestAuthorization resolves denied → no submit → the
-    /// automatic chain never starts, no error shown anywhere).
+    /// automatic chain never starts, no error shown anywhere). Once the answer
+    /// is known the album list is loaded if the library is readable.
     func requestPhotoAccessThenOpenDenied() {
-        let status = photos.authorizationStatus()
-        switch status {
-        case .authorized, .limited:
-            return
-        case .notDetermined:
-            photos.requestAuthorization { status in
-                Task { @MainActor in
-                    if status == .denied || status == .restricted {
-                        self.openPhotoSettings()
-                    }
-                }
+        Task {
+            if await ensurePhotoAccess() {
+                loadAlbums()
+            } else if isPhotoAccessDenied {
+                openPhotoSettings()
             }
-        default:
-            openPhotoSettings()
         }
     }
 
@@ -367,10 +375,14 @@ final class UploadViewModel {
             return
         }
         if manual {
-            guard await ensurePhotoAccess() else {
-                engine.reportError("Photo library access is required to back up.")
-                return
-            }
+            // Refusal is silent here: the denied state on the backup screen
+            // is what tells the user, not an English error line.
+            guard await ensurePhotoAccess() else { return }
+        } else {
+            // Unattended entry (BGTask, kick-off, library monitor): never
+            // prompt, never read PhotoKit without access.
+            refreshPhotoAuthorization()
+            guard canReadPhotoLibrary else { return }
         }
         // Fire-and-forget: the run must not wait for the user to answer the
         // prompt, and the result only matters when the run ends.
@@ -475,7 +487,10 @@ final class UploadViewModel {
     /// triggers runs (the pending request is kept alive on activation).
     func kickOffAutoBackupIfConfigured() async {
         guard settings.autoDetectNewPhotos, !running else { return }
-        guard await ensurePhotoAccess() else { return }
+        // No gesture behind this call (scene activation): read the status,
+        // never ask. An undetermined library waits for the user's first gesture.
+        refreshPhotoAuthorization()
+        guard canReadPhotoLibrary else { return }
         currentBackupTask = Task { await runBackup(manual: false) }
     }
 
@@ -489,8 +504,19 @@ final class UploadViewModel {
         await currentBackupTask?.value
     }
 
+    /// Loads the album list for the pickers. Reads the status first and never
+    /// prompts: PhotoKit prompts on its own when an app reads while
+    /// `.notDetermined`, so an ungated fetch on screen open is a prompt with no
+    /// user gesture behind it. Without readable access the list stays empty.
     func loadAlbums() {
-        albums = engine.source.fetchAlbums()
+        refreshPhotoAuthorization()
+        albums = canReadPhotoLibrary ? engine.source.fetchAlbums() : []
+    }
+
+    /// The album pickers' entry point: the user opened a list that needs the
+    /// library, so this is the gesture that may raise the Photos prompt.
+    func prepareAlbumPicker() async {
+        if await ensurePhotoAccess() { loadAlbums() }
     }
 
     /// Assets the ledger currently tracks as already backed up.
@@ -591,6 +617,8 @@ struct BackupSettingsView: View {
     /// Read-only mode (gap G17): the run CTA is the one control that greys out
     /// instead of disappearing, explained by its own footer.
     @Environment(ReadOnlyModeStore.self) private var readOnly
+    @Environment(\.openURL) private var openURL
+    @Environment(\.scenePhase) private var scenePhase
 
     @State var vm: UploadViewModel
     /// The per-asset report of the same run — built from `vm`'s engine, not a
@@ -601,6 +629,9 @@ struct BackupSettingsView: View {
         @Bindable var vm = vm
         NavigationStack {
             Form {
+                if vm.isPhotoAccessDenied {
+                    photoAccessDeniedSection
+                }
                 Section {
                     LabeledContent("Server", value: auth.serverURLString)
                     LabeledContent("User", value: auth.userEmail ?? "—")
@@ -622,6 +653,11 @@ struct BackupSettingsView: View {
             }
             .task {
                 vm.loadAlbums()
+            }
+            // Back from Settings: the status may have changed there, and the
+            // album list must follow without leaving the screen.
+            .onChange(of: scenePhase) { _, newPhase in
+                if newPhase == .active { vm.loadAlbums() }
             }
             .confirmationDialog(
                 "Reset backup tracking?",
@@ -645,6 +681,24 @@ struct BackupSettingsView: View {
                 Button("OK", role: .cancel) { vm.albumSyncError = nil }
             } message: {
                 Text(vm.albumSyncError ?? "")
+            }
+        }
+    }
+
+    /// Shown first while Photos access is denied: says why backup does nothing
+    /// and sends the user to the app's page in Settings.
+    @ViewBuilder
+    private var photoAccessDeniedSection: some View {
+        Section {
+            Text("Backup needs access to your photos. Allow Swimmich to access your photos in Settings.")
+                .accessibilityIdentifier("backupPhotoAccessDeniedMessage")
+            if let settingsURL = URL(string: UIApplication.openSettingsURLString) {
+                Button {
+                    openURL(settingsURL)
+                } label: {
+                    Label("Open Settings", systemImage: "gear")
+                }
+                .accessibilityIdentifier("backupOpenSettingsButton")
             }
         }
     }
@@ -756,8 +810,17 @@ struct BackupSettingsView: View {
             }
             Toggle("Charging only", isOn: $vm.settings.onlyWhenCharging)
             Toggle("Back up new photos automatically", isOn: $vm.settings.autoDetectNewPhotos)
-                .onChange(of: vm.settings.autoDetectNewPhotos) { _, _ in
-                    DependencyContainer.shared.syncLibraryMonitor()
+                .onChange(of: vm.settings.autoDetectNewPhotos) { _, newValue in
+                    if newValue {
+                        // The monitor reads the library: ask first (prompt when
+                        // .notDetermined), then let it start if access is readable.
+                        Task {
+                            _ = await vm.ensurePhotoAccess()
+                            DependencyContainer.shared.syncLibraryMonitor()
+                        }
+                    } else {
+                        DependencyContainer.shared.syncLibraryMonitor()
+                    }
                 }
             Toggle("Show backup status on thumbnails", isOn: $vm.settings.showSyncBadge)
                 .onChange(of: vm.settings.showSyncBadge) { _, _ in
@@ -813,6 +876,7 @@ struct BackupSettingsView: View {
                         albums: vm.albums,
                         selection: $vm.settings.selectedAlbumIDs
                     )
+                    .task { await vm.prepareAlbumPicker() }
                 } label: {
                     LabeledContent("Albums to back up",
                                    value: albumCount(vm.settings.selectedAlbumIDs, "selected"))
@@ -824,6 +888,7 @@ struct BackupSettingsView: View {
                         albums: vm.albums,
                         selection: $vm.settings.excludedAlbumIDs
                     )
+                    .task { await vm.prepareAlbumPicker() }
                 } label: {
                     LabeledContent("Albums to skip",
                                    value: albumCount(vm.settings.excludedAlbumIDs, "excluded"))
@@ -840,6 +905,7 @@ struct BackupSettingsView: View {
                     albums: vm.albums.filter { !$0.isSmart },
                     selection: $vm.settings.syncedAlbumIDs
                 )
+                .task { await vm.prepareAlbumPicker() }
             } label: {
                 LabeledContent("Mirror into albums",
                                value: albumCount(vm.settings.syncedAlbumIDs, "mirrored"))

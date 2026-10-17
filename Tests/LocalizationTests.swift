@@ -53,6 +53,32 @@ final class LocalizationTests: XCTestCase {
         }
     }
 
+    /// AC-1 / AC-2: the prompts' consent text is read from the *built* app, so
+    /// the catalog must be wired into the target (a file on disk that is not in
+    /// the Resources phase would pass `AppStringsTests` and still ship English).
+    /// `CFBundleDisplayName` must stay out of the localized tables: the name is
+    /// Swimmich in every language.
+    func test_builtBundle_shipsTranslatedUsageDescriptions() throws {
+        let usageKeys = [
+            "NSPhotoLibraryUsageDescription", "NSPhotoLibraryAddUsageDescription",
+            "NSFaceIDUsageDescription", "NSCameraUsageDescription"
+        ]
+        for language in ["fr", "de", "es", "it"] {
+            let path = try XCTUnwrap(
+                bundle.path(forResource: "InfoPlist", ofType: "strings", inDirectory: nil, forLocalization: language),
+                "\(language): InfoPlist.strings is not compiled into the app"
+            )
+            let table = try XCTUnwrap(NSDictionary(contentsOfFile: path), "\(language): unreadable InfoPlist.strings")
+            for key in usageKeys {
+                let value = try XCTUnwrap(table[key] as? String, "\(language): \(key) missing")
+                XCTAssertFalse(value.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty, "\(language): \(key) is empty")
+                XCTAssertNotEqual(value, bundle.infoDictionary?[key] as? String, "\(language): \(key) is still English")
+            }
+            XCTAssertNil(table["CFBundleDisplayName"], "\(language): the app name must not be localized")
+        }
+        XCTAssertEqual(bundle.infoDictionary?["CFBundleDisplayName"] as? String, "Swimmich")
+    }
+
     /// The regression this whole card exists for: onboarding copy used to be
     /// hardcoded French, and half the catalog had no translation at all. A key
     /// that resolves to itself means the lookup fell through to English.

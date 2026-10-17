@@ -1,4 +1,5 @@
 import Foundation
+import Photos
 import XCTest
 @testable import ImmichSwiftUI
 
@@ -521,5 +522,168 @@ final class BackupAutoChainTests: XCTestCase {
         await vm.runBackup(manual: true)
 
         XCTAssertEqual(scheduler.submitCount, 1, "un run terminé ré-arme la chaîne (auto-backup on)")
+    }
+}
+
+// MARK: - No PhotoKit read without a gesture (AC-5, AC-6, AC-7)
+
+@MainActor
+final class BackupPhotoAccessTests: XCTestCase {
+
+    private func makeFixture(
+        status: PHAuthorizationStatus,
+        afterRequest: PHAuthorizationStatus = .authorized,
+        autoDetect: Bool = false
+    ) -> (UploadViewModel, MockPhotoLibraryService, MockBackupAssetSource, MockImmichClient, BackupEngine) {
+        let client = MockImmichClient()
+        client.bulkUploadCheckResponse = AssetBulkUploadCheckResponse(results: [.init(id: "c1", action: "accept")])
+        let source = MockBackupAssetSource()
+        source.candidates = [makeCandidate(id: "c1", fileName: "c1.jpg")]
+        source.albums = [BackupAlbum(id: "trip", name: "Trip", count: 3)]
+        source.dataProvider = { _ in Data(repeating: 1, count: 8) }
+        let photos = MockPhotoLibraryService()
+        photos.status = status
+        photos.statusAfterRequest = afterRequest
+        let settings = BackupSettingsStore(suiteName: "photo-access-\(UUID().uuidString)")
+        settings.isEnabled = true
+        settings.autoDetectNewPhotos = autoDetect
+        let (vm, engine) = makeVM(client: client, source: source, settings: settings, photos: photos)
+        return (vm, photos, source, client, engine)
+    }
+
+    func test_AC5_loadAlbums_undetermined_neitherPromptsNorReads() {
+        let (vm, photos, source, _, _) = makeFixture(status: .notDetermined)
+
+        vm.loadAlbums()
+
+        XCTAssertEqual(photos.requestCount, 0)
+        XCTAssertEqual(source.fetchAlbumsCallCount, 0)
+        XCTAssertTrue(vm.albums.isEmpty)
+        XCTAssertFalse(vm.canReadPhotoLibrary)
+        XCTAssertFalse(vm.isPhotoAccessDenied, "undetermined n'est pas un refus")
+    }
+
+    func test_AC5_loadAlbums_deniedOrRestricted_flagsDeniedAndReadsNothing() {
+        for status in [PHAuthorizationStatus.denied, .restricted] {
+            let (vm, photos, source, _, _) = makeFixture(status: status)
+
+            vm.loadAlbums()
+
+            XCTAssertTrue(vm.isPhotoAccessDenied, "\(status.rawValue)")
+            XCTAssertFalse(vm.canReadPhotoLibrary, "\(status.rawValue)")
+            XCTAssertEqual(source.fetchAlbumsCallCount, 0, "\(status.rawValue)")
+            XCTAssertEqual(photos.requestCount, 0, "\(status.rawValue)")
+            XCTAssertTrue(vm.albums.isEmpty, "\(status.rawValue)")
+        }
+    }
+
+    func test_AC5_loadAlbums_authorizedOrLimited_reads() {
+        for status in [PHAuthorizationStatus.authorized, .limited] {
+            let (vm, _, source, _, _) = makeFixture(status: status)
+
+            vm.loadAlbums()
+
+            XCTAssertEqual(vm.albums.map(\.id), ["trip"], "\(status.rawValue)")
+            XCTAssertEqual(source.fetchAlbumsCallCount, 1, "\(status.rawValue)")
+            XCTAssertFalse(vm.isPhotoAccessDenied, "\(status.rawValue)")
+        }
+    }
+
+    func test_AC5_loadAlbums_followsAGrantMadeInSettings() {
+        let (vm, photos, _, _, _) = makeFixture(status: .denied)
+        vm.loadAlbums()
+        XCTAssertTrue(vm.isPhotoAccessDenied)
+
+        photos.status = .authorized
+        vm.loadAlbums()
+
+        XCTAssertFalse(vm.isPhotoAccessDenied)
+        XCTAssertEqual(vm.albums.map(\.id), ["trip"])
+    }
+
+    func test_AC5_kickOff_undetermined_doesNothing() async {
+        let (vm, photos, source, client, engine) = makeFixture(status: .notDetermined, autoDetect: true)
+
+        await vm.kickOffAutoBackupIfConfigured()
+        await vm.awaitCurrentBackup()
+
+        XCTAssertEqual(photos.requestCount, 0)
+        XCTAssertEqual(client.requestCount, 0, "bulkUploadCheck n'est pas appelé")
+        XCTAssertTrue(source.exportedIDs.isEmpty)
+        XCTAssertEqual(engine.phase, .idle)
+    }
+
+    func test_AC5_unattendedRun_withoutReadableAccess_returnsBeforeAnyReadOrError() async {
+        for status in [PHAuthorizationStatus.notDetermined, .denied, .restricted] {
+            let (vm, photos, _, client, engine) = makeFixture(status: status)
+
+            await vm.runBackup(manual: false)
+
+            XCTAssertEqual(photos.requestCount, 0, "\(status.rawValue)")
+            XCTAssertEqual(client.requestCount, 0, "\(status.rawValue)")
+            XCTAssertNil(engine.lastError, "\(status.rawValue) : pas de message d'erreur anglais")
+            XCTAssertEqual(engine.phase, .idle, "\(status.rawValue)")
+        }
+    }
+
+    func test_AC5_unattendedRun_withAccess_stillRuns() async {
+        let (vm, _, _, _, engine) = makeFixture(status: .authorized)
+
+        await vm.runBackup(manual: false)
+
+        XCTAssertEqual(engine.phase, .done)
+    }
+
+    func test_AC6_manualRun_undeterminedThenDenied_promptsOnceAndStaysSilent() async {
+        let (vm, photos, _, client, engine) = makeFixture(status: .notDetermined, afterRequest: .denied)
+
+        await vm.runBackup(manual: true)
+
+        XCTAssertEqual(photos.requestCount, 1)
+        XCTAssertTrue(vm.isPhotoAccessDenied)
+        XCTAssertNil(engine.lastError)
+        XCTAssertEqual(client.requestCount, 0)
+        XCTAssertEqual(engine.phase, .idle)
+    }
+
+    func test_AC6_manualRun_undeterminedThenGranted_runs() async {
+        let (vm, photos, _, _, engine) = makeFixture(status: .notDetermined, afterRequest: .authorized)
+
+        await vm.runBackup(manual: true)
+
+        XCTAssertEqual(photos.requestCount, 1)
+        XCTAssertTrue(vm.canReadPhotoLibrary)
+        XCTAssertEqual(engine.phase, .done)
+    }
+
+    func test_AC6_ensurePhotoAccess_alreadyDetermined_neverPrompts() async {
+        for (status, expected) in [(PHAuthorizationStatus.authorized, true), (.limited, true), (.denied, false), (.restricted, false)] {
+            let (vm, photos, _, _, _) = makeFixture(status: status)
+
+            let granted = await vm.ensurePhotoAccess()
+
+            XCTAssertEqual(granted, expected, "\(status.rawValue)")
+            XCTAssertEqual(photos.requestCount, 0, "\(status.rawValue)")
+        }
+    }
+
+    func test_AC6_prepareAlbumPicker_undeterminedThenGranted_loadsAlbums() async {
+        let (vm, photos, _, _, _) = makeFixture(status: .notDetermined, afterRequest: .authorized)
+
+        await vm.prepareAlbumPicker()
+
+        XCTAssertEqual(photos.requestCount, 1)
+        XCTAssertEqual(vm.albums.map(\.id), ["trip"])
+    }
+
+    func test_AC6_prepareAlbumPicker_undeterminedThenDenied_leavesTheListEmpty() async {
+        let (vm, photos, source, _, _) = makeFixture(status: .notDetermined, afterRequest: .denied)
+
+        await vm.prepareAlbumPicker()
+
+        XCTAssertEqual(photos.requestCount, 1)
+        XCTAssertTrue(vm.albums.isEmpty)
+        XCTAssertEqual(source.fetchAlbumsCallCount, 0)
+        XCTAssertTrue(vm.isPhotoAccessDenied)
     }
 }

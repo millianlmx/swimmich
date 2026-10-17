@@ -1233,6 +1233,34 @@
         }
       }
     },
+    "Backup needs access to your photos. Allow Swimmich to access your photos in Settings." : {
+      "localizations" : {
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "La sauvegarde a besoin d'accéder à vos photos. Autorisez Swimmich à accéder à vos photos dans Réglages."
+          }
+        },
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Das Backup braucht Zugriff auf deine Fotos. Erlaube Swimmich in den Einstellungen den Zugriff auf deine Fotos."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "La copia de seguridad necesita acceder a tus fotos. Permite que Swimmich acceda a tus fotos en Ajustes."
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Il backup ha bisogno di accedere alle tue foto. Consenti a Swimmich di accedere alle tue foto in Impostazioni."
+          }
+        }
+      }
+    },
     "Before" : {
       "localizations" : {
         "fr" : {

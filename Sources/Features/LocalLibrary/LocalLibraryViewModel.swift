@@ -191,6 +191,25 @@ final class LocalLibraryViewModel {
         }
     }
 
+    /// Re-reads the device and the server. The album the user is scoped to is
+    /// kept — a refresh must not silently move the grid back to the whole
+    /// library — while the selection and the verdict are dropped by
+    /// `loadAssets` (a verdict describes the assets it was asked about).
+    ///
+    /// Opening the screen is not a request for access: the status is read
+    /// first and PhotoKit is touched only when it is readable, since any fetch
+    /// while `.notDetermined` raises the Photos prompt by itself. The server
+    /// summary does not depend on Photos and is always read; the screen's own
+    /// "Allow access" button is the gesture that asks.
+    func reload() async {
+        authorization = photoLibrary.authorizationStatus()
+        if canReadLibrary {
+            loadAlbums()
+            await loadAssets(albumID: selectedAlbumID)
+        }
+        await loadRemoteSummary()
+    }
+
     // MARK: - Photos access
 
     /// Asks Photos for read access, then re-enumerates when it is granted. The

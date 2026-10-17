@@ -328,9 +328,13 @@ final class DependencyContainer {
 
     /// Aligns the Photos observer with the current settings: observing only
     /// makes sense when both auto-backup and new-photo detection are on, and it
-    /// must never be left running otherwise.
+    /// must never be left running otherwise. Starting it reads PhotoKit, so it
+    /// also needs readable access — registering while `.notDetermined` would
+    /// raise the Photos prompt with no gesture behind it.
     func syncLibraryMonitor() {
-        if BackupSettingsStore().snapshot().shouldObserveLibraryChanges {
+        let status = photos.authorizationStatus()
+        let readable = status == .authorized || status == .limited
+        if readable, BackupSettingsStore().snapshot().shouldObserveLibraryChanges {
             libraryMonitor.start()
         } else {
             libraryMonitor.stop()
@@ -498,6 +502,7 @@ final class DependencyContainer {
             client: libraryClient,
             source: cleanupSource,
             albumSource: photoLibrary,
+            photoLibrary: photos,
             ledger: backupLedger,
             settings: CleanupSettingsStore()
         )
