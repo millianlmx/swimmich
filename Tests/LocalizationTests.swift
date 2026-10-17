@@ -59,7 +59,11 @@ final class LocalizationTests: XCTestCase {
     func test_interfaceCopyIsTranslatedInEveryOfferedLanguage() throws {
         // Keys picked for being unambiguous in all five languages: "General"
         // is deliberately absent, being spelled the same in English and Spanish.
-        let keys = ["Language", "Map", "Close", "Use System Language"]
+        let keys = [
+            "Language", "Map", "Close", "Use System Language",
+            "Privacy Policy", "Support", "Account Deletion",
+            "Swimmich doesn't create any account. Your account lives on your Immich server: to delete it, contact that server's administrator.",
+        ]
         for key in keys {
             var values: Set<String> = [key]
             for code in ["fr", "de", "es", "it"] {
