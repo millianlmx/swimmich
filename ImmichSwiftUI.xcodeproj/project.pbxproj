@@ -2889,7 +2889,7 @@
 				);
 				PRODUCT_BUNDLE_IDENTIFIER = "fr.millianlmx.immich-ios";
 				SDKROOT = iphoneos;
-				TARGETED_DEVICE_FAMILY = "1,2";
+				TARGETED_DEVICE_FAMILY = 1;
 			};
 			name = Release;
 		};
@@ -2967,7 +2967,7 @@
 				);
 				PRODUCT_BUNDLE_IDENTIFIER = app.immich.swiftui.tests;
 				SDKROOT = iphoneos;
-				TARGETED_DEVICE_FAMILY = "1,2";
+				TARGETED_DEVICE_FAMILY = 1;
 				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/ImmichSwiftUI.app/ImmichSwiftUI";
 			};
 			name = Debug;
@@ -2995,7 +2995,7 @@
 				SDKROOT = iphoneos;
 				SKIP_INSTALL = YES;
 				SWIFT_VERSION = 5.9;
-				TARGETED_DEVICE_FAMILY = "1,2";
+				TARGETED_DEVICE_FAMILY = 1;
 				VERSIONING_SYSTEM = "apple-generic";
 			};
 			name = Debug;
@@ -3013,7 +3013,7 @@
 				);
 				PRODUCT_BUNDLE_IDENTIFIER = app.immich.swiftui.tests;
 				SDKROOT = iphoneos;
-				TARGETED_DEVICE_FAMILY = "1,2";
+				TARGETED_DEVICE_FAMILY = 1;
 				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/ImmichSwiftUI.app/ImmichSwiftUI";
 			};
 			name = Release;
@@ -3031,7 +3031,7 @@
 				);
 				PRODUCT_BUNDLE_IDENTIFIER = app.immich.swiftui.uitests;
 				SDKROOT = iphoneos;
-				TARGETED_DEVICE_FAMILY = "1,2";
+				TARGETED_DEVICE_FAMILY = 1;
 				TEST_TARGET_NAME = ImmichSwiftUI;
 			};
 			name = Debug;
@@ -3049,7 +3049,7 @@
 				);
 				PRODUCT_BUNDLE_IDENTIFIER = "fr.millianlmx.immich-ios.share-extension";
 				SDKROOT = iphoneos;
-				TARGETED_DEVICE_FAMILY = "1,2";
+				TARGETED_DEVICE_FAMILY = 1;
 			};
 			name = Release;
 		};
@@ -3072,7 +3072,7 @@
 				);
 				PRODUCT_BUNDLE_IDENTIFIER = "fr.millianlmx.immich-ios";
 				SDKROOT = iphoneos;
-				TARGETED_DEVICE_FAMILY = "1,2";
+				TARGETED_DEVICE_FAMILY = 1;
 			};
 			name = Debug;
 		};
@@ -3089,7 +3089,7 @@
 				);
 				PRODUCT_BUNDLE_IDENTIFIER = "fr.millianlmx.immich-ios.share-extension";
 				SDKROOT = iphoneos;
-				TARGETED_DEVICE_FAMILY = "1,2";
+				TARGETED_DEVICE_FAMILY = 1;
 			};
 			name = Debug;
 		};
@@ -3184,7 +3184,7 @@
 				SDKROOT = iphoneos;
 				SKIP_INSTALL = YES;
 				SWIFT_VERSION = 5.9;
-				TARGETED_DEVICE_FAMILY = "1,2";
+				TARGETED_DEVICE_FAMILY = 1;
 				VERSIONING_SYSTEM = "apple-generic";
 			};
 			name = Release;
@@ -3202,7 +3202,7 @@
 				);
 				PRODUCT_BUNDLE_IDENTIFIER = app.immich.swiftui.uitests;
 				SDKROOT = iphoneos;
-				TARGETED_DEVICE_FAMILY = "1,2";
+				TARGETED_DEVICE_FAMILY = 1;
 				TEST_TARGET_NAME = ImmichSwiftUI;
 			};
 			name = Release;
@@ -3220,7 +3220,7 @@
 				);
 				PRODUCT_BUNDLE_IDENTIFIER = "fr.millianlmx.immich-ios.widgets";
 				SDKROOT = iphoneos;
-				TARGETED_DEVICE_FAMILY = "1,2";
+				TARGETED_DEVICE_FAMILY = 1;
 			};
 			name = Debug;
 		};
@@ -3237,7 +3237,7 @@
 				);
 				PRODUCT_BUNDLE_IDENTIFIER = "fr.millianlmx.immich-ios.widgets";
 				SDKROOT = iphoneos;
-				TARGETED_DEVICE_FAMILY = "1,2";
+				TARGETED_DEVICE_FAMILY = 1;
 			};
 			name = Release;
 		};
