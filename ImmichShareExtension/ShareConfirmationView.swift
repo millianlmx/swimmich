@@ -36,7 +36,7 @@ struct ShareConfirmationView: View {
     private var header: some View {
         VStack(alignment: .leading, spacing: PVSpacing.s2) {
             HStack(spacing: PVSpacing.s8) {
-                Text(String(localized: "Immich"))
+                Text(String(localized: "Swimmich"))
                     .font(.pvHeadline)
                     .foregroundStyle(Color.textPrimaryPV)
                 Spacer(minLength: PVSpacing.s8)
@@ -268,7 +268,7 @@ struct ShareNoSessionView: View {
             ContentUnavailableView(
                 String(localized: "Sign in to Immich"),
                 systemImage: "person.crop.circle.badge.exclamationmark",
-                description: Text(String(localized: "Open the Immich app, sign in, then share again."))
+                description: Text(String(localized: "Open the Swimmich app, sign in, then share again."))
             )
             .accessibilityIdentifier("shareExtensionNoSessionView")
             Button(String(localized: "Close"), action: onClose)

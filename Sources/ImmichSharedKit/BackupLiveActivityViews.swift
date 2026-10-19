@@ -307,7 +307,7 @@ public struct BackupLockScreenView: View {
             HStack(alignment: .center, spacing: 10) {
                 BackupGlyph(state: state)
                 VStack(alignment: .leading, spacing: 1) {
-                    Text("Immich Backup")
+                    Text("Swimmich Backup")
                         .font(.headline)
                     Text(subtitle)
                         .font(.caption2)
@@ -324,7 +324,7 @@ public struct BackupLockScreenView: View {
         }
         .padding(16)
         .accessibilityElement(children: .combine)
-        .accessibilityLabel("Immich backup, \(state.processed) of \(state.total), \(subtitle)")
+        .accessibilityLabel("Swimmich backup, \(state.processed) of \(state.total), \(subtitle)")
     }
 
     @ViewBuilder

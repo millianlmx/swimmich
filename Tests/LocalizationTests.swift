@@ -125,7 +125,7 @@ final class LocalizationTests: XCTestCase {
             (AppTheme.system.label, "System"),
             (AppTheme.light.label, "Light"),
             (AppTheme.dark.label, "Dark"),
-            (AppAccent.immich.label, "Immich"),
+            (AppAccent.immich.label, "Swimmich"),
             (AppAccent.blue.label, "Blue"),
             (AppAccent.green.label, "Green"),
             (AppAccent.orange.label, "Orange"),

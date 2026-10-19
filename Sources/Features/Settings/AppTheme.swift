@@ -46,7 +46,7 @@ enum AppAccent: String, CaseIterable, Identifiable {
 
     var label: String {
         switch self {
-        case .immich: return String(localized: "Immich")
+        case .immich: return String(localized: "Swimmich")
         case .blue: return String(localized: "Blue")
         case .green: return String(localized: "Green")
         case .orange: return String(localized: "Orange")

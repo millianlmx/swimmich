@@ -46,9 +46,10 @@ let blades = 5
 let petalPhase = -CGFloat.pi / 2
 let valleyPhase = petalPhase + CGFloat.pi / 5
 
-let stops: [(CGFloat, CGFloat, CGFloat)] = [
-    (30, 131, 247), (24, 194, 73), (237, 121, 181), (255, 180, 0), (250, 41, 33),
-]
+// Mirrors Color.immichLogoLight -> Color.immichLogoDeep
+// (Sources/DesignSystem/Tokens/ImmichLogoColors.swift): immichPrimary in dark
+// (#ACCBFA) then in light (#4250AF).
+let stops: [(CGFloat, CGFloat, CGFloat)] = [(172, 203, 250), (66, 80, 175)]
 
 // noneSkipLast, not premultipliedLast: the PNG must carry no alpha channel.
 let ctx = CGContext(data: nil, width: side, height: side, bitsPerComponent: 8, bytesPerRow: 0,
@@ -131,7 +132,7 @@ ctx.clip(using: .evenOdd)
 let colors = stops.map { CGColor(red: $0.0 / 255, green: $0.1 / 255, blue: $0.2 / 255, alpha: 1) }
 let gradient = CGGradient(colorsSpace: CGColorSpaceCreateDeviceRGB(),
                           colors: colors as CFArray,
-                          locations: [0, 0.25, 0.5, 0.75, 1])!
+                          locations: [0, 1])!
 ctx.drawLinearGradient(gradient,
                        start: CGPoint(x: centre.x - radius, y: centre.y),
                        end: CGPoint(x: centre.x + radius, y: centre.y),

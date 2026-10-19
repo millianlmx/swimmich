@@ -4145,58 +4145,58 @@
         }
       }
     },
-    "Immich needs access to this device's photos to list them." : {
+    "Swimmich needs access to this device's photos to list them." : {
       "localizations" : {
         "fr" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Immich a besoin d'accéder aux photos de cet appareil pour les lister."
+            "value" : "Swimmich a besoin d'accéder aux photos de cet appareil pour les lister."
           }
         },
         "de" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Immich benötigt Zugriff auf die Fotos dieses Geräts, um sie aufzulisten."
+            "value" : "Swimmich benötigt Zugriff auf die Fotos dieses Geräts, um sie aufzulisten."
           }
         },
         "es" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Immich necesita acceso a las fotos de este dispositivo para listarlas."
+            "value" : "Swimmich necesita acceso a las fotos de este dispositivo para listarlas."
           }
         },
         "it" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Immich necessita dell'accesso alle foto di questo dispositivo per elencarle."
+            "value" : "Swimmich necessita dell'accesso alle foto di questo dispositivo per elencarle."
           }
         }
       }
     },
-    "Immich now reads the text inside your photos, so you can search for them by what they say." : {
+    "Swimmich now searches the text inside your photos, so you can find them by what they say." : {
       "localizations" : {
         "fr" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Immich lit désormais le texte contenu dans vos photos : vous pouvez les retrouver par ce qu'elles disent."
+            "value" : "Swimmich recherche désormais dans le texte de vos photos : vous pouvez les retrouver par ce qu'elles disent."
           }
         },
         "de" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Immich liest jetzt den Text in deinen Fotos, sodass du sie danach durchsuchen kannst, was auf ihnen steht."
+            "value" : "Swimmich durchsucht jetzt den Text in deinen Fotos, sodass du sie danach finden kannst, was auf ihnen steht."
           }
         },
         "es" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Immich ahora lee el texto de tus fotos, así puedes buscarlas por lo que dicen."
+            "value" : "Swimmich ahora busca en el texto de tus fotos, así puedes encontrarlas por lo que dicen."
           }
         },
         "it" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Immich ora legge il testo dentro le tue foto, così puoi cercarle per ciò che dicono."
+            "value" : "Swimmich ora cerca nel testo delle tue foto, così puoi trovarle per ciò che dicono."
           }
         }
       }
@@ -6553,30 +6553,30 @@
         }
       }
     },
-    "Open the Immich app, sign in, then share again." : {
+    "Open the Swimmich app, sign in, then share again." : {
       "localizations" : {
         "fr" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Ouvrez l'app Immich, connectez-vous, puis partagez à nouveau."
+            "value" : "Ouvrez l'app Swimmich, connectez-vous, puis partagez à nouveau."
           }
         },
         "de" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Öffne die Immich-App, melde dich an und teile erneut."
+            "value" : "Öffne die Swimmich-App, melde dich an und teile erneut."
           }
         },
         "es" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Abre la app Immich, inicia sesión y vuelve a compartir."
+            "value" : "Abre la app Swimmich, inicia sesión y vuelve a compartir."
           }
         },
         "it" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Apri l'app Immich, accedi e condividi di nuovo."
+            "value" : "Apri l'app Swimmich, accedi e condividi di nuovo."
           }
         }
       }
@@ -6861,30 +6861,30 @@
         }
       }
     },
-    "Photos backed up before Immich started recording checksums can't be verified against the server, so they are never offered here." : {
+    "Photos backed up before Swimmich started recording checksums can't be verified against the server, so they are never offered here." : {
       "localizations" : {
         "fr" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Les photos sauvegardées avant qu'Immich n'enregistre les sommes de contrôle ne peuvent pas être vérifiées auprès du serveur : elles ne sont jamais proposées ici."
+            "value" : "Les photos sauvegardées avant que Swimmich n'enregistre les sommes de contrôle ne peuvent pas être vérifiées auprès du serveur : elles ne sont jamais proposées ici."
           }
         },
         "de" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Fotos, die gesichert wurden, bevor Immich Prüfsummen erfasst hat, lassen sich nicht gegen den Server prüfen und werden hier nie angeboten."
+            "value" : "Fotos, die gesichert wurden, bevor Swimmich Prüfsummen erfasst hat, lassen sich nicht gegen den Server prüfen und werden hier nie angeboten."
           }
         },
         "es" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Las fotos respaldadas antes de que Immich empezara a registrar sumas de comprobación no se pueden verificar con el servidor, así que nunca se ofrecen aquí."
+            "value" : "Las fotos respaldadas antes de que Swimmich empezara a registrar sumas de comprobación no se pueden verificar con el servidor, así que nunca se ofrecen aquí."
           }
         },
         "it" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Le foto di cui è stato eseguito il backup prima che Immich iniziasse a registrare i checksum non possono essere verificate sul server, quindi non vengono mai proposte qui."
+            "value" : "Le foto di cui è stato eseguito il backup prima che Swimmich iniziasse a registrare i checksum non possono essere verificate sul server, quindi non vengono mai proposte qui."
           }
         }
       }
@@ -14063,58 +14063,58 @@
         }
       }
     },
-    "Asks for Face ID (or your passcode) every time Immich comes back to the foreground, so someone holding your unlocked phone can't browse your photos." : {
+    "Asks for Face ID (or your passcode) every time Swimmich comes back to the foreground, so someone holding your unlocked phone can't browse your photos." : {
       "localizations" : {
         "de" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Verlangt Face ID (oder den Gerätecode), wenn Immich wieder in den Vordergrund kommt, damit niemand mit deinem entsperrten iPhone deine Fotos ansehen kann."
+            "value" : "Verlangt Face ID (oder den Gerätecode), wenn Swimmich wieder in den Vordergrund kommt, damit niemand mit deinem entsperrten iPhone deine Fotos ansehen kann."
           }
         },
         "es" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Pide Face ID (o tu código) cada vez que Immich vuelve a primer plano, para que quien tenga tu teléfono desbloqueado no pueda ver tus fotos."
+            "value" : "Pide Face ID (o tu código) cada vez que Swimmich vuelve a primer plano, para que quien tenga tu teléfono desbloqueado no pueda ver tus fotos."
           }
         },
         "fr" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Demande Face ID (ou votre code) chaque fois qu'Immich revient au premier plan, pour qu'une personne tenant votre téléphone déverrouillé ne puisse pas parcourir vos photos."
+            "value" : "Demande Face ID (ou votre code) chaque fois que Swimmich revient au premier plan, pour qu'une personne tenant votre téléphone déverrouillé ne puisse pas parcourir vos photos."
           }
         },
         "it" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Richiede Face ID (o il codice) ogni volta che Immich torna in primo piano, così chi tiene in mano il tuo telefono sbloccato non può sfogliare le tue foto."
+            "value" : "Richiede Face ID (o il codice) ogni volta che Swimmich torna in primo piano, così chi tiene in mano il tuo telefono sbloccato non può sfogliare le tue foto."
           }
         }
       }
     },
-    "Asks the server which of your tracked photos it still has. Nothing is uploaded or downloaded — it is a list comparison, so it is quick even on a large library. Photos you deleted on the server are forgotten here, so the next backup uploads them again. Immich does this automatically about once a week; run it by hand after deleting photos on the server, so they come back without waiting for the next backup." : {
+    "Asks the server which of your tracked photos it still has. Nothing is uploaded or downloaded — it is a list comparison, so it is quick even on a large library. Photos you deleted on the server are forgotten here, so the next backup uploads them again. Swimmich does this automatically about once a week; run it by hand after deleting photos on the server, so they come back without waiting for the next backup." : {
       "localizations" : {
         "de" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Fragt den Server, welche deiner erfassten Fotos er noch hat. Es wird nichts hoch- oder heruntergeladen — es ist ein Listenvergleich und daher auch bei einer großen Mediathek schnell. Fotos, die du auf dem Server gelöscht hast, werden hier vergessen, damit das nächste Backup sie erneut hochlädt. Immich macht das etwa einmal pro Woche automatisch; führe es manuell aus, nachdem du Fotos auf dem Server gelöscht hast, damit sie zurückkommen, ohne auf das nächste Backup zu warten."
+            "value" : "Fragt den Server, welche deiner erfassten Fotos er noch hat. Es wird nichts hoch- oder heruntergeladen — es ist ein Listenvergleich und daher auch bei einer großen Mediathek schnell. Fotos, die du auf dem Server gelöscht hast, werden hier vergessen, damit das nächste Backup sie erneut hochlädt. Swimmich macht das etwa einmal pro Woche automatisch; führe es manuell aus, nachdem du Fotos auf dem Server gelöscht hast, damit sie zurückkommen, ohne auf das nächste Backup zu warten."
           }
         },
         "es" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Pregunta al servidor cuáles de tus fotos rastreadas siguen ahí. No se sube ni se descarga nada: es una comparación de listas, así que es rápida incluso con una biblioteca grande. Las fotos que elimines en el servidor se olvidan aquí, de modo que la próxima copia de seguridad volverá a subirlas. Immich lo hace automáticamente una vez a la semana; ejecútalo a mano después de eliminar fotos en el servidor para que vuelvan sin esperar a la siguiente copia de seguridad."
+            "value" : "Pregunta al servidor cuáles de tus fotos rastreadas siguen ahí. No se sube ni se descarga nada: es una comparación de listas, así que es rápida incluso con una biblioteca grande. Las fotos que elimines en el servidor se olvidan aquí, de modo que la próxima copia de seguridad volverá a subirlas. Swimmich lo hace automáticamente una vez a la semana; ejecútalo a mano después de eliminar fotos en el servidor para que vuelvan sin esperar a la siguiente copia de seguridad."
           }
         },
         "fr" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Demande au serveur lesquelles de vos photos suivies il possède encore. Rien n'est envoyé ni téléchargé — il s'agit d'une comparaison de listes, donc c'est rapide même sur une grande photothèque. Les photos que vous avez supprimées sur le serveur sont oubliées ici, la prochaine sauvegarde les enverra donc à nouveau. Immich le fait automatiquement environ une fois par semaine ; lancez-le à la main après avoir supprimé des photos sur le serveur, pour qu'elles reviennent sans attendre la prochaine sauvegarde."
+            "value" : "Demande au serveur lesquelles de vos photos suivies il possède encore. Rien n'est envoyé ni téléchargé — il s'agit d'une comparaison de listes, donc c'est rapide même sur une grande photothèque. Les photos que vous avez supprimées sur le serveur sont oubliées ici, la prochaine sauvegarde les enverra donc à nouveau. Swimmich le fait automatiquement environ une fois par semaine ; lancez-le à la main après avoir supprimé des photos sur le serveur, pour qu'elles reviennent sans attendre la prochaine sauvegarde."
           }
         },
         "it" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Chiede al server quali delle foto monitorate possiede ancora. Non viene caricato né scaricato nulla: è un confronto di elenchi, quindi è rapido anche con una libreria grande. Le foto eliminate sul server vengono dimenticate qui, così il prossimo backup le carica di nuovo. Immich lo fa automaticamente circa una volta a settimana; eseguilo manualmente dopo aver eliminato foto sul server, così tornano senza attendere il prossimo backup."
+            "value" : "Chiede al server quali delle foto monitorate possiede ancora. Non viene caricato né scaricato nulla: è un confronto di elenchi, quindi è rapido anche con una libreria grande. Le foto eliminate sul server vengono dimenticate qui, così il prossimo backup le carica di nuovo. Swimmich lo fa automaticamente circa una volta a settimana; eseguilo manualmente dopo aver eliminato foto sul server, così tornano senza attendere il prossimo backup."
           }
         }
       }
@@ -18241,30 +18241,30 @@
         }
       }
     },
-    "Forgets every photo Immich has recorded as backed up — the tracked count goes to zero. The next backup then re-checks the whole library against the server. Nothing is deleted from Immich or from Photos, and already-uploaded photos are skipped again, but on an iCloud-optimized library the re-check reads a lot of metadata and can take a long time. Prefer \"Check server now\" when only a few photos are missing." : {
+    "Forgets every photo Swimmich has recorded as backed up — the tracked count goes to zero. The next backup then re-checks the whole library against the server. Nothing is deleted from Immich or from Photos, and already-uploaded photos are skipped again, but on an iCloud-optimized library the re-check reads a lot of metadata and can take a long time. Prefer \"Check server now\" when only a few photos are missing." : {
       "localizations" : {
         "de" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Vergisst jedes Foto, für das Immich bereits ein Backup erfasst hat — der gezählte Stand fällt auf null. Das nächste Backup prüft dann die gesamte Mediathek erneut gegen den Server. Aus Immich oder aus „Fotos“ wird nichts gelöscht, und bereits hochgeladene Fotos werden erneut übersprungen, doch bei einer iCloud-optimierten Mediathek liest die erneute Prüfung viele Metadaten und kann sehr lange dauern. Wenn nur wenige Fotos fehlen, ist „Server jetzt prüfen“ die bessere Wahl."
+            "value" : "Vergisst jedes Foto, für das Swimmich bereits ein Backup erfasst hat — der gezählte Stand fällt auf null. Das nächste Backup prüft dann die gesamte Mediathek erneut gegen den Server. Aus Immich oder aus „Fotos“ wird nichts gelöscht, und bereits hochgeladene Fotos werden erneut übersprungen, doch bei einer iCloud-optimierten Mediathek liest die erneute Prüfung viele Metadaten und kann sehr lange dauern. Wenn nur wenige Fotos fehlen, ist „Server jetzt prüfen“ die bessere Wahl."
           }
         },
         "es" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Olvida todas las fotos que Immich ha registrado como copiadas — el recuento vuelve a cero. La siguiente copia de seguridad vuelve a comprobar toda la biblioteca con el servidor. No se elimina nada de Immich ni de Fotos, y las fotos ya subidas se vuelven a omitir, pero en una biblioteca optimizada para iCloud la comprobación lee muchos metadatos y puede tardar mucho. Usa \"Comprobar servidor ahora\" si solo faltan unas pocas fotos."
+            "value" : "Olvida todas las fotos que Swimmich ha registrado como copiadas — el recuento vuelve a cero. La siguiente copia de seguridad vuelve a comprobar toda la biblioteca con el servidor. No se elimina nada de Immich ni de Fotos, y las fotos ya subidas se vuelven a omitir, pero en una biblioteca optimizada para iCloud la comprobación lee muchos metadatos y puede tardar mucho. Usa \"Comprobar servidor ahora\" si solo faltan unas pocas fotos."
           }
         },
         "fr" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Oublie toutes les photos qu'Immich a enregistrées comme sauvegardées — le nombre suivi passe à zéro. La prochaine sauvegarde vérifie alors toute la photothèque auprès du serveur. Rien n'est supprimé d'Immich ni de Photos, et les photos déjà envoyées sont à nouveau ignorées, mais sur une photothèque optimisée iCloud la nouvelle vérification lit beaucoup de métadonnées et peut prendre longtemps. Préférez « Vérifier le serveur maintenant » quand seules quelques photos manquent."
+            "value" : "Oublie toutes les photos que Swimmich a enregistrées comme sauvegardées — le nombre suivi passe à zéro. La prochaine sauvegarde vérifie alors toute la photothèque auprès du serveur. Rien n'est supprimé d'Immich ni de Photos, et les photos déjà envoyées sont à nouveau ignorées, mais sur une photothèque optimisée iCloud la nouvelle vérification lit beaucoup de métadonnées et peut prendre longtemps. Préférez « Vérifier le serveur maintenant » quand seules quelques photos manquent."
           }
         },
         "it" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Dimentica tutte le foto che Immich ha registrato come salvate — il conteggio monitorato torna a zero. Il backup successivo ricontrolla l'intera libreria sul server. Nulla viene eliminato da Immich o da Foto, e le foto già caricate vengono nuovamente ignorate, ma su una libreria ottimizzata per iCloud il ricontrollo legge molti metadati e può richiedere molto tempo. Preferisci “Controlla ora il server” quando mancano solo poche foto."
+            "value" : "Dimentica tutte le foto che Swimmich ha registrato come salvate — il conteggio monitorato torna a zero. Il backup successivo ricontrolla l'intera libreria sul server. Nulla viene eliminato da Immich o da Foto, e le foto già caricate vengono nuovamente ignorate, ma su una libreria ottimizzata per iCloud il ricontrollo legge molti metadati e può richiedere molto tempo. Preferisci “Controlla ora il server” quando mancano solo poche foto."
           }
         }
       }
@@ -18586,289 +18586,289 @@
         }
       }
     },
-    "Immich" : {
+    "Swimmich" : {
       "localizations" : {
         "de" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Immich"
+            "value" : "Swimmich"
           }
         },
         "es" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Immich"
+            "value" : "Swimmich"
           }
         },
         "fr" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Immich"
+            "value" : "Swimmich"
           }
         },
         "it" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Immich"
+            "value" : "Swimmich"
           }
         }
       }
     },
-    "Immich Backup" : {
+    "Swimmich Backup" : {
       "localizations" : {
         "de" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Immich-Backup"
+            "value" : "Swimmich-Backup"
           }
         },
         "es" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Copia de seguridad de Immich"
+            "value" : "Copia de seguridad de Swimmich"
           }
         },
         "fr" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Sauvegarde Immich"
+            "value" : "Sauvegarde Swimmich"
           }
         },
         "it" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Backup Immich"
+            "value" : "Backup Swimmich"
           }
         }
       }
     },
-    "Immich backup, %lld of %lld, %@" : {
+    "Swimmich backup, %lld of %lld, %@" : {
       "extractionState" : "stale",
       "localizations" : {
         "de" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Immich-Backup, %lld von %lld, %@"
+            "value" : "Swimmich-Backup, %lld von %lld, %@"
           }
         },
         "es" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Copia de seguridad de Immich, %lld de %lld, %@"
+            "value" : "Copia de seguridad de Swimmich, %lld de %lld, %@"
           }
         },
         "fr" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Sauvegarde Immich, %lld sur %lld, %@"
+            "value" : "Sauvegarde Swimmich, %lld sur %lld, %@"
           }
         },
         "it" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Backup Immich, %lld di %lld, %@"
+            "value" : "Backup Swimmich, %lld di %lld, %@"
           }
         }
       }
     },
-    "Immich could not reach your server. Check the app can open it." : {
+    "Swimmich could not reach your server. Check the app can open it." : {
       "extractionState" : "stale",
       "localizations" : {
         "de" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Immich konnte deinen Server nicht erreichen. Prüfe, ob die App ihn öffnen kann."
+            "value" : "Swimmich konnte deinen Server nicht erreichen. Prüfe, ob die App ihn öffnen kann."
           }
         },
         "es" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Immich no pudo contactar con tu servidor. Comprueba que la app puede abrirlo."
+            "value" : "Swimmich no pudo contactar con tu servidor. Comprueba que la app puede abrirlo."
           }
         },
         "fr" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Immich n'a pas pu joindre votre serveur. Vérifiez que l'app peut l'ouvrir."
+            "value" : "Swimmich n'a pas pu joindre votre serveur. Vérifiez que l'app peut l'ouvrir."
           }
         },
         "it" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Immich non ha potuto raggiungere il tuo server. Verifica che l'app possa aprirlo."
+            "value" : "Swimmich non ha potuto raggiungere il tuo server. Verifica che l'app possa aprirlo."
           }
         }
       }
     },
-    "Immich Favorites" : {
+    "Swimmich Favorites" : {
       "extractionState" : "stale",
       "localizations" : {
         "de" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Immich-Favoriten"
+            "value" : "Swimmich-Favoriten"
           }
         },
         "es" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Favoritos de Immich"
+            "value" : "Favoritos de Swimmich"
           }
         },
         "fr" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Favoris Immich"
+            "value" : "Favoris Swimmich"
           }
         },
         "it" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Preferiti Immich"
+            "value" : "Preferiti Swimmich"
           }
         }
       }
     },
-    "Immich Memories" : {
+    "Swimmich Memories" : {
       "extractionState" : "stale",
       "localizations" : {
         "de" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Immich-Erinnerungen"
+            "value" : "Swimmich-Erinnerungen"
           }
         },
         "es" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Recuerdos de Immich"
+            "value" : "Recuerdos de Swimmich"
           }
         },
         "fr" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Souvenirs Immich"
+            "value" : "Souvenirs Swimmich"
           }
         },
         "it" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Ricordi Immich"
+            "value" : "Ricordi Swimmich"
           }
         }
       }
     },
-    "Immich Photos" : {
+    "Swimmich Photos" : {
       "extractionState" : "stale",
       "localizations" : {
         "de" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Immich-Fotos"
+            "value" : "Swimmich-Fotos"
           }
         },
         "es" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Fotos de Immich"
+            "value" : "Fotos de Swimmich"
           }
         },
         "fr" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Photos Immich"
+            "value" : "Photos Swimmich"
           }
         },
         "it" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Foto Immich"
+            "value" : "Foto Swimmich"
           }
         }
       }
     },
-    "Immich remembers which photos are already backed up so it never re-reads your whole iCloud library on every run. A photo stays on this list until the server is found to no longer have it." : {
+    "Swimmich remembers which photos are already backed up so it never re-reads your whole iCloud library on every run. A photo stays on this list until the server is found to no longer have it." : {
       "localizations" : {
         "de" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Immich merkt sich, für welche Fotos bereits ein Backup existiert, damit deine gesamte iCloud-Mediathek nicht bei jedem Durchlauf erneut gelesen wird. Ein Foto bleibt auf dieser Liste, bis festgestellt wird, dass der Server es nicht mehr hat."
+            "value" : "Swimmich merkt sich, für welche Fotos bereits ein Backup existiert, damit deine gesamte iCloud-Mediathek nicht bei jedem Durchlauf erneut gelesen wird. Ein Foto bleibt auf dieser Liste, bis festgestellt wird, dass der Server es nicht mehr hat."
           }
         },
         "es" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Immich recuerda qué fotos ya tienen copia de seguridad, así que nunca vuelve a leer toda tu biblioteca de iCloud en cada ejecución. Una foto permanece en esta lista hasta que se detecta que el servidor ya no la tiene."
+            "value" : "Swimmich recuerda qué fotos ya tienen copia de seguridad, así que nunca vuelve a leer toda tu biblioteca de iCloud en cada ejecución. Una foto permanece en esta lista hasta que se detecta que el servidor ya no la tiene."
           }
         },
         "fr" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Immich mémorise les photos déjà sauvegardées pour ne jamais relire toute votre photothèque iCloud à chaque exécution. Une photo reste sur cette liste jusqu'à ce que le serveur ne la possède plus."
+            "value" : "Swimmich mémorise les photos déjà sauvegardées pour ne jamais relire toute votre photothèque iCloud à chaque exécution. Une photo reste sur cette liste jusqu'à ce que le serveur ne la possède plus."
           }
         },
         "it" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Immich ricorda quali foto sono già salvate, così non rilegge l'intera libreria iCloud a ogni esecuzione. Una foto resta in questo elenco finché non risulta che il server non la contenga più."
+            "value" : "Swimmich ricorda quali foto sono già salvate, così non rilegge l'intera libreria iCloud a ogni esecuzione. Una foto resta in questo elenco finché non risulta che il server non la contenga più."
           }
         }
       }
     },
-    "Immich tells you when a backup finishes, so a background backup isn't silent." : {
+    "Swimmich tells you when a backup finishes, so a background backup isn't silent." : {
       "extractionState" : "stale",
       "localizations" : {
         "de" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Immich informiert dich, wenn ein Backup abgeschlossen ist, damit ein Backup im Hintergrund nicht unbemerkt bleibt."
+            "value" : "Swimmich informiert dich, wenn ein Backup abgeschlossen ist, damit ein Backup im Hintergrund nicht unbemerkt bleibt."
           }
         },
         "es" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Immich te avisa cuando termina una copia de seguridad, para que una copia en segundo plano no pase desapercibida."
+            "value" : "Swimmich te avisa cuando termina una copia de seguridad, para que una copia en segundo plano no pase desapercibida."
           }
         },
         "fr" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Immich vous prévient quand une sauvegarde se termine, pour qu'une sauvegarde en arrière-plan ne passe pas inaperçue."
+            "value" : "Swimmich vous prévient quand une sauvegarde se termine, pour qu'une sauvegarde en arrière-plan ne passe pas inaperçue."
           }
         },
         "it" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Immich ti avvisa quando un backup termina, così un backup in background non passa inosservato."
+            "value" : "Swimmich ti avvisa quando un backup termina, così un backup in background non passa inosservato."
           }
         }
       }
     },
-    "Immich tells you when a backup finishes." : {
+    "Swimmich tells you when a backup finishes." : {
       "extractionState" : "stale",
       "localizations" : {
         "de" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Immich informiert dich, wenn ein Backup abgeschlossen ist."
+            "value" : "Swimmich informiert dich, wenn ein Backup abgeschlossen ist."
           }
         },
         "es" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Immich te avisa cuando termina una copia de seguridad."
+            "value" : "Swimmich te avisa cuando termina una copia de seguridad."
           }
         },
         "fr" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Immich vous prévient quand une sauvegarde se termine."
+            "value" : "Swimmich vous prévient quand une sauvegarde se termine."
           }
         },
         "it" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Immich ti avvisa quando un backup termina."
+            "value" : "Swimmich ti avvisa quando un backup termina."
           }
         }
       }
@@ -25890,31 +25890,31 @@
         }
       }
     },
-    "Show the next memory of the day in the Immich widget." : {
+    "Show the next memory of the day in the Swimmich widget." : {
       "extractionState" : "stale",
       "localizations" : {
         "de" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Zeige die nächste Erinnerung des Tages im Immich-Widget."
+            "value" : "Zeige die nächste Erinnerung des Tages im Swimmich-Widget."
           }
         },
         "es" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Muestra el siguiente recuerdo del día en el widget de Immich."
+            "value" : "Muestra el siguiente recuerdo del día en el widget de Swimmich."
           }
         },
         "fr" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Afficher le souvenir suivant du jour dans le widget Immich."
+            "value" : "Afficher le souvenir suivant du jour dans le widget Swimmich."
           }
         },
         "it" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Mostra il prossimo ricordo del giorno nel widget Immich."
+            "value" : "Mostra il prossimo ricordo del giorno nel widget Swimmich."
           }
         }
       }
@@ -26839,30 +26839,30 @@
         }
       }
     },
-    "The language Immich's interface uses. A change takes effect the next time you open the app." : {
+    "The language Swimmich's interface uses. A change takes effect the next time you open the app." : {
       "localizations" : {
         "de" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Die Sprache, die Immichs Oberfläche verwendet. Eine Änderung wird beim nächsten Öffnen der App wirksam."
+            "value" : "Die Sprache, die Swimmichs Oberfläche verwendet. Eine Änderung wird beim nächsten Öffnen der App wirksam."
           }
         },
         "es" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "El idioma que usa la interfaz de Immich. El cambio se aplica la próxima vez que abras la app."
+            "value" : "El idioma que usa la interfaz de Swimmich. El cambio se aplica la próxima vez que abras la app."
           }
         },
         "fr" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "La langue de l'interface d'Immich. Le changement prend effet au prochain lancement de l'app."
+            "value" : "La langue de l'interface de Swimmich. Le changement prend effet au prochain lancement de l'app."
           }
         },
         "it" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "La lingua usata dall'interfaccia di Immich. La modifica ha effetto la prossima volta che apri l'app."
+            "value" : "La lingua usata dall'interfaccia di Swimmich. La modifica ha effetto la prossima volta che apri l'app."
           }
         }
       }
@@ -28734,30 +28734,58 @@
         }
       }
     },
-    "Welcome to Immich" : {
+    "Compatible with Immich servers." : {
       "localizations" : {
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Compatible avec les serveurs Immich."
+          }
+        },
         "de" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Willkommen bei Immich"
+            "value" : "Kompatibel mit Immich-Servern."
           }
         },
         "es" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Te damos la bienvenida a Immich"
-          }
-        },
-        "fr" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Bienvenue sur Immich"
+            "value" : "Compatible con los servidores de Immich."
           }
         },
         "it" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Benvenuto in Immich"
+            "value" : "Compatibile con i server Immich."
+          }
+        }
+      }
+    },
+    "Welcome to Swimmich" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Willkommen bei Swimmich"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Te damos la bienvenida a Swimmich"
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Bienvenue sur Swimmich"
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Benvenuto in Swimmich"
           }
         }
       }
@@ -28791,30 +28819,30 @@
         }
       }
     },
-    "While Immich is open, new photos start backing up within a few seconds. When it's closed, iOS decides when to run — usually while charging on Wi-Fi." : {
+    "While Swimmich is open, new photos start backing up within a few seconds. When it's closed, iOS decides when to run — usually while charging on Wi-Fi." : {
       "localizations" : {
         "de" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Wenn Immich geöffnet ist, startet das Backup neuer Fotos innerhalb weniger Sekunden. Ist es geschlossen, entscheidet iOS, wann es läuft — normalerweise beim Laden über WLAN."
+            "value" : "Wenn Swimmich geöffnet ist, startet das Backup neuer Fotos innerhalb weniger Sekunden. Ist es geschlossen, entscheidet iOS, wann es läuft — normalerweise beim Laden über WLAN."
           }
         },
         "es" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Mientras Immich está abierto, las fotos nuevas empiezan a copiarse en unos segundos. Cuando está cerrado, iOS decide cuándo ejecutarlo, normalmente mientras se carga con Wi-Fi."
+            "value" : "Mientras Swimmich está abierto, las fotos nuevas empiezan a copiarse en unos segundos. Cuando está cerrado, iOS decide cuándo ejecutarlo, normalmente mientras se carga con Wi-Fi."
           }
         },
         "fr" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Quand Immich est ouvert, les nouvelles photos commencent à être sauvegardées en quelques secondes. Quand il est fermé, iOS décide du moment — généralement pendant la charge en Wi-Fi."
+            "value" : "Quand Swimmich est ouvert, les nouvelles photos commencent à être sauvegardées en quelques secondes. Quand il est fermé, iOS décide du moment — généralement pendant la charge en Wi-Fi."
           }
         },
         "it" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Mentre Immich è aperta, il backup delle nuove foto inizia in pochi secondi. Quando è chiusa, è iOS a decidere quando eseguirlo — di solito durante la ricarica in Wi-Fi."
+            "value" : "Mentre Swimmich è aperta, il backup delle nuove foto inizia in pochi secondi. Quando è chiusa, è iOS a decidere quando eseguirlo — di solito durante la ricarica in Wi-Fi."
           }
         }
       }
