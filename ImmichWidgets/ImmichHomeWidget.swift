@@ -16,7 +16,7 @@ struct ImmichHomeWidget: Widget {
                 Image(systemName: "camera.aperture")
                     .font(.system(size: 40, weight: .medium))
                     .foregroundStyle(widgetBrandGradient)
-                Text("Immich")
+                Text("Swimmich")
                     .font(.headline)
                 HStack(spacing: 4) {
                     Image(systemName: "arrow.up.circle.fill")
@@ -32,7 +32,7 @@ struct ImmichHomeWidget: Widget {
             .widgetCanvas()
             .widgetURL(WidgetDeepLink.backup.url)
         }
-        .configurationDisplayName("Immich Backup")
+        .configurationDisplayName("Swimmich Backup")
         .description("Start a backup from the Home Screen.")
         .supportedFamilies([.systemSmall, .systemMedium])
     }

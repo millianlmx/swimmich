@@ -70,10 +70,10 @@ struct NotificationSettingsView: View {
     private var footer: LocalizedStringKey? {
         guard vm.loaded else { return nil }
         if vm.isEnabled {
-            return "Immich tells you when a backup finishes."
+            return "Swimmich tells you when a backup finishes."
         }
         if vm.canAsk {
-            return "Immich tells you when a backup finishes, so a background backup isn't silent."
+            return "Swimmich tells you when a backup finishes, so a background backup isn't silent."
         }
         return "Notifications are off. iOS only asks once, so turn them back on in System Settings."
     }

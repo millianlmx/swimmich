@@ -29,7 +29,7 @@ public enum WidgetMemoriesShuffle {
 /// to redraw, and the timeline provider fetches on its own schedule.
 public struct ShuffleMemoriesIntent: AppIntent {
     public static var title: LocalizedStringResource = "Shuffle Memories"
-    public static var description = IntentDescription("Show the next memory of the day in the Immich widget.")
+    public static var description = IntentDescription("Show the next memory of the day in the Swimmich widget.")
 
     public init() {}
 

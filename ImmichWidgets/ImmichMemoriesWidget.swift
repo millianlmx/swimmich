@@ -14,7 +14,7 @@ struct ImmichMemoriesWidget: Widget {
                 // shuffle button opens the app on the Memories tab.
                 .widgetURL(WidgetDeepLink.memories.url)
         }
-        .configurationDisplayName("Immich Memories")
+        .configurationDisplayName("Swimmich Memories")
         .description("What you were doing on this day, years ago.")
         .supportedFamilies([
             .systemSmall, .systemMedium,

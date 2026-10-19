@@ -10,7 +10,7 @@ struct ImmichFavoritesWidget: Widget {
             WidgetFavoritesView(wall: entry.wall)
                 .widgetCanvas()
         }
-        .configurationDisplayName("Immich Favorites")
+        .configurationDisplayName("Swimmich Favorites")
         .description("The photos you kept.")
         .supportedFamilies([
             .systemSmall, .systemMedium, .systemLarge,

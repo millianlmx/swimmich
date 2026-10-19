@@ -658,7 +658,7 @@ struct BackupSettingsView: View {
         } header: {
             Text("Backup tracking")
         } footer: {
-            Text("Immich remembers which photos are already backed up so it never re-reads your whole iCloud library on every run. A photo stays on this list until the server is found to no longer have it.")
+            Text("Swimmich remembers which photos are already backed up so it never re-reads your whole iCloud library on every run. A photo stays on this list until the server is found to no longer have it.")
         }
     }
 
@@ -678,7 +678,7 @@ struct BackupSettingsView: View {
         } header: {
             Text("Server check")
         } footer: {
-            Text("Asks the server which of your tracked photos it still has. Nothing is uploaded or downloaded — it is a list comparison, so it is quick even on a large library. Photos you deleted on the server are forgotten here, so the next backup uploads them again. Immich does this automatically about once a week; run it by hand after deleting photos on the server, so they come back without waiting for the next backup.")
+            Text("Asks the server which of your tracked photos it still has. Nothing is uploaded or downloaded — it is a list comparison, so it is quick even on a large library. Photos you deleted on the server are forgotten here, so the next backup uploads them again. Swimmich does this automatically about once a week; run it by hand after deleting photos on the server, so they come back without waiting for the next backup.")
         }
     }
 
@@ -720,7 +720,7 @@ struct BackupSettingsView: View {
             }
             .accessibilityIdentifier("resetTrackingButton")
         } footer: {
-            Text("Forgets every photo Immich has recorded as backed up — the tracked count goes to zero. The next backup then re-checks the whole library against the server. Nothing is deleted from Immich or from Photos, and already-uploaded photos are skipped again, but on an iCloud-optimized library the re-check reads a lot of metadata and can take a long time. Prefer \"Check server now\" when only a few photos are missing.")
+            Text("Forgets every photo Swimmich has recorded as backed up — the tracked count goes to zero. The next backup then re-checks the whole library against the server. Nothing is deleted from Immich or from Photos, and already-uploaded photos are skipped again, but on an iCloud-optimized library the re-check reads a lot of metadata and can take a long time. Prefer \"Check server now\" when only a few photos are missing.")
         }
     }
 
@@ -786,7 +786,7 @@ struct BackupSettingsView: View {
         } header: {
             Text("Auto backup")
         } footer: {
-            Text("While Immich is open, new photos start backing up within a few seconds. When it's closed, iOS decides when to run — usually while charging on Wi-Fi.")
+            Text("While Swimmich is open, new photos start backing up within a few seconds. When it's closed, iOS decides when to run — usually while charging on Wi-Fi.")
         }
     }
 

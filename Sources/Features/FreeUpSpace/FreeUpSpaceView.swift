@@ -186,7 +186,7 @@ struct FreeUpSpaceView: View {
             if vm.settings.cutoffDate == nil {
                 Text("Choose a cutoff date to start scanning.")
             } else {
-                Text("Photos backed up before Immich started recording checksums can't be verified against the server, so they are never offered here.")
+                Text("Photos backed up before Swimmich started recording checksums can't be verified against the server, so they are never offered here.")
             }
         }
     }

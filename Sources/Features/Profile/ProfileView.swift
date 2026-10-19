@@ -365,7 +365,7 @@ struct ProfileView: View {
                     // TupleView and only the first is drawn and published, measured
                     // on 2026-09-15 by the read-only scenario. One VStack, every line.
                     VStack(alignment: .leading, spacing: 4) {
-                        Text("Asks for Face ID (or your passcode) every time Immich comes back to the foreground, so someone holding your unlocked phone can't browse your photos.")
+                        Text("Asks for Face ID (or your passcode) every time Swimmich comes back to the foreground, so someone holding your unlocked phone can't browse your photos.")
                         Text("Photos in the locked folder are hidden everywhere else and open with your Immich PIN — a separate code from this app lock.")
                         Text("Prevents deleting, editing and uploading. Browsing stays available.")
                     }

@@ -52,7 +52,7 @@ enum FeatureHighlightCatalog {
         FeatureHighlight(
             id: "ocr",
             title: String(localized: "Search text in your photos"),
-            body: String(localized: "Immich now reads the text inside your photos, so you can search for them by what they say."),
+            body: String(localized: "Swimmich now searches the text inside your photos, so you can find them by what they say."),
             systemImage: "text.viewfinder",
             imageName: nil
         ),
