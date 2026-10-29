@@ -548,7 +548,8 @@ final class LocalLibraryViewModelTests: XCTestCase {
         parked?.resume()
         _ = await active.value
 
-        // A Stop that left the engine's flag up refuses the same way.
+        // A Stop with no run in flight is a no-op: it does not leave the engine
+        // busy, the next Upload goes through (B-3 / AC-5).
         build()
         await arrange([candidate("A")])
         answer(accept: ["A"])
@@ -557,10 +558,10 @@ final class LocalLibraryViewModelTests: XCTestCase {
 
         await vm.uploadSelection()
 
-        XCTAssertEqual(vm.errorMessage, UploadViewModel.engineBusyMessage)
-        XCTAssertTrue(client.uploads.isEmpty)
-        XCTAssertEqual(vm.phase, .idle)
-        XCTAssertEqual(vm.localOnlyIDs, ["A"])
+        XCTAssertNotEqual(vm.errorMessage, UploadViewModel.engineBusyMessage)
+        XCTAssertTrue(client.uploads.contains { $0.deviceAssetId == "A" })
+        XCTAssertEqual(vm.savedIDs, ["A"])
+        XCTAssertTrue(vm.localOnlyIDs.isEmpty)
     }
 
     /// B-7: neither the excluded albums nor the Wi-Fi policy of the backup apply
@@ -676,8 +677,10 @@ final class LocalLibraryViewModelTests: XCTestCase {
     }
 
     /// The real Stop of the Backup tab: `engine.cancel()` while the second
-    /// upload is in flight. The request in flight completes (the flag is read at
-    /// the next item), the third never starts.
+    /// upload is in flight. `cancel()` also cancels the run's Task, so a real
+    /// request in flight would be interrupted; the mock's gate here is a plain
+    /// continuation that ignores cancellation and lets the second upload land,
+    /// and the third never starts.
     func test_AC19_upload_stoppedFromBackupTab_keepsUnsentNotOnServer() async {
         await arrange([candidate("AC19-P"), candidate("AC19-Q"), candidate("AC19-R")])
         answer(accept: ["AC19-P", "AC19-Q", "AC19-R"])

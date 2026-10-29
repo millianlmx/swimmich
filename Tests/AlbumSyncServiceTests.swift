@@ -404,6 +404,100 @@ final class AlbumSyncServiceTests: XCTestCase {
         XCTAssertEqual(engine.albumSyncOutcome?.added, 1)
     }
 
+    /// Moteur à miroir actif sur `dev-vac`, pour les tests d'annulation.
+    @MainActor
+    private func mirroredEngine(
+        _ mock: MockImmichClient, _ source: MockBackupAssetSource
+    ) -> (engine: BackupEngine, settings: BackupSettings) {
+        source.albums = [deviceAlbum("dev-vac", "Vacances")]
+        source.albumMembershipByDeviceAlbum = Dictionary(
+            uniqueKeysWithValues: source.candidates.map { ($0.id, ["dev-vac"]) }
+        )
+        mock.bulkUploadCheckResponse = AssetBulkUploadCheckResponse(
+            results: source.candidates.map { .init(id: $0.id, action: "accept") }
+        )
+        let service = AlbumSyncService(mapping: AlbumSyncStore(suiteName: suiteName), batchSize: 100)
+        let engine = BackupEngine(
+            client: mock, source: source, environment: MockBackupEnvironment(),
+            ledger: BackupLedger.inMemory(), albumSync: service, userID: { "me" }
+        )
+        var settings = BackupSettings(isEnabled: true)
+        settings.syncedAlbumIDs = ["dev-vac"]
+        return (engine, settings)
+    }
+
+    /// AC-13 : un run annulé flushe quand même le miroir (le flush n'hérite
+    /// pas de l'annulation : le tampon est vidé avant l'envoi).
+    @MainActor
+    func test_AC13_cancelledRunStillFlushesAlbumMirror() async {
+        let mock = MockImmichClient()
+        let source = MockBackupAssetSource()
+        source.candidates = [candidate("c1"), candidate("c2")]
+        let (engine, settings) = mirroredEngine(mock, source)
+        mock.uploadResponsesByFilename = [
+            "c1.jpg": AssetMediaResponseDto(id: "srv-c1", status: "created"),
+            "c2.jpg": AssetMediaResponseDto(id: "srv-c2", status: "created"),
+        ]
+        mock.uploadGate = { if mock.uploads.count == 2 { try await suspendUntilCancelled() } }
+        let run = Task { @MainActor in await engine.run(settings: settings, manual: true) }
+        await pollUntil("upload de c2 en vol") { mock.uploads.count == 2 }
+
+        engine.cancel()
+        _ = await run.value
+
+        XCTAssertEqual(engine.phase, .cancelled)
+        XCTAssertEqual(mock.addAssetsToAlbumCalls.map { $0.albumId }, ["album-new"])
+        XCTAssertEqual(mock.addAssetsToAlbumCalls.flatMap { $0.ids }, ["srv-c1"])
+        XCTAssertEqual(engine.albumSyncOutcome?.added, 1)
+        XCTAssertEqual(engine.albumSyncOutcome?.failed, 0)
+    }
+
+    /// AC-11 : tant que le run annulé se déroule (y compris pendant le flush
+    /// du miroir, phase déjà `.cancelled`), un nouveau run est refusé.
+    @MainActor
+    func test_AC11_runDuringCancelledWindDownIsRefused() async {
+        let mock = MockImmichClient()
+        let source = MockBackupAssetSource()
+        source.candidates = (0...100).map { candidate("c\($0)") }
+        let (engine, settings) = mirroredEngine(mock, source)
+        source.exportGate = { id in if id == "c100" { try await suspendUntilCancelled() } }
+        let latch = TestLatch()
+        mock.addAssetsToAlbumGate = { try await latch.wait() }
+        let first = Task { @MainActor in await engine.run(settings: settings, manual: true) }
+        await pollUntil("export de c100 en vol", timeout: 10) { source.exportedIDs.contains("c100") }
+
+        engine.cancel()
+        let refusedWhileUploading = await engine.run(settings: settings, manual: true)
+
+        XCTAssertFalse(refusedWhileUploading)
+        XCTAssertEqual(engine.phase, .uploading)
+        XCTAssertTrue(engine.isCancelling)
+
+        await pollUntil("flush du miroir suspendu") { mock.addAssetsToAlbumCalls.count == 1 }
+        XCTAssertEqual(engine.phase, .cancelled)
+        XCTAssertTrue(engine.isCancelling)
+        let checks = mock.bulkUploadCheckChunks.count
+        let refusedWhileFlushing = await engine.run(settings: settings, manual: true)
+
+        XCTAssertFalse(refusedWhileFlushing)
+        XCTAssertEqual(engine.uploadedCount, 100)
+        XCTAssertEqual(engine.phase, .cancelled)
+        XCTAssertTrue(engine.isCancelling)
+        XCTAssertEqual(mock.bulkUploadCheckChunks.count, checks)
+
+        latch.open()
+        let firstEntered = await first.value
+
+        XCTAssertTrue(firstEntered)
+        XCTAssertEqual(engine.phase, .cancelled)
+        XCTAssertFalse(engine.isCancelling)
+        XCTAssertEqual(engine.albumSyncOutcome?.failed, 0)
+        source.exportGate = nil
+        let next = await engine.run(settings: settings, manual: true)
+        XCTAssertTrue(next)
+        XCTAssertEqual(engine.phase, .done)
+    }
+
     /// Default settings: no mirrored album means no album call, no resolution
     /// and no summary — an existing install sees exactly the old behavior.
     @MainActor

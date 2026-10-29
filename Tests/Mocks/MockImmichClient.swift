@@ -231,6 +231,9 @@ final class MockImmichClient: ImmichClient, @unchecked Sendable {
     /// Every add-assets call in order — the mirror's batching is asserted on
     /// the chunk boundaries, which the "last call" fields cannot show.
     var addAssetsToAlbumCalls: [(albumId: String, ids: [String])] = []
+    /// Suspension point right after the call is recorded — lets a test hold an
+    /// album flush in flight.
+    var addAssetsToAlbumGate: (() async throws -> Void)?
     var addAssetsResponse: [BulkIdResponseDto]?
     var addAssetsError: Error?
     var lastRemoveAssetsAlbumId: String?
@@ -731,6 +734,10 @@ final class MockImmichClient: ImmichClient, @unchecked Sendable {
         lastAddAssetsAlbumId = albumId
         lastAddAssetsIds = dto.ids
         addAssetsToAlbumCalls.append((albumId: albumId, ids: dto.ids))
+        if let gate = addAssetsToAlbumGate { try await gate() }
+        // Like URLSession: a call made from a cancelled Task fails (the call
+        // stays recorded).
+        try Task.checkCancellation()
         if let e = globalError ?? addAssetsError { throw e }
         return addAssetsResponse ?? dto.ids.map { BulkIdResponseDto(id: $0, success: true, error: nil, errorMessage: nil) }
     }

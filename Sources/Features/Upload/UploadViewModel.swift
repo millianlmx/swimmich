@@ -223,7 +223,7 @@ struct UploadHistoryEntry: Identifiable, Equatable, Sendable {
 @MainActor
 final class UploadViewModel {
     /// Shown when a run cannot start because the engine is held by another run
-    /// (or by a Stop that has not been cleared).
+    /// (one that has been accepted and has not yet returned).
     static var engineBusyMessage: String {
         String(localized: "Backup is busy right now. Try again in a moment.")
     }

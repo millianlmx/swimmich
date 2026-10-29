@@ -1,5 +1,6 @@
 import CryptoKit
 import Foundation
+import Observation
 import Photos
 import XCTest
 @testable import ImmichSwiftUI
@@ -189,18 +190,232 @@ final class BackupEngineTests: XCTestCase {
 
     // MARK: - Cancellation
 
+    private func accepting(_ ids: String...) -> AssetBulkUploadCheckResponse {
+        AssetBulkUploadCheckResponse(results: ids.map { .init(id: $0, action: "accept") })
+    }
+
+    /// Lance un run bloqué sur son premier upload, l'annule, attend son retour
+    /// (< 5 s : la porte n'est libérée que par l'annulation).
+    @MainActor
+    private func cancelRunInFlight(_ engine: BackupEngine, _ mock: MockImmichClient) async {
+        mock.uploadGate = suspendUntilCancelled
+        let s = settings()
+        let run = Task { @MainActor in await engine.run(settings: s, manual: true) }
+        await pollUntil("upload en vol") { mock.uploads.count == 1 }
+        engine.cancel()
+        let elapsed = await ContinuousClock().measure { _ = await run.value }
+        XCTAssertLessThan(elapsed, .seconds(5), "la porte n'a été libérée que par l'annulation")
+        mock.uploadGate = nil
+    }
+
+    /// AC-5 : un cancel() sans run actif (idle, done, cancelled) est ignoré.
     @MainActor
     func test_backup_cancelBeforeRun() async {
+        for state in [BackupEngine.Phase.idle, .done, .cancelled] {
+            let mock = MockImmichClient()
+            let source = MockBackupAssetSource()
+            source.candidates = [candidate("c1"), candidate("c2")]
+            mock.bulkUploadCheckResponse = accepting("c1", "c2")
+            let engine = BackupEngine(client: mock, source: source, environment: MockBackupEnvironment())
+            if state == .done {
+                await engine.run(settings: settings())
+                engine.forgetAllBackedUp()
+            } else if state == .cancelled {
+                await cancelRunInFlight(engine, mock)
+            }
+            XCTAssertEqual(engine.phase, state)
+            let before = mock.requestCount
+
+            engine.cancel()
+            let entered = await engine.run(settings: settings())
+
+            XCTAssertTrue(entered, "\(state)")
+            XCTAssertEqual(engine.phase, .done, "\(state)")
+            XCTAssertGreaterThan(mock.requestCount, before, "\(state)")
+            XCTAssertEqual(engine.uploadedCount, 2, "\(state)")
+        }
+    }
+
+    /// AC-6 : cancel() au repos n'allume pas « Cancelling… ».
+    @MainActor
+    func test_AC6_cancelWhileIdleKeepsIsCancellingFalse() {
+        let engine = BackupEngine(client: MockImmichClient(), source: MockBackupAssetSource(), environment: MockBackupEnvironment())
+
+        engine.cancel()
+
+        XCTAssertFalse(engine.isCancelling)
+        XCTAssertEqual(engine.phase, .idle)
+    }
+
+    /// AC-1 : un Stop n'annule que le run en cours.
+    @MainActor
+    func test_AC1_cancelDuringRun_nextManualRunEntersPipeline() async {
+        let mock = MockImmichClient()
+        let source = MockBackupAssetSource()
+        source.candidates = [candidate("c1"), candidate("c2"), candidate("c3")]
+        mock.bulkUploadCheckResponse = accepting("c1", "c2", "c3")
+        let engine = BackupEngine(client: mock, source: source, environment: MockBackupEnvironment())
+        await cancelRunInFlight(engine, mock)
+        XCTAssertEqual(engine.phase, .cancelled)
+        let checks = mock.bulkUploadCheckChunks.count
+
+        let entered = await engine.run(settings: settings(), manual: true)
+
+        XCTAssertTrue(entered)
+        XCTAssertEqual(engine.phase, .done)
+        XCTAssertGreaterThan(mock.bulkUploadCheckChunks.count, checks)
+        XCTAssertEqual(engine.uploadedCount, 3)
+    }
+
+    /// AC-3 : l'auto-détection est acceptée après un run annulé.
+    @MainActor
+    func test_AC3_autoRunAcceptedAfterCancelledRun() async {
+        let mock = MockImmichClient()
+        let source = MockBackupAssetSource()
+        source.candidates = [candidate("c1")]
+        mock.bulkUploadCheckResponse = accepting("c1")
+        let engine = BackupEngine(client: mock, source: source, environment: MockBackupEnvironment())
+        await cancelRunInFlight(engine, mock)
+
+        let entered = await engine.run(settings: settings(), manual: false)
+
+        XCTAssertTrue(entered)
+        XCTAssertEqual(engine.phase, .done)
+    }
+
+    /// AC-7 : l'upload en vol est interrompu, pas attendu ni rejoué.
+    @MainActor
+    func test_AC7_cancelInterruptsInFlightUpload() async {
+        let mock = MockImmichClient()
+        let source = MockBackupAssetSource()
+        source.candidates = [candidate("c1"), candidate("c2"), candidate("c3")]
+        mock.bulkUploadCheckResponse = accepting("c1", "c2", "c3")
+        let ledger = BackupLedger.inMemory()
+        let engine = BackupEngine(client: mock, source: source, environment: MockBackupEnvironment(), ledger: ledger)
+
+        await cancelRunInFlight(engine, mock)
+
+        XCTAssertEqual(engine.phase, .cancelled)
+        XCTAssertEqual(mock.uploads.count, 1)
+        XCTAssertEqual(engine.failedCount, 0)
+        XCTAssertEqual(ledger.trackedCount(), 0)
+    }
+
+    /// AC-10 : « Cancelling… » est éteint quand le run annulé rend la main.
+    @MainActor
+    func test_AC10_cancelledRunReturnsWithCancellingCleared() async {
         let mock = MockImmichClient()
         let source = MockBackupAssetSource()
         source.candidates = [candidate("c1"), candidate("c2")]
+        mock.bulkUploadCheckResponse = accepting("c1", "c2")
+        mock.uploadGate = suspendUntilCancelled
         let engine = BackupEngine(client: mock, source: source, environment: MockBackupEnvironment())
+        let s = settings()
+        let run = Task { @MainActor in await engine.run(settings: s, manual: true) }
+        await pollUntil("upload en vol") { mock.uploads.count == 1 }
 
         engine.cancel()
-        await engine.run(settings: settings())
+        XCTAssertTrue(engine.isCancelling)
+        _ = await run.value
 
+        XCTAssertFalse(engine.isCancelling)
         XCTAssertEqual(engine.phase, .cancelled)
-        XCTAssertEqual(mock.requestCount, 0)
+    }
+
+    /// AC-14 : l'export suspendu (téléchargement iCloud) est interrompu.
+    @MainActor
+    func test_AC14_cancelInterruptsSuspendedExport() async {
+        let mock = MockImmichClient()
+        let source = MockBackupAssetSource()
+        source.candidates = [candidate("c1")]
+        mock.bulkUploadCheckResponse = accepting("c1")
+        source.exportGate = { _ in try await suspendUntilCancelled() }
+        let ledger = BackupLedger.inMemory()
+        let engine = BackupEngine(client: mock, source: source, environment: MockBackupEnvironment(), ledger: ledger)
+        let s = settings()
+        let run = Task { @MainActor in await engine.run(settings: s, manual: true) }
+        await pollUntil("export en vol") { source.exportedIDs == ["c1"] }
+
+        engine.cancel()
+        let elapsed = await ContinuousClock().measure { _ = await run.value }
+
+        XCTAssertLessThan(elapsed, .seconds(5))
+        XCTAssertEqual(engine.phase, .cancelled)
+        XCTAssertEqual(engine.failedCount, 0)
+        XCTAssertEqual(engine.deferredCount, 0)
+        XCTAssertTrue(mock.uploads.isEmpty)
+        XCTAssertEqual(ledger.trackedCount(), 0)
+    }
+
+    /// AC-16 : un run tenté entre la fin du pipeline et le retour de `run()`
+    /// est refusé ; le premier appelant lit l'état de son propre run.
+    @MainActor
+    func test_AC16_runAttemptedBeforePreviousRunReturnedIsRefused() async {
+        let mock = MockImmichClient()
+        let source = MockBackupAssetSource()
+        source.candidates = [candidate("c1")]
+        mock.bulkUploadCheckResponse = accepting("c1")
+        let latch = TestLatch()
+        mock.uploadGate = { try await latch.wait() }
+        let engine = BackupEngine(client: mock, source: source, environment: MockBackupEnvironment())
+        let s = settings()
+        let first = Task { @MainActor in
+            let entered = await engine.run(settings: s, manual: true)
+            return (entered, engine.phase, engine.uploadedCount)
+        }
+        await pollUntil("upload en vol") { mock.uploads.count == 1 }
+        let second = TestBox<Task<Bool, Never>?>(nil)
+        withObservationTracking {
+            _ = engine.phase
+        } onChange: {
+            second.value = Task { @MainActor in await engine.run(settings: s, manual: true) }
+        }
+
+        latch.open()
+        let (entered, phase, uploaded) = await first.value
+        let checks = mock.bulkUploadCheckChunks.count
+        let secondEntered = await second.value?.value
+
+        XCTAssertTrue(entered)
+        XCTAssertEqual(phase, .done)
+        XCTAssertEqual(uploaded, 1)
+        XCTAssertEqual(secondEntered, false)
+        XCTAssertEqual(engine.phase, .done)
+        XCTAssertEqual(engine.uploadedCount, 1)
+        XCTAssertEqual(mock.bulkUploadCheckChunks.count, checks)
+        let again = await engine.run(settings: s, manual: true)
+        XCTAssertTrue(again)
+    }
+
+    /// AC-17 : un run lancé juste après `stopAndWait()` reste annulable.
+    @MainActor
+    func test_AC17_runStartedRightAfterStopAndWaitStaysCancellable() async {
+        let mock = MockImmichClient()
+        let source = MockBackupAssetSource()
+        source.candidates = [candidate("c1")]
+        mock.bulkUploadCheckResponse = accepting("c1")
+        mock.uploadGate = suspendUntilCancelled
+        let engine = BackupEngine(client: mock, source: source, environment: MockBackupEnvironment())
+        let s = settings()
+        let a = Task { @MainActor in await engine.run(settings: s, manual: true) }
+        await pollUntil("upload de A en vol") { mock.uploads.count == 1 }
+
+        await engine.stopAndWait()
+        let canceller = Task { @MainActor in
+            await pollUntil("upload de B en vol") { mock.uploads.count == 2 }
+            _ = await a.value
+            engine.cancel()
+        }
+        var entered = false
+        let elapsed = await ContinuousClock().measure {
+            entered = await engine.run(settings: s, manual: true)
+        }
+
+        XCTAssertTrue(entered)
+        XCTAssertLessThan(elapsed, .seconds(5), "B doit être annulable")
+        XCTAssertEqual(engine.phase, .cancelled)
+        XCTAssertFalse(engine.isCancelling)
+        await canceller.value
     }
 
     @MainActor
@@ -996,6 +1211,73 @@ final class LivePhotoBackupTests: XCTestCase {
 
         XCTAssertEqual(engine.phase, .cancelled)
         XCTAssertTrue(Self.tempExportFiles(matching: "lp").isEmpty, "l'annulation ne fuit aucun temp")
+    }
+
+    /// AC-8 : un upload interrompu ne laisse ni échec, ni ledger, ni temporaire.
+    @MainActor
+    func test_AC8_cancelledLivePhotoUploadLeavesNoFailureLedgerOrTempFiles() async {
+        let mock = MockImmichClient()
+        let source = MockBackupAssetSource()
+        source.candidates = [livePhoto("lp1")]
+        source.livePhotoIDs = ["lp1"]
+        source.dataProvider = { _ in Data(repeating: 3, count: 16) }
+        mock.bulkUploadCheckResponse = AssetBulkUploadCheckResponse(results: [.init(id: "lp1", action: "accept")])
+        mock.uploadGate = suspendUntilCancelled
+        let ledger = BackupLedger.inMemory()
+        let engine = BackupEngine(client: mock, source: source, environment: MockBackupEnvironment(), ledger: ledger)
+        let s = settings()
+
+        let run = Task { @MainActor in await engine.run(settings: s, manual: true) }
+        await pollUntil("upload de la vidéo appariée en vol") { mock.uploads.count == 1 }
+        engine.cancel()
+        _ = await run.value
+
+        XCTAssertEqual(engine.failedCount, 0)
+        XCTAssertTrue(engine.failures.isEmpty)
+        XCTAssertEqual(ledger.trackedCount(), 0)
+        XCTAssertTrue(Self.tempExportFiles(matching: "lp1").isEmpty)
+    }
+
+    /// AC-15 : une réparation interrompue ne marque pas la Live Photo
+    /// sauvegardée ; le run complet suivant la retente.
+    @MainActor
+    func test_AC15_cancelledLivePhotoRepairStaysOutOfLedger() async {
+        let mock = MockImmichClient()
+        let source = MockBackupAssetSource()
+        source.candidates = [livePhoto("lp1")]
+        source.livePhotoIDs = ["lp1"]
+        source.dataProvider = { _ in Data(repeating: 3, count: 16) }
+        mock.bulkUploadCheckResponse = AssetBulkUploadCheckResponse(results: [
+            .init(id: "lp1", action: "reject", reason: "duplicate", assetId: "remote-photo-7"),
+        ])
+        mock.uploadResponsesByFilename = ["lp1.MOV": AssetMediaResponseDto(id: "video-9", status: "created")]
+        mock.uploadGate = suspendUntilCancelled
+        let ledger = BackupLedger.inMemory()
+        let engine = BackupEngine(client: mock, source: source, environment: MockBackupEnvironment(), ledger: ledger)
+        let s = settings()
+
+        let run = Task { @MainActor in await engine.run(settings: s, manual: true) }
+        await pollUntil("upload de la vidéo de réparation en vol") { mock.uploads.count == 1 }
+        engine.cancel()
+        let elapsed = await ContinuousClock().measure { _ = await run.value }
+
+        XCTAssertLessThan(elapsed, .seconds(5))
+        XCTAssertEqual(engine.phase, .cancelled)
+        XCTAssertEqual(ledger.trackedCount(), 0, "réparation interrompue ⇒ pas dans le ledger")
+        XCTAssertTrue(engine.failures.isEmpty)
+        XCTAssertEqual(engine.failedCount, 0)
+        XCTAssertTrue(mock.updateAssetCalls.isEmpty)
+        XCTAssertTrue(Self.tempExportFiles(matching: "lp1").isEmpty)
+
+        mock.uploadGate = nil
+        let entered = await engine.run(settings: s)
+
+        XCTAssertTrue(entered)
+        XCTAssertEqual(engine.phase, .done)
+        XCTAssertEqual(mock.updateAssetCalls.count, 1)
+        XCTAssertEqual(mock.updateAssetCalls.first?.id, "remote-photo-7")
+        XCTAssertEqual(mock.updateAssetCalls.first?.dto.livePhotoVideoId, "video-9")
+        XCTAssertEqual(ledger.trackedCount(), 1)
     }
 
     /// A plain still must not grow a video upload or a PATCH.
@@ -1878,4 +2160,58 @@ final class BackupLedgerTests: XCTestCase {
         XCTAssertEqual(engine.total, 1, "cleared ledger re-checks the whole library")
         XCTAssertEqual(engine.uploadedCount, 1)
     }
+}
+
+// MARK: - Helpers partagés (tests d'annulation)
+
+/// Porte « suspendue jusqu'à l'annulation » : seule l'annulation la libère en
+/// moins de 30 s ; les tests vérifient donc que `run` rend la main en < 5 s.
+@Sendable func suspendUntilCancelled() async throws {
+    try await Task.sleep(for: .seconds(30))
+}
+
+@MainActor
+func pollUntil(
+    _ what: String = "condition",
+    timeout: TimeInterval = 2,
+    file: StaticString = #filePath,
+    line: UInt = #line,
+    _ condition: @MainActor () -> Bool
+) async {
+    let deadline = Date().addingTimeInterval(timeout)
+    while !condition() {
+        if Date() > deadline {
+            XCTFail("timed out waiting for \(what)", file: file, line: line)
+            return
+        }
+        try? await Task.sleep(for: .milliseconds(20))
+    }
+}
+
+/// Porte libérée par le test (attentes qui ne tournent pas dans la Task annulée).
+final class TestLatch: @unchecked Sendable {
+    private let lock = NSLock()
+    private var isOpen = false
+
+    func open() {
+        lock.lock()
+        isOpen = true
+        lock.unlock()
+    }
+
+    func wait() async throws {
+        while true {
+            lock.lock()
+            let open = isOpen
+            lock.unlock()
+            if open { return }
+            try await Task.sleep(for: .milliseconds(10))
+        }
+    }
+}
+
+/// Capture mutable pour les closures `@Sendable`.
+final class TestBox<Value>: @unchecked Sendable {
+    var value: Value
+    init(_ value: Value) { self.value = value }
 }

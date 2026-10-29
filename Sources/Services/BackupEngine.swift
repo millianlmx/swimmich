@@ -308,23 +308,35 @@ final class BackupEngine {
         onLedgerChange?()
     }
 
-    /// Async-cancellation — no preconditions, engine decides at the next item
-    /// boundary. Call from a BG expiration handler.
+    /// Stops the run in flight, if any: flags the staging loop and cancels the
+    /// pipeline Task so the in-flight export or network call ends now. No run
+    /// in flight → no-op: nothing is remembered for the next run. Must be
+    /// called on the main actor.
     func cancel() {
+        guard let work = activeRun else { return }
         isCancelled = true
         isCancelling = true
+        work.cancel()
     }
 
-    /// Stops the run in flight, if any, and returns once it has fully wound
-    /// down: network calls are cancelled, so nothing reaches the ledger after
-    /// this returns. Unlike `cancel()` it re-arms the engine afterwards — the
-    /// next `run` is accepted (a signed-out user may sign in and back up again).
-    /// No run in flight → no-op.
+    /// `cancel()` plus a wait: returns once the run in flight has fully wound
+    /// down, so nothing reaches the ledger after this returns, then releases
+    /// the engine — the next `run` is accepted (a signed-out user may sign in
+    /// and back up again). No run in flight → no-op.
     func stopAndWait() async {
         guard let work = activeRun else { return }
         cancel()
-        work.cancel()
         _ = await work.value
+        releaseRun(work)
+    }
+
+    /// Ends `work`'s hold on the engine and re-arms it — only if `work` still
+    /// holds it: `run()` and `stopAndWait()` both wait on the same Task and
+    /// resume in no guaranteed order; the later one must not release a run
+    /// started in between.
+    private func releaseRun(_ work: Task<Bool, Never>) {
+        guard activeRun == work else { return }
+        activeRun = nil
         isCancelled = false
         isCancelling = false
     }
@@ -363,10 +375,7 @@ final class BackupEngine {
     /// code as a full run.
     @discardableResult
     func run(settings: BackupSettings, manual: Bool = false, only assetIDs: [String] = []) async -> Bool {
-        guard !(isCancelled || activeRun != nil || phase == .uploading || phase == .checking) else {
-            if isCancelled { phase = .cancelled }
-            return false
-        }
+        guard activeRun == nil, phase != .uploading, phase != .checking else { return false }
         if !manual {
             guard settings.isEnabled else { return false }
 
@@ -386,9 +395,10 @@ final class BackupEngine {
         reset()
         lastError = nil
         phase = .checking
-        // The pipeline runs in a stored Task so `stopAndWait()` can cancel the
-        // in-flight network calls and join it. The caller's own cancellation is
-        // forwarded to that Task, exactly as when the body ran inline.
+        // The pipeline runs in a stored Task so `cancel()` / `stopAndWait()`
+        // can cancel the in-flight calls and join it. The caller's own
+        // cancellation is forwarded to that Task, exactly as when the body ran
+        // inline. The run holds the engine until this call returns.
         let work = Task { await self.runPipeline(settings: settings, manual: manual, only: assetIDs) }
         activeRun = work
         let entered = await withTaskCancellationHandler {
@@ -396,7 +406,7 @@ final class BackupEngine {
         } onCancel: {
             work.cancel()
         }
-        activeRun = nil
+        releaseRun(work)
         return entered
     }
 
@@ -592,9 +602,10 @@ final class BackupEngine {
         return candidate.kind == .image ? settings.allowCellularForPhotos : settings.allowCellularForVideos
     }
 
-    /// Aborts the staging loop: drops the chunk's temp files (Live Photo pairs
-    /// included), releases their half-step progress credit, flushes whatever the
-    /// mirror already buffered, and parks the engine in `.cancelled`.
+    /// Aborts the staging loop (`cancel()` / `stopAndWait()`): drops the chunk's
+    /// temp files (Live Photo pairs included), releases their half-step
+    /// progress credit, flushes whatever the mirror already buffered, and
+    /// parks the engine in `.cancelled`.
     private func cancelStaging(_ batch: inout [StagedAsset]) async -> Bool {
         Self.removeStaged(batch)
         stagedCount = max(0, stagedCount - batch.count)
@@ -643,7 +654,13 @@ final class BackupEngine {
     /// end of a run and on the cancellation path — never per asset, or a run
     /// would make one `PUT /albums/{id}/assets` per photo.
     private func flushAlbumMirror() async {
-        let outcome = await albumSync.flush(client: client)
+        let albumSync = self.albumSync
+        let client = self.client
+        // Unstructured on purpose: it does not inherit the run's cancellation.
+        // The service empties its buffer before sending, so a flush run inside
+        // the cancelled pipeline Task would fail every PUT and lose those
+        // album adds.
+        let outcome = await Task { await albumSync.flush(client: client) }.value
         // An inactive mirror stays silent: a user who never picked an album
         // must not be shown "0 added · 0 already there · 0 failed".
         if !albumMap.isEmpty || !outcome.isEmpty { albumSyncOutcome = outcome }

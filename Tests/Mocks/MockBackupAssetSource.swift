@@ -17,6 +17,10 @@ final class MockBackupAssetSource: BackupAssetSource, @unchecked Sendable {
     /// tests must be idempotent (the engine loops through all candidates
     /// before honoring the flag).
     nonisolated(unsafe) var onFirstLoad: (() -> Void)?
+    /// Suspension point inside `exportOriginal`, after `exportedIDs`/`onFirstLoad`,
+    /// keyed by candidate id — lets a test hold an export the way an iCloud
+    /// download does.
+    nonisolated(unsafe) var exportGate: ((String) async throws -> Void)?
     nonisolated(unsafe) var lastAlbumIDs: Set<String>?
     nonisolated(unsafe) var lastExcludedAlbumIDs: Set<String>?
     /// Ids a restricted run asked for, in order — a retry must look its assets
@@ -81,6 +85,7 @@ final class MockBackupAssetSource: BackupAssetSource, @unchecked Sendable {
         }
         onFirstLoad?()
         onFirstLoad = nil
+        if let exportGate { try await exportGate(candidate.id) }
         if let loadError { throw loadError }
         if failIDs.contains(candidate.id) {
             throw APIError.decoding("export failed for \(candidate.id)")

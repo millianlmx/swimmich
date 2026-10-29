@@ -66,7 +66,8 @@ struct ImmichSwiftUIApp: App {
             }
             let upload = container.upload
             task.expirationHandler = {
-                upload.engine.cancel()
+                // iOS calls this on the BackgroundTasks queue; the engine is @MainActor.
+                Task { @MainActor in upload.engine.cancel() }
             }
             Task {
                 await upload.runBackup()
