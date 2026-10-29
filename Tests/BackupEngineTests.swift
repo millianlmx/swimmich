@@ -1,5 +1,6 @@
 import CryptoKit
 import Foundation
+import Photos
 import XCTest
 @testable import ImmichSwiftUI
 
@@ -227,6 +228,44 @@ final class BackupEngineTests: XCTestCase {
         XCTAssertEqual(engine.phase, .cancelled, "stoppé au point de contrôle suivant le flag")
         XCTAssertLessThan(engine.uploadedCount, 3, "stoppé avant la fin")
         XCTAssertEqual(mock.requestCount, 0, "check/upload appelés après le flag = aucun")
+    }
+
+    /// AC-16 : un export interrompu par l'annulation n'est ni un échec ni un report.
+    @MainActor
+    func test_AC16_engine_cancelledExportIsNeitherFailureNorDeferral() async {
+        let mock = MockImmichClient()
+        let source = MockBackupAssetSource()
+        source.candidates = [candidate("c1"), candidate("c2")]
+        source.loadError = CancellationError()
+        let engine = BackupEngine(client: mock, source: source, environment: MockBackupEnvironment())
+        source.onFirstLoad = { engine.cancel() }
+
+        await engine.run(settings: settings())
+
+        XCTAssertEqual(engine.phase, .cancelled)
+        XCTAssertEqual(engine.failedCount, 0)
+        XCTAssertEqual(engine.deferredCount, 0)
+        XCTAssertTrue(engine.failures.isEmpty)
+        XCTAssertNil(engine.lastError)
+        XCTAssertTrue(engine.backedUpIDs.isEmpty)
+        XCTAssertTrue(mock.uploads.isEmpty)
+    }
+
+    /// AC-17 : une erreur d'écriture est un échec générique, et le run continue.
+    @MainActor
+    func test_AC17_engine_writeErrorFailsWithGenericMessageAndRunContinues() async {
+        let mock = MockImmichClient()
+        let source = MockBackupAssetSource()
+        source.candidates = [candidate("c1"), candidate("c2")]
+        source.loadError = CocoaError(.fileWriteUnknown)
+        let engine = BackupEngine(client: mock, source: source, environment: MockBackupEnvironment())
+
+        await engine.run(settings: settings())
+
+        XCTAssertEqual(source.exportedIDs, ["c1", "c2"])
+        XCTAssertEqual(engine.failedCount, 2)
+        XCTAssertEqual(engine.deferredCount, 0)
+        XCTAssertEqual(engine.failures.map(\.reason), [UserFacingError.genericMessage, UserFacingError.genericMessage])
     }
 
     // MARK: - Erreurs
@@ -902,6 +941,23 @@ final class LivePhotoBackupTests: XCTestCase {
         XCTAssertEqual(mock.uploads.count, 0)
     }
 
+    /// AC-8 : la vidéo appairée échoue, le still déjà exporté ne reste pas sur le disque.
+    @MainActor
+    func test_AC8_engine_pairedVideoExportErrorRemovesStill() async {
+        let mock = MockImmichClient()
+        let source = MockBackupAssetSource()
+        source.candidates = [livePhoto("lp1")]
+        source.livePhotoIDs = ["lp1"]
+        source.pairedFailIDs = ["lp1"]
+        source.dataProvider = { _ in Data(repeating: 3, count: 16) }
+        let engine = BackupEngine(client: mock, source: source, environment: MockBackupEnvironment())
+
+        await engine.run(settings: settings())
+
+        XCTAssertEqual(engine.failedCount, 1)
+        XCTAssertTrue(Self.tempExportFiles(matching: "lp1").isEmpty)
+    }
+
     /// No temp file may survive the run — the pair doubles the disk footprint
     /// of a chunk, so a missed cleanup is a real leak.
     @MainActor
@@ -1197,6 +1253,486 @@ final class ContinuationGateTests: XCTestCase {
         gate.finish(with: .success(99))
         let value = try await task.value
         XCTAssertEqual(value, 99)
+    }
+}
+
+// MARK: - Export en flux (PhotoKit)
+
+/// L'export en flux de `PhotoLibraryServiceImpl` (`requestData` + `FileHandle`),
+/// piloté par une fausse source de données : PhotoKit lui-même n'est pas testable
+/// sans iCloud.
+final class ResourceExportHelpersTests: XCTestCase {
+
+    // MARK: Helpers
+
+    private final class Log<Element>: @unchecked Sendable {
+        private let lock = NSLock()
+        private var items: [Element] = []
+        func append(_ element: Element) { lock.lock(); items.append(element); lock.unlock() }
+        var values: [Element] { lock.lock(); defer { lock.unlock() }; return items }
+    }
+
+    private final class FakeResourceData: @unchecked Sendable {
+        struct Request: @unchecked Sendable {
+            let id: PHAssetResourceDataRequestID
+            let progress: @Sendable (Double) -> Void
+            let dataReceived: @Sendable (Data) -> Void
+            let completion: @Sendable (Error?) -> Void
+        }
+
+        private let lock = NSLock()
+        private var recorded: [Request] = []
+        private var cancelled: [PHAssetResourceDataRequestID] = []
+        /// Script of the n-th request (0-based), run on a global queue once the
+        /// request is registered. A request without script stays pending.
+        var script: [Int: @Sendable (Request) -> Void] = [:]
+        /// Called synchronously from `cancelDataRequest`.
+        var onCancel: (@Sendable (Request) -> Void)?
+
+        var requests: [Request] { lock.lock(); defer { lock.unlock() }; return recorded }
+        var cancelledIDs: [PHAssetResourceDataRequestID] { lock.lock(); defer { lock.unlock() }; return cancelled }
+
+        var source: ResourceDataSource {
+            ResourceDataSource(
+                requestData: { [self] progress, dataReceived, completion in
+                    lock.lock()
+                    let index = recorded.count
+                    let request = Request(
+                        id: PHAssetResourceDataRequestID(index + 1),
+                        progress: progress, dataReceived: dataReceived, completion: completion
+                    )
+                    recorded.append(request)
+                    let body = script[index]
+                    lock.unlock()
+                    if let body { DispatchQueue.global().async { body(request) } }
+                    return request.id
+                },
+                cancelDataRequest: { [self] id in
+                    lock.lock()
+                    cancelled.append(id)
+                    let request = recorded.first { $0.id == id }
+                    lock.unlock()
+                    if let request { onCancel?(request) }
+                }
+            )
+        }
+
+        func waitFor(_ what: String, timeout: TimeInterval = 2, _ condition: @escaping () -> Bool) async {
+            let deadline = Date().addingTimeInterval(timeout)
+            while !condition() {
+                if Date() > deadline { XCTFail("timeout: \(what)"); return }
+                try? await Task.sleep(nanoseconds: 10_000_000)
+            }
+        }
+    }
+
+    private final class FootprintSampler: @unchecked Sendable {
+        private let lock = NSLock()
+        private var peak: UInt64 = 0
+        private var count = 0
+        private var running = false
+
+        var snapshot: (peak: UInt64, count: Int) {
+            lock.lock()
+            defer { lock.unlock() }
+            return (peak, count)
+        }
+
+        /// A thread, not a Task: the export runs on the cooperative pool, and a
+        /// sampler queued behind it would never see it run.
+        func start() {
+            lock.lock()
+            running = true
+            lock.unlock()
+            let thread = Thread { [self] in
+                while true {
+                    lock.lock()
+                    let keepGoing = running
+                    lock.unlock()
+                    guard keepGoing else { return }
+                    let value = Self.physFootprint()
+                    lock.lock()
+                    peak = max(peak, value)
+                    count += 1
+                    lock.unlock()
+                    Thread.sleep(forTimeInterval: 0.005)
+                }
+            }
+            thread.qualityOfService = .userInteractive
+            thread.start()
+        }
+
+        func stop() {
+            lock.lock()
+            running = false
+            lock.unlock()
+        }
+
+        static func physFootprint() -> UInt64 {
+            var info = task_vm_info_data_t()
+            var size = mach_msg_type_number_t(MemoryLayout<task_vm_info_data_t>.size / MemoryLayout<integer_t>.size)
+            let status = withUnsafeMutablePointer(to: &info) { pointer in
+                pointer.withMemoryRebound(to: integer_t.self, capacity: Int(size)) {
+                    task_info(mach_task_self_, task_flavor_t(TASK_VM_INFO), $0, &size)
+                }
+            }
+            return status == KERN_SUCCESS ? info.phys_footprint : 0
+        }
+    }
+
+    private func makeDest() -> URL {
+        URL(fileURLWithPath: NSTemporaryDirectory()).appendingPathComponent("resource-export-\(UUID().uuidString)")
+    }
+
+    private static func describe(_ state: BackupExportState) -> String {
+        switch state {
+        case .downloadingFromICloud(let fraction): "downloading(\(fraction))"
+        case .retryingICloud(let attempt): "retrying(\(attempt))"
+        }
+    }
+
+    private func export(
+        _ dest: URL,
+        _ fake: FakeResourceData,
+        stall: TimeInterval = 30,
+        retryDelayNanos: UInt64 = 1_000_000,
+        states: Log<String> = Log(),
+        openFile: (URL) -> FileHandle? = PhotoLibraryServiceImpl.openEmptyFile
+    ) async throws -> URL {
+        try await PhotoLibraryServiceImpl.exportResource(
+            to: dest, source: fake.source, stallInterval: stall, retryAttempts: 2,
+            retryDelayNanos: retryDelayNanos, openFile: openFile,
+            onState: { states.append(Self.describe($0)) }
+        )
+    }
+
+    private func failure(of task: Task<URL, Error>) async -> Error? {
+        switch await task.result {
+        case .success: nil
+        case .failure(let error): error
+        }
+    }
+
+    private func content(of url: URL) -> String? { try? String(contentsOf: url, encoding: .utf8) }
+    private func exists(_ url: URL) -> Bool { FileManager.default.fileExists(atPath: url.path) }
+    private static let cloud1005 = NSError(domain: "CloudPhotoLibraryErrorDomain", code: 1005)
+
+    // MARK: ResourceFileWriter / ResourceDataRequest
+
+    func test_AC18_resourceFileWriter_keepsChunkOrderAndClosesOnce() throws {
+        let url = makeDest()
+        XCTAssertTrue(FileManager.default.createFile(atPath: url.path, contents: nil))
+        defer { try? FileManager.default.removeItem(at: url) }
+        let writer = ResourceFileWriter(handle: try FileHandle(forWritingTo: url))
+
+        XCTAssertNil(writer.append(Data("ab".utf8)))
+        XCTAssertEqual(content(of: url), "ab", "le morceau est sur le disque avant toute fermeture")
+        XCTAssertNil(writer.append(Data("cd".utf8)))
+        XCTAssertNil(writer.append(Data("ef".utf8)))
+        XCTAssertNil(writer.close())
+        XCTAssertNil(writer.append(Data("zz".utf8)), "écriture après fermeture ignorée")
+        XCTAssertNil(writer.close(), "double fermeture sans effet")
+
+        XCTAssertEqual(content(of: url), "abcdef")
+    }
+
+    func test_AC19_resourceFileWriter_reportsFirstWriteFailure() throws {
+        let url = makeDest()
+        XCTAssertTrue(FileManager.default.createFile(atPath: url.path, contents: Data("x".utf8)))
+        defer { try? FileManager.default.removeItem(at: url) }
+        let writer = ResourceFileWriter(handle: try FileHandle(forReadingFrom: url))
+
+        let first = writer.append(Data("ab".utf8))
+        XCTAssertNotNil(first, "un handle en lecture seule refuse l'écriture")
+        XCTAssertNil(writer.append(Data("cd".utf8)), "morceau ignoré après l'échec")
+        let closeError = writer.close()
+        XCTAssertNotNil(closeError)
+        XCTAssertEqual(closeError as NSError?, first as NSError?, "la fermeture rend l'erreur du premier ajout")
+    }
+
+    func test_AC18_resourceDataRequest_cancelsOnceWhateverTheOrder() {
+        // (a) cancel() avant l'identifiant.
+        let a = Log<PHAssetResourceDataRequestID>()
+        let requestA = ResourceDataRequest(cancelRequest: { a.append($0) })
+        requestA.cancel()
+        requestA.store(7)
+        XCTAssertEqual(a.values, [7])
+        requestA.cancel()
+        XCTAssertEqual(a.values, [7])
+
+        // (b) identifiant avant cancel().
+        let b = Log<PHAssetResourceDataRequestID>()
+        let requestB = ResourceDataRequest(cancelRequest: { b.append($0) })
+        requestB.store(9)
+        XCTAssertEqual(b.values, [])
+        requestB.cancel()
+        XCTAssertEqual(b.values, [9])
+        requestB.cancel()
+        XCTAssertEqual(b.values, [9])
+
+        // (c) jamais d'annulation sans cancel().
+        let c = Log<PHAssetResourceDataRequestID>()
+        let requestC = ResourceDataRequest(cancelRequest: { c.append($0) })
+        requestC.store(11)
+        XCTAssertEqual(c.values, [])
+    }
+
+    // MARK: exportResource
+
+    func test_AC12_exportResource_writesChunksInOrderAndReturnsDest() async throws {
+        let dest = makeDest()
+        defer { try? FileManager.default.removeItem(at: dest) }
+        let fake = FakeResourceData()
+        fake.script[0] = { request in
+            for chunk in ["ab", "cd", "ef"] { request.dataReceived(Data(chunk.utf8)) }
+            request.completion(nil)
+        }
+
+        let url = try await export(dest, fake)
+
+        XCTAssertEqual(url, dest)
+        XCTAssertEqual(content(of: dest), "abcdef")
+        XCTAssertEqual(try FileManager.default.attributesOfItem(atPath: dest.path)[.size] as? Int, 6)
+        XCTAssertEqual(fake.cancelledIDs, [])
+    }
+
+    /// Contrainte « Mémoire » : 256 Mio livrés, jamais accumulés.
+    func test_AC12_exportResource_largeOriginalKeepsMemoryFootprintFlat() async throws {
+        let dest = makeDest()
+        defer { try? FileManager.default.removeItem(at: dest) }
+        let chunk = Data(count: 1 << 20)
+        let fake = FakeResourceData()
+        fake.script[0] = { request in
+            for _ in 0..<256 { request.dataReceived(chunk) }
+            request.completion(nil)
+        }
+        let base = FootprintSampler.physFootprint()
+        let sampler = FootprintSampler()
+        sampler.start()
+
+        let url = try await export(dest, fake)
+        sampler.stop()
+
+        XCTAssertEqual(url, dest)
+        XCTAssertEqual(try FileManager.default.attributesOfItem(atPath: dest.path)[.size] as? Int, 256 << 20)
+        let snapshot = sampler.snapshot
+        XCTAssertGreaterThanOrEqual(snapshot.count, 2, "la fenêtre de l'export a été observée")
+        XCTAssertLessThan(snapshot.peak, base + (64 << 20), "l'export est en flux, pas accumulé")
+    }
+
+    func test_AC13_exportResource_forwardsDownloadProgress() async throws {
+        let dest = makeDest()
+        defer { try? FileManager.default.removeItem(at: dest) }
+        let states = Log<String>()
+        let fake = FakeResourceData()
+        fake.script[0] = { request in
+            request.progress(0.5)
+            request.completion(nil)
+        }
+
+        _ = try await export(dest, fake, states: states)
+
+        XCTAssertEqual(states.values, ["downloading(0.5)"])
+    }
+
+    func test_AC6_exportResource_cancelDuringDownloadCancelsRequestAndThrowsCancellation() async {
+        let dest = makeDest()
+        defer { try? FileManager.default.removeItem(at: dest) }
+        let fake = FakeResourceData()
+        fake.script[0] = { $0.dataReceived(Data("ab".utf8)) }
+        let task = Task { try await self.export(dest, fake) }
+        await fake.waitFor("morceau écrit") { self.content(of: dest) == "ab" }
+
+        let start = Date()
+        task.cancel()
+        let error = await failure(of: task)
+
+        XCTAssertTrue(error is CancellationError, "obtenu : \(String(describing: error))")
+        XCTAssertLessThan(Date().timeIntervalSince(start), 1)
+        XCTAssertEqual(fake.cancelledIDs, [1])
+    }
+
+    func test_AC7_exportResource_cancelDuringDownloadLeavesNoFile() async {
+        let dest = makeDest()
+        defer { try? FileManager.default.removeItem(at: dest) }
+        let fake = FakeResourceData()
+        fake.script[0] = { $0.dataReceived(Data("ab".utf8)) }
+        let task = Task { try await self.export(dest, fake) }
+        // L'existence de `dest` ne suffit pas (créé vide) : "ab" prouve l'écriture
+        // dès la réception, sans attendre la complétion.
+        await fake.waitFor("morceau écrit") { self.content(of: dest) == "ab" }
+
+        task.cancel()
+        _ = await failure(of: task)
+
+        XCTAssertFalse(exists(dest))
+        let late = fake.requests[0]
+        late.dataReceived(Data("zz".utf8))
+        late.completion(nil)
+        XCTAssertFalse(exists(dest), "les octets tardifs ne recréent rien")
+    }
+
+    func test_AC9_exportResource_stallDefersWithoutCancellingAndIgnoresLateChunks() async {
+        let dest = makeDest()
+        defer { try? FileManager.default.removeItem(at: dest) }
+        let fake = FakeResourceData()
+        fake.script[0] = { $0.dataReceived(Data("ab".utf8)) }
+
+        do {
+            _ = try await export(dest, fake, stall: 0.1)
+            XCTFail("doit lever cloudDownloadPending")
+        } catch let error as BackupExportError {
+            guard case .cloudDownloadPending = error else { return XCTFail("\(error)") }
+        } catch {
+            XCTFail("obtenu : \(error)")
+        }
+
+        XCTAssertEqual(fake.cancelledIDs, [])
+        XCTAssertFalse(exists(dest))
+        let late = fake.requests[0]
+        late.dataReceived(Data("cd".utf8))
+        late.completion(nil)
+        XCTAssertFalse(exists(dest), "writer fermé : rien n'est recréé")
+    }
+
+    func test_AC14_exportResource_retries1005ThenDefers() async {
+        let dest = makeDest()
+        defer { try? FileManager.default.removeItem(at: dest) }
+        let states = Log<String>()
+        let fake = FakeResourceData()
+        for index in 0...2 { fake.script[index] = { $0.completion(Self.cloud1005) } }
+
+        do {
+            _ = try await export(dest, fake, states: states)
+            XCTFail("doit lever cloudDownloadPending")
+        } catch let error as BackupExportError {
+            guard case .cloudDownloadPending = error else { return XCTFail("\(error)") }
+        } catch {
+            XCTFail("obtenu : \(error)")
+        }
+
+        XCTAssertEqual(fake.requests.count, 2)
+        XCTAssertEqual(states.values, ["retrying(1)"])
+        XCTAssertFalse(exists(dest))
+    }
+
+    func test_AC14_exportResource_retryRestartsFromEmptyFile() async throws {
+        let dest = makeDest()
+        defer { try? FileManager.default.removeItem(at: dest) }
+        let fake = FakeResourceData()
+        fake.script[0] = { request in
+            request.dataReceived(Data("xx".utf8))
+            request.completion(Self.cloud1005)
+        }
+        fake.script[1] = { request in
+            request.dataReceived(Data("ok".utf8))
+            request.completion(nil)
+        }
+
+        let url = try await export(dest, fake)
+
+        XCTAssertEqual(url, dest)
+        XCTAssertEqual(content(of: dest), "ok")
+    }
+
+    func test_AC15_exportResource_cancelDuringBackoffStartsNoNewAttempt() async {
+        let dest = makeDest()
+        defer { try? FileManager.default.removeItem(at: dest) }
+        let states = Log<String>()
+        let fake = FakeResourceData()
+        fake.script[0] = { $0.completion(Self.cloud1005) }
+        let task = Task { try await self.export(dest, fake, retryDelayNanos: 30_000_000_000, states: states) }
+        await fake.waitFor("état de relance") { states.values == ["retrying(1)"] }
+
+        let start = Date()
+        task.cancel()
+        let error = await failure(of: task)
+
+        XCTAssertTrue(error is CancellationError, "obtenu : \(String(describing: error))")
+        XCTAssertLessThan(Date().timeIntervalSince(start), 5)
+        XCTAssertEqual(fake.requests.count, 1)
+        XCTAssertEqual(states.values, ["retrying(1)"])
+        XCTAssertFalse(exists(dest))
+    }
+
+    func test_AC15_exportResource_alreadyCancelledStartsNoRequest() async {
+        let dest = makeDest()
+        defer { try? FileManager.default.removeItem(at: dest) }
+        let fake = FakeResourceData()
+        let task = Task { () -> URL in
+            // Rendue immédiatement par l'annulation ; l'export démarre ensuite annulé.
+            try? await Task.sleep(nanoseconds: 5_000_000_000)
+            return try await self.export(dest, fake)
+        }
+        task.cancel()
+
+        let error = await failure(of: task)
+
+        XCTAssertTrue(error is CancellationError, "obtenu : \(String(describing: error))")
+        XCTAssertEqual(fake.requests.count, 0)
+        XCTAssertFalse(exists(dest))
+    }
+
+    func test_AC16_exportResource_photoKitErrorAfterCancelIsCancellation() async {
+        let dest = makeDest()
+        defer { try? FileManager.default.removeItem(at: dest) }
+        let fake = FakeResourceData()
+        fake.script[0] = { $0.dataReceived(Data("ab".utf8)) }
+        fake.onCancel = { request in
+            request.completion(NSError(domain: PHPhotosErrorDomain, code: PHPhotosError.userCancelled.rawValue))
+        }
+        let task = Task { try await self.export(dest, fake) }
+        await fake.waitFor("morceau écrit") { self.content(of: dest) == "ab" }
+
+        task.cancel()
+        let error = await failure(of: task)
+
+        XCTAssertTrue(error is CancellationError, "obtenu : \(String(describing: error))")
+        XCTAssertFalse(exists(dest))
+    }
+
+    func test_AC17_exportResource_unopenableDestinationFailsWithoutRequest() async {
+        let dest = URL(fileURLWithPath: NSTemporaryDirectory())
+            .appendingPathComponent("missing-\(UUID().uuidString)")
+            .appendingPathComponent("file")
+        let fake = FakeResourceData()
+
+        do {
+            _ = try await export(dest, fake)
+            XCTFail("doit lever")
+        } catch {
+            XCTAssertEqual((error as? CocoaError)?.code, .fileWriteUnknown)
+            XCTAssertFalse(error is BackupExportError)
+            XCTAssertFalse(UserFacingError.isCancellation(error))
+            XCTAssertEqual(error.userFacingMessage, UserFacingError.genericMessage)
+        }
+
+        XCTAssertEqual(fake.requests.count, 0)
+        XCTAssertFalse(exists(dest))
+    }
+
+    func test_AC18_exportResource_writeFailureCancelsRequestAndFails() async {
+        let dest = makeDest()
+        defer { try? FileManager.default.removeItem(at: dest) }
+        let fake = FakeResourceData()
+        fake.script[0] = { $0.dataReceived(Data("ab".utf8)) }
+
+        do {
+            // Fichier créé puis ouvert en lecture seule : l'écriture du morceau échoue.
+            _ = try await export(dest, fake) { url in
+                guard FileManager.default.createFile(atPath: url.path, contents: nil) else { return nil }
+                return try? FileHandle(forReadingFrom: url)
+            }
+            XCTFail("doit lever")
+        } catch {
+            XCTAssertFalse(error is BackupExportError)
+            XCTAssertFalse(UserFacingError.isCancellation(error))
+            XCTAssertEqual(error.userFacingMessage, UserFacingError.genericMessage)
+        }
+
+        XCTAssertEqual(fake.cancelledIDs, [1])
+        XCTAssertEqual(fake.requests.count, 1, "aucune nouvelle tentative")
+        XCTAssertFalse(exists(dest))
     }
 }
 

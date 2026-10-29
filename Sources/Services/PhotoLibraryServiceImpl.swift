@@ -389,7 +389,8 @@ extension PhotoLibraryServiceImpl: BackupAssetSource {
     /// the still and the paired video on purpose: the 1005 retry, the stall
     /// watchdog and the partial-file cleanup are the whole reason an
     /// iCloud-optimized library survives a backup, and a second copy of them
-    /// would drift.
+    /// would drift. Cancelling the calling Task cancels the PhotoKit request,
+    /// deletes the partial file and throws `CancellationError`.
     private func writeResource(
         _ resource: PHAssetResource,
         filenameHint: String,
@@ -398,44 +399,102 @@ extension PhotoLibraryServiceImpl: BackupAssetSource {
     ) async throws -> URL {
         try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
         let dest = dir.appendingPathComponent("\(UUID().uuidString)-\(filenameHint)")
+        return try await Self.exportResource(
+            to: dest,
+            source: .photoKit(resource),
+            stallInterval: Self.loadTimeoutSeconds,
+            retryAttempts: Self.cloudRetryAttempts,
+            retryDelayNanos: Self.cloudRetryDelayNanos,
+            onState: onState
+        )
+    }
 
-        let resourceOptions = PHAssetResourceRequestOptions()
-        resourceOptions.isNetworkAccessAllowed = true
+    /// Creates `url` empty and opens it for writing; `nil` if either step fails.
+    static func openEmptyFile(_ url: URL) -> FileHandle? {
+        guard FileManager.default.createFile(atPath: url.path, contents: nil) else { return nil }
+        return try? FileHandle(forWritingTo: url)
+    }
 
+    /// The export loop of `writeResource`, with PhotoKit (`source`) and the file
+    /// opening (`openFile`) injected so cancellation, the watchdog, the 1005
+    /// retry and write errors are testable without a photo library.
+    static func exportResource(
+        to dest: URL,
+        source: ResourceDataSource,
+        stallInterval: TimeInterval,
+        retryAttempts: Int,
+        retryDelayNanos: UInt64,
+        openFile: (URL) -> FileHandle? = PhotoLibraryServiceImpl.openEmptyFile,
+        onState: @escaping @Sendable (BackupExportState) -> Void
+    ) async throws -> URL {
         // iCloud-optimized originals may report a transient 1005 ("not local and
         // not preparing") before the download is scheduled. Retry a few times
-        // with a short backoff — re-issuing the write nudges iCloud to start —
+        // with a short backoff — re-issuing the request nudges iCloud to start —
         // and only then surface the failure (retried again on the next run).
         var attempt = 0
         while true {
+            // A Stop between two attempts must not start another download.
+            try Task.checkCancellation()
+            // `requestData` (not `writeData`): it is the only PhotoKit call that
+            // returns an id `cancelDataRequest` accepts, so a cancelled run can
+            // stop an iCloud download. The chunks are written to `dest` here.
+            guard let handle = openFile(dest) else {
+                try? FileManager.default.removeItem(at: dest)
+                throw CocoaError(.fileWriteUnknown)
+            }
+            let writer = ResourceFileWriter(handle: handle)
+            let request = ResourceDataRequest(cancelRequest: source.cancelDataRequest)
             let gate = ContinuationGate<Void>()
             // A wall-clock deadline would abort a slow-but-healthy iCloud download
             // (which can legitimately take minutes) and delete its half-written temp
-            // file. Instead, a stall watchdog trips only after `loadTimeoutSeconds`
+            // file. Instead, a stall watchdog trips only after `stallInterval`
             // with neither a progress tick nor completion — so a download that keeps
-            // making progress is never dropped, only a truly hung request is.
-            let watchdog = StallWatchdog(interval: Self.loadTimeoutSeconds) {
+            // making progress is never dropped, only a truly hung request is. It
+            // does not cancel the request: the download lands in the library and
+            // the deferred asset is picked up by the next run.
+            let watchdog = StallWatchdog(interval: stallInterval) {
                 gate.finish(with: .failure(BackupExportError.cloudDownloadPending))
             }
-            resourceOptions.progressHandler = { fraction in
-                watchdog.pet()
-                onState(.downloadingFromICloud(fraction: fraction))
-            }
             watchdog.pet()
-            PHAssetResourceManager.default().writeData(for: resource, toFile: dest, options: resourceOptions) { error in
-                watchdog.cancel()
-                gate.finish(with: error.map { .failure($0) } ?? .success(()))
-            }
+            let requestID = source.requestData(
+                { fraction in
+                    watchdog.pet()
+                    onState(.downloadingFromICloud(fraction: fraction))
+                },
+                { data in
+                    watchdog.pet()
+                    if let writeError = writer.append(data) {
+                        request.cancel()
+                        gate.finish(with: .failure(writeError))
+                    }
+                },
+                { error in
+                    watchdog.cancel()
+                    let closeError = writer.close()
+                    gate.finish(with: (error ?? closeError).map { .failure($0) } ?? .success(()))
+                }
+            )
+            request.store(requestID)
             do {
-                try await gate.value
+                try await withTaskCancellationHandler {
+                    try await gate.value
+                } onCancel: {
+                    request.cancel()
+                    gate.finish(with: .failure(CancellationError()))
+                }
                 return dest
             } catch {
+                _ = writer.close()
                 try? FileManager.default.removeItem(at: dest)
+                // Whatever error Photos reports after `cancelDataRequest`, a
+                // cancelled Task never retries.
+                if Task.isCancelled { throw CancellationError() }
                 attempt += 1
                 if Self.isCloudNotReady(error) {
-                    if attempt < Self.cloudRetryAttempts {
+                    if attempt < retryAttempts {
                         onState(.retryingICloud(attempt: attempt))
-                        try? await Task.sleep(nanoseconds: Self.cloudRetryDelayNanos)
+                        // No `try?`: a Stop during the backoff must end the export.
+                        try await Task.sleep(nanoseconds: retryDelayNanos)
                         continue
                     }
                     throw BackupExportError.cloudDownloadPending
@@ -670,7 +729,7 @@ extension PhotoLibraryServiceImpl: LocalCleanupSource {
 /// Single-delivery async gate bridging a completion-handler API to
 /// async/await. Robust to the completion firing *before* the awaiter installs
 /// its continuation — common with fast, fully-local PhotosKit resources whose
-/// `writeData`/`requestImageData` completion lands in the window between the
+/// `requestData`/`requestImageData` completion lands in the window between the
 /// request call and `await gate.value`. The first result is stashed and
 /// delivered as soon as `value` is awaited; later `finish` calls (e.g. the
 /// timeout that lost the race) are ignored. Without this, a dropped resume
@@ -770,5 +829,126 @@ private final class ImageRequestHandle: @unchecked Sendable {
         lock.unlock()
         guard requestID != PHInvalidImageRequestID else { return }
         manager.cancelImageRequest(requestID)
+    }
+}
+
+/// The data API of one PhotoKit resource, injected into `exportResource` so
+/// tests can script chunks, completion and progress without a photo library.
+struct ResourceDataSource: Sendable {
+    let requestData: @Sendable (
+        _ progress: @escaping @Sendable (Double) -> Void,
+        _ dataReceived: @escaping @Sendable (Data) -> Void,
+        _ completion: @escaping @Sendable (Error?) -> Void
+    ) -> PHAssetResourceDataRequestID
+    let cancelDataRequest: @Sendable (PHAssetResourceDataRequestID) -> Void
+
+    static func photoKit(_ resource: PHAssetResource) -> ResourceDataSource {
+        ResourceDataSource(
+            requestData: { progress, dataReceived, completion in
+                let options = PHAssetResourceRequestOptions()
+                options.isNetworkAccessAllowed = true
+                options.progressHandler = { progress($0) }
+                return PHAssetResourceManager.default().requestData(
+                    for: resource,
+                    options: options,
+                    dataReceivedHandler: dataReceived,
+                    completionHandler: completion
+                )
+            },
+            cancelDataRequest: { PHAssetResourceManager.default().cancelDataRequest($0) }
+        )
+    }
+}
+
+/// Carries an in-flight `PHAssetResourceDataRequestID` across the cancellation
+/// boundary. The id only exists once `requestData` returns, while `cancel()`
+/// can arrive at any moment and from any queue: whichever of `store`/`cancel`
+/// comes second sends the single `cancelRequest`, with the stored id. An id
+/// that never lands cancels nothing, and nothing is cancelled without `cancel()`.
+final class ResourceDataRequest: @unchecked Sendable {
+    private let lock = NSLock()
+    private let cancelRequest: @Sendable (PHAssetResourceDataRequestID) -> Void
+    private var id: PHAssetResourceDataRequestID?
+    private var cancelled = false
+    private var cancelSent = false
+
+    init(
+        cancelRequest: @escaping @Sendable (PHAssetResourceDataRequestID) -> Void = {
+            PHAssetResourceManager.default().cancelDataRequest($0)
+        }
+    ) {
+        self.cancelRequest = cancelRequest
+    }
+
+    func store(_ requestID: PHAssetResourceDataRequestID) {
+        lock.lock()
+        id = requestID
+        lock.unlock()
+        sendCancelIfNeeded()
+    }
+
+    func cancel() {
+        lock.lock()
+        cancelled = true
+        lock.unlock()
+        sendCancelIfNeeded()
+    }
+
+    private func sendCancelIfNeeded() {
+        lock.lock()
+        let target: PHAssetResourceDataRequestID?
+        if cancelled, !cancelSent, let id {
+            cancelSent = true
+            target = id
+        } else {
+            target = nil
+        }
+        lock.unlock()
+        if let target { cancelRequest(target) }
+    }
+}
+
+/// Appends the chunks `requestData` delivers to the export file. Photos calls
+/// the data handler and the completion handler on an arbitrary serial queue, and
+/// a stalled or cancelled export may still deliver late chunks: once closed (or
+/// failed) the writer ignores them, so nothing lands after the file is released.
+final class ResourceFileWriter: @unchecked Sendable {
+    private let lock = NSLock()
+    private let handle: FileHandle
+    private var failure: Error?
+    private var closed = false
+
+    init(handle: FileHandle) {
+        self.handle = handle
+    }
+
+    /// Returns the write error the first time one happens, `nil` otherwise
+    /// (including for chunks ignored because the writer is closed or failed).
+    func append(_ data: Data) -> Error? {
+        lock.lock()
+        defer { lock.unlock() }
+        guard !closed, failure == nil else { return nil }
+        do {
+            try handle.write(contentsOf: data)
+            return nil
+        } catch {
+            failure = error
+            return error
+        }
+    }
+
+    /// Idempotent: only the first call touches the handle. Returns the write
+    /// failure if there was one, else the close error.
+    func close() -> Error? {
+        lock.lock()
+        defer { lock.unlock() }
+        guard !closed else { return nil }
+        closed = true
+        do {
+            try handle.close()
+            return failure
+        } catch {
+            return failure ?? error
+        }
     }
 }
