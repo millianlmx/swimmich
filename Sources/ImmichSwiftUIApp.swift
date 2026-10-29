@@ -11,17 +11,14 @@ struct ImmichSwiftUIApp: App {
         WindowGroup {
             RootView(container: container)
                 .onChange(of: scenePhase) { _, phase in
+                    container.appLock.scenePhaseChanged(to: phase)
                     switch phase {
                     case .background:
-                        container.appLock.lock()
                         // No PhotoLibrary observer outside the foreground: it
                         // cannot fire usefully there, and it would race the
                         // BGTask window's own run.
                         container.libraryMonitor.stop()
                     case .active:
-                        if container.appLock.isEnabled && container.appLock.isLocked {
-                            Task { _ = await container.appLock.authenticate() }
-                        }
                         // "Upload at launch / on return": kick the gated
                         // engine directly when auto-backup is configured,
                         // then keep the pending background request alive so
@@ -41,6 +38,8 @@ struct ImmichSwiftUIApp: App {
                     }
                 }
                 .onAppear {
+                    // Cold launch: `onChange` does not deliver the initial phase.
+                    container.appLock.scenePhaseChanged(to: scenePhase)
                     registerBackgroundBackup()
                     // The widget chain's only device-only link: whether the
                     // embedded appex is authorised for the app's keychain group.

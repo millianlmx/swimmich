@@ -43,6 +43,8 @@
 		0DDA908ACC3F9AF1C3B4EC76 /* MultipartBody.swift in Sources */ = {isa = PBXBuildFile; fileRef = AD19A65145D0FE42E2F794A7 /* MultipartBody.swift */; };
 		0E0FBF4810A1C25C257F8E56 /* DateHeaderFormatterTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 026D6636036A1A6072A04908 /* DateHeaderFormatterTests.swift */; };
 		0E13FDD94FBFDF4F243C75EC /* AppLockViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 229D70A0FA4C40C2463E166D /* AppLockViewModel.swift */; };
+		575F0FF4D52D6BB1AAB7139F /* AppLockWindowController.swift in Sources */ = {isa = PBXBuildFile; fileRef = 02F1BD398A7A75F4B691EE38 /* AppLockWindowController.swift */; };
+		028EC44AE7A28BF0A9656C53 /* AppLockCoverView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4F718D1AE5E34F7F00F09D93 /* AppLockCoverView.swift */; };
 		0E188CA49E1D5BE0CBAC782B /* InvitePartnerSheet.swift in Sources */ = {isa = PBXBuildFile; fileRef = B9587EEC6E24A19D7A4C2720 /* InvitePartnerSheet.swift */; };
 		0F15DFA965A44B54A1685E9A /* PhotoViewerSwipeDecisionTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8FA912A79360CEC0F4FA74B6 /* PhotoViewerSwipeDecisionTests.swift */; };
 		0F328D546EF72C5A43EC4C53 /* RootView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0E3F725CF1DAB9C1E71FED8C /* RootView.swift */; };
@@ -430,6 +432,7 @@
 		D0B8BC0425CC052E9A96C752 /* AVVideoPlaybackEngine.swift in Sources */ = {isa = PBXBuildFile; fileRef = 324603CD70D1FFDA9575AA93 /* AVVideoPlaybackEngine.swift */; };
 		D0CAC7A169395CDEC4458056 /* ImmichSwiftUIApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = EBFDE41EB3F35AB3723245CB /* ImmichSwiftUIApp.swift */; };
 		D15991D9082320B92652BFB6 /* DeviceSessionsUITests.swift in Sources */ = {isa = PBXBuildFile; fileRef = EB2E19CAC2028AE8C556676B /* DeviceSessionsUITests.swift */; };
+		F673F184F4145AA98CC39E7B /* AppLockUITests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 20B81CCDD48D8661CD526695 /* AppLockUITests.swift */; };
 		D2FCD9E2B7564C58B9F1AD71 /* ImmichClient.swift in Sources */ = {isa = PBXBuildFile; fileRef = 52227E27B6C189FC528D1924 /* ImmichClient.swift */; };
 		D35A688044EDD3CF87C40449 /* AuthenticatedImageRedirectDelegateTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = BB1AE29CD2D5008F7011BBD0 /* AuthenticatedImageRedirectDelegateTests.swift */; };
 		D39ABD6005320C290E793C69 /* BackupEngineTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 71AB60D67D4330AC99443738 /* BackupEngineTests.swift */; };
@@ -458,6 +461,7 @@
 		DF56AF55F4C25922114C4396 /* LockedFolderUITests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 86533554A77DF5D2D61EA1FF /* LockedFolderUITests.swift */; };
 		DFFA30063578322A1AB52D3A /* ImmichColors.swift in Sources */ = {isa = PBXBuildFile; fileRef = AF2FE20DC73A4EF7C653097A /* ImmichColors.swift */; };
 		E00CB72F2D79A32EC663A9F0 /* AppLockViewModelTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4AB868B52ADB57744F84B7EB /* AppLockViewModelTests.swift */; };
+		6A9834D1D86BF6A7FB844DBC /* AppLockWindowControllerTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 21C9C39E0FD73C87E382C34F /* AppLockWindowControllerTests.swift */; };
 		E09ADD5088E5F330E8B782CA /* WhatsNewUITests.swift in Sources */ = {isa = PBXBuildFile; fileRef = F0811A00478B347A7005063B /* WhatsNewUITests.swift */; };
 		E13939991C311CCF0F44D727 /* OfflineAssetStoreTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = F7ECF5A3A973746D8433FC3C /* OfflineAssetStoreTests.swift */; };
 		E1E855F3A04D89A732662487 /* VideoDurationUITests.swift in Sources */ = {isa = PBXBuildFile; fileRef = B99E5039B81A0AF4B2A314D3 /* VideoDurationUITests.swift */; };
@@ -682,6 +686,8 @@
 		1FF43F4AECC7F357BDA161FA /* BackupEngine.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BackupEngine.swift; sourceTree = "<group>"; };
 		20677022F1963E5B572B4144 /* RecentSearchesStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RecentSearchesStore.swift; sourceTree = "<group>"; };
 		229D70A0FA4C40C2463E166D /* AppLockViewModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppLockViewModel.swift; sourceTree = "<group>"; };
+		02F1BD398A7A75F4B691EE38 /* AppLockWindowController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppLockWindowController.swift; sourceTree = "<group>"; };
+		4F718D1AE5E34F7F00F09D93 /* AppLockCoverView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppLockCoverView.swift; sourceTree = "<group>"; };
 		22FDE5DDF45781668E14333F /* MemoryMomentPresentation.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MemoryMomentPresentation.swift; sourceTree = "<group>"; };
 		24A7E9C0BFCCBA99FF193061 /* KenBurnsImageView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = KenBurnsImageView.swift; sourceTree = "<group>"; };
 		251E4A216B2DE745991ED2EC /* CastSheet.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CastSheet.swift; sourceTree = "<group>"; };
@@ -747,6 +753,7 @@
 		4939195A3781240543971E26 /* AssetThumbnailCell.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AssetThumbnailCell.swift; sourceTree = "<group>"; };
 		49CC5794EA041153716915FF /* FaceAssignSheet.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FaceAssignSheet.swift; sourceTree = "<group>"; };
 		4AB868B52ADB57744F84B7EB /* AppLockViewModelTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppLockViewModelTests.swift; sourceTree = "<group>"; };
+		21C9C39E0FD73C87E382C34F /* AppLockWindowControllerTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppLockWindowControllerTests.swift; sourceTree = "<group>"; };
 		4B4FF6676DD74BB6DF67457F /* SharedUploadClient.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SharedUploadClient.swift; sourceTree = "<group>"; };
 		4BA9D673E76A7DFB4A337A71 /* VideoPlayerView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VideoPlayerView.swift; sourceTree = "<group>"; };
 		4BCF25657A8560B1071F21DF /* RecentAssetsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RecentAssetsView.swift; sourceTree = "<group>"; };
@@ -1067,6 +1074,7 @@
 		EAB20A19BE3CE84F21953F08 /* ImmichRenderScreenshots.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ImmichRenderScreenshots.swift; sourceTree = "<group>"; };
 		EB0B6FBF917910E6D37ED1BD /* JSONCoding.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = JSONCoding.swift; sourceTree = "<group>"; };
 		EB2E19CAC2028AE8C556676B /* DeviceSessionsUITests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DeviceSessionsUITests.swift; sourceTree = "<group>"; };
+		20B81CCDD48D8661CD526695 /* AppLockUITests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppLockUITests.swift; sourceTree = "<group>"; };
 		EBFDE41EB3F35AB3723245CB /* ImmichSwiftUIApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ImmichSwiftUIApp.swift; sourceTree = "<group>"; };
 		ED83254B66ED0E84314CD3F1 /* SharedLinksViewModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SharedLinksViewModel.swift; sourceTree = "<group>"; };
 		EE1BCE57E2D0C2BD94AF459F /* RoadTripSmoothPath.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RoadTripSmoothPath.swift; sourceTree = "<group>"; };
@@ -1352,6 +1360,8 @@
 			isa = PBXGroup;
 			children = (
 				229D70A0FA4C40C2463E166D /* AppLockViewModel.swift */,
+				02F1BD398A7A75F4B691EE38 /* AppLockWindowController.swift */,
+				4F718D1AE5E34F7F00F09D93 /* AppLockCoverView.swift */,
 				AA3BB3A9E0C7AC8A15BFCFA2 /* AuthViewModel.swift */,
 				7F08150B5F950C9DC1E4A358 /* Onboarding */,
 			);
@@ -1509,6 +1519,7 @@
 				92A83C640944B384F967A555 /* AlbumSyncServiceTests.swift */,
 				19A9C6E44423692BA6825FD8 /* AppIntentsTests.swift */,
 				4AB868B52ADB57744F84B7EB /* AppLockViewModelTests.swift */,
+				21C9C39E0FD73C87E382C34F /* AppLockWindowControllerTests.swift */,
 				F8757C2F2944F583E7570823 /* AppLogStoreTests.swift */,
 				021EF51C077785F5F99F251A /* AppSettingsStoreTests.swift */,
 				A9D158726EA9BD49E050D1B7 /* AppStringsTests.swift */,
@@ -1945,6 +1956,7 @@
 				A66EE0FA03EC9D631FC0795C /* ChangePasswordUITests.swift */,
 				B454873E88BC71CB37D9B99C /* ChromecastUITests.swift */,
 				EB2E19CAC2028AE8C556676B /* DeviceSessionsUITests.swift */,
+				20B81CCDD48D8661CD526695 /* AppLockUITests.swift */,
 				3DE668217FAB4DE961AEF8E4 /* DownloadPanelUITests.swift */,
 				78372C4588F75079AFAE958B /* FolderViewUITests.swift */,
 				B1311FF6A5F09E70FCCF983C /* FavoritesFilterUITests.swift */,
@@ -2431,6 +2443,7 @@
 				54C2F7EB6719891AEF726BBB /* AlbumsTests.swift in Sources */,
 				D5F2A0B8EAB1EDBBFB0AF09C /* AppIntentsTests.swift in Sources */,
 				E00CB72F2D79A32EC663A9F0 /* AppLockViewModelTests.swift in Sources */,
+				6A9834D1D86BF6A7FB844DBC /* AppLockWindowControllerTests.swift in Sources */,
 				A634FB25B6B8FEC431C577E1 /* AppLogStoreTests.swift in Sources */,
 				17CE77A24026049278385E36 /* AppSettingsStoreTests.swift in Sources */,
 				B78816EE563074FA18F13893 /* AppStringsTests.swift in Sources */,
@@ -2541,6 +2554,7 @@
 				D54B53807EAA96C47323C18F /* ChangePasswordUITests.swift in Sources */,
 				ED454E2E4BDCEEF14626802C /* ChromecastUITests.swift in Sources */,
 				D15991D9082320B92652BFB6 /* DeviceSessionsUITests.swift in Sources */,
+				F673F184F4145AA98CC39E7B /* AppLockUITests.swift in Sources */,
 				7FB32C8946193B5BF24D1FC4 /* DownloadPanelUITests.swift in Sources */,
 				1DB3F51D0ECDB05A6A44D382 /* FolderViewUITests.swift in Sources */,
 				54E04449BD2F2688A94C7BC4 /* FavoritesFilterUITests.swift in Sources */,
@@ -2605,6 +2619,8 @@
 				480B5234D1C67B7BEE655583 /* AppLanguageStore.swift in Sources */,
 				1BE14FDCA4CDFD1302EB1924 /* AppLockService.swift in Sources */,
 				0E13FDD94FBFDF4F243C75EC /* AppLockViewModel.swift in Sources */,
+				575F0FF4D52D6BB1AAB7139F /* AppLockWindowController.swift in Sources */,
+				028EC44AE7A28BF0A9656C53 /* AppLockCoverView.swift in Sources */,
 				BB9CC982AA19BB3E6C460FF2 /* AppLogDetailView.swift in Sources */,
 				866D89BD9CF085F2C74DA1E7 /* AppLogEntry.swift in Sources */,
 				697AEEC0108AA4400749A717 /* AppLogStore.swift in Sources */,

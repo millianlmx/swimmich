@@ -1,3 +1,4 @@
+import SwiftUI
 import XCTest
 @testable import ImmichSwiftUI
 
@@ -129,5 +130,242 @@ final class AppLockViewModelTests: XCTestCase {
         let vm = AppLockViewModel() // uses AppLockViewModel.systemEvaluator by default
         XCTAssertFalse(vm.isEnabled)
         XCTAssertFalse(vm.isLocked)
+    }
+}
+
+/// Evaluator double: counts calls and, when `blocking`, holds the prompt open
+/// until `release(_:)`. A release arriving before the wait is not lost.
+private actor PromptProbe {
+    private(set) var calls = 0
+    private(set) var isWaiting = false
+    private let blocking: Bool
+    private let result: Bool
+    private var continuation: CheckedContinuation<Bool, Never>?
+    private var early: Bool?
+
+    init(blocking: Bool = false, result: Bool = false) {
+        self.blocking = blocking
+        self.result = result
+    }
+
+    func evaluate() async -> Bool {
+        calls += 1
+        guard blocking else { return result }
+        if let early { return early }
+        isWaiting = true
+        return await withCheckedContinuation { continuation = $0 }
+    }
+
+    func release(_ value: Bool) {
+        if let continuation { continuation.resume(returning: value) } else { early = value }
+        continuation = nil
+    }
+}
+
+extension AppLockViewModelTests {
+    @MainActor
+    private func makeEnabled(_ probe: PromptProbe) -> AppLockViewModel {
+        UserDefaults.standard.removeObject(forKey: AppLockViewModel.enabledKey)
+        let vm = AppLockViewModel(evaluator: { await probe.evaluate() })
+        vm.setEnabled(true)
+        return vm
+    }
+
+    @MainActor
+    private func waitUntilPromptIsShown(_ probe: PromptProbe) async {
+        var attempts = 0
+        while attempts < 400, !(await probe.isWaiting) {
+            attempts += 1
+            try? await Task.sleep(nanoseconds: 5_000_000)
+        }
+    }
+
+    // AC-10: a failed prompt is never relaunched by a later `.active`.
+    @MainActor
+    func test_AC_10_failedPromptIsNotRelaunched() async {
+        let probe = PromptProbe(result: false)
+        let vm = makeEnabled(probe)
+        vm.scenePhaseChanged(to: .background)
+        let task = vm.scenePhaseChanged(to: .active)
+        XCTAssertNotNil(task)
+        _ = await task?.value
+        let afterFirst = await probe.calls
+        XCTAssertEqual(afterFirst, 1)
+
+        XCTAssertNil(vm.scenePhaseChanged(to: .inactive))
+        XCTAssertNil(vm.scenePhaseChanged(to: .active))
+        let afterRoundTrip = await probe.calls
+        XCTAssertEqual(afterRoundTrip, 1)
+        XCTAssertEqual(vm.cover, .lock)
+
+        let ok = await vm.authenticate()
+        XCTAssertFalse(ok)
+        let afterExplicit = await probe.calls
+        XCTAssertEqual(afterExplicit, 2)
+    }
+
+    // AC-11: the mask is published inside the `.inactive` call, no await.
+    @MainActor
+    func test_AC_11_inactivePublishesMaskSynchronously() {
+        let vm = makeEnabled(PromptProbe())
+        var covers: [AppLockCover] = []
+        vm.onCoverChange = { covers.append($0) }
+        vm.scenePhaseChanged(to: .inactive)
+        XCTAssertEqual(covers, [.mask])
+    }
+
+    // AC-12: Control Center round trip unmasks without prompting.
+    @MainActor
+    func test_AC_12_inactiveRoundTripUnmasksWithoutPrompt() async {
+        let probe = PromptProbe()
+        let vm = makeEnabled(probe)
+        vm.scenePhaseChanged(to: .inactive)
+        XCTAssertEqual(vm.cover, .mask)
+        XCTAssertNil(vm.scenePhaseChanged(to: .active))
+        XCTAssertEqual(vm.cover, .none)
+        let calls = await probe.calls
+        XCTAssertEqual(calls, 0)
+    }
+
+    // AC-13: lock disabled → nothing is ever covered or published.
+    @MainActor
+    func test_AC_13_disabledNeverCovers() async {
+        resetDefaults()
+        let probe = PromptProbe()
+        let vm = AppLockViewModel(evaluator: { await probe.evaluate() })
+        var published = 0
+        vm.onCoverChange = { _ in published += 1 }
+        for phase in [ScenePhase.inactive, .background, .active] {
+            XCTAssertNil(vm.scenePhaseChanged(to: phase))
+            XCTAssertEqual(vm.cover, .none, "phase \(phase)")
+        }
+        XCTAssertEqual(published, 0)
+        let calls = await probe.calls
+        XCTAssertEqual(calls, 0)
+    }
+
+    // AC-16 (model clause): enabling does not lock; the next background does.
+    @MainActor
+    func test_AC_16_enabledThenBackgroundLocksAndPrompts() async {
+        resetDefaults()
+        let probe = PromptProbe(result: true)
+        let vm = AppLockViewModel(evaluator: { await probe.evaluate() })
+        vm.setEnabled(true)
+        XCTAssertEqual(vm.cover, .none)
+        vm.scenePhaseChanged(to: .background)
+        XCTAssertEqual(vm.cover, .lock)
+        let task = vm.scenePhaseChanged(to: .active)
+        XCTAssertNotNil(task)
+        _ = await task?.value
+        let calls = await probe.calls
+        XCTAssertEqual(calls, 1)
+        XCTAssertEqual(vm.cover, .none)
+    }
+
+    // AC-17: cold launch is locked and prompts exactly once, on first `.active`.
+    @MainActor
+    func test_AC_17_coldLaunchPromptsOnceOnFirstActive() async {
+        resetDefaults()
+        UserDefaults.standard.set(true, forKey: AppLockViewModel.enabledKey)
+        let probe = PromptProbe(result: false)
+        let vm = AppLockViewModel(evaluator: { await probe.evaluate() })
+        XCTAssertEqual(vm.cover, .lock)
+        XCTAssertNil(vm.scenePhaseChanged(to: .inactive))
+        let task = vm.scenePhaseChanged(to: .active)
+        XCTAssertNotNil(task)
+        _ = await task?.value
+        XCTAssertNil(vm.scenePhaseChanged(to: .inactive))
+        XCTAssertNil(vm.scenePhaseChanged(to: .active))
+        let calls = await probe.calls
+        XCTAssertEqual(calls, 1)
+    }
+
+    // AC-18: disabling releases the lock; nothing locks afterwards.
+    @MainActor
+    func test_AC_18_disableThenBackgroundNeverLocks() async {
+        let probe = PromptProbe()
+        let vm = makeEnabled(probe)
+        vm.scenePhaseChanged(to: .background)
+        XCTAssertEqual(vm.cover, .lock)
+        vm.setEnabled(false)
+        XCTAssertEqual(vm.cover, .none)
+        vm.scenePhaseChanged(to: .active)
+        vm.scenePhaseChanged(to: .background)
+        XCTAssertEqual(vm.cover, .none)
+        XCTAssertNil(vm.scenePhaseChanged(to: .active))
+        let calls = await probe.calls
+        XCTAssertEqual(calls, 0)
+        XCTAssertFalse(UserDefaults.standard.bool(forKey: AppLockViewModel.enabledKey))
+    }
+
+    // AC-19: the prompt's own `.inactive`/`.active` churn neither re-locks nor re-prompts.
+    @MainActor
+    func test_AC_19_promptInactiveRoundTripSucceedsOnce() async {
+        let probe = PromptProbe(blocking: true)
+        let vm = makeEnabled(probe)
+        vm.scenePhaseChanged(to: .background)
+        let task = vm.scenePhaseChanged(to: .active)
+        XCTAssertNotNil(task)
+        await waitUntilPromptIsShown(probe)
+
+        vm.scenePhaseChanged(to: .inactive)
+        XCTAssertEqual(vm.cover, .lock)
+        XCTAssertNil(vm.scenePhaseChanged(to: .active))
+        vm.scenePhaseChanged(to: .inactive)
+
+        await probe.release(true)
+        let ok = await task?.value
+        XCTAssertEqual(ok, true)
+        XCTAssertEqual(vm.cover, .mask)
+        XCTAssertNil(vm.scenePhaseChanged(to: .active))
+        XCTAssertEqual(vm.cover, .none)
+        let calls = await probe.calls
+        XCTAssertEqual(calls, 1)
+    }
+
+    // AC-19 (S-3): a second authenticate() while one is in flight is a no-op.
+    @MainActor
+    func test_AC_19_concurrentAuthenticateRunsEvaluatorOnce() async {
+        let probe = PromptProbe(blocking: true)
+        let vm = makeEnabled(probe)
+        vm.lock()
+        async let first = vm.authenticate()
+        await waitUntilPromptIsShown(probe)
+        let second = await vm.authenticate()
+        XCTAssertFalse(second)
+        XCTAssertTrue(vm.isLocked, "the rejected call must not touch isLocked")
+        await probe.release(true)
+        let firstResult = await first
+        XCTAssertTrue(firstResult)
+        let calls = await probe.calls
+        XCTAssertEqual(calls, 1)
+    }
+
+    // AC-20: a lock persisted by the previous version still gates the app.
+    @MainActor
+    func test_AC_20_persistedEnabledSurvivesUpgrade() {
+        resetDefaults()
+        UserDefaults.standard.set(true, forKey: AppLockViewModel.enabledKey)
+        let vm = AppLockViewModel(evaluator: { true })
+        XCTAssertTrue(vm.isEnabled)
+        XCTAssertTrue(vm.isLocked)
+        XCTAssertEqual(vm.cover, .lock)
+    }
+
+    // AC-22: Control Center while locked after a cancelled prompt does not re-prompt.
+    @MainActor
+    func test_AC_22_inactiveRoundTripWhileLockedDoesNotPrompt() async {
+        let probe = PromptProbe(result: false)
+        let vm = makeEnabled(probe)
+        vm.scenePhaseChanged(to: .background)
+        let task = vm.scenePhaseChanged(to: .active)
+        _ = await task?.value
+
+        vm.scenePhaseChanged(to: .inactive)
+        XCTAssertEqual(vm.cover, .lock)
+        XCTAssertNil(vm.scenePhaseChanged(to: .active))
+        XCTAssertEqual(vm.cover, .lock)
+        let calls = await probe.calls
+        XCTAssertEqual(calls, 1)
     }
 }

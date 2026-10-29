@@ -2,7 +2,8 @@ import ImmichSharedKit
 import SwiftUI
 
 /// Auth-gated root router. Shows login flow until authenticated, then timeline.
-/// When app lock is enabled + locked, overlays a LockView (AC-104/AC-105).
+/// App Lock is not drawn here: a dedicated window above every presentation
+/// covers the whole scene (`AppLockWindowController`, AC-104/AC-105).
 ///
 /// The authenticated tab tree is owned by `AuthenticatedRoot`, keyed on
 /// `auth.activeAccountID` — switching accounts tears the whole subtree down and
@@ -17,7 +18,6 @@ struct RootView: View {
     /// is the one instance the Preferences screen writes and the timeline, the
     /// viewer and the video player read.
     @State private var appSettings: AppSettingsStore
-    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     private let container: DependencyContainer
 
     init(container: DependencyContainer = .shared) {
@@ -29,57 +29,48 @@ struct RootView: View {
         _appSettings = State(initialValue: container.appSettings)
     }
 
-    private var isGated: Bool { appLock.isEnabled && appLock.isLocked }
-
     var body: some View {
-        ZStack {
-            Group {
-                if auth.isRestoringSession {
-                    ProgressView()
-                        .frame(maxWidth: .infinity, maxHeight: .infinity)
-                } else if auth.isAuthenticated {
-                    AuthenticatedRoot(container: container, session: auth, accountID: auth.activeAccountID ?? "")
-                        .id(auth.activeAccountID)
-                } else {
-                    OnboardingFlowView(startsOnLogin: auth.sessionExpired)
-                }
-            }
-            .environment(auth)
-            .environment(appLock)
-            .environment(language)
-            // Every `Text("…")` literal below resolves its key through this
-            // locale, so the language picker retranslates the view tree as soon
-            // as it is touched. Strings built outside a render (view models,
-            // notifications, widgets) go through `Bundle` instead and only
-            // follow on the next launch — `AppLanguageStore` writes
-            // `AppleLanguages` for exactly that.
-            .environment(\.locale, language.effectiveLocale)
-            // App preferences (gap G22) reach every screen through the
-            // environment — the timeline grid, the viewer, the video player and
-            // the slideshow read the very store the Preferences screen writes.
-            // The haptic gate rides along here so the whole tree, onboarding
-            // and lock screen included, obeys one switch.
-            .environment(appSettings)
-            .environment(\.hapticsEnabled, appSettings.hapticsEnabled)
-            .blur(radius: isGated ? 30 : 0)
-            .task {
-                // Reconfigure the shared client from the stored session and
-                // validate the token on launch (auth persistence across relaunch).
-                await auth.restoreSession()
-            }
-
-            if isGated {
-                LockView(appLock: appLock)
-                    .transition(.opacity)
+        Group {
+            if auth.isRestoringSession {
+                ProgressView()
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+            } else if auth.isAuthenticated {
+                AuthenticatedRoot(container: container, session: auth, accountID: auth.activeAccountID ?? "")
+                    .id(auth.activeAccountID)
+            } else {
+                OnboardingFlowView(startsOnLogin: auth.sessionExpired)
             }
         }
-        .animation(PVMotion.adaptive(PVMotion.gentle, reduceMotion: reduceMotion), value: isGated)
-        // Appearance (gap G22) is applied HERE, on the outer `ZStack`, and not
+        .environment(auth)
+        .environment(appLock)
+        .environment(language)
+        // Every `Text("…")` literal below resolves its key through this
+        // locale, so the language picker retranslates the view tree as soon
+        // as it is touched. Strings built outside a render (view models,
+        // notifications, widgets) go through `Bundle` instead and only
+        // follow on the next launch — `AppLanguageStore` writes
+        // `AppleLanguages` for exactly that.
+        .environment(\.locale, language.effectiveLocale)
+        // App preferences (gap G22) reach every screen through the
+        // environment — the timeline grid, the viewer, the video player and
+        // the slideshow read the very store the Preferences screen writes.
+        // The haptic gate rides along here so the whole tree, onboarding
+        // included, obeys one switch.
+        .environment(appSettings)
+        .environment(\.hapticsEnabled, appSettings.hapticsEnabled)
+        .task {
+            // Reconfigure the shared client from the stored session and
+            // validate the token on launch (auth persistence across relaunch).
+            await auth.restoreSession()
+        }
+        // Appearance (gap G22) is applied HERE, on the outer view, and not
         // on `AuthenticatedRoot`: the theme and the accent must also cover the
-        // onboarding flow and `LockView`, which live outside it. `nil` (the
-        // `.system` case) is what hands the color scheme back to iOS.
+        // onboarding flow, which lives outside it. `nil` (the `.system` case)
+        // is what hands the color scheme back to iOS.
         .preferredColorScheme(appSettings.theme.colorScheme)
         .tint(appSettings.accent.color)
+        // App Lock lives in its own window above every sheet, cover and alert.
+        .background(AppLockWindowInstaller(appLock: appLock, language: language, appSettings: appSettings))
     }
 }
 
@@ -332,8 +323,7 @@ private struct AuthenticatedRoot: View {
         // every tab and stays up while a transfer runs — that is the point of
         // the feature. Declared before the sheets below so the detail screen
         // presents over it, on the same pattern as the neighboring `@State`
-        // flows; the root view is already where this app overlays global state
-        // (`LockView`).
+        // flows; the root view is already where this app overlays global state.
         .overlay(alignment: .bottom) {
             Group {
                 if downloads.isPanelVisible {
@@ -472,33 +462,6 @@ private enum RootTab: Int, Hashable {
     case albums
     case shared
     case search
-}
-
-private struct LockView: View {
-    let appLock: AppLockViewModel
-
-    var body: some View {
-        ZStack {
-            Rectangle()
-                .fill(.ultraThinMaterial)
-                .ignoresSafeArea()
-
-            VStack(spacing: PVSpacing.s24) {
-                Image(systemName: "lock.fill")
-                    .font(.system(size: 56)) // DS-exempt: hero illustration §8.6
-                    .foregroundStyle(Color.textSecondaryPV)
-                Text("PhotoVault Locked")
-                    .font(.pvTitle)
-                Button {
-                    Task { _ = await appLock.authenticate() }
-                } label: {
-                    Label("Unlock", systemImage: "faceid")
-                }
-                .buttonStyle(PVPrimaryButtonStyle())
-            }
-        }
-        .accessibilityIdentifier("AppLockOverlay")
-    }
 }
 
 // MARK: - Me (profile) entry from every tab
