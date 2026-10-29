@@ -251,16 +251,47 @@ final class AppLockUITests: XCTestCase {
         }
     }
 
-    /// Turns "Require Face ID" on (the Me sheet stays open).
+    /// Turns "Require Face ID" on and concludes the activation prompt with a
+    /// matching face (the Me sheet stays open).
     private func enableAppLock() {
         let toggle = openMe(scrollingTo: "appLockToggle")
         if (toggle.value as? String) != "1" {
-            toggle.tap()
-            if !waitUntil(5, { (toggle.value as? String) == "1" }) {
-                toggle.coordinate(withNormalizedOffset: CGVector(dx: 0.95, dy: 0.5)).tap()
-            }
+            tapAppLockToggle()
+            sleep(2) // the activation prompt is presented
+            FaceID.match()
+            let springboard = XCUIApplication(bundleIdentifier: "com.apple.springboard")
+            XCTAssertTrue(promptButton(springboard).waitForNonExistence(timeout: 10), "the activation prompt did not close")
         }
         XCTAssertTrue(waitUntil(10) { (toggle.value as? String) == "1" }, "Require Face ID did not turn on")
+    }
+
+    /// Taps the toggle without concluding any prompt. Falls back to the switch
+    /// itself when tapping the row did not flip the value.
+    private func tapAppLockToggle() {
+        let toggle = element("appLockToggle")
+        let before = toggle.value as? String
+        toggle.tap()
+        if !waitUntil(3, { (toggle.value as? String) != before }) {
+            toggle.coordinate(withNormalizedOffset: CGVector(dx: 0.95, dy: 0.5)).tap()
+        }
+    }
+
+    /// Home, back, and the lock must NOT appear.
+    private func backgroundAndBackExpectingNoLock() {
+        XCUIDevice.shared.press(.home)
+        sleep(2)
+        app.activate()
+        XCTAssertFalse(element("AppLockOverlay").waitForExistence(timeout: 5), "the lock showed although the setting is off")
+    }
+
+    /// Cold relaunch (the session stays signed in). The onboarding walk only
+    /// knows en/fr, so readiness is the profile avatar, not a tab label.
+    private func relaunch(language: String?) {
+        app.terminate()
+        app.launchArguments = language.map { ["-AppleLanguages", "(\($0))", "-AppleLocale", "\($0)_\($0.uppercased())"] } ?? []
+        app.launch()
+        XCTAssertTrue(app.buttons.matching(identifier: "profileAvatar").firstMatch.waitForExistence(timeout: 30),
+                      "the relaunch did not reach the shell — \(screenText())")
     }
 
     private func openViewer() {
@@ -581,5 +612,82 @@ final class AppLockUITests: XCTestCase {
 
         unlockWithFaceID()
         XCTAssertEqual(app.searchFields.firstMatch.value as? String, "plage", "the typed text was lost")
+    }
+
+    // MARK: - Activation conditioned on authentication
+    //
+    // Prefixed `test_Activation_AC_` (not `test_AC_`): the sister feature owns
+    // AC-1…AC-22 above. The three "incapable device" scenarios (AC-14 UI part,
+    // AC-33, AC-34 UI part) are NOT written: whether an erased simulator with
+    // no enrolled Face ID fails `canEvaluatePolicy` was never measured (the
+    // repo comment and an iOS 9.2 report say it passes with a passcode screen),
+    // and the app has no test hook to force the probe. Their unit-level proof
+    // is `AppLockViewModelTests.test_Activation_AC_14_…` + the catalog test.
+
+    /// AC-15 (B-6): a failed then cancelled activation prompt turns off, silently.
+    func test_Activation_AC_15_failedPromptTurnsOffSilently() throws {
+        launchSignedIn()
+        let toggle = openMe(scrollingTo: "appLockToggle")
+        tapAppLockToggle()
+        failAndCancelPrompt()
+        XCTAssertTrue(waitUntil(10) { (toggle.value as? String) == "0" }, "the toggle did not go back to off")
+        XCTAssertFalse(element("appLockUnavailableNotice").exists, "a cancelled prompt must stay silent")
+        closeMeSheet()
+        backgroundAndBackExpectingNoLock()
+    }
+
+    /// AC-16 (B-6): a matched face keeps the toggle on, and the next return locks.
+    func test_Activation_AC_16_successKeepsOnAndLocksNextReturn() throws {
+        launchSignedIn()
+        enableAppLock()
+        XCTAssertEqual(element("appLockToggle").value as? String, "1")
+        closeMeSheet()
+        sendToBackgroundAndBack()
+    }
+
+    /// AC-30 (B-6): neither the mask nor the lock shows while the prompt is up, or after.
+    func test_Activation_AC_30_noCoverDuringActivationPrompt() throws {
+        launchSignedIn()
+        _ = openMe(scrollingTo: "appLockToggle")
+        tapAppLockToggle()
+        sleep(2)
+        let springboard = XCUIApplication(bundleIdentifier: "com.apple.springboard")
+        XCTAssertTrue(promptButton(springboard).waitForExistence(timeout: 10), "no activation prompt")
+        XCTAssertFalse(element("AppLockPrivacyMask").exists, "mask shown during the activation prompt")
+        XCTAssertFalse(element("AppLockOverlay").exists, "lock shown during the activation prompt")
+
+        FaceID.match()
+        XCTAssertTrue(promptButton(springboard).waitForNonExistence(timeout: 10), "the prompt did not close")
+        XCTAssertFalse(element("AppLockPrivacyMask").waitForExistence(timeout: 3), "mask shown after activation")
+        XCTAssertFalse(element("AppLockOverlay").exists, "lock shown after activation")
+        XCTAssertTrue(element("appLockToggle").isHittable, "the Me sheet is not usable after activation")
+    }
+
+    /// AC-31 (B-30): turning off needs no prompt and nothing locks afterwards.
+    func test_Activation_AC_31_disableWithoutPrompt() throws {
+        launchSignedIn()
+        enableAppLock()
+        tapAppLockToggle()
+        let springboard = XCUIApplication(bundleIdentifier: "com.apple.springboard")
+        XCTAssertFalse(promptButton(springboard).waitForExistence(timeout: 4), "disabling must not prompt")
+        XCTAssertTrue(waitUntil(10) { (self.element("appLockToggle").value as? String) == "0" },
+                      "the toggle did not turn off")
+        closeMeSheet()
+        backgroundAndBackExpectingNoLock()
+    }
+
+    /// AC-32 (B-31): killed during the activation prompt, the app relaunches unlocked and off.
+    func test_Activation_AC_32_killDuringPromptRelaunchesUnlockedAndOff() throws {
+        launchSignedIn()
+        _ = openMe(scrollingTo: "appLockToggle")
+        tapAppLockToggle()
+        sleep(2)
+        let springboard = XCUIApplication(bundleIdentifier: "com.apple.springboard")
+        XCTAssertTrue(promptButton(springboard).waitForExistence(timeout: 10), "no activation prompt")
+
+        relaunch(language: nil)
+        XCTAssertFalse(element("AppLockOverlay").waitForExistence(timeout: 10), "the relaunch came up locked")
+        let toggle = openMe(scrollingTo: "appLockToggle")
+        XCTAssertEqual(toggle.value as? String, "0", "the setting survived the kill")
     }
 }

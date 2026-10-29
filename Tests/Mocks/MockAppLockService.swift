@@ -1,3 +1,4 @@
+import XCTest
 import SwiftUI
 @testable import ImmichSwiftUI
 
@@ -7,13 +8,15 @@ import SwiftUI
 @MainActor
 final class MockAppLockService: AppLockService, @unchecked Sendable {
     var isLocked: Bool
-    var isEnabled: Bool
+    private(set) var isEnabled: Bool
     var isAuthenticating: Bool = false
     private var isPrivacyMasked = false
     private var promptOnNextActive: Bool
 
     /// Result returned by `authenticate()`. Default `true` for happy-path wiring tests.
     var authenticateResult: Bool
+    /// What the availability probe answers in `requestEnable()`.
+    var isAvailable: Bool
 
     var cover: AppLockCover {
         guard isEnabled else { return .none }
@@ -21,11 +24,12 @@ final class MockAppLockService: AppLockService, @unchecked Sendable {
         return isPrivacyMasked ? .mask : .none
     }
 
-    init(isEnabled: Bool = false, isLocked: Bool? = nil, authenticateResult: Bool = true) {
+    init(isEnabled: Bool = false, isLocked: Bool? = nil, authenticateResult: Bool = true, isAvailable: Bool = true) {
         self.isEnabled = isEnabled
         self.isLocked = isLocked ?? isEnabled
         self.promptOnNextActive = isEnabled
         self.authenticateResult = authenticateResult
+        self.isAvailable = isAvailable
     }
 
     @discardableResult
@@ -37,13 +41,24 @@ final class MockAppLockService: AppLockService, @unchecked Sendable {
         return authenticateResult
     }
 
-    func setEnabled(_ enabled: Bool) {
-        isEnabled = enabled
-        if !enabled {
-            isLocked = false
-            isPrivacyMasked = false
-            promptOnNextActive = false
-        }
+    @discardableResult
+    func requestEnable() async -> AppLockActivationResult {
+        guard !isEnabled else { return .enabled }
+        guard !isAuthenticating else { return .inProgress }
+        guard isAvailable else { return .unavailable }
+        guard await authenticate() else { return .notAuthenticated }
+        isEnabled = true
+        isLocked = false
+        isPrivacyMasked = false
+        promptOnNextActive = false
+        return .enabled
+    }
+
+    func disable() {
+        isEnabled = false
+        isLocked = false
+        isPrivacyMasked = false
+        promptOnNextActive = false
     }
 
     func lock() {
@@ -72,4 +87,37 @@ final class MockAppLockService: AppLockService, @unchecked Sendable {
             return nil
         }
     }
+}
+
+/// Answers `true` to the first evaluation (the activation prompt), then
+/// delegates every later one to `next`, so an evaluator counter such as
+/// `PromptProbe.calls` stays at zero after activation.
+private actor ActivationGate {
+    private var activationPending = true
+    private let next: @Sendable () async -> Bool
+
+    init(next: @escaping @Sendable () async -> Bool) {
+        self.next = next
+    }
+
+    func evaluate() async -> Bool {
+        if activationPending {
+            activationPending = false
+            return true
+        }
+        return await next()
+    }
+}
+
+/// An `AppLockViewModel` that went through the real activation path (probe
+/// available, first prompt succeeds): enabled, unlocked, cover `.none`, no
+/// scene phase received. Later evaluations go to `next`.
+@MainActor
+func makeActivatedAppLock(then next: @escaping @Sendable () async -> Bool) async -> AppLockViewModel {
+    UserDefaults.standard.removeObject(forKey: AppLockViewModel.enabledKey)
+    let gate = ActivationGate(next: next)
+    let vm = AppLockViewModel(evaluator: { await gate.evaluate() }, availability: { true })
+    let result = await vm.requestEnable()
+    XCTAssertEqual(result, .enabled)
+    return vm
 }

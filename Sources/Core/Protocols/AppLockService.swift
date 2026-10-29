@@ -11,7 +11,11 @@ protocol AppLockService: AnyObject {
     /// What the lock window must show right now (privacy mask vs. lock).
     var cover: AppLockCover { get }
     func authenticate() async -> Bool
-    func setEnabled(_ enabled: Bool)
+    /// The only way to turn the lock on: probes availability, then
+    /// authenticates. There is no synchronous activation.
+    func requestEnable() async -> AppLockActivationResult
+    /// Immediate, no authentication.
+    func disable()
     func lock()
     /// Single lifecycle entry point; returns the prompt task when the
     /// transition must start an authentication.

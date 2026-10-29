@@ -45,10 +45,9 @@ final class AppLockWindowControllerTests: XCTestCase {
     @MainActor
     private func makeController(
         notifications: NotificationCenter = .default
-    ) -> (vm: AppLockViewModel, controller: AppLockWindowController) {
+    ) async -> (vm: AppLockViewModel, controller: AppLockWindowController) {
         let suite = UserDefaults(suiteName: Self.suiteName)!
-        let vm = AppLockViewModel(evaluator: { false })
-        vm.setEnabled(true)
+        let vm = await makeActivatedAppLock(then: { false })
         let controller = AppLockWindowController(
             appLock: vm,
             language: AppLanguageStore(defaults: suite),
@@ -96,8 +95,8 @@ final class AppLockWindowControllerTests: XCTestCase {
 
     // AC-1: opaque window above alerts, full scene, never key.
     @MainActor
-    func test_AC_1_lockShowsOpaqueWindowAboveAlert() throws {
-        let (_, controller) = makeController()
+    func test_AC_1_lockShowsOpaqueWindowAboveAlert() async throws {
+        let (_, controller) = await makeController()
         XCTAssertTrue(controller.window?.isHidden == true, "no cover while unlocked")
         controller.apply(.lock)
 
@@ -113,7 +112,7 @@ final class AppLockWindowControllerTests: XCTestCase {
     // AC-5: alerts live in the app window, which sits below the lock window.
     @MainActor
     func test_AC_5_alertPresentedInAppWindowIsCovered() async throws {
-        let (_, controller) = makeController()
+        let (_, controller) = await makeController()
         let appWindow = makeAppWindow()
         let alert = UIAlertController(title: "Delete?", message: nil, preferredStyle: .alert)
         appWindow.rootViewController!.present(alert, animated: false)
@@ -129,7 +128,7 @@ final class AppLockWindowControllerTests: XCTestCase {
     // AC-6: a full-screen presentation is still under the lock window.
     @MainActor
     func test_AC_6_fullScreenPresentationIsCovered() async throws {
-        let (_, controller) = makeController()
+        let (_, controller) = await makeController()
         let appWindow = makeAppWindow()
         let presented = UIViewController()
         presented.modalPresentationStyle = .fullScreen
@@ -147,8 +146,8 @@ final class AppLockWindowControllerTests: XCTestCase {
 
     // AC-7: every point of the screen is answered by the lock window.
     @MainActor
-    func test_AC_7_lockWindowSwallowsTouches() throws {
-        let (_, controller) = makeController()
+    func test_AC_7_lockWindowSwallowsTouches() async throws {
+        let (_, controller) = await makeController()
         _ = makeAppWindow()
         controller.apply(.lock)
 
@@ -167,8 +166,8 @@ final class AppLockWindowControllerTests: XCTestCase {
 
     // AC-8: VoiceOver only sees the lock; original accessibility state is restored.
     @MainActor
-    func test_AC_8_otherWindowsHiddenFromAccessibility() throws {
-        let (_, controller) = makeController()
+    func test_AC_8_otherWindowsHiddenFromAccessibility() async throws {
+        let (_, controller) = await makeController()
         let visible = makeAppWindow()
         let alreadyHidden = makeAppWindow()
         alreadyHidden.accessibilityElementsHidden = true
@@ -193,7 +192,7 @@ final class AppLockWindowControllerTests: XCTestCase {
     @MainActor
     func test_AC_11_sceneDeactivationShowsMaskSynchronously() async throws {
         let center = NotificationCenter()
-        let (vm, controller) = makeController(notifications: center)
+        let (vm, controller) = await makeController(notifications: center)
         let window = try XCTUnwrap(controller.window)
 
         center.post(name: UIScene.willDeactivateNotification, object: nil)
@@ -209,16 +208,16 @@ final class AppLockWindowControllerTests: XCTestCase {
         center.post(name: UIScene.didEnterBackgroundNotification, object: scene)
         XCTAssertEqual(controller.currentCover, .lock)
 
-        vm.setEnabled(false)
+        vm.disable()
         await waitUntilHidden(window)
         XCTAssertTrue(window.isHidden)
     }
 
     // AC-11: entering background drops the keyboard focus before the snapshot.
     @MainActor
-    func test_AC_11_backgroundResignsFocusSynchronously() throws {
+    func test_AC_11_backgroundResignsFocusSynchronously() async throws {
         let center = NotificationCenter()
-        let (_, controller) = makeController(notifications: center)
+        let (_, controller) = await makeController(notifications: center)
         let field = addTextField(to: makeAppWindow())
         XCTAssertTrue(field.becomeFirstResponder())
 
@@ -229,8 +228,8 @@ final class AppLockWindowControllerTests: XCTestCase {
 
     // AC-12: the privacy mask never touches focus (Control Center round trip).
     @MainActor
-    func test_AC_12_maskKeepsFirstResponder() {
-        let (_, controller) = makeController()
+    func test_AC_12_maskKeepsFirstResponder() async {
+        let (_, controller) = await makeController()
         let field = addTextField(to: makeAppWindow())
         XCTAssertTrue(field.becomeFirstResponder())
 
@@ -242,8 +241,8 @@ final class AppLockWindowControllerTests: XCTestCase {
 
     // AC-21: lock drops focus, refuses refocus (field and text view), keeps text.
     @MainActor
-    func test_AC_21_lockResignsAndBlocksRefocus() {
-        let (_, controller) = makeController()
+    func test_AC_21_lockResignsAndBlocksRefocus() async {
+        let (_, controller) = await makeController()
         let window = makeAppWindow()
         let field = addTextField(to: window, text: "abc")
         let textView = UITextView(frame: CGRect(x: 20, y: 200, width: 200, height: 80))

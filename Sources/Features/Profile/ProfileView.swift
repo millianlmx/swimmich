@@ -6,7 +6,6 @@ import SwiftUI
 struct ProfileView: View {
     @Environment(AuthViewModel.self) private var auth
     @Environment(AppLockViewModel.self) private var appLock
-    @AppStorage(AppLockViewModel.enabledKey) private var appLockEnabled = false
     @Environment(\.openURL) private var openURL
     @State var trash: TrashViewModel
     @State var storage: StorageStatsViewModel
@@ -62,6 +61,26 @@ struct ProfileView: View {
     @State var downloadInfo: DownloadInfoViewModel
     /// Drives the logout confirmation dialog (SP-4).
     @State private var showLogoutConfirm = false
+    /// An activation prompt is on screen: the toggle shows "on" and ignores taps.
+    @State private var isActivatingAppLock = false
+    /// The last activation was refused because the device cannot authenticate.
+    /// Lives with the sheet: never persisted.
+    @State private var appLockUnavailable = false
+
+    private func setAppLock(_ on: Bool) {
+        guard !isActivatingAppLock else { return }
+        guard on else {
+            appLock.disable()
+            return
+        }
+        appLockUnavailable = false
+        isActivatingAppLock = true
+        Task {
+            let result = await appLock.requestEnable()
+            isActivatingAppLock = false
+            appLockUnavailable = (result == .unavailable)
+        }
+    }
 
     var body: some View {
         NavigationStack {
@@ -330,11 +349,23 @@ struct ProfileView: View {
                             .accessibilityIdentifier("shouldChangePasswordNotice")
                     }
 
-                    Toggle("Require Face ID", isOn: $appLockEnabled)
-                        .onChange(of: appLockEnabled) { _, newValue in
-                            appLock.setEnabled(newValue)
-                        }
-                        .accessibilityIdentifier("appLockToggle")
+                    // Bound to the model, not to `@AppStorage`: the key must only
+                    // turn `true` once the authentication has succeeded. The
+                    // toggle reads "on" while the prompt is up, then settles.
+                    Toggle("Require Face ID", isOn: Binding(
+                        get: { appLock.isEnabled || isActivatingAppLock },
+                        set: { setAppLock($0) }
+                    ))
+                    .accessibilityIdentifier("appLockToggle")
+
+                    // Only for a device that cannot authenticate at all; a
+                    // failed or cancelled prompt stays silent.
+                    if appLockUnavailable {
+                        Label("To turn on “Require Face ID”, set a device passcode (and Face ID if you want) in iOS Settings.", systemImage: "exclamationmark.triangle.fill")
+                            .font(.pvCaption)
+                            .foregroundStyle(Color.immichWarning)
+                            .accessibilityIdentifier("appLockUnavailableNotice")
+                    }
 
                     // After the app lock, before the logout button: sessions are
                     // a security object, not a library screen — and this row

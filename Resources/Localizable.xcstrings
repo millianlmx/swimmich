@@ -10137,6 +10137,34 @@
         }
       }
     },
+    "To turn on “Require Face ID”, set a device passcode (and Face ID if you want) in iOS Settings." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Um „Face ID anfordern“ einzuschalten, lege in den iOS-Einstellungen einen Gerätecode fest (und auf Wunsch Face ID)."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Para activar «Requerir Face ID», configura un código del dispositivo (y Face ID si quieres) en los Ajustes de iOS."
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Pour activer « Exiger Face ID », définissez un code d'appareil (et Face ID si vous le souhaitez) dans Réglages iOS."
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Per attivare «Richiedi Face ID», imposta un codice del dispositivo (e Face ID se vuoi) nelle Impostazioni di iOS."
+          }
+        }
+      }
+    },
     "Too many attempts" : {
       "localizations" : {
         "fr" : {
