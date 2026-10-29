@@ -21,12 +21,13 @@ final class TimelineViewModel {
     private(set) var loadedIds: Set<String> = []
 
     let client: any ImmichClient
-    var filterIsFavorite: Bool?
+    /// Active filter of the main timeline. `.all` asks the server for my
+    /// photos plus those of partners with "Show in timeline" on.
+    private(set) var filter: TimelineFilter = .all
+    var filterIsFavorite: Bool? { filter.isFavorite }
     var filterIsTrashed: Bool?
-    var filterVisibility: String?
-
-    /// Partner photos interleaved in the timeline (AC-1070). Nil = own assets.
-    var filterWithPartners: Bool?
+    var filterVisibility: String? { filter.visibility }
+    var filterWithPartners: Bool? { filter.withPartners }
 
     /// Collapse every stack to its primary tile, with the stack reported on
     /// that tile (`stackId`/`stackCount`). On, the server drops the other
@@ -73,12 +74,23 @@ final class TimelineViewModel {
     /// Applies a timeline filter and reloads. No-op when the requested filter
     /// already matches, so the grid keeps its position between identical taps.
     @MainActor
-    func setFilter(isFavorite: Bool?, visibility: String?, withPartners: Bool? = nil) async {
-        guard filterIsFavorite != isFavorite || filterVisibility != visibility || filterWithPartners != withPartners else { return }
-        filterIsFavorite = isFavorite
-        filterVisibility = visibility
-        filterWithPartners = withPartners
+    func setFilter(_ newFilter: TimelineFilter) async {
+        guard newFilter != filter else { return }
+        filter = newFilter
         await refresh()
+    }
+
+    /// What a tap on a tile opens: the flat viewer, or the stack screen.
+    /// The server refuses `StackRead` to a non-owner, so the cover of a
+    /// partner's stack opens the viewer on the cover itself. Unknown owner
+    /// (no logged-in id, offline items with an empty `ownerId`) keeps the
+    /// stack route.
+    static func tapRoute(for item: AssetReactItem, currentUserId: String?) -> TimelineTapRoute {
+        guard let stackId = item.stackId else { return .viewer }
+        guard let currentUserId, !currentUserId.isEmpty, !item.ownerId.isEmpty else {
+            return .stack(id: stackId)
+        }
+        return item.ownerId == currentUserId ? .stack(id: stackId) : .viewer
     }
 
     // MARK: - Favorite toggle (AC-202)
@@ -445,4 +457,51 @@ final class TimelineViewModel {
             actionErrorMessage = e.userFacingMessage
         }
     }
+}
+
+/// Filters of the main timeline, in menu order. The network parameters are
+/// derived here so no case can combine `withPartners` with anything but
+/// `visibility=timeline` (the server answers 400 otherwise). `.all` sends
+/// `visibility=timeline` explicitly: without it the server also returns
+/// archived assets, and older servers refuse `withPartners` altogether.
+enum TimelineFilter: String, Sendable, CaseIterable {
+    case all
+    case favorites
+    case archived
+
+    var isFavorite: Bool? {
+        switch self {
+        case .all, .archived: nil
+        case .favorites: true
+        }
+    }
+
+    var visibility: String? {
+        switch self {
+        case .all: "timeline"
+        case .favorites: nil
+        case .archived: "archive"
+        }
+    }
+
+    var withPartners: Bool? {
+        switch self {
+        case .all: true
+        case .favorites, .archived: nil
+        }
+    }
+
+    var title: LocalizedStringKey {
+        switch self {
+        case .all: "All"
+        case .favorites: "Favorites"
+        case .archived: "Archived"
+        }
+    }
+}
+
+/// Destination of a tap on a timeline tile.
+enum TimelineTapRoute: Equatable {
+    case viewer
+    case stack(id: String)
 }

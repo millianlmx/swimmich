@@ -5,13 +5,16 @@ final class TimelineViewModelTests: XCTestCase {
 
     /// Builds a columnar TimeBucketAssetResponseDto with two well-known assets
     /// so the zip step has predictable per-index values (AC-013).
-    private func columnar(ids: [String], ratios: [Double], thumbhashes: [String?], favorites: [Bool]) -> TimeBucketAssetResponseDto {
+    private func columnar(
+        ids: [String], ratios: [Double], thumbhashes: [String?], favorites: [Bool],
+        owners: [String]? = nil, visibilities: [String]? = nil, stacks: [[String]?]? = nil
+    ) -> TimeBucketAssetResponseDto {
         TimeBucketAssetResponseDto(
             id: ids,
-            ownerId: ids.map { _ in "owner" },
+            ownerId: owners ?? ids.map { _ in "owner" },
             ratio: ratios,
             isFavorite: favorites,
-            visibility: ids.map { _ in "timeline" },
+            visibility: visibilities ?? ids.map { _ in "timeline" },
             isTrashed: ids.map { _ in false },
             isImage: ids.map { _ in true },
             thumbhash: thumbhashes,
@@ -21,7 +24,7 @@ final class TimelineViewModelTests: XCTestCase {
             duration: ids.map { _ in nil },
             livePhotoVideoId: ids.map { _ in nil },
             projectionType: ids.map { _ in nil },
-            stack: nil, city: nil, country: nil, latitude: nil, longitude: nil
+            stack: stacks, city: nil, country: nil, latitude: nil, longitude: nil
         )
     }
 
@@ -493,7 +496,7 @@ final class TimelineViewModelTests: XCTestCase {
         let mock = MockImmichClient()
         let vm = await makeLoadedVM(mock)
 
-        await vm.setFilter(isFavorite: true, visibility: nil)
+        await vm.setFilter(.favorites)
 
         XCTAssertEqual(mock.lastTimeBucketsIsFavorite, true)
         XCTAssertNil(mock.lastTimeBucketsVisibility)
@@ -506,7 +509,7 @@ final class TimelineViewModelTests: XCTestCase {
         let mock = MockImmichClient()
         let vm = await makeLoadedVM(mock)
 
-        await vm.setFilter(isFavorite: nil, visibility: "archive")
+        await vm.setFilter(.archived)
 
         XCTAssertNil(mock.lastTimeBucketsIsFavorite)
         XCTAssertEqual(mock.lastTimeBucketsVisibility, "archive")
@@ -519,7 +522,7 @@ final class TimelineViewModelTests: XCTestCase {
         let vm = await makeLoadedVM(mock)
         let calls = mock.requestCount
 
-        await vm.setFilter(isFavorite: nil, visibility: nil)
+        await vm.setFilter(.all)
 
         XCTAssertEqual(mock.requestCount, calls, "identical filter does not reload")
         XCTAssertEqual(vm.items.count, 3)
@@ -540,7 +543,7 @@ final class TimelineViewModelTests: XCTestCase {
             )
         ]
 
-        await vm.setFilter(isFavorite: true, visibility: nil)
+        await vm.setFilter(.favorites)
 
         XCTAssertEqual(mock.lastTimeBucketsIsFavorite, true)
         XCTAssertEqual(vm.items.map(\.id), ["a4"], "no stale items leak across filter change")
@@ -555,7 +558,7 @@ final class TimelineViewModelTests: XCTestCase {
         let vm = await makeLoadedVM(mock)
         mock.globalError = APIError.serverError(500, "boom")
 
-        await vm.setFilter(isFavorite: true, visibility: nil)
+        await vm.setFilter(.favorites)
 
         XCTAssertEqual(vm.loadErrorMessage, localizedString("The server ran into a problem. Please try again."))
     }
@@ -565,7 +568,7 @@ final class TimelineViewModelTests: XCTestCase {
         let mock = MockImmichClient()
         let vm = await makeLoadedVM(mock)
         mock.globalError = APIError.serverError(500, "boom")
-        await vm.setFilter(isFavorite: true, visibility: nil)
+        await vm.setFilter(.favorites)
         mock.globalError = nil
 
         await vm.refresh()
@@ -574,29 +577,268 @@ final class TimelineViewModelTests: XCTestCase {
         XCTAssertEqual(vm.items.map(\.id), ["a1", "a2", "a3"])
     }
 
+    // MARK: - Partner photos in « All » (partnerTimeline)
+
+    /// Seeds a VM in « All » with one month holding `owners`' photos (ids `p1…`).
     @MainActor
-    func test_filter_sharedWithYou_usesWithPartners() async {
-        let mock = MockImmichClient()
-        let vm = await makeLoadedVM(mock)
+    private func makePartnerVM(_ mock: MockImmichClient, owners: [String]) async -> TimelineViewModel {
+        let ids = owners.indices.map { "p\($0 + 1)" }
+        mock.bucketsResponse = [TimeBucketsResponseDto(timeBucket: "2024-07-01", count: ids.count)]
+        mock.bucketResponses = [
+            "2024-07-01": columnar(
+                ids: ids, ratios: ids.map { _ in 1 }, thumbhashes: ids.map { _ in nil },
+                favorites: ids.map { _ in false }, owners: owners
+            )
+        ]
+        let vm = TimelineViewModel(client: mock)
+        await vm.load()
+        return vm
+    }
 
-        await vm.setFilter(isFavorite: nil, visibility: nil, withPartners: true)
-
-        XCTAssertEqual(mock.lastTimeBucketsWithPartners, true)
-        XCTAssertNil(mock.lastTimeBucketsIsFavorite)
-        XCTAssertNil(mock.lastTimeBucketsVisibility)
-        XCTAssertEqual(mock.lastTimeBucketWithPartners, true, "bucket load inherits withPartners")
+    private func assertPartnerParams(
+        _ mock: MockImmichClient, file: StaticString = #filePath, line: UInt = #line
+    ) {
+        XCTAssertEqual(mock.lastTimeBucketWithPartners, true, "bucket sends withPartners", file: file, line: line)
+        XCTAssertEqual(mock.lastTimeBucketVisibility, "timeline", "bucket sends visibility=timeline", file: file, line: line)
     }
 
     @MainActor
-    func test_filter_withPartners_noOpOnIdenticalValues() async {
+    func test_partnerTimeline_AC1_initialAllRequestsPartnersAndTimelineVisibility() async {
+        let mock = MockImmichClient()
+        let vm = TimelineViewModel(client: mock)
+        mock.bucketsResponse = [TimeBucketsResponseDto(timeBucket: "2024-07-01", count: 1)]
+        XCTAssertEqual(vm.filter, .all)
+
+        await vm.load()
+
+        XCTAssertEqual(mock.lastTimeBucketsWithPartners, true)
+        XCTAssertEqual(mock.lastTimeBucketsVisibility, "timeline")
+        XCTAssertNil(mock.lastTimeBucketsIsFavorite)
+    }
+
+    @MainActor
+    func test_partnerTimeline_AC2_everyBucketLoadPathRepeatsPartnersAndTimeline() async {
+        let mock = MockImmichClient()
+        let months = ["2024-07-01", "2024-06-01", "2024-05-01"]
+        mock.bucketsResponse = months.map { TimeBucketsResponseDto(timeBucket: $0, count: 1) }
+        for (i, m) in months.enumerated() {
+            mock.bucketResponses[m] = columnar(ids: ["m\(i)"], ratios: [1], thumbhashes: [nil], favorites: [false])
+        }
+        let vm = TimelineViewModel(client: mock)
+        func reset() {
+            mock.lastTimeBucketWithPartners = nil
+            mock.lastTimeBucketVisibility = nil
+        }
+
+        reset()
+        await vm.load()
+        assertPartnerParams(mock)
+
+        reset()
+        await vm.loadMore()
+        assertPartnerParams(mock)
+
+        reset()
+        await vm.jump(toDay: "2024-06-01")
+        assertPartnerParams(mock)
+
+        reset()
+        await vm.loadNewer()
+        assertPartnerParams(mock)
+        XCTAssertEqual(vm.items.first?.id, "m0", "loadNewer really served the newer month")
+    }
+
+    @MainActor
+    func test_partnerTimeline_AC3_returningToAllRestoresPartnersParams() async {
         let mock = MockImmichClient()
         let vm = await makeLoadedVM(mock)
-        await vm.setFilter(isFavorite: nil, visibility: nil, withPartners: true)
-        let calls = mock.requestCount
+        await vm.setFilter(.favorites)
+        XCTAssertNil(mock.lastTimeBucketsWithPartners, "favorites precondition")
 
-        await vm.setFilter(isFavorite: nil, visibility: nil, withPartners: true)
+        await vm.setFilter(.all)
 
-        XCTAssertEqual(mock.requestCount, calls, "identical partner filter does not reload")
+        XCTAssertEqual(vm.filter, .all)
+        XCTAssertEqual(mock.lastTimeBucketsWithPartners, true)
+        XCTAssertEqual(mock.lastTimeBucketsVisibility, "timeline")
+        XCTAssertNil(mock.lastTimeBucketsIsFavorite)
+        assertPartnerParams(mock)
+    }
+
+    @MainActor
+    func test_partnerTimeline_AC4_partnerPhotosStayInGridBesideMine() async {
+        let mock = MockImmichClient()
+
+        let vm = await makePartnerVM(mock, owners: ["me", "partner", "me"])
+
+        XCTAssertEqual(vm.items.map(\.id), ["p1", "p2", "p3"], "server order kept, nothing filtered client-side")
+        XCTAssertEqual(vm.items.map(\.ownerId), ["me", "partner", "me"])
+    }
+
+    @MainActor
+    func test_partnerTimeline_AC5_refreshDropsPartnerPhotosNoLongerServed() async {
+        let mock = MockImmichClient()
+        let vm = await makePartnerVM(mock, owners: ["me", "partner", "me"])
+        XCTAssertTrue(vm.items.contains { $0.ownerId == "partner" }, "precondition")
+        mock.lastTimeBucketsWithPartners = nil
+        mock.bucketsResponse = [TimeBucketsResponseDto(timeBucket: "2024-07-01", count: 2)]
+        mock.bucketResponses["2024-07-01"] = columnar(
+            ids: ["p1", "p3"], ratios: [1, 1], thumbhashes: [nil, nil], favorites: [false, false],
+            owners: ["me", "me"]
+        )
+
+        await vm.refresh()
+
+        XCTAssertEqual(mock.lastTimeBucketsWithPartners, true)
+        XCTAssertEqual(vm.items.map(\.id), ["p1", "p3"])
+        XCTAssertFalse(vm.items.contains { $0.ownerId == "partner" })
+    }
+
+    @MainActor
+    func test_partnerTimeline_AC6_favoritesOmitsWithPartners() async {
+        let mock = MockImmichClient()
+        let vm = await makeLoadedVM(mock)
+        XCTAssertEqual(mock.lastTimeBucketsWithPartners, true)
+        XCTAssertEqual(mock.lastTimeBucketWithPartners, true)
+        mock.bucketResponses["2024-07-01"] = columnar(ids: ["f1"], ratios: [1], thumbhashes: [nil], favorites: [true])
+        let before = mock.requestCount
+
+        await vm.setFilter(.favorites)
+
+        XCTAssertEqual(mock.requestCount, before + 2, "one /buckets and one /bucket")
+        XCTAssertEqual(vm.items.map(\.id), ["f1"], "/bucket was called again and served")
+        XCTAssertNil(mock.lastTimeBucketsWithPartners)
+        XCTAssertNil(mock.lastTimeBucketWithPartners)
+        XCTAssertEqual(mock.lastTimeBucketsIsFavorite, true)
+        XCTAssertNil(vm.loadErrorMessage)
+    }
+
+    @MainActor
+    func test_partnerTimeline_AC7_archivedOmitsWithPartners() async {
+        let mock = MockImmichClient()
+        let vm = await makeLoadedVM(mock)
+        XCTAssertEqual(mock.lastTimeBucketsWithPartners, true)
+        XCTAssertEqual(mock.lastTimeBucketWithPartners, true)
+        let before = mock.requestCount
+
+        await vm.setFilter(.archived)
+
+        XCTAssertEqual(mock.requestCount, before + 2)
+        XCTAssertEqual(mock.lastTimeBucketsVisibility, "archive")
+        XCTAssertEqual(mock.lastTimeBucketVisibility, "archive")
+        XCTAssertNil(mock.lastTimeBucketsWithPartners)
+        XCTAssertNil(mock.lastTimeBucketWithPartners)
+        XCTAssertNil(vm.loadErrorMessage)
+    }
+
+    func test_partnerTimeline_AC8_filterMenuOffersExactlyAllFavoritesArchived() {
+        XCTAssertEqual(TimelineFilter.allCases, [.all, .favorites, .archived])
+    }
+
+    @MainActor
+    func test_partnerTimeline_AC9_allAsksTimelineVisibilityArchivedAsksArchive() async {
+        let mock = MockImmichClient()
+        let vm = await makeLoadedVM(mock)
+        XCTAssertEqual(mock.lastTimeBucketsVisibility, "timeline")
+        XCTAssertEqual(mock.lastTimeBucketVisibility, "timeline")
+        XCTAssertFalse(vm.items.contains { $0.visibility == "archive" })
+        mock.bucketResponses["2024-07-01"] = columnar(
+            ids: ["ar1"], ratios: [1], thumbhashes: [nil], favorites: [false], visibilities: ["archive"]
+        )
+
+        await vm.setFilter(.archived)
+
+        XCTAssertEqual(mock.lastTimeBucketsVisibility, "archive")
+        XCTAssertEqual(mock.lastTimeBucketVisibility, "archive")
+        XCTAssertEqual(vm.items.map(\.id), ["ar1"])
+    }
+
+    @MainActor
+    func test_partnerTimeline_AC10_mixedSelectionDeleteRefusedKeepsGridAndSelection() async {
+        let mock = MockImmichClient()
+        let vm = await makePartnerVM(mock, owners: ["me", "partner"])
+        vm.enterSelectionMode()
+        vm.toggleSelection(id: "p1")
+        vm.toggleSelection(id: "p2")
+        mock.deleteError = APIError.serverError(400, "Not found or no asset.delete access")
+
+        await vm.deleteSelected()
+
+        XCTAssertEqual(Set(mock.lastDeleteBody?.ids ?? []), ["p1", "p2"], "one call for the whole selection")
+        XCTAssertNotNil(vm.actionErrorMessage)
+        XCTAssertEqual(vm.items.map(\.id), ["p1", "p2"])
+        XCTAssertEqual(vm.loadedIds, ["p1", "p2"])
+        XCTAssertTrue(vm.selectionMode)
+        XCTAssertEqual(vm.selectedIds, ["p1", "p2"])
+    }
+
+    @MainActor
+    func test_partnerTimeline_AC10_mixedSelectionArchiveAndLockRefusedKeepGridAndSelection() async {
+        let mock = MockImmichClient()
+        let vm = await makePartnerVM(mock, owners: ["me", "partner"])
+        vm.enterSelectionMode()
+        vm.toggleSelection(id: "p1")
+        vm.toggleSelection(id: "p2")
+        mock.globalError = APIError.serverError(400, "Not found or no asset.update access")
+
+        await vm.archiveSelected()
+
+        XCTAssertEqual(Set(mock.lastBulkUpdateDto?.ids ?? []), ["p1", "p2"])
+        XCTAssertNotNil(vm.actionErrorMessage)
+        XCTAssertEqual(vm.items.map(\.id), ["p1", "p2"])
+        XCTAssertTrue(vm.selectionMode)
+        XCTAssertEqual(vm.selectedIds, ["p1", "p2"])
+
+        vm.actionErrorMessage = nil
+        mock.lastBulkUpdateDto = nil
+        await vm.moveSelectedToLockedFolder()
+
+        XCTAssertEqual(Set(mock.lastBulkUpdateDto?.ids ?? []), ["p1", "p2"])
+        XCTAssertNotNil(vm.actionErrorMessage)
+        XCTAssertEqual(vm.items.map(\.id), ["p1", "p2"])
+        XCTAssertEqual(vm.loadedIds, ["p1", "p2"])
+        XCTAssertTrue(vm.selectionMode)
+        XCTAssertEqual(vm.selectedIds, ["p1", "p2"])
+    }
+
+    @MainActor
+    func test_partnerTimeline_AC10_mixedSelectionFavoriteRefusedMatchesServerState() async {
+        let mock = MockImmichClient()
+        let vm = await makePartnerVM(mock, owners: ["me", "partner", "me"])
+        vm.enterSelectionMode()
+        for id in ["p1", "p2", "p3"] { vm.toggleSelection(id: id) }
+        mock.updateAssetErrorsById["p2"] = APIError.serverError(400, "Not found or no asset.update access")
+
+        let ok = await vm.batchSetFavorite(vm.selectedIds, favorite: true)
+
+        XCTAssertFalse(ok)
+        XCTAssertNotNil(vm.actionErrorMessage)
+        XCTAssertEqual(vm.selectedIds, ["p1", "p2", "p3"])
+        XCTAssertEqual(vm.items.first { $0.id == "p2" }?.isFavorite, false, "refused photo keeps its heart")
+        let accepted = Set(mock.updateAssetCalls.map(\.id))
+        XCTAssertFalse(accepted.contains("p2"))
+        for item in vm.items {
+            XCTAssertEqual(item.isFavorite, accepted.contains(item.id), "heart of \(item.id) matches what the server accepted")
+        }
+    }
+
+    func test_partnerTimeline_AC11_tapRouteOpensViewerForPartnerStacks() {
+        func item(owner: String, stack: [String]) -> AssetReactItem {
+            AssetReactItem(
+                id: "x", ownerId: owner, ratio: 1, isFavorite: false, visibility: "timeline",
+                isTrashed: false, isImage: true, thumbhash: nil,
+                createdAt: "2024-07-01T00:00:00.000Z", fileCreatedAt: "2024-07-01T00:00:00.000Z",
+                localOffsetHours: 0, duration: nil, livePhotoVideoId: nil, projectionType: nil,
+                city: nil, country: nil, latitude: nil, longitude: nil, stack: stack
+            )
+        }
+        let route = TimelineViewModel.tapRoute(for:currentUserId:)
+
+        XCTAssertEqual(route(item(owner: "partner", stack: []), "me"), .viewer)
+        XCTAssertEqual(route(item(owner: "partner", stack: ["stk-p", "3"]), "me"), .viewer)
+        XCTAssertEqual(route(item(owner: "me", stack: ["stk-m", "2"]), "me"), .stack(id: "stk-m"))
+        XCTAssertEqual(route(item(owner: "partner", stack: ["stk-p", "3"]), nil), .stack(id: "stk-p"))
+        XCTAssertEqual(route(item(owner: "partner", stack: ["stk-p", "3"]), ""), .stack(id: "stk-p"))
+        XCTAssertEqual(route(item(owner: "", stack: ["stk-o", "3"]), "me"), .stack(id: "stk-o"))
     }
 
     // MARK: - Stacks (gap #1)

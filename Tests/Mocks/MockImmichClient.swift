@@ -462,9 +462,15 @@ final class MockImmichClient: ImmichClient, @unchecked Sendable {
         )
     }
 
+    /// Per-id refusal of `updateAsset` (e.g. a partner's asset the server will
+    /// not let me modify). Checked before any capture: a refused call is not
+    /// recorded in `updateAssetCalls`.
+    var updateAssetErrorsById: [String: Error] = [:]
+
     func updateAsset(id: String, dto: UpdateAssetDto) async throws -> AssetResponseDto {
         bump()
         if let e = globalError { throw e }
+        if let e = updateAssetErrorsById[id] { throw e }
         lastUpdateAssetId = id
         lastUpdateAssetBody = dto
         lastUpdateMethod = .PATCH

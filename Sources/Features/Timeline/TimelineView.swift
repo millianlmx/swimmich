@@ -566,12 +566,15 @@ struct TimelineView: View {
                 if vm.selectionMode {
                     vm.toggleSelection(id: item.id)
                     lastSelectionTick &+= 1
-                } else if let stackId = item.stackId {
-                    // The bucket holds only stack primaries: opening the flat
-                    // pager here would skip the photos behind the cover.
-                    openedStackID = stackId
                 } else {
-                    openViewer(for: item)
+                    // The bucket holds only stack primaries: opening the flat
+                    // pager on one's own stack cover would skip the photos
+                    // behind it; a partner's stack is unreadable (server
+                    // refuses StackRead), so its cover opens the viewer.
+                    switch TimelineViewModel.tapRoute(for: item, currentUserId: auth.userId) {
+                    case .stack(let id): openedStackID = id
+                    case .viewer: openViewer(for: item)
+                    }
                 }
             },
             onToggleFavorite: {
@@ -747,40 +750,15 @@ struct TimelineView: View {
             } else {
                 // AC-1010 — timeline filter menu (All / Favorites / Archived).
                 Menu {
-                    Button {
-                        Task { await vm.setFilter(isFavorite: nil, visibility: nil) }
-                    } label: {
-                        if vm.filterIsFavorite == nil && vm.filterVisibility == nil {
-                            Label("All", systemImage: "checkmark")
-                        } else {
-                            Text("All")
-                        }
-                    }
-                    Button {
-                        Task { await vm.setFilter(isFavorite: true, visibility: nil) }
-                    } label: {
-                        if vm.filterIsFavorite == true {
-                            Label("Favorites", systemImage: "checkmark")
-                        } else {
-                            Text("Favorites")
-                        }
-                    }
-                    Button {
-                        Task { await vm.setFilter(isFavorite: nil, visibility: "archive") }
-                    } label: {
-                        if vm.filterVisibility == "archive" {
-                            Label("Archived", systemImage: "checkmark")
-                        } else {
-                            Text("Archived")
-                        }
-                    }
-                    Button {
-                        Task { await vm.setFilter(isFavorite: nil, visibility: nil, withPartners: true) }
-                    } label: {
-                        if vm.filterWithPartners == true {
-                            Label("Shared with you", systemImage: "checkmark")
-                        } else {
-                            Text("Shared with you")
+                    ForEach(TimelineFilter.allCases, id: \.self) { f in
+                        Button {
+                            Task { await vm.setFilter(f) }
+                        } label: {
+                            if vm.filter == f {
+                                Label(f.title, systemImage: "checkmark")
+                            } else {
+                                Text(f.title)
+                            }
                         }
                     }
                 } label: {
