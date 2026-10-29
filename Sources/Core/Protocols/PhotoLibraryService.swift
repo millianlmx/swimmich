@@ -23,12 +23,6 @@ protocol PhotoLibraryService: AnyObject, Sendable {
     /// cell, it must not tear the grid down.
     func loadThumbnail(for asset: PHAsset, targetSize: CGSize, scale: CGFloat) async -> UIImage?
 
-    /// Loads full-resolution data for a PHAsset.
-    func loadData(for asset: PHAsset) async throws -> Data
-
-    /// SHA1 of file bytes, base64-encoded (for `x-immich-checksum`).
-    func checksum(for asset: PHAsset) async throws -> String
-
     /// Creation + modification timestamps formatted as ISO8601 `yyyy-MM-dd'T'HH:mm:ss.SSSZ`.
     func isoTimestamps(for asset: PHAsset) -> (createdAt: String, modifiedAt: String)
 

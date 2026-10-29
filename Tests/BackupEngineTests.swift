@@ -779,24 +779,68 @@ final class LivePhotoBackupTests: XCTestCase {
     }
 
     /// A reject without an `assetId` (nothing to attach to) must not attempt a
-    /// blind PATCH.
+    /// blind PATCH — and the asset is not recorded as backed up: it has no video
+    /// on the server, so the next run must look at it again.
     @MainActor
     func test_livePhoto_rejectWithoutAssetIdSkipsRepair() async {
         let mock = MockImmichClient()
         let source = MockBackupAssetSource()
+        let ledger = BackupLedger.inMemory()
         source.candidates = [livePhoto("lp1")]
         source.livePhotoIDs = ["lp1"]
         source.dataProvider = { _ in Data(repeating: 3, count: 16) }
         mock.bulkUploadCheckResponse = AssetBulkUploadCheckResponse(results: [
             .init(id: "lp1", action: "reject", reason: "duplicate"),
         ])
-        let engine = BackupEngine(client: mock, source: source, environment: MockBackupEnvironment())
+        let engine = BackupEngine(client: mock, source: source, environment: MockBackupEnvironment(), ledger: ledger)
 
         await engine.run(settings: settings())
 
         XCTAssertTrue(mock.updateAssetCalls.isEmpty)
         XCTAssertEqual(mock.uploads.count, 0)
         XCTAssertEqual(engine.rejectedCount, 1)
+        XCTAssertEqual(engine.failedCount, 0)
+        XCTAssertEqual(engine.failures.map(\.assetID), ["lp1"])
+        XCTAssertEqual(engine.failures.first?.reason, String(localized: "The Live Photo video could not be linked."))
+        XCTAssertEqual(ledger.trackedCount(), 0)
+        XCTAssertTrue(engine.backedUpIDs.isEmpty)
+    }
+
+    /// The still is on the server but its video could not be linked: no ledger
+    /// entry, so the next backup re-exports it and tries the link again.
+    @MainActor
+    func test_AC20_livePhotoReject_repairFails_noLedgerAndRetriedNextRun() async {
+        let mock = MockImmichClient()
+        let source = MockBackupAssetSource()
+        let ledger = BackupLedger.inMemory()
+        source.candidates = [livePhoto("lp1")]
+        source.livePhotoIDs = ["lp1"]
+        source.dataProvider = { _ in Data(repeating: 3, count: 16) }
+        mock.bulkUploadCheckResponse = AssetBulkUploadCheckResponse(results: [
+            .init(id: "lp1", action: "reject", reason: "duplicate", assetId: "remote-photo-7"),
+        ])
+        mock.uploadErrorsByFilename = ["lp1.MOV": APIError.decoding("no link today")]
+        let engine = BackupEngine(client: mock, source: source, environment: MockBackupEnvironment(), ledger: ledger)
+        // Keep the weekly reconciliation (which would answer for the mock) out of it.
+        ledger.recordReconciliation(at: Date())
+
+        await engine.run(settings: settings())
+
+        XCTAssertEqual(engine.failures.map(\.assetID), ["lp1"])
+        XCTAssertEqual(engine.failedCount, 0, "a warning, not a failed asset")
+        XCTAssertFalse(ledger.isBackedUp(id: "lp1", signature: livePhoto("lp1").fileModifiedAt))
+        XCTAssertTrue(engine.backedUpIDs.isEmpty)
+
+        mock.uploadErrorsByFilename = [:]
+        mock.uploadResponsesByFilename = ["lp1.MOV": AssetMediaResponseDto(id: "video-9", status: "created")]
+
+        await engine.run(settings: settings())
+
+        XCTAssertEqual(source.exportedIDs, ["lp1", "lp1"], "the second run re-exports it")
+        XCTAssertEqual(mock.updateAssetCalls.count, 1)
+        XCTAssertTrue(engine.failures.isEmpty)
+        XCTAssertTrue(ledger.isBackedUp(id: "lp1", signature: livePhoto("lp1").fileModifiedAt))
+        XCTAssertEqual(engine.backedUpIDs, ["lp1"])
     }
 
     /// A trashed asset is on the server (in the trash) — linking a video onto
@@ -1183,6 +1227,27 @@ final class CloudNotReadyTests: XCTestCase {
 
     func test_unrelatedError_isNotRetryable() {
         XCTAssertFalse(PhotoLibraryServiceImpl.isCloudNotReady(APIError.decoding("boom")))
+    }
+}
+
+/// The Check of "On this device" exports into `BackupExportDirectory.localCheck`
+/// while backup runs empty `BackupExportDirectory.backup` at their start.
+final class ExportDirectoryTests: XCTestCase {
+    func test_AC23_purgeStaleExports_leavesTheCheckDirectory() throws {
+        let fm = FileManager.default
+        let name = "ac23-\(UUID().uuidString)"
+        let kept = BackupExportDirectory.localCheck.appendingPathComponent(name)
+        let purged = BackupExportDirectory.backup.appendingPathComponent(name)
+        for url in [kept, purged] {
+            try fm.createDirectory(at: url.deletingLastPathComponent(), withIntermediateDirectories: true)
+            try Data("x".utf8).write(to: url)
+        }
+        defer { try? fm.removeItem(at: kept) }
+
+        PhotoLibraryServiceImpl().purgeStaleExports()
+
+        XCTAssertTrue(fm.fileExists(atPath: kept.path), "the Check's export must survive a run's purge")
+        XCTAssertFalse(fm.fileExists(atPath: purged.path))
     }
 }
 

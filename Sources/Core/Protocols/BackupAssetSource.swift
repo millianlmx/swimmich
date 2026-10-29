@@ -75,6 +75,20 @@ enum BackupExportError: Error, Sendable {
     case cloudDownloadPending
 }
 
+/// Temp directories exports are written to. Two on purpose: every backup run
+/// deletes `backup` entirely at its start (`purgeStaleExports()`), so an export
+/// made outside the engine needs a directory that purge does not touch.
+enum BackupExportDirectory {
+    /// The backup engine's exports.
+    static var backup: URL {
+        URL(fileURLWithPath: NSTemporaryDirectory()).appendingPathComponent("immich-backup", isDirectory: true)
+    }
+    /// The "On this device" Check's exports, purged by that screen alone.
+    static var localCheck: URL {
+        URL(fileURLWithPath: NSTemporaryDirectory()).appendingPathComponent("immich-local-check", isDirectory: true)
+    }
+}
+
 /// Asset source for the backup engine — PHPhotoLibrary behind value types.
 /// Tests provide a pure mock; production uses `PhotoLibraryServiceImpl`.
 protocol BackupAssetSource: Sendable {
@@ -92,14 +106,17 @@ protocol BackupAssetSource: Sendable {
     /// longer holds are simply absent from the result — no album scoping, no
     /// ordering guarantee beyond the request.
     func fetchCandidates(ids: [String]) -> [BackupCandidate]
-    /// Streams the candidate's full-resolution original to a temporary file on
-    /// disk and returns its URL — never materializes the whole asset in memory
-    /// (mirrors the upstream Flutter client, which uploads straight from a
-    /// file). The caller owns the returned file and MUST delete it after use.
+    /// Streams the candidate's full-resolution original to a temporary file in
+    /// `directory` and returns its URL — never materializes the whole asset in
+    /// memory (mirrors the upstream Flutter client, which uploads straight from
+    /// a file). The caller owns the returned file and MUST delete it after use.
+    /// A caller that exports outside a backup run passes its own directory,
+    /// because every run purges `BackupExportDirectory.backup` at its start.
     /// `onState` reports iCloud download progress / retries as they happen;
     /// it may be called from a background queue.
     func exportOriginal(
         for candidate: BackupCandidate,
+        into directory: URL,
         onState: @escaping @Sendable (BackupExportState) -> Void
     ) async throws -> URL
 
@@ -115,6 +132,8 @@ protocol BackupAssetSource: Sendable {
     /// Best-effort removal of leftover temp originals from a previous run that
     /// a jetsam OOM/expiration killed before it could delete them. Called once
     /// at the start of a run so orphaned exports don't accumulate on disk.
+    /// Removes `BackupExportDirectory.backup` and nothing else: an export made
+    /// `into` another directory (the "On this device" Check) survives it.
     func purgeStaleExports()
 
     /// Which of the given albums each library asset belongs to —
@@ -125,4 +144,15 @@ protocol BackupAssetSource: Sendable {
     /// carrying a name per asset meant an extra Photos round-trip per asset.
     /// Albums the library doesn't have are simply absent from the map.
     func albumMembership(deviceAlbumIDs: Set<String>) -> [String: [String]]
+}
+
+extension BackupAssetSource {
+    /// The backup's own export: `BackupExportDirectory.backup`, the directory
+    /// each run purges at its start.
+    func exportOriginal(
+        for candidate: BackupCandidate,
+        onState: @escaping @Sendable (BackupExportState) -> Void
+    ) async throws -> URL {
+        try await exportOriginal(for: candidate, into: BackupExportDirectory.backup, onState: onState)
+    }
 }

@@ -34,6 +34,12 @@ final class MockBackupAssetSource: BackupAssetSource, @unchecked Sendable {
     nonisolated(unsafe) var livePhotoIDs: Set<String> = []
     nonisolated(unsafe) var pairedFailIDs: Set<String> = []
     nonisolated(unsafe) var pairedDeferIDs: Set<String> = []
+    /// Called with the exported file's URL right after it is written — before
+    /// the caller hashes it.
+    nonisolated(unsafe) var onExported: ((URL) -> Void)?
+    /// Candidate ids whose export is a file of this many bytes, without the
+    /// bytes ever existing in memory (sparse file of zeros).
+    nonisolated(unsafe) var sizedIDs: [String: UInt64] = [:]
 
     private let fetchLock = NSLock()
 
@@ -61,6 +67,7 @@ final class MockBackupAssetSource: BackupAssetSource, @unchecked Sendable {
 
     func exportOriginal(
         for candidate: BackupCandidate,
+        into directory: URL,
         onState: @escaping @Sendable (BackupExportState) -> Void
     ) async throws -> URL {
         fetchLock.lock()
@@ -81,7 +88,17 @@ final class MockBackupAssetSource: BackupAssetSource, @unchecked Sendable {
         if deferIDs.contains(candidate.id) {
             throw BackupExportError.cloudDownloadPending
         }
-        return try write(dataProvider(candidate.id), named: candidate.fileName)
+        // The engine's directory maps to the test's own; any other (the Check's)
+        // is written as asked, like `writeResource`.
+        let target: URL = directory == BackupExportDirectory.backup ? Self.testBackupDirectory : directory
+        let url: URL
+        if let size = sizedIDs[candidate.id] {
+            url = try writeSized(size, named: candidate.fileName, into: target)
+        } else {
+            url = try write(dataProvider(candidate.id), named: candidate.fileName, into: target)
+        }
+        onExported?(url)
+        return url
     }
 
     func exportPairedVideo(
@@ -100,12 +117,29 @@ final class MockBackupAssetSource: BackupAssetSource, @unchecked Sendable {
         return BackupPairedVideo(url: url, fileName: name, duration: 3)
     }
 
-    private func write(_ data: Data, named name: String) throws -> URL {
-        let dir = URL(fileURLWithPath: NSTemporaryDirectory())
-            .appendingPathComponent("immich-test-backup", isDirectory: true)
+    private func write(_ data: Data, named name: String, into directory: URL? = nil) throws -> URL {
+        let dir = directory ?? Self.testBackupDirectory
         try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
         let url = dir.appendingPathComponent("\(UUID().uuidString)-\(name)")
         try data.write(to: url)
+        return url
+    }
+
+    /// Where the mock writes what the engine exports, in place of
+    /// `BackupExportDirectory.backup`, so a test never touches the real one.
+    static var testBackupDirectory: URL {
+        URL(fileURLWithPath: NSTemporaryDirectory()).appendingPathComponent("immich-test-backup", isDirectory: true)
+    }
+
+    /// A file of exactly `size` bytes that is never materialized: truncating an
+    /// empty file to `size` makes it sparse.
+    private func writeSized(_ size: UInt64, named name: String, into directory: URL) throws -> URL {
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        let url = directory.appendingPathComponent("\(UUID().uuidString)-\(name)")
+        FileManager.default.createFile(atPath: url.path, contents: nil)
+        let handle = try FileHandle(forWritingTo: url)
+        defer { try? handle.close() }
+        try handle.truncate(atOffset: size)
         return url
     }
 

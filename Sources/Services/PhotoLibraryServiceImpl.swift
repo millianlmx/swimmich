@@ -1,6 +1,5 @@
 import Foundation
 import Photos
-import CryptoKit
 import UIKit
 import os
 
@@ -40,44 +39,11 @@ final class PhotoLibraryServiceImpl: PhotoLibraryService, @unchecked Sendable {
         return assets
     }
 
-    func loadData(for asset: PHAsset) async throws -> Data {
-        try await timeoutLoadData(for: asset)
-    }
-
-    /// Hard deadline for the original-data request. The PHImageManager
-    /// callback can never arrive for an iCloud-only asset whose download
-    /// hangs — an unresumed continuation leaves the backup engine parked in
-    /// "Checking library…" forever (infinite UI, unresponsive Cancel).
-    /// Whichever wins the race resumes: the data handler, task
-    /// cancellation, or this deadline (which also cancels the PH request).
-    private func timeoutLoadData(for asset: PHAsset) async throws -> Data {
-        let loader = PHImageManager.default()
-        let gate = ContinuationGate<Data>()
-        let request = loader.requestImageDataAndOrientation(for: asset, options: makeLoadOptions()) { data, _, _, info in
-            if let data {
-                gate.finish(with: .success(data))
-            } else {
-                let underlying = info?[PHImageErrorKey] as? Error
-                gate.finish(with: .failure(underlying ?? APIError.decoding("Unable to load PHAsset data")))
-            }
-        }
-        DispatchQueue.global(qos: .userInitiated).asyncAfter(deadline: .now() + Self.loadTimeoutSeconds) {
-            loader.cancelImageRequest(request)
-            gate.finish(with: .failure(APIError.decoding("Asset download timed out — it will be retried on the next run")))
-        }
-        return try await withTaskCancellationHandler {
-            try await gate.value
-        } onCancel: {
-            loader.cancelImageRequest(request)
-            gate.finish(with: .failure(APIError.decoding("Asset download cancelled — it will be retried on the next run")))
-        }
-    }
-
-
-    /// Max wait for one asset's original data (iCloud download). A
-    /// candidate that misses the window counts as failed and is retried on
-    /// the next run — bounds "Checking library…" to at worst library ×
-    /// interval instead of potentially infinite.
+    /// Stall window of the export watchdog in `writeResource`: how long one
+    /// resource request may go without a progress tick or completion before it
+    /// counts as hung (`BackupExportError.cloudDownloadPending`, retried on the
+    /// next run). Bounds "Checking library…" to at worst library × interval
+    /// instead of potentially infinite.
     private static let loadTimeoutSeconds: TimeInterval = 90
 
     /// iCloud-optimized originals can transiently report
@@ -100,15 +66,6 @@ final class PhotoLibraryServiceImpl: PhotoLibraryService, @unchecked Sendable {
             return true
         }
         return false
-    }
-
-    private func makeLoadOptions() -> PHImageRequestOptions {
-        let options = PHImageRequestOptions()
-        options.isNetworkAccessAllowed = true
-        options.isSynchronous = false
-        options.deliveryMode = .highQualityFormat
-        options.version = .current
-        return options
     }
 
     func loadThumbnail(for asset: PHAsset, targetSize: CGSize, scale: CGFloat) async -> UIImage? {
@@ -150,12 +107,6 @@ final class PhotoLibraryServiceImpl: PhotoLibraryService, @unchecked Sendable {
             handle.cancel(manager)
             gate.finish(with: .success(nil))
         }
-    }
-
-    func checksum(for asset: PHAsset) async throws -> String {
-        let data = try await loadData(for: asset)
-        let digest = Insecure.SHA1.hash(data: data)
-        return Data(digest).base64EncodedString()
     }
 
     func isoTimestamps(for asset: PHAsset) -> (createdAt: String, modifiedAt: String) {
@@ -385,6 +336,7 @@ extension PhotoLibraryServiceImpl: BackupAssetSource {
     /// originals download; a stall watchdog guards a hung download.
     func exportOriginal(
         for candidate: BackupCandidate,
+        into directory: URL,
         onState: @escaping @Sendable (BackupExportState) -> Void
     ) async throws -> URL {
         let asset = try asset(for: candidate)
@@ -394,7 +346,7 @@ extension PhotoLibraryServiceImpl: BackupAssetSource {
             ?? resources.first else {
             throw APIError.decoding("No original resource for \(candidate.id)")
         }
-        return try await writeResource(resource, filenameHint: candidate.fileName, onState: onState)
+        return try await writeResource(resource, filenameHint: candidate.fileName, into: directory, onState: onState)
     }
 
     /// The video paired with a Live Photo's still, or nil when the asset has no
@@ -411,7 +363,7 @@ extension PhotoLibraryServiceImpl: BackupAssetSource {
             $0.type == .pairedVideo || $0.type == .fullSizePairedVideo
         }) else { return nil }
         let url = try await writeResource(
-            resource, filenameHint: resource.originalFilename, onState: onState
+            resource, filenameHint: resource.originalFilename, into: BackupExportDirectory.backup, onState: onState
         )
         return BackupPairedVideo(
             url: url,
@@ -441,10 +393,9 @@ extension PhotoLibraryServiceImpl: BackupAssetSource {
     private func writeResource(
         _ resource: PHAssetResource,
         filenameHint: String,
+        into dir: URL,
         onState: @escaping @Sendable (BackupExportState) -> Void
     ) async throws -> URL {
-        let dir = URL(fileURLWithPath: NSTemporaryDirectory())
-            .appendingPathComponent("immich-backup", isDirectory: true)
         try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
         let dest = dir.appendingPathComponent("\(UUID().uuidString)-\(filenameHint)")
 
@@ -494,13 +445,13 @@ extension PhotoLibraryServiceImpl: BackupAssetSource {
         }
     }
 
-    /// Deletes every leftover file in the shared export temp directory. Safe
-    /// to call only at the start of a run — no export of the current run has
-    /// written there yet, so this only reclaims orphans from a killed run.
+    /// Deletes the backup's export directory (`BackupExportDirectory.backup`) and
+    /// nothing else — the "On this device" Check exports elsewhere, so a run
+    /// starting mid-Check cannot delete a file being hashed. Safe to call only at
+    /// the start of a run — no export of the current run has written there yet, so
+    /// this only reclaims orphans from a killed run.
     func purgeStaleExports() {
-        let dir = URL(fileURLWithPath: NSTemporaryDirectory())
-            .appendingPathComponent("immich-backup", isDirectory: true)
-        try? FileManager.default.removeItem(at: dir)
+        try? FileManager.default.removeItem(at: BackupExportDirectory.backup)
     }
 
     /// Maps a PHAsset to its value-typed candidate.

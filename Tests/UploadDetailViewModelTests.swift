@@ -122,8 +122,9 @@ final class UploadDetailViewModelTests: XCTestCase {
 
     /// A Live Photo whose still is already on the server comes back as a
     /// `reject`: the run links the missing video onto it. When that link fails,
-    /// the entry is an *advisory*, and retrying must be able to clear it —
-    /// which requires re-deciding an asset the ledger now counts as done.
+    /// the entry is an *advisory* and the asset has no ledger entry, so it is
+    /// re-decided by a full run — and a restricted retry, which ignores the
+    /// ledger filter anyway, must be able to clear the stale line.
     @MainActor
     func test_retryOfALivePhotoLinkWarning_clearsTheStaleFailure() async {
         let h = makeHarness(candidates: [

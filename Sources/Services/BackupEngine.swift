@@ -75,6 +75,17 @@ struct BackupDeferral: Identifiable, Equatable, Sendable {
     let kind: BackupAssetKind
 }
 
+/// What one run did to the assets it was handed, captured the instant `run`
+/// returns. `backedUpIDs` is proof, not a deduction: only assets the engine
+/// wrote to the ledger (uploaded, or already on the server with their Live
+/// Photo video linked) are in it.
+struct BackupRunOutcome: Equatable, Sendable {
+    let backedUpIDs: Set<String>
+    let failures: [BackupFailure]
+    let deferrals: [BackupDeferral]
+    let wasCancelled: Bool
+}
+
 /// Background backup state machine. Pure orchestration over the injected
 /// seams: `ImmichClient` (dedup + upload), `BackupAssetSource` (library),
 /// `BackupEnvironment` (wifi/charging gates).
@@ -220,6 +231,21 @@ final class BackupEngine {
     private var isCancelled = false
     /// The pipeline Task of the run in flight (nil when idle).
     private var activeRun: Task<Bool, Never>?
+    /// True from the moment `run` starts its pipeline until it has returned —
+    /// including the instant after `phase` reads `.done`, when a new run must
+    /// still be refused.
+    var isRunActive: Bool { activeRun != nil }
+    /// Assets this run wrote to the ledger — exactly the `markBackedUp` calls of
+    /// `processBatch`: uploaded, or already on the server with their Live Photo
+    /// video linked. What a caller that asked for specific assets reads to know
+    /// which of them are really on the server; "requested minus failed" would
+    /// count deferred and cancelled assets as sent.
+    private(set) var backedUpIDs: Set<String> = []
+    /// The result of the last run, for a restricted caller (the Upload of "On
+    /// this device"). Read right after `run` returns, before any suspension.
+    var runOutcome: BackupRunOutcome {
+        BackupRunOutcome(backedUpIDs: backedUpIDs, failures: failures, deferrals: deferrals, wasCancelled: phase == .cancelled)
+    }
     /// Chunk size for every batched server call a run makes: the dedup check,
     /// the ledger reconciliation, and the album mirror's batch size (which the
     /// service receives from here, never a copy of its own).
@@ -337,7 +363,7 @@ final class BackupEngine {
     /// code as a full run.
     @discardableResult
     func run(settings: BackupSettings, manual: Bool = false, only assetIDs: [String] = []) async -> Bool {
-        guard !(isCancelled || phase == .uploading || phase == .checking) else {
+        guard !(isCancelled || activeRun != nil || phase == .uploading || phase == .checking) else {
             if isCancelled { phase = .cancelled }
             return false
         }
@@ -702,23 +728,27 @@ final class BackupEngine {
                     rejectedCount += 1
                     release()
                     if let entry = entriesByID[result.id] {
-                        ledger.markBackedUp(
-                            id: result.id,
-                            signature: entry.candidate.fileModifiedAt,
-                            checksum: entry.checksum,
-                            // A reject means the server already has this
-                            // checksum, and it answers with the UUID it holds
-                            // it under — the id the timeline renders. The DTO
-                            // only requires `action` and `id`, so it can be
-                            // absent; that is not a reason to forget an id
-                            // learned by an earlier run.
-                            serverAssetId: result.assetId
-                        )
-                        await repairLivePhotoIfNeeded(
+                        // The ledger is written only once the Live Photo video
+                        // (if any) is uploaded and linked.
+                        if await repairLivePhotoIfNeeded(
                             entry,
                             remoteAssetID: result.assetId,
                             isTrashed: result.isTrashed == true
-                        )
+                        ) {
+                            ledger.markBackedUp(
+                                id: result.id,
+                                signature: entry.candidate.fileModifiedAt,
+                                checksum: entry.checksum,
+                                // A reject means the server already has this
+                                // checksum, and it answers with the UUID it holds
+                                // it under — the id the timeline renders. The DTO
+                                // only requires `action` and `id`, so it can be
+                                // absent; that is not a reason to forget an id
+                                // learned by an earlier run.
+                                serverAssetId: result.assetId
+                            )
+                            backedUpIDs.insert(result.id)
+                        }
                     }
                 }
             }
@@ -830,6 +860,7 @@ final class BackupEngine {
                     // only moment the client is told it.
                     serverAssetId: uploaded.id
                 )
+                backedUpIDs.insert(entry.candidate.id)
                 // The id just returned is the only chance to place this asset
                 // in its mirror album without another server round-trip: the
                 // ledger keeps no server id, so a missed one costs a
@@ -865,8 +896,28 @@ final class BackupEngine {
     /// keeps rejecting the still by checksum and "Reset backup tracking" does
     /// not help. The repair is idempotent (a duplicate video upload returns the
     /// existing id, and the PATCH is absolute).
-    private func repairLivePhotoIfNeeded(_ entry: StagedAsset, remoteAssetID: String?, isTrashed: Bool) async {
-        guard let paired = entry.paired, let remoteAssetID, !isTrashed else { return }
+    ///
+    /// Returns whether the ledger may now be written for this asset: only after
+    /// the video is uploaded and linked (or there is nothing to link). A failed
+    /// or cancelled repair leaves the asset out of the ledger, so the next run
+    /// (or a restricted retry) goes through here again instead of filtering a
+    /// dead Live Photo out as done.
+    private func repairLivePhotoIfNeeded(_ entry: StagedAsset, remoteAssetID: String?, isTrashed: Bool) async -> Bool {
+        guard let paired = entry.paired else { return true }
+        guard !isTrashed else { return true }
+        guard let remoteAssetID else {
+            // The server holds the still but did not say under which id, so the
+            // video cannot be attached: a warning, and no ledger entry.
+            let reason = String(localized: "The Live Photo video could not be linked.")
+            failures.append(BackupFailure(
+                assetID: entry.candidate.id,
+                name: entry.candidate.fileName,
+                reason: reason,
+                fileSize: Self.stagedFileSize(entry)
+            ))
+            lastError = reason
+            return false
+        }
         do {
             let video = try await client.uploadAsset(
                 fileURL: paired.url,
@@ -885,11 +936,12 @@ final class BackupEngine {
                 id: remoteAssetID,
                 dto: UpdateAssetDto(livePhotoVideoId: video.id)
             )
+            return true
         } catch {
             // The still IS on the server, so this is a warning, not a failed
             // asset: recorded for the failures list, retried next run.
             // A cancelled link is simply not done: nothing to record.
-            guard !UserFacingError.isCancellation(error) else { return }
+            guard !UserFacingError.isCancellation(error) else { return false }
             failures.append(BackupFailure(
                 assetID: entry.candidate.id,
                 name: entry.candidate.fileName,
@@ -897,6 +949,7 @@ final class BackupEngine {
                 fileSize: Self.stagedFileSize(entry)
             ))
             lastError = error.userFacingMessage ?? UserFacingError.genericMessage
+            return false
         }
     }
 
@@ -1066,6 +1119,7 @@ final class BackupEngine {
         currentAssetID = nil
         failures = []
         deferrals = []
+        backedUpIDs = []
         iCloudProgress = [:]
         iCloudRetryAttempts = [:]
         uploadedBytes = 0

@@ -199,6 +199,14 @@ final class BackupBackgroundAssertion {
         id = .invalid
     }
 }
+
+/// What `UploadViewModel.runBackup` did with a request: nothing started
+/// (`refused`, with the reason to show), or a run that took place.
+enum BackupRunResult: Equatable, Sendable {
+    case refused(message: String)
+    case completed(BackupRunOutcome)
+}
+
 /// Record of a completed backup run for upload history display.
 struct UploadHistoryEntry: Identifiable, Equatable, Sendable {
     let id = UUID()
@@ -214,6 +222,12 @@ struct UploadHistoryEntry: Identifiable, Equatable, Sendable {
 @Observable
 @MainActor
 final class UploadViewModel {
+    /// Shown when a run cannot start because the engine is held by another run
+    /// (or by a Stop that has not been cleared).
+    static var engineBusyMessage: String {
+        String(localized: "Backup is busy right now. Try again in a moment.")
+    }
+
     let client: any ImmichClient
     let photos: any PhotoLibraryService
     let engine: BackupEngine
@@ -354,24 +368,34 @@ final class UploadViewModel {
     /// completion notification, history entry) is the *same* code: a retry with
     /// its own envelope would be a run without an island and without a history
     /// entry, and the two would drift apart.
+    ///
+    /// The result tells a restricted caller (the Upload of "On this device")
+    /// what became of its assets: `.refused` when nothing was started, else
+    /// the engine's outcome — read in the same main-actor turn `engine.run`
+    /// returns in, before the awaits below can let another run reset it.
+    @discardableResult
     func runBackup(
         overrideSettings: BackupSettings? = nil,
         manual: Bool = false,
-        only assetIDs: [String] = []
-    ) async {
+        only assetIDs: [String] = [],
+        onProgress: ((_ processed: Int, _ total: Int) -> Void)? = nil
+    ) async -> BackupRunResult {
         // Read-only mode: ONE refusal for the whole run — the manual CTA and
         // the automatic chain both come through this method — instead of a
         // failed `uploadAsset` per candidate.
         guard !readOnly.isEnabled else {
-            engine.reportError(String(localized: "Read-only mode is on. Turn it off in Me to change your library."))
-            return
+            engine.reportError(UserFacingError.readOnlyModeMessage)
+            return .refused(message: UserFacingError.readOnlyModeMessage)
         }
         if manual {
             guard await ensurePhotoAccess() else {
                 engine.reportError("Photo library access is required to back up.")
-                return
+                return .refused(message: "Photo library access is required to back up.")
             }
         }
+        // A run already owns the engine: refuse before touching its progress
+        // callback or its Live Activity, both of which belong to that run.
+        guard !engine.isRunActive else { return .refused(message: Self.engineBusyMessage) }
         // Fire-and-forget: the run must not wait for the user to answer the
         // prompt, and the result only matters when the run ends.
         Task { await notifications.requestAuthorization() }
@@ -380,9 +404,10 @@ final class UploadViewModel {
         // OS grants us, instead of freezing the instant the user swipes away.
         let assertion = BackupBackgroundAssertion(name: "immich.backup")
         defer { assertion.release() }
-        engine.onProgressUpdate = { [weak self] _, _ in
+        engine.onProgressUpdate = { [weak self] processed, total in
             guard let self else { return }
             self.activityService.update(self.makeActivitySnapshot())
+            onProgress?(processed, total)
         }
         activityService.start(makeActivitySnapshot())
         let started = await engine.run(
@@ -391,6 +416,7 @@ final class UploadViewModel {
             only: assetIDs
         )
         engine.onProgressUpdate = nil
+        let outcome = engine.runOutcome
         guard started else {
             // An automatic gate rejected the run (disabled / no Wi-Fi / not
             // charging) or another run already owns the engine. In the gate
@@ -401,7 +427,7 @@ final class UploadViewModel {
             if !running {
                 activityService.end(success: false, snapshot: makeActivitySnapshot())
             }
-            return
+            return .refused(message: Self.engineBusyMessage)
         }
         switch engine.phase {
         case .done:
@@ -437,6 +463,7 @@ final class UploadViewModel {
         default:
             break
         }
+        return .completed(outcome)
     }
 
     func cancelBackup() {
@@ -476,12 +503,12 @@ final class UploadViewModel {
     func kickOffAutoBackupIfConfigured() async {
         guard settings.autoDetectNewPhotos, !running else { return }
         guard await ensurePhotoAccess() else { return }
-        currentBackupTask = Task { await runBackup(manual: false) }
+        currentBackupTask = Task { _ = await runBackup(manual: false) }
     }
 
     /// Resume upload from where it left off (used when interrupted).
     func resumeUpload() {
-        currentBackupTask = Task { await runBackup(manual: true) }
+        currentBackupTask = Task { _ = await runBackup(manual: true) }
     }
 
     /// Awaits the in-flight backup task, if any (test/coordination helper).

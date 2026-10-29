@@ -15,8 +15,11 @@ import UIKit
 ///   reads (`getServerStatistics()`), so `/assets/statistics` is decoded once in
 ///   the app, not twice;
 /// * the "already on the server?" verdict is *ephemeral*: it comes from
-///   `POST /api/assets/bulk-upload-check`, lives in memory for this visit and is
-///   never written to the backup ledger — that ledger belongs to a backup run.
+///   `POST /api/assets/bulk-upload-check` on the checksum of the *original* —
+///   the one the backup sends — lives in memory for this visit and is never
+///   written to the backup ledger. Only Upload writes it, and it does so by
+///   being a backup run (`UploadViewModel.runBackup(manual:only:)`), through the
+///   backup's own engine and ledger.
 @MainActor
 @Observable
 final class LocalLibraryViewModel {
@@ -52,12 +55,17 @@ final class LocalLibraryViewModel {
     /// screen the app runs on without measuring one.
     private static let tileSize = CGSize(width: 128, height: 128)
 
-    /// `nonisolated`: reading the device and sending an asset happen off the
-    /// main actor, and both are immutable `Sendable` values — the helpers below
+    /// `nonisolated`: reading the device and exporting an original happen off the
+    /// main actor, and these are immutable `Sendable` values — the helpers below
     /// use them without hopping back through `self`.
     nonisolated let photoLibrary: any PhotoLibraryService
-    let albumSource: any BackupAssetSource
+    nonisolated let albumSource: any BackupAssetSource
     nonisolated let client: any ImmichClient
+    /// The backup's own view model: Upload is a restricted run of its engine.
+    let backup: UploadViewModel
+    /// Where the Check exports the originals it hashes — not the backup's
+    /// directory, which every run empties.
+    nonisolated let checkDirectory: URL
 
     var phase: Phase = .idle
     var albums: [BackupAlbum] = []
@@ -82,10 +90,18 @@ final class LocalLibraryViewModel {
     /// loading" from "the device holds nothing" without a third phase.
     private(set) var didLoad = false
 
-    init(photoLibrary: any PhotoLibraryService, albumSource: any BackupAssetSource, client: any ImmichClient) {
+    init(
+        photoLibrary: any PhotoLibraryService,
+        albumSource: any BackupAssetSource,
+        client: any ImmichClient,
+        backup: UploadViewModel,
+        checkDirectory: URL = BackupExportDirectory.localCheck
+    ) {
         self.photoLibrary = photoLibrary
         self.albumSource = albumSource
         self.client = client
+        self.backup = backup
+        self.checkDirectory = checkDirectory
         self.authorization = photoLibrary.authorizationStatus()
     }
 
@@ -144,14 +160,6 @@ final class LocalLibraryViewModel {
         await Task.detached(priority: .userInitiated) { [photoLibrary] in
             guard let albumID else { return photoLibrary.fetchAssets() }
             return photoLibrary.fetchAssets(inAlbumID: albumID)
-        }.value
-    }
-
-    /// SHA1 of one original, computed off the main actor: hashing reads the whole
-    /// file, and the check can run over hundreds of them.
-    private nonisolated func checksum(of asset: PHAsset) async throws -> String {
-        try await Task.detached(priority: .userInitiated) { [photoLibrary] in
-            try await photoLibrary.checksum(for: asset)
         }.value
     }
 
@@ -228,12 +236,22 @@ final class LocalLibraryViewModel {
 
     /// Asks the server which of the selected assets it already has.
     ///
-    /// The checksum is computed locally (`checksum(for:)`, the same SHA1 base64
-    /// the engine sends), then one `bulk-upload-check` per `checkChunkSize`
-    /// assets — the server has no cheaper way to answer, and this is the only
-    /// question the screen asks that costs real bytes. `reject` = the server has
-    /// it, `accept` = it does not; nothing is persisted, because the verdict
-    /// describes the assets picked in this visit, not a backup run.
+    /// The checksum is the one the backup sends: the original resource is
+    /// exported to a file (`exportOriginal`) and hashed from it in 64 KB reads
+    /// (`BackupEngine.streamingSHA1Base64`) — never the retouched rendering, and
+    /// never a whole video in memory. Then one `bulk-upload-check` per
+    /// `checkChunkSize` assets. `reject` = the server has it, `accept` = it does
+    /// not. Nothing is persisted and the ledger is neither read nor written: the
+    /// verdict describes the assets picked in this visit, not a backup run.
+    ///
+    /// An asset that cannot be read (iCloud original not on the device, resource
+    /// gone, asset deleted) gets no verdict and the Check goes on; the first such
+    /// reason, in grid order, is the message. An error of `bulk-upload-check`
+    /// itself ends the Check without a verdict.
+    ///
+    /// Exports go to `checkDirectory`, which every backup run leaves alone; it is
+    /// emptied here before anything is exported, which also reclaims the files of
+    /// a Check the system killed.
     func checkSelection() async {
         guard hasSelection, phase == .idle else { return }
         phase = .checking
@@ -241,18 +259,34 @@ final class LocalLibraryViewModel {
         localOnlyIDs = []
         savedIDs = []
         hasVerdict = false
-        let picked = assets.filter { selectedIDs.contains($0.localIdentifier) }
+        errorMessage = nil
+        let ids = assets.map(\.localIdentifier).filter { selectedIDs.contains($0) }
+        await purgeCheckDirectory()
+        let candidates = await readCandidates(ids: ids)
+        var problems: [String: String] = [:]
         var index = 0
-        while index < picked.count {
-            let chunk = Array(picked[index..<min(index + Self.checkChunkSize, picked.count)])
+        while index < ids.count {
+            let chunk = ids[index..<min(index + Self.checkChunkSize, ids.count)]
             index += Self.checkChunkSize
-            do {
-                var items: [AssetBulkUploadCheckRequest.Item] = []
-                items.reserveCapacity(chunk.count)
-                for asset in chunk {
-                    let checksum = try await checksum(of: asset)
-                    items.append(AssetBulkUploadCheckRequest.Item(id: asset.localIdentifier, checksum: checksum))
+            var items: [AssetBulkUploadCheckRequest.Item] = []
+            items.reserveCapacity(chunk.count)
+            for id in chunk {
+                guard let candidate = candidates[id] else {
+                    problems[id] = UserFacingError.genericMessage
+                    continue
                 }
+                do {
+                    let checksum = try await originalChecksum(of: candidate)
+                    items.append(AssetBulkUploadCheckRequest.Item(id: id, checksum: checksum))
+                } catch is BackupExportError {
+                    problems[id] = String(localized: "Waiting for iCloud")
+                } catch {
+                    if UserFacingError.isCancellation(error) { return }
+                    problems[id] = error.userFacingMessage ?? UserFacingError.genericMessage
+                }
+            }
+            guard !items.isEmpty else { continue }
+            do {
                 let response = try await client.bulkUploadCheck(AssetBulkUploadCheckRequest(assets: items))
                 for result in response.results {
                     if result.action == "reject" {
@@ -268,92 +302,85 @@ final class LocalLibraryViewModel {
                 return
             }
         }
+        errorMessage = ids.lazy.compactMap { problems[$0] }.first
         hasVerdict = true
+    }
+
+    /// SHA1 (base64) of one asset's original, the way the backup computes it:
+    /// export to a file in `checkDirectory`, hash it from disk off the main
+    /// actor, delete it whatever happens.
+    private nonisolated func originalChecksum(of candidate: BackupCandidate) async throws -> String {
+        let url = try await albumSource.exportOriginal(for: candidate, into: checkDirectory, onState: { _ in })
+        defer { try? FileManager.default.removeItem(at: url) }
+        return try await Task.detached(priority: .userInitiated) {
+            try BackupEngine.streamingSHA1Base64(url)
+        }.value
+    }
+
+    /// Empties `checkDirectory`, off the main actor.
+    private nonisolated func purgeCheckDirectory() async {
+        await Task.detached(priority: .userInitiated) { [checkDirectory] in
+            _ = try? FileManager.default.removeItem(at: checkDirectory)
+        }.value
+    }
+
+    /// The selected assets as backup candidates, by id. An id Photos no longer
+    /// holds is absent.
+    private nonisolated func readCandidates(ids: [String]) async -> [String: BackupCandidate] {
+        await Task.detached(priority: .userInitiated) { [albumSource] in
+            Dictionary(
+                albumSource.fetchCandidates(ids: ids).map { ($0.id, $0) },
+                uniquingKeysWith: { first, _ in first }
+            )
+        }.value
     }
 
     // MARK: - Sending the selection
 
-    /// Sends the assets the check found missing from the server.
+    /// Sends the assets the check found missing from the server, as a backup
+    /// run restricted to them — the same call as a retry
+    /// (`UploadViewModel.runBackup(manual: true, only:)`). Export, hash,
+    /// server-side dedup, upload, Live Photo video, ledger, album mirror, Live
+    /// Activity, notification and history entry are the backup's; the screen owns
+    /// no transport and writes no ledger of its own.
     ///
-    /// One asset at a time through the *existing* upload path: the bytes come
-    /// from `loadData(for:)` into a temp file, and `uploadAsset` streams it from
-    /// there — the screen owns no transport, no queue and no retry policy. An
-    /// asset the server already has never leaves the device: that is exactly what
-    /// the check bought.
+    /// An asset moves to "on the server" only if the run says it put it in the
+    /// ledger (`BackupRunOutcome.backedUpIDs`): sent, or found already there with
+    /// its Live Photo video linked. Deferred, failed and stopped assets stay "not
+    /// on the server", with the reason of the first one as the message. A refusal
+    /// (read-only mode, engine busy) sends nothing and says why.
     func uploadSelection() async {
-        let pending = assets.filter { localOnlyIDs.contains($0.localIdentifier) }
+        let pending = assets.map(\.localIdentifier).filter { localOnlyIDs.contains($0) }
         guard !pending.isEmpty, phase == .idle else { return }
         phase = .uploading
-        uploadProgress = (done: 0, total: pending.count)
+        errorMessage = nil
+        let total = pending.count
+        uploadProgress = (done: 0, total: total)
         defer {
             uploadProgress = nil
             phase = .idle
         }
-        var sent: Set<String> = []
-        for (index, asset) in pending.enumerated() {
-            do {
-                try await upload(asset)
-                sent.insert(asset.localIdentifier)
-            } catch {
-                errorMessage = error.userFacingMessage
-            }
-            uploadProgress = (done: index + 1, total: pending.count)
+        let result = await backup.runBackup(manual: true, only: pending) { [weak self] processed, _ in
+            self?.uploadProgress = (done: min(processed, total), total: total)
         }
-        if sent.count == pending.count {
-            // Every asset made it: the whole local-only set is now on the
-            // server.
-            savedIDs.formUnion(localOnlyIDs)
-            localOnlyIDs.removeAll()
-        } else {
-            // A partial run moves only what actually went up — an asset the
-            // server never received must stay "not on the server", or the next
-            // check would hide it.
+        switch result {
+        case .refused(let message):
+            errorMessage = message
+        case .completed(let outcome):
+            let sent = Set(pending).intersection(outcome.backedUpIDs)
             savedIDs.formUnion(sent)
             localOnlyIDs.subtract(sent)
+            errorMessage = pending.first { !sent.contains($0) }.map { problem(for: $0, in: outcome) }
         }
     }
 
-    /// One asset through the shared upload path. `nonisolated` on purpose: the
-    /// original is loaded, written to disk and hashed off the main actor — a
-    /// multi-megabyte write must not stall the progress bar. The temp file is
-    /// removed on every outcome, so a failed upload leaves no original behind.
-    private nonisolated func upload(_ asset: PHAsset) async throws {
-        let filename = Self.filename(for: asset)
-        let data = try await photoLibrary.loadData(for: asset)
-        let directory = URL(fileURLWithPath: NSTemporaryDirectory())
-            .appendingPathComponent("immich-local-upload", isDirectory: true)
-        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
-        let fileURL = directory.appendingPathComponent(UUID().uuidString).appendingPathExtension(filename)
-        try data.write(to: fileURL, options: .atomic)
-        defer { try? FileManager.default.removeItem(at: fileURL) }
-
-        let timestamps = photoLibrary.isoTimestamps(for: asset)
-        let checksum = try await checksum(of: asset)
-        _ = try await client.uploadAsset(
-            fileURL: fileURL,
-            fileCreatedAt: timestamps.createdAt,
-            fileModifiedAt: timestamps.modifiedAt,
-            filename: filename,
-            duration: asset.mediaType == .video ? Int(asset.duration.rounded()) : nil,
-            isFavorite: asset.isFavorite,
-            visibility: .timeline,
-            livePhotoVideoId: nil,
-            checksum: checksum,
-            deviceAssetId: asset.localIdentifier,
-            deviceId: DeviceIdentity.current
-        )
-    }
-
-    /// The name the server stores the asset under: Photos' own filename when the
-    /// resource still has one, otherwise a name derived from the identifier and
-    /// the media type (the upload needs a name either way). `nonisolated`: the
-    /// sending path runs off the main actor.
-    private nonisolated static func filename(for asset: PHAsset) -> String {
-        let resources = PHAssetResource.assetResources(for: asset)
-        let original = resources.first { $0.type == .photo || $0.type == .video } ?? resources.first
-        if let name = original?.originalFilename, !name.isEmpty { return name }
-        let stem = asset.localIdentifier.replacingOccurrences(of: "/", with: "-")
-        return "\(stem).\(asset.mediaType == .video ? "mov" : "jpg")"
+    /// Why an asset the run was asked to send is not on the server: its own
+    /// failure line, else iCloud, else it never got its turn (stopped, or no
+    /// longer in Photos).
+    private func problem(for id: String, in outcome: BackupRunOutcome) -> String {
+        if let failure = outcome.failures.first(where: { $0.assetID == id }) { return failure.reason }
+        if outcome.deferrals.contains(where: { $0.id == id }) { return String(localized: "Waiting for iCloud") }
+        return String(localized: "Upload stopped before this item was sent.")
     }
 
     // MARK: - Tiles

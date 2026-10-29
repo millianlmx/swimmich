@@ -492,12 +492,14 @@ final class DependencyContainer {
     /// backup engine reads (`PhotoLibraryServiceImpl` is both the library
     /// service and the backup asset source) and the same client for the remote
     /// aggregate, so the screen and a backup run can never disagree about what
-    /// the device holds.
+    /// the device holds. Its Upload is a run of `self.upload` — the one engine
+    /// and the one ledger — never a second pipeline.
     func makeLocalLibraryViewModel() -> LocalLibraryViewModel {
         LocalLibraryViewModel(
             photoLibrary: photos,
             albumSource: (photos as? BackupAssetSource) ?? PhotoLibraryServiceImpl(),
-            client: libraryClient
+            client: libraryClient,
+            backup: upload
         )
     }
 
