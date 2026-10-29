@@ -99,6 +99,94 @@ final class UploadViewModelLiveActivityTests: XCTestCase {
         XCTAssertEqual(scheduler.submitCount, 0, "pas de reschedule après annulation")
     }
 
+    /// AC-2 : après un Stop, « Retry all » puis Run now démarrent (Live Activity
+    /// démarrée et terminée, historique ajouté sur `.done`).
+    @MainActor
+    func test_AC2_runNowAndRetryAllFailedStartAfterStop() async {
+        let ids = ["c1", "c2", "c3"]
+        let client = makeAcceptedClient(candidates: ids)
+        let source = MockBackupAssetSource()
+        source.candidates = ids.map { id in
+            BackupCandidate(
+                id: id, kind: .image, fileName: "\(id).jpg",
+                fileCreatedAt: "2024-07-01T00:00:00.000Z",
+                fileModifiedAt: "2024-07-01T00:00:00.000Z",
+                duration: nil, isFavorite: false
+            )
+        }
+        source.failIDs = ["c1"]
+        source.exportGate = { id in if id == "c2" { try await suspendUntilCancelled() } }
+        let engine = BackupEngine(client: client, source: source, environment: MockBackupEnvironment())
+        let activity = MockBackupLiveActivityService()
+        let vm = UploadViewModel(
+            client: client, photos: MockPhotoLibraryService(),
+            engine: engine, settings: makeEnabledStore(),
+            scheduler: MockBackupScheduler(), activityService: activity,
+            readOnly: .ephemeral()
+        )
+        let first = Task { @MainActor in await vm.runBackup(manual: true) }
+        await pollUntil("export de c2 en vol") { source.exportedIDs.contains("c2") }
+
+        vm.cancelBackup()
+        await first.value
+
+        XCTAssertEqual(engine.phase, .cancelled)
+        XCTAssertEqual(engine.failures.map(\.assetID), ["c1"])
+
+        source.failIDs = []
+        source.exportGate = nil
+        await vm.retryAllFailed()
+
+        XCTAssertEqual(engine.phase, .done)
+        XCTAssertEqual(vm.uploadHistory.count, 1)
+
+        vm.resumeUpload()
+        await vm.awaitCurrentBackup()
+
+        XCTAssertEqual(engine.phase, .done)
+        XCTAssertEqual(vm.uploadHistory.count, 2)
+        XCTAssertEqual(activity.startCalls.count, 3)
+        XCTAssertEqual(activity.endCalls.count, 3)
+        XCTAssertEqual(activity.endCalls[0].success, false)
+        XCTAssertEqual(activity.endCalls[1].success, true)
+        XCTAssertEqual(activity.endCalls[2].success, true)
+    }
+
+    /// AC-4 : une expiration BG (hop vers le main actor depuis une file de fond)
+    /// n'annule que le run en vol ; une expiration tardive est sans effet.
+    @MainActor
+    func test_AC4_bgExpirationCancelsOnlyTheRunInFlight() async {
+        let client = makeAcceptedClient(candidates: ["c1"])
+        let engine = makeEngine(client: client, candidates: ["c1"])
+        let scheduler = MockBackupScheduler()
+        let vm = UploadViewModel(
+            client: client, photos: MockPhotoLibraryService(),
+            engine: engine, settings: makeEnabledStore(),
+            scheduler: scheduler, activityService: MockBackupLiveActivityService(),
+            readOnly: .ephemeral()
+        )
+        client.uploadGate = suspendUntilCancelled
+        let bgRun = Task { @MainActor in await vm.runBackup() }
+        await pollUntil("upload en vol") { client.uploads.count == 1 }
+
+        // Ce que fait `expirationHandler` : appel depuis une file de fond.
+        await Task.detached { await MainActor.run { engine.cancel() } }.value
+        await bgRun.value
+
+        XCTAssertEqual(engine.phase, .cancelled)
+        let success = engine.phase == .done && engine.failedCount == 0
+        XCTAssertFalse(success, "setTaskCompleted(success: false)")
+        XCTAssertEqual(scheduler.submitCount, 0)
+
+        await Task.detached { await MainActor.run { engine.cancel() } }.value
+        XCTAssertFalse(engine.isCancelling, "expiration tardive : sans effet")
+
+        client.uploadGate = nil
+        await vm.runBackup()
+
+        XCTAssertEqual(engine.phase, .done)
+    }
+
     @MainActor
     func test_liveActivity_disabledSettingsEndsActivityWithoutUpdates() async {
         let client = makeAcceptedClient(candidates: ["c1"])
