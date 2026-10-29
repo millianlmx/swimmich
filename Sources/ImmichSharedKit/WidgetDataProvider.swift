@@ -264,10 +264,13 @@ public struct WidgetDataProvider: Sendable {
             logger.error("no widget session in the keychain — sign in in the app, or the widget process cannot read the shared group")
             return .empty(.signedOut, hint: "keychain")
         }
+        // Both routes must carry the same filters: the server applies its
+        // defaults (every asset, not only favorites) to a filter left out.
+        let filters = isFavorite.map { [URLQueryItem(name: "isFavorite", value: $0 ? "true" : "false")] } ?? []
         do {
             let buckets: [BucketPayload] = try await get(
                 path: "/api/timeline/buckets",
-                query: isFavorite.map { [URLQueryItem(name: "isFavorite", value: $0 ? "true" : "false")] } ?? [],
+                query: filters,
                 token: session.token,
                 baseURL: session.baseURL
             )
@@ -276,7 +279,7 @@ public struct WidgetDataProvider: Sendable {
             guard let newest = buckets.first else { return .empty(.ready) }
             let columnar: ColumnarAssets = try await get(
                 path: "/api/timeline/bucket",
-                query: [URLQueryItem(name: "timeBucket", value: newest.timeBucket)],
+                query: [URLQueryItem(name: "timeBucket", value: newest.timeBucket)] + filters,
                 token: session.token,
                 baseURL: session.baseURL
             )

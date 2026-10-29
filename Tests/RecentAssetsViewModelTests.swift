@@ -183,4 +183,60 @@ final class RecentAssetsViewModelTests: XCTestCase {
         XCTAssertEqual(vm.dayGroups.flatMap { $0.items.map(\.id) }, ["d1"])
         XCTAssertFalse(vm.hasMore)
     }
+
+    // MARK: - /bucket repeats the /buckets filters
+
+    @MainActor
+    private func twoDayMock() -> MockImmichClient {
+        let mock = MockImmichClient()
+        mock.bucketsResponse = [
+            TimeBucketsResponseDto(timeBucket: "2024-07-02", count: 1),
+            TimeBucketsResponseDto(timeBucket: "2024-07-01", count: 1)
+        ]
+        mock.bucketResponses = [
+            "2024-07-02": columnar(ids: ["b1"], day: "2024-07-02"),
+            "2024-07-01": columnar(ids: ["c1"], day: "2024-07-01")
+        ]
+        return mock
+    }
+
+    @MainActor
+    func test_AC5_addedMode_bucketsAndBucketShareCreatedAt() async {
+        let mock = twoDayMock()
+        let vm = RecentAssetsViewModel(client: mock, mode: .added)
+        await vm.load()
+        await vm.loadMore()
+
+        XCTAssertEqual(mock.timeBucketCalls.map(\.timeBucket), ["2024-07-02", "2024-07-01"])
+        for call in mock.timeBucketCalls {
+            XCTAssertEqual(call.filters.orderBy, .createdAt)
+            XCTAssertEqual(call.filters, mock.lastTimeBucketsFilters)
+        }
+    }
+
+    @MainActor
+    func test_AC6_takenMode_bucketSendsTakenAt() async {
+        let mock = twoDayMock()
+        let vm = RecentAssetsViewModel(client: mock, mode: .taken)
+        await vm.load()
+
+        XCTAssertEqual(mock.lastTimeBucketOrderBy, .takenAt)
+        XCTAssertEqual(mock.lastTimeBucketOrderBy, mock.lastTimeBucketsOrderBy)
+    }
+
+    @MainActor
+    func test_AC18_addedMode_everyBucketCallMatchesBucketsFilters() async {
+        for mode in [RecentAssetsMode.added, .taken] {
+            let mock = twoDayMock()
+            let vm = RecentAssetsViewModel(client: mock, mode: mode)
+            await vm.load()
+            await vm.loadMore()
+
+            XCTAssertEqual(mock.timeBucketCalls.count, 2)
+            XCTAssertNotNil(mock.lastTimeBucketsFilters)
+            for call in mock.timeBucketCalls {
+                XCTAssertEqual(call.filters, mock.lastTimeBucketsFilters, "\(mode) \(call.timeBucket)")
+            }
+        }
+    }
 }

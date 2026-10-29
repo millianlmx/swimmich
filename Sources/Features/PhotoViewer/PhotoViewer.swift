@@ -101,7 +101,7 @@ struct PhotoViewerPresentation: ViewModifier {
     /// the caller that owns one, defaulted like `client`: a viewer opened from
     /// another screen still gets a working page instead of a dead row.
     var troubleshoot: AssetTroubleshootViewModel? = nil
-    var onToggleFavorite: ((AssetReactItem) -> Void)? = nil
+    var onToggleFavorite: ((AssetReactItem, Bool) -> Void)? = nil
     var onDelete: ((AssetReactItem) -> Void)? = nil
     var onArchive: ((AssetReactItem) -> Void)? = nil
     var onRestore: ((AssetReactItem) -> Void)? = nil
@@ -145,7 +145,7 @@ extension View {
         token: String?,
         client: any ImmichClient = DependencyContainer.shared.libraryClient,
         troubleshoot: AssetTroubleshootViewModel? = nil,
-        onToggleFavorite: ((AssetReactItem) -> Void)? = nil,
+        onToggleFavorite: ((AssetReactItem, Bool) -> Void)? = nil,
         onDelete: ((AssetReactItem) -> Void)? = nil,
         onArchive: ((AssetReactItem) -> Void)? = nil,
         onRestore: ((AssetReactItem) -> Void)? = nil,
@@ -203,7 +203,7 @@ struct PhotoViewer: View {
     /// Per-asset troubleshooter (gap G24). `nil` builds one from the shared
     /// container, so the nine other `photoViewer(` call sites keep working.
     var troubleshoot: AssetTroubleshootViewModel? = nil
-    var onToggleFavorite: ((AssetReactItem) -> Void)? = nil
+    var onToggleFavorite: ((AssetReactItem, Bool) -> Void)? = nil
     var onDelete: ((AssetReactItem) -> Void)? = nil
     var onArchive: ((AssetReactItem) -> Void)? = nil
     var onRestore: ((AssetReactItem) -> Void)? = nil
@@ -266,7 +266,7 @@ struct PhotoViewer: View {
         downloads: DownloadQueueViewModel = DependencyContainer.shared.downloadQueue,
         castService: any CastService = DependencyContainer.shared.castService,
         troubleshoot: AssetTroubleshootViewModel? = nil,
-        onToggleFavorite: ((AssetReactItem) -> Void)? = nil,
+        onToggleFavorite: ((AssetReactItem, Bool) -> Void)? = nil,
         onDelete: ((AssetReactItem) -> Void)? = nil,
         onArchive: ((AssetReactItem) -> Void)? = nil,
         onRestore: ((AssetReactItem) -> Void)? = nil,
@@ -862,6 +862,7 @@ struct PhotoViewer: View {
                         }
                         .buttonStyle(.plain)
                         .accessibilityLabel(favoriteIDs.contains(asset.id) ? "Unfavorite" : "Favorite")
+                        .accessibilityIdentifier("viewerFavoriteButton")
 
                         if !asset.isVideo {
                             Button {
@@ -1072,7 +1073,7 @@ struct PhotoViewer: View {
             favoriteIDs.remove(asset.id)
         }
         if let onToggleFavorite {
-            onToggleFavorite(asset)
+            onToggleFavorite(asset, newValue)
             return
         }
         Task {

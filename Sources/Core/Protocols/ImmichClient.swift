@@ -58,13 +58,19 @@ protocol ImmichClient: AnyObject, Sendable {
         withStacked: Bool?,
         orderBy: AssetOrderBy?
     ) async throws -> [TimeBucketsResponseDto]
-    /// `GET /api/timeline/bucket` — optional filters matching buckets.
+    /// `GET /api/timeline/bucket` — every filter must be the value sent to
+    /// `getTimeBuckets` for the same list of months, otherwise the server
+    /// applies its defaults (no `orderBy=createdAt` → the month is filled by
+    /// date taken; no `isTrashed` → only non-trashed; no `isFavorite` → all).
     func getTimeBucket(
         timeBucket: String,
+        isFavorite: Bool?,
+        isTrashed: Bool?,
         personId: String?,
         withPartners: Bool?,
         visibility: String?,
-        withStacked: Bool?
+        withStacked: Bool?,
+        orderBy: AssetOrderBy?
     ) async throws -> TimeBucketAssetResponseDto
 
     func getAsset(id: String) async throws -> AssetResponseDto
@@ -441,6 +447,30 @@ extension ImmichClient {
         try await getTimeBuckets(
             isFavorite: isFavorite,
             isTrashed: isTrashed,
+            personId: personId,
+            withPartners: withPartners,
+            visibility: visibility,
+            withStacked: withStacked,
+            orderBy: nil
+        )
+    }
+
+    /// One timeline bucket without `isFavorite`, `isTrashed` or `orderBy`.
+    ///
+    /// Swift forbids a default argument on a protocol requirement: same
+    /// overload pattern as `getTimeBuckets` above, so callers that never
+    /// filtered on those three keep compiling.
+    func getTimeBucket(
+        timeBucket: String,
+        personId: String?,
+        withPartners: Bool?,
+        visibility: String?,
+        withStacked: Bool?
+    ) async throws -> TimeBucketAssetResponseDto {
+        try await getTimeBucket(
+            timeBucket: timeBucket,
+            isFavorite: nil,
+            isTrashed: nil,
             personId: personId,
             withPartners: withPartners,
             visibility: visibility,

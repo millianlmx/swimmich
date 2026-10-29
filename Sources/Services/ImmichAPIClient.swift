@@ -199,16 +199,22 @@ final class ImmichAPIClient: ImmichClient, @unchecked Sendable {
 
     func getTimeBucket(
         timeBucket: String,
+        isFavorite: Bool?,
+        isTrashed: Bool?,
         personId: String?,
         withPartners: Bool?,
         visibility: String?,
-        withStacked: Bool?
+        withStacked: Bool?,
+        orderBy: AssetOrderBy?
     ) async throws -> TimeBucketAssetResponseDto {
         var query: [URLQueryItem] = [URLQueryItem(name: "timeBucket", value: timeBucket)]
+        if let isFavorite { query.append(URLQueryItem(name: "isFavorite", value: String(isFavorite))) }
+        if let isTrashed { query.append(URLQueryItem(name: "isTrashed", value: String(isTrashed))) }
         if let personId { query.append(URLQueryItem(name: "personId", value: personId)) }
         if let withPartners { query.append(URLQueryItem(name: "withPartners", value: String(withPartners))) }
         if let visibility { query.append(URLQueryItem(name: "visibility", value: visibility)) }
         if let withStacked { query.append(URLQueryItem(name: "withStacked", value: String(withStacked))) }
+        if let orderBy { query.append(URLQueryItem(name: "orderBy", value: orderBy.rawValue)) }
         return try await sendAuthed(.GET, path: ImmichAPI.timeline.path("/bucket"), query: query)
     }
 

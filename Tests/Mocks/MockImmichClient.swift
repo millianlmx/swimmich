@@ -1,6 +1,18 @@
 import Foundation
 @testable import ImmichSwiftUI
 
+/// The filters of one timeline request, comparable between `getTimeBuckets`
+/// and `getTimeBucket` (the server expects the same ones on both routes).
+struct TimelineFilterCapture: Equatable {
+    let isFavorite: Bool?
+    let isTrashed: Bool?
+    let personId: String?
+    let withPartners: Bool?
+    let visibility: String?
+    let withStacked: Bool?
+    let orderBy: AssetOrderBy?
+}
+
 /// Test double for ImmichClient. Records the last call per endpoint + lets
 /// tests inject canned responses / errors.
 final class MockImmichClient: ImmichClient, @unchecked Sendable {
@@ -145,9 +157,16 @@ final class MockImmichClient: ImmichClient, @unchecked Sendable {
     /// Sort axis asked of `GET /api/timeline/buckets` — the only witness of the
     /// `orderBy` wire parameter without a server.
     var lastTimeBucketsOrderBy: AssetOrderBy?
+    var lastTimeBucketIsFavorite: Bool?
+    var lastTimeBucketIsTrashed: Bool?
     var lastTimeBucketWithPartners: Bool?
     var lastTimeBucketVisibility: String?
     var lastTimeBucketWithStacked: Bool?
+    var lastTimeBucketOrderBy: AssetOrderBy?
+    /// Filters of the last `getTimeBuckets` call, as one comparable value.
+    var lastTimeBucketsFilters: TimelineFilterCapture?
+    /// Every `getTimeBucket` call in order: the month and the filters sent.
+    var timeBucketCalls: [(timeBucket: String, filters: TimelineFilterCapture)] = []
     var lastRestoreTrashAssetsIds: [String]?
     var restoreTrashAssetsResponse: TrashResponseDto?
     var restoreTrashAssetsError: Error?
@@ -356,6 +375,11 @@ final class MockImmichClient: ImmichClient, @unchecked Sendable {
 
     // Mutable global error that, if set, is thrown from any call.
     var globalError: Error?
+    /// Fails `updateAsset` once `updateAssetErrorAfterSuccesses` writes have
+    /// succeeded (0 = every call fails). Failed calls are not recorded in
+    /// `updateAssetCalls`.
+    var updateAssetError: Error?
+    var updateAssetErrorAfterSuccesses = 0
 
     func bump() { lock.lock(); requestCount += 1; lock.unlock() }
 
@@ -425,21 +449,37 @@ final class MockImmichClient: ImmichClient, @unchecked Sendable {
         lastTimeBucketsWithPartners = withPartners
         lastTimeBucketsWithStacked = withStacked
         lastTimeBucketsOrderBy = orderBy
+        lastTimeBucketsFilters = TimelineFilterCapture(
+            isFavorite: isFavorite, isTrashed: isTrashed, personId: personId,
+            withPartners: withPartners, visibility: visibility,
+            withStacked: withStacked, orderBy: orderBy
+        )
         if let e = globalError { throw e }
         return bucketsResponse
     }
 
     func getTimeBucket(
         timeBucket: String,
+        isFavorite: Bool?,
+        isTrashed: Bool?,
         personId: String?,
         withPartners: Bool?,
         visibility: String?,
-        withStacked: Bool?
+        withStacked: Bool?,
+        orderBy: AssetOrderBy?
     ) async throws -> TimeBucketAssetResponseDto {
         bump()
+        lastTimeBucketIsFavorite = isFavorite
+        lastTimeBucketIsTrashed = isTrashed
         lastTimeBucketVisibility = visibility
         lastTimeBucketWithPartners = withPartners
         lastTimeBucketWithStacked = withStacked
+        lastTimeBucketOrderBy = orderBy
+        timeBucketCalls.append((timeBucket: timeBucket, filters: TimelineFilterCapture(
+            isFavorite: isFavorite, isTrashed: isTrashed, personId: personId,
+            withPartners: withPartners, visibility: visibility,
+            withStacked: withStacked, orderBy: orderBy
+        )))
         if let e = globalError { throw e }
         return bucketResponses[timeBucket] ?? TimeBucketAssetResponseDto(
             id: [], ownerId: [], ratio: [], isFavorite: [], visibility: [], isTrashed: [],
@@ -470,6 +510,7 @@ final class MockImmichClient: ImmichClient, @unchecked Sendable {
     func updateAsset(id: String, dto: UpdateAssetDto) async throws -> AssetResponseDto {
         bump()
         if let e = globalError { throw e }
+        if let e = updateAssetError, updateAssetCalls.count >= updateAssetErrorAfterSuccesses { throw e }
         if let e = updateAssetErrorsById[id] { throw e }
         lastUpdateAssetId = id
         lastUpdateAssetBody = dto

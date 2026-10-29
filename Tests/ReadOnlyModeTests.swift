@@ -150,6 +150,20 @@ final class ReadOnlyModeTests: XCTestCase {
         XCTAssertEqual(inner.requestCount, 2)
     }
 
+    func test_AC10_guardClient_forwardsTimeBucketFilters() async throws {
+        let (client, inner, flag) = guarded()
+        flag.value = true
+
+        _ = try await client.getTimeBucket(
+            timeBucket: "2024-07-01", isFavorite: true, isTrashed: false, personId: nil,
+            withPartners: nil, visibility: nil, withStacked: nil, orderBy: .createdAt
+        )
+
+        XCTAssertEqual(inner.lastTimeBucketIsFavorite, true)
+        XCTAssertEqual(inner.lastTimeBucketIsTrashed, false)
+        XCTAssertEqual(inner.lastTimeBucketOrderBy, .createdAt)
+    }
+
     func test_guardClient_forwardsWritesWhenDisabled() async throws {
         let (client, inner, flag) = guarded()
         flag.value = false

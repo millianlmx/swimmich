@@ -109,10 +109,13 @@ final class RecentAssetsViewModel {
         do {
             let columnar = try await client.getTimeBucket(
                 timeBucket: bucket.timeBucket,
+                isFavorite: nil,
+                isTrashed: nil,
                 personId: nil,
                 withPartners: nil,
                 visibility: nil,
-                withStacked: true
+                withStacked: true,
+                orderBy: mode.orderBy
             )
             let zipped = AssetReactItem.zip(columnar)
             let unseen = zipped.filter { !loadedIds.contains($0.id) }

@@ -139,17 +139,23 @@ final class ReadOnlyGuardClient: ImmichClient {
 
     func getTimeBucket(
         timeBucket: String,
+        isFavorite: Bool?,
+        isTrashed: Bool?,
         personId: String?,
         withPartners: Bool?,
         visibility: String?,
-        withStacked: Bool?
+        withStacked: Bool?,
+        orderBy: AssetOrderBy?
     ) async throws -> TimeBucketAssetResponseDto {
         try await inner.getTimeBucket(
             timeBucket: timeBucket,
+            isFavorite: isFavorite,
+            isTrashed: isTrashed,
             personId: personId,
             withPartners: withPartners,
             visibility: visibility,
-            withStacked: withStacked
+            withStacked: withStacked,
+            orderBy: orderBy
         )
     }
 

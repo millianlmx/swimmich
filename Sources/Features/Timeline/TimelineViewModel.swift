@@ -118,14 +118,29 @@ final class TimelineViewModel {
         do {
             _ = try await client.updateAsset(id: id, dto: UpdateAssetDto(isFavorite: value))
             // Mutate only after the network call succeeded.
-            if let idx = items.firstIndex(where: { $0.id == id }) {
-                items[idx] = items[idx].with(isFavorite: value)
-            }
+            applyFavorite(value, to: id)
             actionErrorMessage = nil
             return true
         } catch let e {
             actionErrorMessage = e.userFacingMessage
             return false
+        }
+    }
+
+    /// Reflects a favorite write that already succeeded on the server. Under
+    /// the Favorites filter an un-favorited asset no longer belongs to the
+    /// grid: it leaves `items`, `loadedIds` and the selection (a later
+    /// selection action must not target an invisible asset). Otherwise the
+    /// row is patched in place; an id the grid does not hold changes nothing
+    /// (a re-favorite is written but not re-inserted until the next refresh).
+    @MainActor
+    private func applyFavorite(_ value: Bool, to id: String) {
+        if filterIsFavorite == true && !value {
+            items.removeAll { $0.id == id }
+            loadedIds.remove(id)
+            selectedIds.remove(id)
+        } else if let idx = items.firstIndex(where: { $0.id == id }) {
+            items[idx] = items[idx].with(isFavorite: value)
         }
     }
 
@@ -247,7 +262,7 @@ final class TimelineViewModel {
     /// cancelled, the photos already on screen stay (SP-1 / SP-5).
     @MainActor
     private func reloadFirstPage() async throws {
-        buckets = try await client.getTimeBuckets(isFavorite: filterIsFavorite, isTrashed: filterIsTrashed, personId: nil, withPartners: filterWithPartners, visibility: filterVisibility, withStacked: withStacked, orderBy: nil)
+        buckets = try await fetchBuckets()
         bucketIndex = 0
         upperBucketIndex = -1
         let previousItems = items
@@ -275,7 +290,7 @@ final class TimelineViewModel {
         guard !day.isEmpty else { return }
         if buckets.isEmpty {
             do {
-                buckets = try await client.getTimeBuckets(isFavorite: filterIsFavorite, isTrashed: filterIsTrashed, personId: nil, withPartners: filterWithPartners, visibility: filterVisibility, withStacked: withStacked, orderBy: nil)
+                buckets = try await fetchBuckets()
             } catch let e {
                 loadErrorMessage = e.userFacingMessage
                 return
@@ -284,7 +299,7 @@ final class TimelineViewModel {
         guard let index = buckets.firstIndex(where: { $0.timeBucket == day }) else { return }
         isLoading = true
         do {
-            let columnar = try await client.getTimeBucket(timeBucket: buckets[index].timeBucket, personId: nil, withPartners: filterWithPartners, visibility: filterVisibility, withStacked: withStacked)
+            let columnar = try await fetchBucket(buckets[index].timeBucket)
             let zipped = AssetReactItem.zip(columnar)
             items = zipped
             loadedIds = Set(zipped.map(\.id))
@@ -305,7 +320,7 @@ final class TimelineViewModel {
         isLoading = true
         defer { isLoading = false }
         do {
-            let columnar = try await client.getTimeBucket(timeBucket: buckets[upperBucketIndex].timeBucket, personId: nil, withPartners: filterWithPartners, visibility: filterVisibility, withStacked: withStacked)
+            let columnar = try await fetchBucket(buckets[upperBucketIndex].timeBucket)
             let zipped = AssetReactItem.zip(columnar)
             let newItems = zipped.filter { !loadedIds.contains($0.id) }
             items.insert(contentsOf: newItems, at: 0)
@@ -321,7 +336,7 @@ final class TimelineViewModel {
         guard bucketIndex < buckets.count else { return }
         let bucket = buckets[bucketIndex]
         do {
-            let columnar = try await client.getTimeBucket(timeBucket: bucket.timeBucket, personId: nil, withPartners: filterWithPartners, visibility: filterVisibility, withStacked: withStacked)
+            let columnar = try await fetchBucket(bucket.timeBucket)
             // AC-013: zip columnar into objects.
             let zipped = AssetReactItem.zip(columnar)
             for item in zipped where !loadedIds.contains(item.id) {
@@ -332,6 +347,20 @@ final class TimelineViewModel {
         } catch let e {
             loadErrorMessage = e.userFacingMessage
         }
+    }
+
+    /// The single place listing the filters of `GET /api/timeline/buckets`.
+    @MainActor
+    private func fetchBuckets() async throws -> [TimeBucketsResponseDto] {
+        try await client.getTimeBuckets(isFavorite: filterIsFavorite, isTrashed: filterIsTrashed, personId: nil, withPartners: filterWithPartners, visibility: filterVisibility, withStacked: withStacked, orderBy: nil)
+    }
+
+    /// The single place listing the filters of `GET /api/timeline/bucket`:
+    /// the same ones as `fetchBuckets()`, or the server applies its defaults
+    /// to the month (e.g. non-favorites slip into the Favorites filter).
+    @MainActor
+    private func fetchBucket(_ timeBucket: String) async throws -> TimeBucketAssetResponseDto {
+        try await client.getTimeBucket(timeBucket: timeBucket, isFavorite: filterIsFavorite, isTrashed: filterIsTrashed, personId: nil, withPartners: filterWithPartners, visibility: filterVisibility, withStacked: withStacked, orderBy: nil)
     }
 
     /// Grouped view of loaded items by day (fileCreatedAt date portion).
@@ -402,9 +431,7 @@ final class TimelineViewModel {
             guard let current = items.first(where: { $0.id == id }), current.isFavorite != value else { continue }
             do {
                 _ = try await client.updateAsset(id: id, dto: UpdateAssetDto(isFavorite: value))
-                if let idx = items.firstIndex(where: { $0.id == id }) {
-                    items[idx] = current.with(isFavorite: value)
-                }
+                applyFavorite(value, to: id)
             } catch let e {
                 actionErrorMessage = e.userFacingMessage
                 return false

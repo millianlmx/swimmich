@@ -984,4 +984,229 @@ final class TimelineViewModelTests: XCTestCase {
         XCTAssertFalse(vm.isLoading)
         XCTAssertEqual(vm.items.map(\.id), shownIds, "photos already shown stay")
     }
+
+    // MARK: - Favorites filter: /bucket repeats the /buckets filters
+
+    private struct FavBoomError: Error {}
+
+    /// Two months of favorites, so loadMore / jump / loadNewer have somewhere to go.
+    @MainActor
+    private func favoritesMock() -> MockImmichClient {
+        let mock = MockImmichClient()
+        mock.bucketsResponse = [
+            TimeBucketsResponseDto(timeBucket: "2024-07-01", count: 2),
+            TimeBucketsResponseDto(timeBucket: "2024-06-01", count: 1)
+        ]
+        mock.bucketResponses = [
+            "2024-07-01": columnar(ids: ["a1", "a2"], ratios: [1, 1], thumbhashes: [nil, nil], favorites: [true, true]),
+            "2024-06-01": columnar(ids: ["a3"], ratios: [1], thumbhashes: [nil], favorites: [true])
+        ]
+        return mock
+    }
+
+    @MainActor
+    func test_AC1_favoritesFilter_firstBucketRepeatsBucketsFilters() async {
+        let mock = favoritesMock()
+        let vm = TimelineViewModel(client: mock)
+        await vm.setFilter(.favorites)
+
+        XCTAssertEqual(mock.timeBucketCalls.count, 1)
+        let sent = mock.timeBucketCalls[0].filters
+        XCTAssertEqual(sent.isFavorite, true)
+        XCTAssertEqual(sent, mock.lastTimeBucketsFilters, "same filters on /bucket as on /buckets")
+    }
+
+    @MainActor
+    func test_AC2_favoritesFilter_loadMoreRepeatsBucketsFilters() async {
+        let mock = favoritesMock()
+        let vm = TimelineViewModel(client: mock)
+        await vm.setFilter(.favorites)
+        await vm.loadMore()
+
+        XCTAssertEqual(mock.timeBucketCalls.last?.timeBucket, "2024-06-01")
+        XCTAssertEqual(mock.timeBucketCalls.last?.filters.isFavorite, true)
+        XCTAssertEqual(mock.timeBucketCalls.last?.filters, mock.lastTimeBucketsFilters)
+    }
+
+    @MainActor
+    func test_AC3_favoritesFilter_jumpAndLoadNewerRepeatBucketsFilters() async {
+        let mock = favoritesMock()
+        let vm = TimelineViewModel(client: mock)
+        await vm.setFilter(.favorites)
+        await vm.jump(toDay: "2024-06-01")
+        await vm.loadNewer()
+
+        let lastTwo = Array(mock.timeBucketCalls.suffix(2))
+        XCTAssertEqual(lastTwo.map(\.timeBucket), ["2024-06-01", "2024-07-01"])
+        for call in lastTwo {
+            XCTAssertEqual(call.filters.isFavorite, true)
+            XCTAssertEqual(call.filters, mock.lastTimeBucketsFilters)
+        }
+    }
+
+    @MainActor
+    func test_AC4_noFilter_bucketSendsNoNewFilter() async {
+        let mock = MockImmichClient()
+        _ = await makeLoadedVM(mock)
+
+        XCTAssertNil(mock.lastTimeBucketIsFavorite)
+        XCTAssertNil(mock.lastTimeBucketIsTrashed)
+        XCTAssertNil(mock.lastTimeBucketOrderBy)
+    }
+
+    @MainActor
+    func test_AC17_mockCapturesTimeBucketFilters() async throws {
+        let mock = MockImmichClient()
+        _ = try await mock.getTimeBucket(
+            timeBucket: "x", isFavorite: true, isTrashed: false, personId: nil,
+            withPartners: nil, visibility: nil, withStacked: nil, orderBy: .createdAt
+        )
+
+        XCTAssertEqual(mock.lastTimeBucketIsFavorite, true)
+        XCTAssertEqual(mock.lastTimeBucketIsTrashed, false)
+        XCTAssertEqual(mock.lastTimeBucketOrderBy, .createdAt)
+        XCTAssertEqual(mock.timeBucketCalls.count, 1)
+    }
+
+    /// Every path that loads a month (first load, scroll down, jump, scroll
+    /// back up) must send what `/buckets` sent: this fails the moment one of
+    /// them lists a filter on its own and forgets one.
+    @MainActor
+    func test_AC18_favoritesFilter_everyBucketCallMatchesBucketsFilters() async {
+        let mock = favoritesMock()
+        let vm = TimelineViewModel(client: mock)
+        await vm.setFilter(.favorites)
+        await vm.loadMore()
+        await vm.jump(toDay: "2024-06-01")
+        await vm.loadNewer()
+
+        XCTAssertGreaterThanOrEqual(mock.timeBucketCalls.count, 4)
+        let expected = mock.lastTimeBucketsFilters
+        XCTAssertNotNil(expected)
+        for call in mock.timeBucketCalls {
+            XCTAssertEqual(call.filters, expected, "\(call.timeBucket) differs from /buckets")
+        }
+    }
+
+    // MARK: - Favorites filter: an un-favorited asset leaves the grid
+
+    @MainActor
+    private func favoritesGridVM(_ mock: MockImmichClient) async -> TimelineViewModel {
+        mock.bucketsResponse = [TimeBucketsResponseDto(timeBucket: "2024-07-01", count: 2)]
+        mock.bucketResponses = [
+            "2024-07-01": columnar(ids: ["a1", "a2"], ratios: [1, 1], thumbhashes: [nil, nil], favorites: [true, true])
+        ]
+        let vm = TimelineViewModel(client: mock)
+        await vm.setFilter(.favorites)
+        return vm
+    }
+
+    @MainActor
+    func test_AC12_favoritesFilter_toggleOffRemovesFromGrid() async {
+        let vm = await favoritesGridVM(MockImmichClient())
+
+        await vm.toggleFavorite(id: "a1")
+
+        XCTAssertEqual(vm.items.map(\.id), ["a2"])
+        XCTAssertFalse(vm.loadedIds.contains("a1"))
+    }
+
+    @MainActor
+    func test_AC13_favoritesFilter_batchUnfavoriteRemovesAll() async {
+        let vm = await favoritesGridVM(MockImmichClient())
+        vm.enterSelectionMode()
+        vm.toggleSelection(id: "a1")
+        vm.toggleSelection(id: "a2")
+
+        let ok = await vm.batchSetFavorite(vm.selectedIds, favorite: false)
+
+        XCTAssertTrue(ok)
+        XCTAssertTrue(vm.items.isEmpty)
+        XCTAssertTrue(vm.loadedIds.isEmpty)
+    }
+
+    @MainActor
+    func test_AC14_favoritesFilter_setFavoriteFalseRemovesFromGrid() async {
+        let vm = await favoritesGridVM(MockImmichClient())
+
+        let ok = await vm.setFavorite(id: "a1", isFavorite: false)
+
+        XCTAssertTrue(ok)
+        XCTAssertEqual(vm.items.map(\.id), ["a2"])
+        XCTAssertFalse(vm.loadedIds.contains("a1"))
+    }
+
+    @MainActor
+    func test_AC15_favoritesFilter_failedUnfavoriteKeepsAsset() async {
+        let mock = MockImmichClient()
+        let vm = await favoritesGridVM(mock)
+        mock.globalError = FavBoomError()
+
+        await vm.toggleFavorite(id: "a1")
+
+        XCTAssertEqual(vm.items.map(\.id), ["a1", "a2"])
+        XCTAssertEqual(vm.items.first { $0.id == "a1" }?.isFavorite, true, "heart stays lit")
+        XCTAssertNotNil(vm.actionErrorMessage)
+    }
+
+    @MainActor
+    func test_AC16_noFilter_unfavoriteKeepsAssetPatched() async {
+        let mock = MockImmichClient()
+        mock.bucketsResponse = [TimeBucketsResponseDto(timeBucket: "2024-07-01", count: 1)]
+        mock.bucketResponses = [
+            "2024-07-01": columnar(ids: ["a1"], ratios: [1], thumbhashes: [nil], favorites: [true])
+        ]
+        let vm = TimelineViewModel(client: mock)
+        await vm.load()
+
+        await vm.setFavorite(id: "a1", isFavorite: false)
+
+        XCTAssertEqual(vm.items.map(\.id), ["a1"])
+        XCTAssertEqual(vm.items.first?.isFavorite, false)
+    }
+
+    @MainActor
+    func test_AC19_favoritesFilter_partialBatchFailureRemovesOnlyWrittenIds() async {
+        let mock = MockImmichClient()
+        let vm = await favoritesGridVM(mock)
+        mock.updateAssetError = FavBoomError()
+        mock.updateAssetErrorAfterSuccesses = 1
+        vm.enterSelectionMode()
+        vm.toggleSelection(id: "a1")
+        vm.toggleSelection(id: "a2")
+
+        let ok = await vm.batchSetFavorite(vm.selectedIds, favorite: false)
+
+        XCTAssertFalse(ok)
+        XCTAssertNotNil(vm.actionErrorMessage)
+        let written = mock.updateAssetCalls.first!.id
+        let failed = written == "a1" ? "a2" : "a1"
+        XCTAssertEqual(mock.updateAssetCalls.count, 1)
+        XCTAssertFalse(vm.items.contains { $0.id == written })
+        XCTAssertFalse(vm.loadedIds.contains(written))
+        XCTAssertFalse(vm.selectedIds.contains(written))
+        XCTAssertEqual(vm.items.first { $0.id == failed }?.isFavorite, true)
+        XCTAssertTrue(vm.loadedIds.contains(failed))
+        XCTAssertEqual(vm.selectedIds, [failed])
+        XCTAssertTrue(vm.selectionMode)
+    }
+
+    @MainActor
+    func test_AC20_favoritesFilter_refavoriteOfRemovedAssetIsWritten() async {
+        let mock = MockImmichClient()
+        let vm = await favoritesGridVM(mock)
+        await vm.setFavorite(id: "a1", isFavorite: false)
+
+        let ok = await vm.setFavorite(id: "a1", isFavorite: true)
+
+        XCTAssertTrue(ok)
+        XCTAssertEqual(mock.updateAssetCalls.last?.id, "a1")
+        XCTAssertEqual(mock.updateAssetCalls.last?.dto.isFavorite, true)
+        XCTAssertFalse(vm.items.contains { $0.id == "a1" }, "not re-inserted before the next refresh")
+
+        mock.updateAssetError = FavBoomError()
+        let failed = await vm.setFavorite(id: "a1", isFavorite: true)
+        XCTAssertFalse(failed)
+        XCTAssertNotNil(vm.actionErrorMessage)
+    }
 }

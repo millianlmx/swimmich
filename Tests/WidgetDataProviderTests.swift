@@ -147,6 +147,42 @@ final class WidgetDataProviderTests: XCTestCase {
         XCTAssertTrue(url(spy.requests[0]).contains("isFavorite=true"), "a favorites widget must not fetch the whole timeline")
     }
 
+    private func bucketRequest(_ spy: TransportSpy) -> URLRequest? {
+        spy.requests.first { $0.url?.path == "/api/timeline/bucket" }
+    }
+
+    private func wallSpy() -> TransportSpy {
+        TransportSpy { request in
+            switch request.url?.path ?? "" {
+            case "/api/timeline/buckets":
+                return (200, Data(#"[{"timeBucket":"2026-08-01T00:00:00.000Z","count":7}]"#.utf8))
+            case "/api/timeline/bucket":
+                return (200, Data(#"{"id":["p1"],"isFavorite":[true]}"#.utf8))
+            default:
+                return (200, self.tinyImage())
+            }
+        }
+    }
+
+    func test_AC7_favoritePhotos_bucketRequestAsksFavoritesToo() async {
+        let spy = wallSpy()
+
+        _ = await provider(spy).favoritePhotos(limit: 1)
+
+        let bucket = bucketRequest(spy)
+        XCTAssertEqual(bucket.map(url), "https://photos.example.com/api/timeline/bucket?timeBucket=2026-08-01T00:00:00.000Z&isFavorite=true")
+        let buckets = spy.requests.first { $0.url?.path == "/api/timeline/buckets" }
+        XCTAssertTrue(buckets.map(url)?.contains("isFavorite=true") == true, "same filter as the buckets request")
+    }
+
+    func test_AC8_recentPhotos_bucketRequestHasNoFavoriteFilter() async {
+        let spy = wallSpy()
+
+        _ = await provider(spy).recentPhotos(limit: 1)
+
+        XCTAssertEqual(bucketRequest(spy).map(url), "https://photos.example.com/api/timeline/bucket?timeBucket=2026-08-01T00:00:00.000Z")
+    }
+
     // MARK: - Memories
 
     func test_memories_rotateWithOffset_andDropEmptyOnes() async {

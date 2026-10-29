@@ -1137,6 +1137,52 @@ final class ImmichAPIClientTests: XCTestCase {
         XCTAssertTrue(bucketQuery.contains("withStacked=true"))
     }
 
+    private func timeBucketQuery(
+        _ call: (ImmichAPIClient) async throws -> TimeBucketAssetResponseDto
+    ) async throws -> (path: String, query: String) {
+        let client = ImmichAPIClient(session: makeMockedSession())
+        client.configure(baseURL: URL(string: "https://example.com")!, token: "tok")
+        CapturingURLProtocol.nextData = """
+        {"id":[],"ownerId":[],"ratio":[],"isFavorite":[],"visibility":[],"isTrashed":[],
+         "isImage":[],"thumbhash":[],"createdAt":[],"fileCreatedAt":[],"localOffsetHours":[],
+         "duration":[],"livePhotoVideoId":[],"projectionType":[],"stack":[]}
+        """.data(using: .utf8)!
+        _ = try await call(client)
+        let url = CapturingURLProtocol.lastRequest?.url
+        return (url?.path ?? "", url?.query ?? "")
+    }
+
+    func test_AC9_timeBucket_encodesNewFiltersOnlyWhenSet() async throws {
+        let set = try await timeBucketQuery {
+            try await $0.getTimeBucket(
+                timeBucket: "2024-07-01", isFavorite: true, isTrashed: false, personId: nil,
+                withPartners: nil, visibility: nil, withStacked: nil, orderBy: .createdAt
+            )
+        }
+        XCTAssertEqual(set.path, "/api/timeline/bucket")
+        XCTAssertTrue(set.query.contains("isFavorite=true"))
+        XCTAssertTrue(set.query.contains("isTrashed=false"))
+        XCTAssertTrue(set.query.contains("orderBy=createdAt"))
+
+        let unset = try await timeBucketQuery {
+            try await $0.getTimeBucket(
+                timeBucket: "2024-07-01", isFavorite: nil, isTrashed: nil, personId: nil,
+                withPartners: nil, visibility: nil, withStacked: nil, orderBy: nil
+            )
+        }
+        XCTAssertEqual(unset.query, "timeBucket=2024-07-01")
+    }
+
+    func test_AC11_fiveArgumentTimeBucketCall_keepsLegacyQuery() async throws {
+        let legacy = try await timeBucketQuery {
+            try await $0.getTimeBucket(
+                timeBucket: "2024-07-01", personId: nil,
+                withPartners: nil, visibility: nil, withStacked: true
+            )
+        }
+        XCTAssertEqual(legacy.query, "timeBucket=2024-07-01&withStacked=true")
+    }
+
     /// RFC 7636: S256 challenge is base64url(SHA256(verifier)) with no padding,
     /// and stays stable for a given verifier.
     func test_pkceChallengeIsS256OfVerifier() {

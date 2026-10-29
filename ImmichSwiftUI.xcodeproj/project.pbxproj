@@ -84,6 +84,7 @@
 		1BF291E3C493E40B144B18CD /* Localizable.xcstrings in Resources */ = {isa = PBXBuildFile; fileRef = EFAA3C714B2F0D7284D3FA95 /* Localizable.xcstrings */; };
 		1C7150DF2D056EB945C9598D /* AssetTagsSheet.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0290C0875F3298F544C1320C /* AssetTagsSheet.swift */; };
 		1DB3F51D0ECDB05A6A44D382 /* FolderViewUITests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 78372C4588F75079AFAE958B /* FolderViewUITests.swift */; };
+		54E04449BD2F2688A94C7BC4 /* FavoritesFilterUITests.swift in Sources */ = {isa = PBXBuildFile; fileRef = B1311FF6A5F09E70FCCF983C /* FavoritesFilterUITests.swift */; };
 		1DE222F8440F7B387939A8D1 /* CastService.swift in Sources */ = {isa = PBXBuildFile; fileRef = B8B8F992F536E50B945F00D7 /* CastService.swift */; };
 		1E74193A3B7A6BCF7FAF24A1 /* LocalizationTestSupport.swift in Sources */ = {isa = PBXBuildFile; fileRef = 27692E2B260CCBE82D1B836A /* LocalizationTestSupport.swift */; };
 		1EAA004AF23F270A2AB8D92D /* CreateMemorySheet.swift in Sources */ = {isa = PBXBuildFile; fileRef = F6E00FDD2DB7F0A86DB2415E /* CreateMemorySheet.swift */; };
@@ -837,6 +838,7 @@
 		76FD477D673E55393FBBDD4D /* Color+PhotoVault.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "Color+PhotoVault.swift"; sourceTree = "<group>"; };
 		77E5BF80AB0CFF4C8AD80BA2 /* DownloadItem.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DownloadItem.swift; sourceTree = "<group>"; };
 		78372C4588F75079AFAE958B /* FolderViewUITests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FolderViewUITests.swift; sourceTree = "<group>"; };
+		B1311FF6A5F09E70FCCF983C /* FavoritesFilterUITests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FavoritesFilterUITests.swift; sourceTree = "<group>"; };
 		794BEC4709A8CF43A1D2DCAA /* WidgetDeepLinkTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WidgetDeepLinkTests.swift; sourceTree = "<group>"; };
 		7B165010C2BC88FD901034EF /* NotificationSettingsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NotificationSettingsView.swift; sourceTree = "<group>"; };
 		7CF7041596F97609707BFED1 /* LockedFolderViewModelTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LockedFolderViewModelTests.swift; sourceTree = "<group>"; };
@@ -1945,6 +1947,7 @@
 				EB2E19CAC2028AE8C556676B /* DeviceSessionsUITests.swift */,
 				3DE668217FAB4DE961AEF8E4 /* DownloadPanelUITests.swift */,
 				78372C4588F75079AFAE958B /* FolderViewUITests.swift */,
+				B1311FF6A5F09E70FCCF983C /* FavoritesFilterUITests.swift */,
 				A14A4BDD1813503721593F03 /* FreeUpSpaceUITests.swift */,
 				B2BE58A959176290845E8EF8 /* LocalLibraryUITests.swift */,
 				86533554A77DF5D2D61EA1FF /* LockedFolderUITests.swift */,
@@ -2540,6 +2543,7 @@
 				D15991D9082320B92652BFB6 /* DeviceSessionsUITests.swift in Sources */,
 				7FB32C8946193B5BF24D1FC4 /* DownloadPanelUITests.swift in Sources */,
 				1DB3F51D0ECDB05A6A44D382 /* FolderViewUITests.swift in Sources */,
+				54E04449BD2F2688A94C7BC4 /* FavoritesFilterUITests.swift in Sources */,
 				3C7D0A06D816806EBE848628 /* FreeUpSpaceUITests.swift in Sources */,
 				6EE4B13C616AD03120A4C765 /* ImmichRenderScreenshots.swift in Sources */,
 				D5CF1D6B97E1CEF46C6A53C0 /* ImmichWidgetHomeScreen.swift in Sources */,

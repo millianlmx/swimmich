@@ -361,9 +361,9 @@ struct TimelineView: View {
             baseURL: auth.baseURL ?? URL(string: "https://example.com")!,
             token: auth.accessToken,
             troubleshoot: troubleshoot,
-            onToggleFavorite: { asset in
+            onToggleFavorite: { asset, isFavorite in
                 Task {
-                    await vm.toggleFavorite(id: asset.id)
+                    await vm.setFavorite(id: asset.id, isFavorite: isFavorite)
                     lastFavoriteTick &+= 1
                 }
             },
