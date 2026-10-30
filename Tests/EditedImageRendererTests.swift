@@ -173,7 +173,10 @@ final class EditedImageRendererTests: XCTestCase {
         XCTAssertLessThanOrEqual(max(corner.r, corner.g, corner.b), 16)
     }
 
-    // MARK: AC-10 / AC-11 (contract only; the Photos action itself belongs to the follow-up feature)
+    // MARK: AC-10 / AC-11 (renderer contract shared by Save and Save to Photos)
+    // The Save to Photos action itself is proven in EditorViewModelTests:
+    // test_AC10_saveToPhotos_writesJPEG_noUpload_confirms, test_AC11_saveToPhotos_failure_isExplicit_andRetryable,
+    // test_AC23_photosJPEG_matchesSaveCopy (orientation).
 
     func test_AC10_AC11_rendererIsClientIndependent() throws {
         let raw = Support.rawImage(width: 400, height: 300)
