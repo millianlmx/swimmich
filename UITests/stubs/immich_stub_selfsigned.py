@@ -35,6 +35,15 @@ Ready when `http://127.0.0.1:8422/__whoami` answers.
 
 What it adds to the base
 ------------------------
+* Two albums, `GET /api/albums` and `GET /api/albums/<id>` (Road Trip scenario):
+  "Paris Weekend" (9 geotagged assets in 2 stops) and "Broken Journey" (2 assets
+  without coordinates). Their names do not contain "Road Trip", which would
+  collide with the album menu's button in a `label CONTAINS` query.
+* `POST /api/search/metadata` for those albums. Without `withExif` the items
+  carry no `exifInfo` (as on a real server); with `withExif: true` they carry the
+  coordinates, city and country. For "Broken Journey", a `withExif: true` search
+  waits 3 s then answers 500 (the Road Trip preparing then error states).
+
 * Journal fields, set AFTER the last byte of the response was written (or the
   write failed): `status`, `contentLength` (bytes announced), `sent` (body
   bytes actually written), and `aborted: true` when the client cut the
@@ -60,11 +69,11 @@ to accept it as its own anchor). The key is a throwaway test key. Needs the
 
 Extending it
 ------------
-A sub-feature (Road Trip: album, geotagged assets, `POST /api/search/metadata`)
-adds its fixtures to THIS file. An asset added later to `GET /api/assets/…` is
-a branch on the id inside `one_asset` below, NEVER a second
-`@router.prefix("GET", "/api/assets/")`: `Router.handle` only consults the
-first prefix that matches.
+An asset added later to `GET /api/assets/…` is a branch on the id inside
+`one_asset` below, NEVER a second `@router.prefix("GET", "/api/assets/")`:
+`Router.handle` only consults the first prefix that matches. (The Road Trip
+assets are not served there: the app never calls `GET /api/assets/<id>` for
+them; their thumbnails come from the base shell.)
 """
 import json
 import os
@@ -120,6 +129,49 @@ def count(field):
 # MARK: - Fixtures
 
 
+# The Road Trip album. Ids and names are copied verbatim into
+# `SelfSignedTrustUITests.swift`.
+#
+# The fixture must make the app's timeline keep and preload EVERY asset, so that
+# a missing `size=preview` request can only mean a failure of the transport:
+#   * 2 or 3 stops, <= 6 assets per stop, <= 14 in total, all geotagged:
+#     `RoadTripTimelineBuilder.maxPhotosPerCluster = 6` and
+#     `desiredTotalPhotos = 14` (a leg costs at most 9 s and does not trim that
+#     budget before 9 stops);
+#   * `RoadTripClusterer.cluster(radiusMeters: 2500, mergeRadiusMeters: 4000)`:
+#     an asset joins the stop whose anchor (its first asset) is within 2.5 km, so
+#     every asset is < 2.5 km from the first of its stop; two consecutive stops
+#     merge when closer than 4 km (or sharing the place name), so stops are
+#     > 4 km apart and have distinct `exifInfo.city`;
+#   * dates strictly increasing (`fileCreatedAt`, `localDateTime`,
+#     `exifInfo.dateTimeOriginal`) in the order of `ROADTRIP_STOPS`.
+# Paris carries the 6-photo ceiling: the player clock starts when the view is
+# created and includes the preparation, so Paris plays until 20.4 s elapsed.
+ROADTRIP_ALBUM = "dddddddd-4444-4444-8444-000000000001"
+ROADTRIP_ALBUM_NAME = "Paris Weekend"
+ERROR_ALBUM = "dddddddd-4444-4444-8444-000000000002"
+ERROR_ALBUM_NAME = "Broken Journey"
+ROADTRIP_STOPS = [
+    ("Paris", "France", [
+        ("bbbbbbbb-2222-4222-8222-000000000001", 48.8566, 2.3522, "2026-08-14T09:00:00.000Z"),
+        ("bbbbbbbb-2222-4222-8222-000000000002", 48.8530, 2.3499, "2026-08-14T09:30:00.000Z"),
+        ("bbbbbbbb-2222-4222-8222-000000000003", 48.8606, 2.3376, "2026-08-14T10:00:00.000Z"),
+        ("bbbbbbbb-2222-4222-8222-000000000004", 48.8638, 2.3480, "2026-08-14T10:30:00.000Z"),
+        ("bbbbbbbb-2222-4222-8222-000000000005", 48.8606, 2.3522, "2026-08-14T11:00:00.000Z"),
+        ("bbbbbbbb-2222-4222-8222-000000000006", 48.8462, 2.3464, "2026-08-14T11:30:00.000Z"),
+    ]),
+    ("Versailles", "France", [
+        ("bbbbbbbb-2222-4222-8222-000000000007", 48.8049, 2.1204, "2026-08-14T14:00:00.000Z"),
+        ("bbbbbbbb-2222-4222-8222-000000000008", 48.8014, 2.1301, "2026-08-14T14:30:00.000Z"),
+        ("bbbbbbbb-2222-4222-8222-000000000009", 48.8156, 2.1097, "2026-08-14T15:00:00.000Z"),
+    ]),
+]
+ERROR_ASSETS = [
+    "cccccccc-3333-4333-8333-000000000001",
+    "cccccccc-3333-4333-8333-000000000002",
+]
+
+
 def original(aid, side=SIDE):
     """The asset's original: a real PNG of a size worth streaming.
 
@@ -142,6 +194,45 @@ def original(aid, side=SIDE):
             + chunk(b"IEND", b""))
 
 
+def roadtrip_asset(aid, lat, lon, stamp, city, country):
+    """A geotagged asset taken at `stamp` (UTC)."""
+    dto = base.asset(aid)
+    for key in ("localDateTime", "createdAt", "fileCreatedAt", "fileModifiedAt", "updatedAt"):
+        dto[key] = stamp
+    dto["exifInfo"].update({
+        "dateTimeOriginal": stamp, "latitude": lat, "longitude": lon,
+        "city": city, "country": country, "state": None,
+    })
+    return dto
+
+
+def roadtrip_items():
+    return [roadtrip_asset(aid, lat, lon, stamp, city, country)
+            for city, country, assets in ROADTRIP_STOPS
+            for aid, lat, lon, stamp in assets]
+
+
+def album_dto(aid, name, cover, count):
+    owner = {key: base.ME_USER[key] for key in
+             ("id", "name", "email", "profileImagePath", "avatarColor", "profileChangedAt")}
+    stamp = "2026-08-14T08:00:00.000Z"
+    return {
+        "id": aid, "albumName": name, "description": "",
+        "createdAt": stamp, "updatedAt": stamp, "albumThumbnailAssetId": cover,
+        "shared": False, "hasSharedLink": False, "assetCount": count,
+        "isActivityEnabled": False, "order": "desc",
+        "albumUsers": [{"user": owner, "role": "owner"}], "ownerId": base.ME,
+    }
+
+
+def albums():
+    return {
+        ROADTRIP_ALBUM: album_dto(ROADTRIP_ALBUM, ROADTRIP_ALBUM_NAME,
+                                  ROADTRIP_STOPS[0][2][0][0], 9),
+        ERROR_ALBUM: album_dto(ERROR_ALBUM, ERROR_ALBUM_NAME, ERROR_ASSETS[0], 2),
+    }
+
+
 class Paced(Response):
     """A `Response` written one chunk at a time, `seconds` apart."""
 
@@ -161,6 +252,41 @@ def authorize(req):
     """The provider page lives on the plain-HTTP control port: the system web
     session that shows it must not be asked to trust the self-signed one."""
     return Response({"url": f"http://127.0.0.1:{CONTROL_PORT}/provider-{STATE['provider']}"})
+
+
+@router.get("/api/albums")
+def list_albums(req):
+    return Response(list(albums().values()))
+
+
+@router.prefix("GET", "/api/albums/")
+def one_album(req):
+    """The album detail; `None` (the base shell answers) for any other id."""
+    return Response(albums()[req.rest]) if req.rest in albums() else None
+
+
+@router.post("/api/search/metadata")
+def search_metadata(req):
+    """The albums' assets. `withExif: true` is what the Road Trip sends; the
+    album detail does not."""
+    body = req.body
+    ids = body.get("albumIds") or []
+    exif = body.get("withExif") is True
+
+    if ERROR_ALBUM in ids and exif:
+        time.sleep(3)
+        return Response({"message": "stub: road trip search failed", "statusCode": 500}, status=500)
+
+    items = []
+    for album in ids:
+        if album == ROADTRIP_ALBUM:
+            items += roadtrip_items()
+        elif album == ERROR_ALBUM:
+            items += [base.asset(aid) for aid in ERROR_ASSETS]
+    if not exif:
+        items = [{k: v for k, v in item.items() if k != "exifInfo"} for item in items]
+    return Response({"assets": {"count": len(items), "items": items,
+                                "nextPage": None, "nextCursor": None}})
 
 
 @router.prefix("GET", "/api/assets/")

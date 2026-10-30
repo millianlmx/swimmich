@@ -662,6 +662,159 @@ final class SelfSignedTrustUITests: XCTestCase {
         let apiCalls = stubRequests().filter { $0.path.hasPrefix("/api/") }
         XCTAssertTrue(apiCalls.isEmpty, "an API request reached the stub without approval:\n\(describe(apiCalls))")
     }
+
+    // MARK: - Road Trip
+    //
+    // Ids and names are the stub's (`ROADTRIP_*`, `ERROR_*` in `immich_stub_selfsigned.py`),
+    // which documents why this fixture makes the timeline keep every asset.
+
+    private let roadTripAlbumId = "dddddddd-4444-4444-8444-000000000001"
+    private let roadTripAlbumName = "Paris Weekend"
+    /// The stops in playing order: Paris (1-6), then Versailles (7-9).
+    private let roadTripStops: [[String]] = [
+        (1...6).map { "bbbbbbbb-2222-4222-8222-00000000000\($0)" },
+        (7...9).map { "bbbbbbbb-2222-4222-8222-00000000000\($0)" },
+    ]
+    private var roadTripIds: [String] { roadTripStops.flatMap { $0 } }
+    /// The leg's label (`RoadTripView.placeLabel`): the EXIF city and country of the two stops.
+    private let roadTripLeg = "Paris, France → Versailles, France"
+    /// Seconds of the player clock (`RoadTripFramePlan.swift`: opening 2.5 s, then the 6 photos of
+    /// Paris alternating 3.9 s and 2.6 s, the last one 1.04 s, then a leg of 8.53 s for 17.9 km).
+    /// The clock starts when the view is created, so it includes the preparation.
+    private let parisEnd = 20.4
+    private let legEnd = 29.0
+
+    private let errorAlbumId = "dddddddd-4444-4444-8444-000000000002"
+    private let errorAlbumName = "Broken Journey"
+    private let errorAssets = ["cccccccc-3333-4333-8333-000000000001", "cccccccc-3333-4333-8333-000000000002"]
+
+    /// Albums tab → the album → its grid → "Album actions" → "Road Trip". Returns the instant of
+    /// the last tap: the Road Trip view (and its clock) is created after it.
+    @discardableResult
+    private func openRoadTrip(album: String, firstAsset: String) -> Date {
+        let albumsTab = app.tabBars.buttons["Albums"].firstMatch
+        XCTAssertTrue(albumsTab.waitForExistence(timeout: 30), "no Albums tab; \(screenDump())")
+        albumsTab.tap()
+        XCTAssertTrue(tapAnyButton([album], timeout: 30), "album \(album) not listed; \(screenDump())")
+        XCTAssertTrue(tile(firstAsset).waitForExistence(timeout: 30),
+                      "the album grid shows no tile for \(firstAsset); \(screenDump())")
+        let actions = app.buttons["Album actions"].firstMatch
+        XCTAssertTrue(actions.waitForExistence(timeout: 15), "no 'Album actions' menu; \(screenDump())")
+        actions.tap()
+        let roadTrip = app.buttons["Road Trip"].firstMatch
+        XCTAssertTrue(roadTrip.waitForExistence(timeout: 10), "no 'Road Trip' in the menu; \(screenDump())")
+        let tappedAt = Date()
+        roadTrip.tap()
+        return tappedAt
+    }
+
+    /// A Road Trip started from an album of the approved self-signed server keeps every geotagged
+    /// asset (none dropped for lack of a preview) and plays pictures served over that TLS.
+    func test_AC9_roadTripKeepsAssetsFromApprovedSelfSignedServer() throws {
+        launchApp(trusting: true)
+        signIn()
+        let tappedAt = openRoadTrip(album: roadTripAlbumName, firstAsset: roadTripStops[0][0])
+
+        // AC-8: the Road Trip's own search (`withExif: true`) for this album.
+        let searched: (LoggedRequest) -> Bool = {
+            $0.method == "POST" && $0.path == "/api/search/metadata"
+                && $0.body["withExif"] as? Bool == true
+                && ($0.body["albumIds"] as? [String])?.contains(self.roadTripAlbumId) == true
+        }
+        let searchJournal = waitForRequests(timeout: 20) { $0.contains(where: searched) }
+        XCTAssertTrue(searchJournal.contains(where: searched),
+                      "no POST /api/search/metadata with withExif for the album:\n\(describe(searchJournal))")
+
+        // AC-10: preparation over, player up, no error. The journal is read ONCE, right now: the
+        // preparation awaits every preview, so each must already have been requested.
+        let player = element("roadTripPlayer")
+        XCTAssertTrue(player.waitForExistence(timeout: 60), "the player never appeared; \(screenDump())")
+        let snapshot = stubRequests()
+        let playerAt = Date().timeIntervalSince(tappedAt)
+        print(String(format: "ROADTRIP PLAYER after %.1f s", playerAt))
+        XCTAssertFalse(element("roadTripPreparing").exists, "still preparing at the player (\(playerAt) s)")
+        XCTAssertFalse(element("roadTripError").exists, "an error with the player up (\(playerAt) s); \(screenDump())")
+
+        // AC-11 and AC-7: collect what is on screen every 0.3 s, before anything else eats the
+        // window of the first stop.
+        let slidePrefix = "roadTripSlide_"
+        let slides = app.descendants(matching: .any)
+            .matching(NSPredicate(format: "identifier BEGINSWITH %@", slidePrefix))
+        var firstSeen: [String: TimeInterval] = [:]
+        var legFirstSeen: TimeInterval?
+        var firstPollAt: TimeInterval?
+        let stopSeen = { self.roadTripStops.allSatisfy { $0.contains(where: { id in firstSeen[id] != nil }) } }
+        let deadline = Date().addingTimeInterval(100)
+        while Date() < deadline && !(stopSeen() && legFirstSeen != nil) {
+            let t = Date().timeIntervalSince(tappedAt)
+            if firstPollAt == nil { firstPollAt = t }
+            for slide in slides.allElementsBoundByIndex where slide.exists {
+                let id = String(slide.identifier.dropFirst(slidePrefix.count))
+                if firstSeen[id] == nil { firstSeen[id] = t }
+            }
+            if legFirstSeen == nil && app.staticTexts[roadTripLeg].exists { legFirstSeen = t }
+            RunLoop.current.run(until: Date().addingTimeInterval(0.3))
+        }
+        let seenList = firstSeen.sorted { $0.value < $1.value }
+            .map { "\($0.key.suffix(2)): \(String(format: "%.1f", $0.value))" }.joined(separator: ", ")
+        let timing = String(format: "firstPoll=%.1f player=%.1f slides=[", firstPollAt ?? -1, playerAt) + seenList
+            + "] leg=\(legFirstSeen.map { String(format: "%.1f", $0) } ?? "never") "
+            + "(Paris plays until \(parisEnd) s, the leg until \(legEnd) s of the player clock)"
+        print("ROADTRIP SEEN \(timing)")
+
+        // AC-9: a preview per asset was requested before the player showed, and each is served whole.
+        let preview: (String) -> (LoggedRequest) -> Bool = { id in
+            { $0.method == "GET" && $0.path == "/api/assets/\(id)/thumbnail" && $0.params["size"] == "preview" }
+        }
+        let missing = roadTripIds.filter { id in !snapshot.contains(where: preview(id)) }
+        XCTAssertTrue(missing.isEmpty,
+                      "no preview requested before the player for \(missing) (assets dropped?):\n\(describe(snapshot))")
+        let served = waitForRequests(timeout: 20) { journal in
+            self.roadTripIds.allSatisfy { id in journal.contains(where: { preview(id)($0) && $0.complete }) }
+        }
+        for id in roadTripIds {
+            XCTAssertTrue(served.contains(where: { preview(id)($0) && $0.complete }),
+                          "preview of \(id) not served in full:\n\(describe(served))")
+        }
+        print("ROADTRIP TLS \(tlsCounters())")
+
+        // AC-11, AC-7: every stop was on screen, and the leg named the two stops from the EXIF.
+        for (index, stop) in roadTripStops.enumerated() {
+            XCTAssertTrue(stop.contains(where: { firstSeen[$0] != nil }),
+                          "no slide of stop \(index + 1) seen; \(timing)")
+        }
+        XCTAssertTrue(legFirstSeen != nil, "the leg \(roadTripLeg) never showed; \(timing)")
+        shot("st-ac9-roadtrip")
+    }
+
+    /// The preparation then the error of a Road Trip are findable by identifier.
+    func test_AC46_roadTripPreparingThenErrorAreIdentifiable() throws {
+        launchApp(trusting: true)
+        signIn()
+        openRoadTrip(album: errorAlbumName, firstAsset: errorAssets[0])
+
+        // The stub holds the `withExif` answer for 3 s after the request, which follows the tap.
+        XCTAssertTrue(element("roadTripPreparing").waitForExistence(timeout: 3),
+                      "no roadTripPreparing during the 3 s wait; \(screenDump())")
+        let error = element("roadTripError")
+        XCTAssertTrue(error.waitForExistence(timeout: 20), "no roadTripError after the 500; \(screenDump())")
+        XCTAssertTrue(error.label.contains("The server ran into a problem"),
+                      "unexpected error label: \(error.label)")
+        XCTAssertFalse(element("roadTripPreparing").exists, "still preparing next to the error")
+        XCTAssertFalse(element("roadTripPlayer").exists, "a player next to the error")
+
+        // The album detail's search (no `withExif`) worked; only the Road Trip's own failed.
+        let isSearch: (LoggedRequest) -> Bool = {
+            $0.method == "POST" && $0.path == "/api/search/metadata"
+                && ($0.body["albumIds"] as? [String])?.contains(self.errorAlbumId) == true
+        }
+        let plain: (LoggedRequest) -> Bool = { isSearch($0) && $0.body["withExif"] as? Bool != true && $0.status == 200 }
+        let withExif: (LoggedRequest) -> Bool = { isSearch($0) && $0.body["withExif"] as? Bool == true && $0.status == 500 }
+        let journal = waitForRequests(timeout: 10) { $0.contains(where: plain) && $0.contains(where: withExif) }
+        XCTAssertTrue(journal.contains(where: plain), "no 200 search without withExif:\n\(describe(journal))")
+        XCTAssertTrue(journal.contains(where: withExif), "no 500 search with withExif:\n\(describe(journal))")
+        shot("st-ac46-error")
+    }
 }
 
 // MARK: - Certificate probe types

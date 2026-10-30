@@ -18,6 +18,7 @@ struct RoadTripView: View {
                 ProgressView("Preparing road trip…")
                     .tint(.white)
                     .foregroundStyle(.white)
+                    .accessibilityIdentifier("roadTripPreparing")
             } else if let error = vm.errorMessage, vm.timeline == nil {
                 VStack(spacing: 16) {
                     Image(systemName: "car.fill")
@@ -29,11 +30,15 @@ struct RoadTripView: View {
                         .multilineTextAlignment(.center)
                 }
                 .padding(32)
+                .accessibilityElement(children: .combine)
+                .accessibilityIdentifier("roadTripError")
             } else if let timeline = vm.timeline {
                 SwiftUI.TimelineView(.animation(minimumInterval: 1.0 / 30.0)) { context in
                     let elapsed = context.date.timeIntervalSince(startDate)
                     content(timeline: timeline, elapsed: elapsed)
                 }
+                .accessibilityElement(children: .contain)
+                .accessibilityIdentifier("roadTripPlayer")
             }
 
             chrome
@@ -140,6 +145,8 @@ struct RoadTripView: View {
                 .offset(x: transform.offsetX * proxy.size.width, y: transform.offsetY * proxy.size.height)
                 .clipped()
             }
+            .accessibilityElement(children: .ignore)
+            .accessibilityIdentifier("roadTripSlide_\(asset.id)")
         } else {
             Color.black
         }
