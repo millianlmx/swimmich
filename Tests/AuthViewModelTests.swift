@@ -864,6 +864,30 @@ final class AuthViewModelTests: XCTestCase {
         XCTAssertEqual(fx.auth.pendingUntrustedHost, LogoutFixture.host, "AC-3: trust is asked again")
     }
 
+    // AC-13 — the server sessions are reset once, after every store was emptied and
+    // after the trusted-servers list was cleared (so no trusted connection survives).
+    @MainActor
+    func test_AC13_logout_resetsTheServerSessionsAfterEveryStoreAndTheTrustList() async {
+        let fx = await LogoutFixture.make()
+        defer { fx.cleanup() }
+        XCTAssertNotNil(fx.diskCache.cachedResponse(for: fx.diskRequest))
+        XCTAssertEqual(fx.ledger.trackedCount(), 1)
+        XCTAssertTrue(fx.trustStore.contains(LogoutFixture.host))
+        var diskEmpty = false, ledgerEmpty = false, trustEmpty = false
+        fx.serverSessions.onReset = {
+            diskEmpty = fx.diskCache.cachedResponse(for: fx.diskRequest) == nil
+            ledgerEmpty = fx.ledger.trackedCount() == 0
+            trustEmpty = !fx.trustStore.contains(LogoutFixture.host)
+        }
+
+        await fx.auth.logout()
+
+        XCTAssertEqual(fx.serverSessions.calls, 1)
+        XCTAssertTrue(diskEmpty, "reset runs after the disk image tier was emptied")
+        XCTAssertTrue(ledgerEmpty, "reset runs after the ledger was emptied")
+        XCTAssertTrue(trustEmpty, "the trust list is already empty when the sessions reset")
+    }
+
     // AC-6 (backup) — a run in flight is stopped, nothing is written into the ledger
     // after the purge, and the engine accepts a new run afterwards.
     @MainActor
@@ -1055,6 +1079,7 @@ private final class LogoutFixture {
     let source = MockBackupAssetSource()
     let engine: BackupEngine
     let purger: LocalDataPurger
+    let serverSessions = ConnectionResetSpy()
     let auth: AuthViewModel
     let alice = SavedAccount(url: "https://photos.example.com", email: "alice@example.com", name: "Alice", userId: "u1", isAdmin: false)
     let bob = SavedAccount(url: "https://other.example.com", email: "bob@example.com", name: "Bob", userId: "u2", isAdmin: false)
@@ -1093,7 +1118,8 @@ private final class LogoutFixture {
         purger = LocalDataPurger(
             backupEngine: engine, offlineStore: offlineStore, offlineIndex: offlineIndex,
             imageCache: imageCache, imageDiskCache: diskCache,
-            apiClient: ImmichAPIClient(trustStore: trustStore)
+            apiClient: ImmichAPIClient(trustStore: trustStore),
+            serverSessions: serverSessions
         )
 
         // Two registered accounts with a token each; alice signs in for real below.
@@ -1139,5 +1165,17 @@ private final class LogoutFixture {
     func cleanup() {
         try? FileManager.default.removeItem(at: root)
         for suite in suites { UserDefaults(suiteName: suite)?.removePersistentDomain(forName: suite) }
+    }
+}
+
+/// Counts `resetConnections()` calls and runs `onReset` at the moment of the call.
+@MainActor
+private final class ConnectionResetSpy: ConnectionResetting {
+    private(set) var calls = 0
+    var onReset: (() -> Void)?
+
+    func resetConnections() async {
+        calls += 1
+        onReset?()
     }
 }

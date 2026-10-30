@@ -19,7 +19,7 @@ import Foundation
 struct URLSessionFileDownloadTransport: FileDownloadTransport {
     let session: URLSession
 
-    init(session: URLSession = .shared) {
+    init(session: URLSession) {
         self.session = session
     }
 

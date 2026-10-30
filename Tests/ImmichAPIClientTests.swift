@@ -202,6 +202,26 @@ final class ImmichAPIClientTests: XCTestCase {
         XCTAssertEqual(auth.errorMessage, localizedString("Your session has expired. Please sign in again."))
     }
 
+    func testThumbnailURLSupportsPreviewAndThumbnailSizes() {
+        let base = URL(string: "https://photos.example.com")!
+        let previewURL = ImmichAssetURL.thumbnail(
+            assetId: "test-id",
+            thumbhash: "thumb-123",
+            baseURL: base,
+            size: .preview
+        )
+        XCTAssertTrue(previewURL.absoluteString.contains("size=preview"))
+        XCTAssertTrue(previewURL.absoluteString.contains("/api/assets/test-id/thumbnail"))
+
+        let thumbURL = ImmichAssetURL.thumbnail(
+            assetId: "test-id",
+            thumbhash: "thumb-123",
+            baseURL: base,
+            size: .thumbnail
+        )
+        XCTAssertTrue(thumbURL.absoluteString.contains("size=thumbnail"))
+    }
+
     // AC-007: thumbnail URL via ImmichAssetURL helper.
     func test_AC_007_thumbnailURLHelper() {
         let url = ImmichAssetURL.thumbnail(

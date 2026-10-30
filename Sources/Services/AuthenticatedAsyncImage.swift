@@ -171,33 +171,12 @@ struct AuthenticatedAsyncImage: View {
         diskPath: "immich-image-cache"
     )
 
-    /// Shared image session with a generous URLCache so the OS dedups HTTP
-    /// traffic across scroll churn. Bearer header is per-request, and the
-    /// delegate re-applies Authorization on HTTP redirects.
-    private static let imageSession: URLSession = {
-        let config = URLSessionConfiguration.default
-        config.urlCache = imageDiskCache
-        config.requestCachePolicy = .returnCacheDataElseLoad
-        config.timeoutIntervalForRequest = 20
-        return URLSession(configuration: config, delegate: AuthenticatedImageRedirectDelegate(), delegateQueue: nil)
-    }()
-}
-
-/// Preserves the Authorization header across HTTP redirects on same-host requests.
-final class AuthenticatedImageRedirectDelegate: NSObject, URLSessionTaskDelegate, @unchecked Sendable {
-    func urlSession(
-        _ session: URLSession,
-        task: URLSessionTask,
-        willPerformHTTPRedirection response: HTTPURLResponse,
-        newRequest request: URLRequest,
-        completionHandler: @escaping @Sendable (URLRequest?) -> Void
-    ) {
-        var redirectedRequest = request
-        if let auth = task.originalRequest?.value(forHTTPHeaderField: "Authorization"),
-           request.url?.host == task.originalRequest?.url?.host {
-            redirectedRequest.setValue(auth, forHTTPHeaderField: "Authorization")
-        }
-        completionHandler(redirectedRequest)
+    /// Shared image session (`ServerSessions.images`): `imageDiskCache` so the OS
+    /// dedups HTTP traffic across scroll churn, the trust-store TLS rule, and
+    /// Authorization re-applied on same-host redirects. Bearer header is
+    /// per-request. Read on the MainActor from `load()`.
+    private static var imageSession: URLSession {
+        DependencyContainer.shared.serverSessions.images
     }
 }
 

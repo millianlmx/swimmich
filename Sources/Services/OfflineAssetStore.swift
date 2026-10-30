@@ -112,12 +112,12 @@ actor OfflineAssetStore {
 
     init(
         folderURL: URL? = nil,
-        transport: (any FileDownloadTransport)? = nil,
+        transport: any FileDownloadTransport,
         fileManager: FileManager = .default,
         defaults: UserDefaults = .standard
     ) {
         self.folderURL = folderURL ?? Self.defaultFolderURL(fileManager: fileManager)
-        self.transport = transport ?? URLSessionFileDownloadTransport()
+        self.transport = transport
         self.fileManager = fileManager
         self.defaults = defaults
     }

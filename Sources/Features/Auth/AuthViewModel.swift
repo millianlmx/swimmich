@@ -384,10 +384,13 @@ final class AuthViewModel: AuthSessionDelegate {
     func logout() async {
         isLoading = true
         _ = try? await client.logout()
-        // Transfers stop and the stores empty first, so nothing can write into
+        // The trusted-servers list is emptied first, so a connection opened
+        // while the purge runs, and the final connection reset, leave no
+        // trusted connection behind.
+        trustStore.removeAll()
+        // Transfers stop and the stores empty next, so nothing can write into
         // a store after it was purged.
         await localData?.purgeAll()
-        trustStore.removeAll()
         for account in savedAccounts { keychain.deleteToken(for: account.id) }
         savedAccounts = []
         defaults.removeObject(forKey: Self.serverListDefaultsKey)

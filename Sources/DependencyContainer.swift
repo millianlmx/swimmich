@@ -26,6 +26,10 @@ final class DependencyContainer {
     private let photoLibrary: PhotoLibraryServiceImpl
     let appLock: AppLockViewModel
     let trustedServers: TrustedServerStore
+    /// One per process: the trust-aware sessions for images, transfers and road
+    /// trip. Built on the API client's own trust store and reset by the
+    /// logout purge (`LocalDataPurger`).
+    let serverSessions: ServerSessions
     let realtime: RealtimeService
     /// Process-wide single instance so the BG handler, the settings toggle
     /// and `UploadViewModel` all submit through the same request slot —
@@ -137,6 +141,8 @@ final class DependencyContainer {
         self.keychain = KeychainStoreImpl()
         let trustStore = TrustedServerStoreImpl()
         self.trustedServers = trustStore
+        let serverSessions = ServerSessions(trustStore: trustStore, imageCache: AuthenticatedAsyncImage.imageDiskCache)
+        self.serverSessions = serverSessions
         self.client = ImmichAPIClient(trustStore: trustStore, log: appLog)
         // Read-only mode: the store persists into `.standard` and the guard
         // reads the very same defaults at call time (never a captured value),
@@ -158,7 +164,7 @@ final class DependencyContainer {
         self.backupLedger = BackupLedger.persistent()
         self.backupLiveActivity = LiveActivityBackupService()
         self.libraryMonitor = PhotoLibraryChangeMonitor()
-        self.offlineStore = OfflineAssetStore()
+        self.offlineStore = OfflineAssetStore(transport: serverSessions.makeDownloadTransport())
         self.offlineIndex = OfflineAssetIndex()
         self.language = AppLanguageStore()
         // The shared instance, not a fresh one: view models built with the
@@ -194,14 +200,15 @@ final class DependencyContainer {
         cloudStatus.refresh(ledger: ledger)
         upload.engine.onLedgerChange = { cloudStatus.refresh(ledger: ledger) }
         upload.syncBadgeIndex()
-        // Foreground-only by construction: `URLSessionFileDownloadTransport`
-        // takes `.shared`, so a transfer pauses when iOS suspends the app. A
+        // Foreground-only by construction: the transport streams through
+        // `ServerSessions.transfers`, a default (non-background) session, so a
+        // transfer pauses when iOS suspends the app. A
         // background `URLSession` would need its own identifier, an app-delegate
         // hand-off and a reconciliation pass at launch — none of which this
         // card asks for; the panel is what keeps the run visible, not a
-        // background session. The transport is the same type the offline cache
-        // uses, so nothing new goes on the wire.
-        self.downloadQueue = DownloadQueueViewModel(client: libraryClient, transport: URLSessionFileDownloadTransport())
+        // background session. The transport is the same type, on the same
+        // session, as the offline cache uses.
+        self.downloadQueue = DownloadQueueViewModel(client: libraryClient, transport: serverSessions.makeDownloadTransport())
         self.libraryMonitor.onAssetsInserted = { [weak self] in
             self?.kickOffAutoBackup()
         }
@@ -228,7 +235,8 @@ final class DependencyContainer {
                 offlineIndex: offlineIndex,
                 imageCache: .shared,
                 imageDiskCache: AuthenticatedAsyncImage.imageDiskCache,
-                apiClient: client
+                apiClient: client,
+                serverSessions: serverSessions
             )
         )
     }
@@ -399,7 +407,8 @@ final class DependencyContainer {
             albumTitle: albumTitle,
             baseURL: baseURL,
             token: token,
-            photos: photos
+            photos: photos,
+            session: serverSessions.roadTrip
         )
     }
 

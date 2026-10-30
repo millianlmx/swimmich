@@ -30,6 +30,14 @@ struct RoadTripRenderConfig: Sendable {
 /// positions, headings and motion match.
 final class RoadTripVideoRenderer: @unchecked Sendable {
 
+    /// The process-wide road-trip session (`ServerSessions.roadTrip`): trust
+    /// store aware, never built per call.
+    private let session: URLSession
+
+    init(session: URLSession) {
+        self.session = session
+    }
+
     // MARK: - Prepared visuals
 
     /// One snapshot window of a map leg: the image, the route points mapped
@@ -94,7 +102,7 @@ final class RoadTripVideoRenderer: @unchecked Sendable {
             }
         }
 
-        let session = URLSession(configuration: .default)
+        let session = self.session
         let ids = Array(needed)
         var result: [String: CGImage] = [:]
         let chunkSize = 6

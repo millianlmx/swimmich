@@ -47,6 +47,9 @@ final class RoadTripViewModel {
     /// Quality score per asset id (computed during preflight) — drives the
     /// "best of the trip" photo selection.
     private var assetScores: [String: Double] = [:]
+    /// The process-wide road-trip session (`ServerSessions.roadTrip`): thumbnail
+    /// pre-selection here and image preloading in the renderer share it.
+    private let session: URLSession
 
     init(
         client: any ImmichClient,
@@ -55,7 +58,8 @@ final class RoadTripViewModel {
         albumTitle: String,
         baseURL: URL,
         token: String?,
-        photos: PhotoLibraryService
+        photos: PhotoLibraryService,
+        session: URLSession
     ) {
         self.client = client
         self.albumId = albumId
@@ -64,6 +68,7 @@ final class RoadTripViewModel {
         self.baseURL = baseURL
         self.token = token
         self.photos = photos
+        self.session = session
     }
 
     // MARK: - Preparation
@@ -178,7 +183,7 @@ final class RoadTripViewModel {
     }
 
     private func validAssetIDs(_ assets: [AssetReactItem]) async -> Set<String> {
-        let session = URLSession(configuration: .default)
+        let session = self.session
         let base = baseURL
         let tok = token
         var valid = Set<String>()
@@ -366,7 +371,7 @@ final class RoadTripViewModel {
             albumTitle: albumTitle,
             reduceMotion: reduceMotion
         )
-        let renderer = RoadTripVideoRenderer()
+        let renderer = RoadTripVideoRenderer(session: session)
         let clusters = self.clusters
         let photos = self.photos
 

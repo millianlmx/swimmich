@@ -2,14 +2,17 @@ import Foundation
 
 /// Wipes what the app keeps on disk and in memory *about the account*, when the
 /// user signs out on purpose: backup ledger, offline copies, thumbnail caches
-/// and the network connections of the API client.
+/// and the network connections of the API client and of the server sessions
+/// (`ServerSessions`: images, transfers, road trip).
 ///
 /// Transfers are stopped first — a backup or an offline download still running
 /// would otherwise write into the stores right after they were emptied. The
 /// order is the contract; see `purgeAll()`.
 ///
 /// Credentials, the registered-accounts list and the trusted-servers list are
-/// not owned here: `AuthViewModel.logout()` clears them itself.
+/// not owned here: `AuthViewModel.logout()` clears them itself, the trusted
+/// servers *before* calling this purge so the final connection reset leaves no
+/// trusted connection behind.
 @MainActor
 final class LocalDataPurger {
     private let backupEngine: BackupEngine
@@ -18,6 +21,7 @@ final class LocalDataPurger {
     private let imageCache: ImageCache
     private let imageDiskCache: URLCache
     private let apiClient: ImmichAPIClient
+    private let serverSessions: any ConnectionResetting
 
     init(
         backupEngine: BackupEngine,
@@ -25,7 +29,8 @@ final class LocalDataPurger {
         offlineIndex: OfflineAssetIndex,
         imageCache: ImageCache,
         imageDiskCache: URLCache,
-        apiClient: ImmichAPIClient
+        apiClient: ImmichAPIClient,
+        serverSessions: any ConnectionResetting
     ) {
         self.backupEngine = backupEngine
         self.offlineStore = offlineStore
@@ -33,6 +38,7 @@ final class LocalDataPurger {
         self.imageCache = imageCache
         self.imageDiskCache = imageDiskCache
         self.apiClient = apiClient
+        self.serverSessions = serverSessions
     }
 
     func purgeAll() async {
@@ -47,7 +53,9 @@ final class LocalDataPurger {
         imageDiskCache.removeAllCachedResponses()
         // 4. Backup ledger (also refreshes the cloud-status badges).
         backupEngine.forgetAllBackedUp()
-        // 5. Fresh sockets, so the next connection faces a new TLS challenge.
+        // 5. Fresh sockets on the API client and on every server session, so the
+        //    next connection faces a new TLS challenge.
         await apiClient.resetConnections()
+        await serverSessions.resetConnections()
     }
 }
