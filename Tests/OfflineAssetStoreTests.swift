@@ -386,7 +386,7 @@ final class OfflineAssetStoreTests: XCTestCase {
     }
     // MARK: - Per-account scoping (ACC)
 
-    private static let legacyInfos: [CachedAssetInfo] = [
+    static let legacyInfos: [CachedAssetInfo] = [
         CachedAssetInfo(
             id: "legacy-1", fileName: "legacy-1.jpg", originalFileName: "IMG_0001.jpg",
             cachedAt: Date(timeIntervalSince1970: 1_700_000_000), size: 100, isVideo: false,
@@ -445,22 +445,31 @@ final class OfflineAssetStoreTests: XCTestCase {
         XCTAssertEqual(rootChildren, ["Accounts"], "no copy and no index.json left at the root")
     }
 
-    func test_ACC_AC8_legacyContent_withOtherAccounts_goesToUnassigned() async throws {
+    func test_OFF_AC15_ACC_AC8_legacyContent_withOtherAccounts_goesToUnassigned() async throws {
         try Self.seedLegacyContent(into: root)
 
         store.setActiveAccount(Self.accountA, otherAccountsRegistered: true)
         let forA = await store.listing()
+        let legacy1ForA = await store.isCached(assetID: "legacy-1")
+        let legacy2ForA = await store.isCached(assetID: "legacy-2")
         store.setActiveAccount(Self.accountB, otherAccountsRegistered: true)
         let forB = await store.listing()
+        let legacy1ForB = await store.isCached(assetID: "legacy-1")
+        let legacy2ForB = await store.isCached(assetID: "legacy-2")
 
         XCTAssertTrue(forA.items.isEmpty)
         XCTAssertTrue(forB.items.isEmpty)
+        XCTAssertFalse(legacy1ForA)
+        XCTAssertFalse(legacy2ForA)
+        XCTAssertFalse(legacy1ForB)
+        XCTAssertFalse(legacy2ForB)
         let unassigned = regularFileSizes(under: store.unassignedURL)
         XCTAssertEqual(unassigned["legacy-1.jpg"], 100)
         XCTAssertEqual(unassigned["legacy-2.jpg"], 300)
         XCTAssertNotNil(unassigned["index.json"])
         XCTAssertEqual(regularFileSizes(under: store.folderURL(forAccount: Self.accountA)).filter { $0.key != "index.json" }, [:])
         XCTAssertEqual(regularFileSizes(under: store.folderURL(forAccount: Self.accountB)).filter { $0.key != "index.json" }, [:])
+        XCTAssertEqual(try rootChildren(), ["Accounts", "Unassigned"])
     }
 
     func test_ACC_AC9_rootIsExcludedFromBackup_durably() async throws {
@@ -538,5 +547,290 @@ final class OfflineAssetStoreTests: XCTestCase {
         let total = await store.totalBytes()
         XCTAssertEqual(afterDownload.map(\.id), ["a3"])
         XCTAssertEqual(total, 100)
+    }
+}
+
+// MARK: - Legacy content takeover (OFF)
+
+extension OfflineAssetStoreTests {
+
+    /// Children of the root, sorted (the order `contentsOfDirectory` returns is unspecified).
+    private func rootChildren() throws -> [String] {
+        try FileManager.default.contentsOfDirectory(atPath: root.path).sorted()
+    }
+
+    private func nameMatches(_ file: String, uuidPrefixedName name: String) -> Bool {
+        let pattern = "^[0-9A-F]{8}-([0-9A-F]{4}-){3}[0-9A-F]{12}-\(NSRegularExpression.escapedPattern(for: name))$"
+        return file.range(of: pattern, options: .regularExpression) != nil
+    }
+
+    private func makeStore(
+        _ fileManager: FileManager = .default, active: String, others: Bool
+    ) -> OfflineAssetStore {
+        let fresh = OfflineAssetStore(
+            rootURL: root, transport: MockFileDownloadTransport(),
+            fileManager: fileManager, defaults: UserDefaults(suiteName: "offline-tests-\(UUID().uuidString)")!
+        )
+        fresh.setActiveAccount(active, otherAccountsRegistered: others)
+        return fresh
+    }
+
+    private func writeIndex(_ infos: [CachedAssetInfo], in directory: URL) throws {
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        let encoder = JSONEncoder.immich
+        encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
+        try encoder.encode(infos).write(to: directory.appendingPathComponent("index.json"))
+    }
+
+    private func ownInfo(_ id: String, original: String) -> CachedAssetInfo {
+        CachedAssetInfo(
+            id: id, fileName: "\(id).jpg", originalFileName: original,
+            cachedAt: Date(timeIntervalSince1970: 1_700_000_200), size: 50, isVideo: false,
+            ratio: 1, fileCreatedAt: "2024-07-03T10:00:00.000Z", duration: nil, thumbhash: nil
+        )
+    }
+
+    private func fileSize(_ url: URL) -> Int? {
+        (try? FileManager.default.attributesOfItem(atPath: url.path))?[.size] as? Int
+    }
+
+    func test_OFF_AC16_legacyAttachedOrSetAside_neverReachesALaterAccount() async throws {
+        let folderA = store.folderURL(forAccount: Self.accountA)
+        let folderB = store.folderURL(forAccount: Self.accountB)
+
+        // a: attached to A.
+        try Self.seedLegacyContent(into: root)
+        let forA = await store.listing()
+        XCTAssertEqual(forA.items.count, 2)
+        let attachedSizes = regularFileSizes(under: folderA)
+        store.setActiveAccount(Self.accountB, otherAccountsRegistered: false)
+        let bAlone = await store.listing()
+        let bAloneCached = await store.isCached(assetID: "legacy-1")
+        store.setActiveAccount(Self.accountB, otherAccountsRegistered: true)
+        let bWithOthers = await store.listing()
+        XCTAssertTrue(bAlone.items.isEmpty)
+        XCTAssertTrue(bWithOthers.items.isEmpty)
+        XCTAssertFalse(bAloneCached)
+        XCTAssertEqual(regularFileSizes(under: folderA), attachedSizes)
+        XCTAssertFalse(FileManager.default.fileExists(atPath: store.unassignedURL.path))
+
+        // b: set aside.
+        try FileManager.default.removeItem(at: root)
+        store = makeStore(active: Self.accountA, others: true)
+        try Self.seedLegacyContent(into: root)
+        let forAAside = await store.listing()
+        XCTAssertTrue(forAAside.items.isEmpty)
+        let asideSizes = regularFileSizes(under: store.unassignedURL)
+        XCTAssertEqual(asideSizes["legacy-1.jpg"], 100)
+        store.setActiveAccount(Self.accountB, otherAccountsRegistered: false)
+        let bLater = await store.listing()
+        let bLaterCached = await store.isCached(assetID: "legacy-1")
+        XCTAssertTrue(bLater.items.isEmpty)
+        XCTAssertFalse(bLaterCached)
+        XCTAssertEqual(regularFileSizes(under: store.unassignedURL), asideSizes)
+        XCTAssertEqual(regularFileSizes(under: folderB).filter { $0.key != "index.json" }, [:])
+    }
+
+    func test_OFF_AC17bis_unassignedIsExcludedFromBackup_durably() async throws {
+        try Self.seedLegacyContent(into: root)
+        store.setActiveAccount(Self.accountA, otherAccountsRegistered: true)
+        _ = await store.listing()
+
+        XCTAssertTrue(FileManager.default.fileExists(atPath: store.unassignedURL.appendingPathComponent("legacy-1.jpg").path))
+        XCTAssertEqual(excluded(store.unassignedURL), true)
+    }
+
+    func test_OFF_AC47_recreatedUnassigned_isExcludedAgain_parentNever() async throws {
+        try Self.seedLegacyContent(into: root)
+        store.setActiveAccount(Self.accountA, otherAccountsRegistered: true)
+        _ = await store.listing()
+        try FileManager.default.removeItem(at: store.unassignedURL)
+        try Self.seedLegacyContent(into: root)
+
+        let later = makeStore(active: Self.accountB, others: true)
+        _ = await later.listing()
+
+        XCTAssertTrue(FileManager.default.fileExists(atPath: later.unassignedURL.appendingPathComponent("legacy-1.jpg").path))
+        XCTAssertEqual(excluded(later.unassignedURL), true)
+        XCTAssertNotEqual(excluded(root.deletingLastPathComponent()), true)
+    }
+
+    func test_OFF_AC40_legacyPartial_isDeleted_neverMoved() async throws {
+        for others in [false, true] {
+            if others { try FileManager.default.removeItem(at: root) }
+            let current = makeStore(active: Self.accountA, others: others)
+            try Self.seedLegacyContent(into: root)
+            try Data(repeating: 0x09, count: 10).write(to: root.appendingPathComponent("legacy-3.jpg.partial"))
+
+            let listing = await current.listing()
+
+            let everything = (FileManager.default.enumerator(atPath: root.path)?.allObjects as? [String]) ?? []
+            XCTAssertEqual(everything.filter { $0.hasSuffix(".partial") }, [], "others=\(others)")
+            XCTAssertFalse(listing.items.contains { $0.id == "legacy-3" || $0.id == "legacy-3.jpg" }, "others=\(others)")
+            XCTAssertEqual(try rootChildren(), others ? ["Accounts", "Unassigned"] : ["Accounts"], "others=\(others)")
+        }
+    }
+
+    func test_OFF_AC41_nameTakenInAccountFolder_goesToUnassignedWithUUIDPrefix() async throws {
+        let folderA = store.folderURL(forAccount: Self.accountA)
+
+        // The colliding item is a payload.
+        let scripted1 = ScriptedFileManager(root: root, firstAtRoot: "legacy-1.jpg")
+        let jpgStore = makeStore(scripted1, active: Self.accountA, others: false)
+        try FileManager.default.createDirectory(at: folderA, withIntermediateDirectories: true)
+        try Data(repeating: 0x55, count: 50).write(to: folderA.appendingPathComponent("legacy-1.jpg"))
+        try Self.seedLegacyContent(into: root)
+        _ = await jpgStore.listing()
+
+        XCTAssertGreaterThanOrEqual(scripted1.rootListings, 1)
+        XCTAssertEqual(try Data(contentsOf: folderA.appendingPathComponent("legacy-1.jpg")), Data(repeating: 0x55, count: 50))
+        let aside1 = regularFileSizes(under: jpgStore.unassignedURL)
+        XCTAssertEqual(aside1.count, 1)
+        XCTAssertTrue(nameMatches(aside1.keys.first ?? "", uuidPrefixedName: "legacy-1.jpg"))
+        XCTAssertEqual(aside1.values.first, 100)
+        XCTAssertEqual(regularFileSizes(under: folderA)["legacy-2.jpg"], 300)
+        XCTAssertNotNil(regularFileSizes(under: folderA)["index.json"])
+        XCTAssertEqual(try rootChildren(), ["Accounts", "Unassigned"])
+
+        // The colliding item is the legacy index.
+        try FileManager.default.removeItem(at: root)
+        let scripted2 = ScriptedFileManager(root: root, firstAtRoot: "index.json")
+        let indexStore = makeStore(scripted2, active: Self.accountA, others: false)
+        try writeIndex([ownInfo("own-1", original: "OWN.jpg")], in: folderA)
+        try Data(repeating: 0x33, count: 50).write(to: folderA.appendingPathComponent("own-1.jpg"))
+        try Self.seedLegacyContent(into: root)
+        let listing = await indexStore.listing()
+
+        XCTAssertGreaterThanOrEqual(scripted2.rootListings, 1)
+        let items = listing.items.sorted { $0.id < $1.id }
+        XCTAssertEqual(items.map(\.id), ["legacy-1", "legacy-2", "own-1"])
+        XCTAssertEqual(items.first { $0.id == "own-1" }?.originalFileName, "OWN.jpg")
+        XCTAssertNil(items.first { $0.id == "legacy-1" }?.originalFileName)
+        XCTAssertNil(items.first { $0.id == "legacy-2" }?.originalFileName)
+        let aside2 = try FileManager.default.contentsOfDirectory(atPath: indexStore.unassignedURL.path)
+        XCTAssertEqual(aside2.count, 1)
+        let movedName = aside2.first ?? ""
+        XCTAssertTrue(nameMatches(movedName, uuidPrefixedName: "index.json"))
+        let decoded = try JSONDecoder.immich.decode(
+            [CachedAssetInfo].self, from: Data(contentsOf: indexStore.unassignedURL.appendingPathComponent(movedName))
+        )
+        XCTAssertEqual(decoded.sorted { $0.id < $1.id }, Self.legacyInfos)
+    }
+
+    func test_OFF_AC42_existingUnassigned_isNeverListedNorTouched() async throws {
+        let unassigned = store.unassignedURL
+        try FileManager.default.createDirectory(at: unassigned, withIntermediateDirectories: true)
+        try Data(repeating: 0x42, count: 64).write(to: unassigned.appendingPathComponent("u1.jpg"))
+        try writeIndex([ownInfo("u1", original: "U1.jpg")], in: unassigned)
+        let before = regularFileSizes(under: unassigned)
+
+        let first = await store.listing()
+        let cached = await store.isCached(assetID: "u1")
+        let reopened = await reopenedStore().listing()
+
+        XCTAssertTrue(first.items.isEmpty)
+        XCTAssertTrue(reopened.items.isEmpty)
+        XCTAssertFalse(cached)
+        XCTAssertFalse((first.items + reopened.items).contains { $0.id == "Accounts" || $0.id == "Unassigned" })
+        XCTAssertEqual(regularFileSizes(under: unassigned), before)
+        XCTAssertEqual(try rootChildren(), ["Accounts", "Unassigned"])
+    }
+
+    func test_OFF_AC45_failedMoves_leaveTheItemAtTheRoot_andNeverHandItToALaterAccount() async throws {
+        let folderA = store.folderURL(forAccount: Self.accountA)
+        try Self.seedLegacyContent(into: root)
+        let scripted = ScriptedFileManager(failingMoves: ["legacy-1.jpg"], root: root, firstAtRoot: "legacy-1.jpg")
+        let failing = makeStore(scripted, active: Self.accountA, others: false)
+
+        let listing = await failing.listing()
+        let cached = await failing.isCached(assetID: "legacy-1")
+
+        XCTAssertEqual(listing.items.map(\.id), ["legacy-2"])
+        XCTAssertFalse(cached)
+        XCTAssertEqual(fileSize(root.appendingPathComponent("legacy-1.jpg")), 100)
+        XCTAssertEqual(scripted.attempts.count, 2)
+        XCTAssertEqual(scripted.attempts.first?.path, folderA.appendingPathComponent("legacy-1.jpg").path)
+        XCTAssertEqual(scripted.attempts.last?.deletingLastPathComponent().lastPathComponent, "Unassigned")
+        XCTAssertTrue(nameMatches(scripted.attempts.last?.lastPathComponent ?? "", uuidPrefixedName: "legacy-1.jpg"))
+        XCTAssertGreaterThanOrEqual(scripted.rootListings, 1)
+
+        let later = makeStore(active: Self.accountB, others: false)
+        let forB = await later.listing()
+        let cachedForB = await later.isCached(assetID: "legacy-1")
+
+        XCTAssertTrue(forB.items.isEmpty)
+        XCTAssertFalse(cachedForB)
+        let aside = regularFileSizes(under: later.unassignedURL)
+        XCTAssertEqual(aside["legacy-1.jpg"] ?? aside.first { nameMatches($0.key, uuidPrefixedName: "legacy-1.jpg") }?.value, 100)
+        XCTAssertEqual(regularFileSizes(under: later.folderURL(forAccount: Self.accountB)).filter { $0.key != "index.json" }, [:])
+        XCTAssertEqual(try rootChildren(), ["Accounts", "Unassigned"])
+    }
+
+    func test_OFF_AC46_traceOfAnEarlierReprise_sendsLeftoversToUnassigned() async throws {
+        for variant in ["unassigned", "accounts"] {
+            if variant == "accounts" { try FileManager.default.removeItem(at: root) }
+            let later = makeStore(active: Self.accountB, others: false)
+            let folderA = later.folderURL(forAccount: Self.accountA)
+            if variant == "unassigned" {
+                try FileManager.default.createDirectory(at: later.unassignedURL, withIntermediateDirectories: true)
+                try Data(repeating: 0x42, count: 64).write(to: later.unassignedURL.appendingPathComponent("u1.jpg"))
+            } else {
+                try FileManager.default.createDirectory(at: folderA, withIntermediateDirectories: true)
+            }
+            try Data(repeating: 0x07, count: 100).write(to: root.appendingPathComponent("legacy-1.jpg"))
+
+            let listing = await later.listing()
+            let cached = await later.isCached(assetID: "legacy-1")
+
+            XCTAssertTrue(listing.items.isEmpty, variant)
+            XCTAssertFalse(cached, variant)
+            XCTAssertEqual(regularFileSizes(under: later.unassignedURL)["legacy-1.jpg"], 100, variant)
+            XCTAssertFalse(FileManager.default.fileExists(
+                atPath: later.folderURL(forAccount: Self.accountB).appendingPathComponent("legacy-1.jpg").path), variant)
+            if variant == "unassigned" {
+                XCTAssertEqual(regularFileSizes(under: later.unassignedURL)["u1.jpg"], 64, variant)
+            } else {
+                XCTAssertEqual(try FileManager.default.contentsOfDirectory(atPath: folderA.path), [], variant)
+            }
+        }
+    }
+}
+
+/// Real file operations, except that chosen moves fail (recording their
+/// destination) and the root listing can be reordered, so a test can pin the
+/// order in which `adoptLegacyContent` meets the items.
+final class ScriptedFileManager: FileManager {
+    private let failingMoves: Set<String>
+    private let root: URL?
+    private let firstAtRoot: String?
+    private(set) var attempts: [URL] = []
+    private(set) var rootListings = 0
+
+    init(failingMoves: Set<String> = [], root: URL? = nil, firstAtRoot: String? = nil) {
+        self.failingMoves = failingMoves
+        self.root = root
+        self.firstAtRoot = firstAtRoot
+        super.init()
+    }
+
+    override func moveItem(at srcURL: URL, to dstURL: URL) throws {
+        if failingMoves.contains(srcURL.lastPathComponent) {
+            attempts.append(dstURL)
+            throw CocoaError(.fileWriteNoPermission)
+        }
+        try super.moveItem(at: srcURL, to: dstURL)
+    }
+
+    override func contentsOfDirectory(
+        at url: URL, includingPropertiesForKeys keys: [URLResourceKey]?,
+        options mask: FileManager.DirectoryEnumerationOptions = []
+    ) throws -> [URL] {
+        let contents = try super.contentsOfDirectory(at: url, includingPropertiesForKeys: keys, options: mask)
+        guard let root, let firstAtRoot, url.standardizedFileURL.path == root.standardizedFileURL.path else {
+            return contents
+        }
+        rootListings += 1
+        return contents.filter { $0.lastPathComponent == firstAtRoot }
+            + contents.filter { $0.lastPathComponent != firstAtRoot }
     }
 }

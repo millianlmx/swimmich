@@ -136,8 +136,12 @@ private final class OfflineScopeBox: @unchecked Sendable {
 /// were issued for and are refused (`CancellationError` / `false`) when it is
 /// not the active one. `maxCacheSize` applies to each account's folder
 /// separately. Content left by the single-folder layout is moved, never
-/// deleted, at the first load of an account: into its folder when no other
-/// account is registered, into `Unassigned/` otherwise. The root is never
+/// deleted (a `.partial` apart), at the first load of an account: into its
+/// folder when three guards hold (no other account registered, no
+/// `Unassigned/`, nothing else under `Accounts/`; evaluated once per pass),
+/// into `Unassigned/` (flagged excluded from backup) otherwise or on a name
+/// collision (`<UUID>-<name>`). A move that fails falls back to `Unassigned/`,
+/// then the item stays at the root, served to nobody. The root is never
 /// reconciled (it would adopt `Accounts/` and `Unassigned/` as copies).
 ///
 /// Downloads stream to disk (`URLSession.download(for:delegate:)` writes a temp
@@ -519,28 +523,72 @@ actor OfflineAssetStore {
         reconcile(folder)
     }
 
-    /// Moves what the single-folder layout left directly under the root into
-    /// `folder` (the account is the only one registered) or `Unassigned/`.
-    /// A `.partial` or a name already taken goes to `Unassigned/` too (prefixed
-    /// by a UUID when that name is taken as well). Never deletes or overwrites.
+    /// Moves what the single-folder layout left directly under the root: into
+    /// `folder` or into `Unassigned/`. Three guards, evaluated once before the
+    /// first move of the pass, send everything to the account folder only when
+    /// no other account is registered (`otherAccountsRegistered == false`),
+    /// `Unassigned/` does not exist, and `Accounts/` holds nothing but `folder`
+    /// (so a leftover of an earlier pass is never handed to another account).
+    /// A `.partial` is deleted, never moved. A name already taken at the
+    /// destination goes to `Unassigned/<UUID>-<name>`. A move that fails falls
+    /// back to `Unassigned/<UUID>-<name>` once; if that fails too the item stays
+    /// at the root, served to no account, and is retried at the next first load.
+    /// Nothing else is deleted or overwritten, and `Unassigned/` is flagged
+    /// excluded from backup each time it is (re)created.
     private func adoptLegacyContent(into folder: URL, otherAccountsRegistered: Bool) {
         let reserved: Set<String> = [Self.accountsFolderName, Self.unassignedFolderName]
         let legacy = ((try? fileManager.contentsOfDirectory(at: rootURL, includingPropertiesForKeys: nil)) ?? [])
             .filter { !reserved.contains($0.lastPathComponent) }
         guard !legacy.isEmpty else { return }
-        let destination = otherAccountsRegistered ? unassignedURL : folder
-        for item in legacy {
-            let name = item.lastPathComponent
-            var target = destination.appendingPathComponent(name)
-            if item.pathExtension == "partial" || fileManager.fileExists(atPath: target.path) {
-                target = unassignedURL.appendingPathComponent(name)
-                if fileManager.fileExists(atPath: target.path) {
-                    target = unassignedURL.appendingPathComponent("\(UUID().uuidString)-\(name)")
-                }
-            }
-            try? ensureFolderExists(target.deletingLastPathComponent())
-            try? fileManager.moveItem(at: item, to: target)
+        let toAccount = !otherAccountsRegistered
+            && !fileManager.fileExists(atPath: unassignedURL.path)
+            && accountsHoldOnly(folder)
+        func setAside(_ name: String) -> URL {
+            unassignedURL.appendingPathComponent("\(UUID().uuidString)-\(name)")
         }
+        for item in legacy {
+            if item.pathExtension == "partial" {
+                try? fileManager.removeItem(at: item)
+                continue
+            }
+            let name = item.lastPathComponent
+            var target = (toAccount ? folder : unassignedURL).appendingPathComponent(name)
+            var isPrefixed = false
+            if fileManager.fileExists(atPath: target.path) {
+                target = setAside(name)
+                isPrefixed = true
+            }
+            if isPrefixed || !toAccount { ensureUnassignedExists() }
+            do {
+                try fileManager.moveItem(at: item, to: target)
+            } catch where !isPrefixed {
+                ensureUnassignedExists()
+                try? fileManager.moveItem(at: item, to: setAside(name))
+            } catch {
+                // Already the last resort: the item stays at the root.
+            }
+        }
+    }
+
+    /// `true` when `Accounts/` is readable and every child (hidden ones
+    /// included) is `folder`.
+    private func accountsHoldOnly(_ folder: URL) -> Bool {
+        let accounts = rootURL.appendingPathComponent(Self.accountsFolderName, isDirectory: true)
+        guard let children = try? fileManager.contentsOfDirectory(at: accounts, includingPropertiesForKeys: nil) else {
+            return false
+        }
+        return children.allSatisfy { $0.lastPathComponent == folder.lastPathComponent }
+    }
+
+    /// Creates `Unassigned/` and flags it excluded from backup. Idempotent and
+    /// redone before every move into it: the folder may have been deleted and
+    /// recreated since. A failure is left to the move that follows.
+    private func ensureUnassignedExists() {
+        try? ensureFolderExists(unassignedURL)
+        var unassigned = unassignedURL
+        var values = URLResourceValues()
+        values.isExcludedFromBackup = true
+        try? unassigned.setResourceValues(values)
     }
 
     /// Confronts the index with the disk: entries whose file is gone are

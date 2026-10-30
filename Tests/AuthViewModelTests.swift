@@ -1213,7 +1213,7 @@ final class AuthViewModelTests: XCTestCase {
     }
 
     @MainActor
-    func test_ACC_AC7_restoreSession_onlyAccount_adoptsLegacyContent() async throws {
+    func test_OFF_AC14_ACC_AC7_restoreSession_onlyAccount_adoptsLegacyContent() async throws {
         for registry in ["[a]", "[]"] {
             let fx = await LogoutFixture.make()
             defer { fx.cleanup() }
@@ -1224,6 +1224,7 @@ final class AuthViewModelTests: XCTestCase {
                 fx.defaults.set(try JSONEncoder.immich.encode([SavedAccount]()), forKey: AuthViewModel.serverListDefaultsKey)
             }
             try seedLegacyContent(fx)
+            let downloadsBeforeRelaunch = fx.transport.downloadCount
 
             let (auth, store, index) = fx.relaunch()
             await auth.restoreSession()
@@ -1231,19 +1232,28 @@ final class AuthViewModelTests: XCTestCase {
 
             XCTAssertTrue(auth.isAuthenticated, registry)
             XCTAssertEqual(Set(index.items.map(\.id)), ["legacy-1", "legacy-2"], "registry \(registry)")
+            XCTAssertEqual(index.items.sorted { $0.id < $1.id }, OfflineAssetStoreTests.legacyInfos, "registry \(registry): full metadata")
             XCTAssertEqual(index.info("legacy-1")?.originalFileName, "IMG_0001.jpg", registry)
             XCTAssertEqual(index.items.reduce(Int64(0)) { $0 + $1.size }, 400, registry)
+            XCTAssertEqual(fx.transport.downloadCount, downloadsBeforeRelaunch, "registry \(registry): no download")
             XCTAssertEqual(
                 fx.regularFiles(under: fx.accountFolder(fx.alice.id)),
                 ["index.json", "legacy-1.jpg", "legacy-2.jpg"], "registry \(registry)"
             )
             XCTAssertTrue(fx.directRegularFiles(in: fx.offlineRoot).isEmpty, "registry \(registry)")
             XCTAssertTrue(fx.regularFiles(under: fx.offlineRoot.appendingPathComponent("Unassigned")).isEmpty, "registry \(registry)")
+
+            let (secondAuth, secondStore, secondIndex) = fx.relaunch()
+            await secondAuth.restoreSession()
+            await secondIndex.refresh(from: secondStore)
+
+            XCTAssertEqual(secondIndex.items.sorted { $0.id < $1.id }, OfflineAssetStoreTests.legacyInfos, "registry \(registry): second launch")
+            XCTAssertEqual(fx.transport.downloadCount, downloadsBeforeRelaunch, "registry \(registry): second launch, no download")
         }
     }
 
     @MainActor
-    func test_ACC_AC8_restoreSession_otherAccounts_legacyGoesToUnassigned() async throws {
+    func test_OFF_AC44_ACC_AC8_restoreSession_otherAccounts_legacyGoesToUnassigned() async throws {
         let fx = await LogoutFixture.make()
         defer { fx.cleanup() }
         try seedLegacyContent(fx)
@@ -1261,8 +1271,85 @@ final class AuthViewModelTests: XCTestCase {
         XCTAssertTrue(fx.directRegularFiles(in: fx.offlineRoot).isEmpty)
     }
 
+    /// Where the legacy content landed once `accountID` is active: its own
+    /// folder when the registry flag was `false`, `Unassigned/` when `true`.
     @MainActor
-    func test_ACC_AC14_logout_wipesEveryAccountAndUnassigned() async throws {
+    private func assertLegacyDestination(
+        _ fx: LogoutFixture, accountID: String, flag: Bool, _ message: String,
+        file: StaticString = #filePath, line: UInt = #line
+    ) async {
+        await fx.offlineIndex.refresh(from: fx.offlineStore)
+        let all = ["index.json", "legacy-1.jpg", "legacy-2.jpg"]
+        let unassigned = fx.offlineRoot.appendingPathComponent("Unassigned")
+        if flag {
+            XCTAssertEqual(fx.regularFiles(under: unassigned), all, message, file: file, line: line)
+            XCTAssertTrue(fx.offlineIndex.isEmpty, message, file: file, line: line)
+            XCTAssertEqual(fx.regularFiles(under: fx.accountFolder(accountID)).filter { $0 != "index.json" }, [], message, file: file, line: line)
+        } else {
+            XCTAssertEqual(fx.regularFiles(under: fx.accountFolder(accountID)), all, message, file: file, line: line)
+            XCTAssertEqual(Set(fx.offlineIndex.items.map(\.id)), ["legacy-1", "legacy-2"], message, file: file, line: line)
+            XCTAssertFalse(FileManager.default.fileExists(atPath: unassigned.path), message, file: file, line: line)
+        }
+    }
+
+    @MainActor
+    func test_OFF_AC44_passwordAndOAuthLogin_passTheRegistryFlag() async throws {
+        for oauth in [false, true] {
+            for otherAccounts in [false, true] {
+                let fx = await LogoutFixture.make()
+                defer { fx.cleanup() }
+                let label = "oauth=\(oauth) otherAccounts=\(otherAccounts)"
+                if !otherAccounts { fx.auth.removeSavedAccount(fx.bob) }
+                let aliceEntry = try XCTUnwrap(fx.auth.savedAccounts.first { $0.id == fx.alice.id })
+                fx.auth.removeSavedAccount(aliceEntry)
+                try seedLegacyContent(fx)
+                fx.auth.serverURLString = "https://photos.example.com"
+                _ = fx.auth.baseURL
+
+                if oauth {
+                    fx.auth.serverConfig = makeOAuthConfig()
+                    fx.mock.oauthCallbackResponse = fx.mock.loginResponse
+                    fx.auth.oauthSessionHandler = { _ in URL(string: "app.immich:///oauth-callback?code=abc") }
+                    await fx.auth.startOAuthFlow()
+                } else {
+                    await fx.auth.login(email: "alice@example.com", password: "secret")
+                }
+
+                XCTAssertTrue(fx.auth.isAuthenticated, label)
+                XCTAssertEqual(
+                    fx.auth.savedAccounts.map(\.id),
+                    otherAccounts ? [fx.alice.id, fx.bob.id] : [fx.alice.id], label
+                )
+                await assertLegacyDestination(fx, accountID: fx.alice.id, flag: otherAccounts, label)
+            }
+        }
+    }
+
+    @MainActor
+    func test_OFF_AC44_switchToAccount_passesTheRegistryFlag() async throws {
+        // true: alice and bob registered.
+        let withOthers = await LogoutFixture.make()
+        defer { withOthers.cleanup() }
+        try seedLegacyContent(withOthers)
+        await withOthers.auth.switchToAccount(withOthers.bob)
+        XCTAssertEqual(withOthers.auth.activeAccountID, withOthers.bob.id)
+        await assertLegacyDestination(withOthers, accountID: withOthers.bob.id, flag: true, "other accounts registered")
+
+        // false: bob removed, alice alone in the registry.
+        let alone = await LogoutFixture.make()
+        defer { alone.cleanup() }
+        await alone.auth.switchToAccount(alone.bob)
+        alone.auth.removeSavedAccount(alone.bob)
+        let aliceEntry = try XCTUnwrap(alone.auth.savedAccounts.first { $0.id == alone.alice.id })
+        try seedLegacyContent(alone)
+        await alone.auth.switchToAccount(aliceEntry)
+        XCTAssertEqual(alone.auth.savedAccounts.map(\.id), [alone.alice.id])
+        XCTAssertEqual(alone.auth.activeAccountID, alone.alice.id)
+        await assertLegacyDestination(alone, accountID: alone.alice.id, flag: false, "alice alone")
+    }
+
+    @MainActor
+    func test_OFF_AC43_ACC_AC14_logout_wipesEveryAccountAndUnassigned() async throws {
         let fx = await LogoutFixture.make()
         defer { fx.cleanup() }
         try await fx.seedOffline("b1", for: fx.bob.id)
@@ -1309,6 +1396,7 @@ final class AuthViewModelTests: XCTestCase {
         XCTAssertNil(vm.errorMessage)
         XCTAssertNil(vm.lastDownloadedID)
         XCTAssertTrue(fx.regularFiles(under: fx.offlineRoot).isEmpty)
+        XCTAssertFalse(FileManager.default.fileExists(atPath: unassigned.path))
         XCTAssertTrue(fx.offlineIndex.isEmpty)
         let reopened = OfflineAssetStore(rootURL: fx.offlineRoot, transport: fx.transport, defaults: fx.offlineDefaults)
         reopened.setActiveAccount(fx.alice.id, otherAccountsRegistered: true)
