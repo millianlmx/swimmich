@@ -501,6 +501,31 @@ final class ImmichAPIClientTests: XCTestCase {
         XCTAssertTrue(query.contains("withHidden=true"))
     }
 
+    func test_People_AC_17_searchPersonRequestShape() async throws {
+        let session = makeMockedSession()
+        let client = ImmichAPIClient(session: session)
+        client.configure(baseURL: URL(string: "https://example.com")!, token: "tok")
+        let second = Self.personJSON.replacingOccurrences(of: "\"p1\"", with: "\"p2\"").replacingOccurrences(of: "Alice", with: "Zoe B")
+        CapturingURLProtocol.nextData = "[\(Self.personJSON), \(second)]".data(using: .utf8)!
+
+        let found = try await client.searchPerson(name: "Zoë A", withHidden: true)
+
+        guard let captured = CapturingURLProtocol.lastRequest else {
+            return XCTFail("no request captured")
+        }
+        XCTAssertEqual(captured.httpMethod, "GET")
+        XCTAssertEqual(captured.url?.path, "/api/search/person")
+        XCTAssertNil(captured.httpBody)
+        XCTAssertTrue(CapturingURLProtocol.lastBody.isEmpty)
+        XCTAssertEqual(captured.value(forHTTPHeaderField: "Authorization"), "Bearer tok")
+        let components = try XCTUnwrap(URLComponents(url: try XCTUnwrap(captured.url), resolvingAgainstBaseURL: false))
+        XCTAssertTrue(components.percentEncodedQuery?.contains("name=Zo%C3%AB%20A") == true, "name must be percent-encoded")
+        XCTAssertEqual(components.queryItems?.first { $0.name == "name" }?.value, "Zoë A")
+        XCTAssertEqual(components.queryItems?.first { $0.name == "withHidden" }?.value, "true")
+        XCTAssertEqual(found.map(\.id), ["p1", "p2"])
+        XCTAssertEqual(found.map(\.name), ["Alice", "Zoe B"])
+    }
+
     func test_P0_mergePeople_usesPostMergeEndpoint() async throws {
         let session = makeMockedSession()
         let client = ImmichAPIClient(session: session)

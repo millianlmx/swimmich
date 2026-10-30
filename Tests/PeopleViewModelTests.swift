@@ -850,4 +850,470 @@ final class PeopleViewModelTests: XCTestCase {
         await vm.toggleFavorite(vm.livePerson(p3))
         XCTAssertEqual(mock.lastUpdatePersonDto?.isFavorite, false)
     }
+
+    // MARK: - Search by name (test_People_AC_<n>_…)
+
+    /// Holds a `searchPerson` answer until the test opens it. Unlike
+    /// `TestLatch`, it ignores task cancellation: the held request belongs to a
+    /// task that the next keystroke cancels.
+    private final class SearchGate: @unchecked Sendable {
+        private let lock = NSLock()
+        private var opened = false
+        private var continuation: CheckedContinuation<Void, Never>?
+        func wait() async {
+            await withCheckedContinuation { c in
+                lock.lock()
+                if opened { lock.unlock(); c.resume() } else { continuation = c; lock.unlock() }
+            }
+        }
+        func open() {
+            lock.lock(); opened = true
+            let c = continuation; continuation = nil
+            lock.unlock()
+            c?.resume()
+        }
+    }
+
+    /// A VM whose debounce wait is empty: a keystroke's task runs at once.
+    @MainActor
+    private func makeSearchVM(_ mock: MockImmichClient) -> PeopleViewModel {
+        let vm = makeVM(mock)
+        vm.debounceWait = {}
+        return vm
+    }
+
+    /// One keystroke, then the search task it started.
+    @MainActor
+    private func enterSearch(_ vm: PeopleViewModel, _ text: String) async {
+        vm.searchQuery = text
+        vm.searchQueryDidChange()
+        await vm.searchTask?.value
+    }
+
+    @MainActor
+    func test_People_AC_12_typingSearchesWithHiddenFalseInServerOrder() async {
+        let mock = MockImmichClient()
+        let r1 = makePerson(id: "r1", name: "Alice")
+        let r2 = makePerson(id: "r2", name: "Alicia")
+        mock.searchPersonResponse = [r2, r1]
+        let vm = makeSearchVM(mock)
+        XCTAssertFalse(vm.showingHidden)
+
+        await enterSearch(vm, " ali ")
+
+        XCTAssertEqual(mock.searchPersonCalls, [PersonSearchCall(name: "ali", withHidden: false)])
+        XCTAssertEqual(vm.searchState, .results([r2, r1]))
+        XCTAssertTrue(vm.isSearchActive)
+        XCTAssertTrue(mock.getPeopleCalls.isEmpty)
+    }
+
+    @MainActor
+    func test_People_AC_13_clearingFieldRestoresListWithoutRequests() async {
+        let (mock, vm) = pagedPeople()
+        vm.debounceWait = {}
+        await vm.appear(visit: UUID())
+        mock.searchPersonResponse = [makePerson(id: "r1", name: "Alice")]
+        let people = vm.people
+        let getCalls = mock.getPeopleCalls.count
+
+        for cleared in ["", "   "] {
+            await enterSearch(vm, "ali")
+            XCTAssertEqual(vm.searchState, .results([makePerson(id: "r1", name: "Alice")]), "cleared with \(cleared.debugDescription)")
+            let searches = mock.searchPersonCalls.count
+
+            await enterSearch(vm, cleared)
+
+            XCTAssertEqual(mock.searchPersonCalls.count, searches, "cleared with \(cleared.debugDescription)")
+            XCTAssertEqual(vm.searchState, .inactive)
+            XCTAssertFalse(vm.isSearchActive)
+            XCTAssertEqual(vm.people, people)
+            XCTAssertTrue(vm.hasMorePeople)
+            XCTAssertEqual(mock.getPeopleCalls.count, getCalls)
+        }
+    }
+
+    @MainActor
+    func test_People_AC_14_staleResponseIsDropped() async {
+        let mock = MockImmichClient()
+        let old = makePerson(id: "old", name: "Al")
+        let fresh = makePerson(id: "fresh", name: "Alice")
+        let gate = SearchGate()
+        mock.searchPersonHandler = { call in
+            if call.name == "al" {
+                await gate.wait()
+                return [old]
+            }
+            return [fresh]
+        }
+        let vm = makeSearchVM(mock)
+
+        vm.searchQuery = "al"
+        vm.searchQueryDidChange()
+        let alTask = vm.searchTask
+        await pollUntil("al requested") { mock.searchPersonCalls.count == 1 }
+        await enterSearch(vm, "ali")
+        XCTAssertEqual(vm.searchState, .results([fresh]))
+
+        gate.open()
+        await alTask?.value
+
+        XCTAssertEqual(vm.searchState, .results([fresh]))
+        XCTAssertEqual(statsCalls(mock, "old"), 0)
+        XCTAssertEqual(statsCalls(mock, "fresh"), 1)
+    }
+
+    @MainActor
+    func test_People_AC_15_emptyAndFailedSearchStates() async {
+        // No result: its own state, with a list that is empty too.
+        let empty = MockImmichClient()
+        empty.searchPersonResponse = []
+        let emptyVM = makeSearchVM(empty)
+        await enterSearch(emptyVM, "zzz")
+        XCTAssertEqual(emptyVM.searchState, .empty)
+        XCTAssertNotEqual(emptyVM.searchState, .inactive)
+        XCTAssertTrue(emptyVM.isSearchActive)
+        XCTAssertTrue(emptyVM.people.isEmpty)
+        XCTAssertNil(emptyVM.errorMessage)
+
+        // Failure: its own message; the paged list and its error stay as they were.
+        let (mock, vm) = pagedPeople()
+        vm.debounceWait = {}
+        await vm.appear(visit: UUID())
+        mock.searchPersonError = APIError.serverError(500, "boom")
+        await enterSearch(vm, "ali")
+        XCTAssertEqual(vm.searchState, .failed(UserFacingError.serverErrorMessage))
+        XCTAssertNil(vm.errorMessage)
+        XCTAssertEqual(vm.people.map(\.id), ["p1", "p2"])
+
+        await enterSearch(vm, "")
+        XCTAssertEqual(vm.searchState, .inactive)
+        XCTAssertEqual(vm.people.map(\.id), ["p1", "p2"])
+        XCTAssertEqual(mock.getPeopleCalls.count, 1)
+    }
+
+    @MainActor
+    func test_People_AC_16_toggleHiddenRelaunchesSearchAndReloadsList() async {
+        let (mock, vm) = pagedPeople()
+        vm.debounceWait = {}
+        await vm.appear(visit: UUID())
+        mock.searchPersonResponse = [makePerson(id: "r1", name: "Alice")]
+        await enterSearch(vm, "ali")
+        mock.peopleResponsesByPage[1] = peoplePage(["p1", "h1"], hasNext: false)
+        let getCalls = mock.getPeopleCalls.count
+
+        await vm.toggleShowHidden()
+
+        XCTAssertEqual(mock.searchPersonCalls, [
+            PersonSearchCall(name: "ali", withHidden: false),
+            PersonSearchCall(name: "ali", withHidden: true),
+        ])
+        XCTAssertEqual(mock.getPeopleCalls.count, getCalls + 1)
+        XCTAssertEqual(mock.getPeopleCalls.last, PeopleCall(page: 1, withHidden: true))
+
+        await enterSearch(vm, "")
+        XCTAssertTrue(vm.showingHidden)
+        XCTAssertEqual(vm.people.map(\.id), ["p1", "h1"])
+        XCTAssertEqual(mock.getPeopleCalls.count, getCalls + 1)
+    }
+
+    @MainActor
+    func test_People_AC_18_resultOutsidePagesOpensAndRenamesInPlace() async {
+        let (mock, vm) = pagedPeople()
+        vm.debounceWait = {}
+        await vm.appear(visit: UUID())
+        let first = makePerson(id: "r0", name: "Rita")
+        let r = makePerson(id: "r", name: "Rick")
+        mock.searchPersonResponse = [first, r]
+        mock.searchMetadataResponse = assetPage(["a1"], next: nil)
+        await enterSearch(vm, "ri")
+        XCTAssertFalse(vm.people.contains { $0.id == "r" })
+
+        await vm.select(vm.livePerson(r))
+        XCTAssertEqual(mock.searchMetadataCalls.last?.personIds, ["r"])
+        XCTAssertEqual(vm.personAssets.map(\.id), ["a1"])
+
+        let searches = mock.searchPersonCalls.count
+        await vm.rename(vm.livePerson(r), to: "X")
+        XCTAssertEqual(vm.livePerson(r).name, "X")
+        XCTAssertEqual(vm.searchResults.map(\.id), ["r0", "r"])
+        XCTAssertEqual(vm.searchResults.map(\.name), ["Rita", "X"])
+        XCTAssertEqual(mock.searchPersonCalls.count, searches)
+
+        await vm.toggleFavorite(vm.livePerson(r))
+        XCTAssertEqual(mock.lastUpdatePersonDto?.isFavorite, true)
+        await vm.toggleFavorite(vm.livePerson(r))
+        XCTAssertEqual(mock.lastUpdatePersonDto?.isFavorite, false)
+        XCTAssertEqual(mock.searchPersonCalls.count, searches)
+    }
+
+    @MainActor
+    func test_People_AC_20_resultShowsItsRealCount() async {
+        let mock = MockImmichClient()
+        mock.searchPersonResponse = [makePerson(id: "r", name: "Rick")]
+        mock.personStatisticsResponse = ["r": PersonStatisticsResponseDto(assets: 7)]
+        let vm = makeSearchVM(mock)
+        XCTAssertNil(vm.statsByID["r"])
+
+        await enterSearch(vm, "ri")
+
+        XCTAssertEqual(vm.assetCount(for: "r"), 7)
+    }
+
+    @MainActor
+    func test_People_AC_27_mergeDuringSearchRelaunchesSearch() async {
+        let (mock, vm) = pagedPeople()
+        vm.debounceWait = {}
+        await vm.appear(visit: UUID())
+        let r1 = makePerson(id: "p1", name: "Alice")
+        let r2 = makePerson(id: "p2", name: "Alicia")
+        mock.searchPersonHandler = { _ in mock.searchPersonCalls.count == 1 ? [r1, r2] : [r1] }
+        await enterSearch(vm, "ali")
+        XCTAssertEqual(vm.searchState, .results([r1, r2]))
+        let getCalls = mock.getPeopleCalls.count
+
+        // A refused merge relaunches nothing.
+        mock.peopleError = APIError.serverError(500, "boom")
+        await vm.merge(["p2"], into: r1)
+        mock.peopleError = nil
+        XCTAssertEqual(mock.searchPersonCalls.count, 1)
+        XCTAssertEqual(vm.searchState, .results([r1, r2]))
+
+        await vm.merge(["p2"], into: r1)
+
+        XCTAssertEqual(mock.searchPersonCalls, [
+            PersonSearchCall(name: "ali", withHidden: false),
+            PersonSearchCall(name: "ali", withHidden: false),
+        ])
+        XCTAssertEqual(vm.searchState, .results([r1]))
+        XCTAssertEqual(mock.getPeopleCalls.count, getCalls + 1)
+        XCTAssertEqual(mock.getPeopleCalls.last, PeopleCall(page: 1, withHidden: false))
+    }
+
+    @MainActor
+    func test_People_AC_29_refreshInSearchModeRelaunchesWithoutList() async {
+        let (mock, vm) = pagedPeople()
+        vm.debounceWait = {}
+        await vm.appear(visit: UUID())
+        mock.searchPersonResponse = [makePerson(id: "r1", name: "Alice"), makePerson(id: "r2", name: "Alicia")]
+        mock.personStatisticsResponse = ["r1": PersonStatisticsResponseDto(assets: 5), "r2": PersonStatisticsResponseDto(assets: 3)]
+        await enterSearch(vm, "ali")
+        await vm.toggleShowHidden()
+        XCTAssertEqual(mock.searchPersonCalls.last, PersonSearchCall(name: "ali", withHidden: true))
+        let searches = mock.searchPersonCalls.count
+        let getCalls = mock.getPeopleCalls.count
+        XCTAssertEqual(statsCalls(mock, "r1"), 1)
+        XCTAssertEqual(statsCalls(mock, "r2"), 1)
+
+        mock.personStatisticsResponse["r1"] = PersonStatisticsResponseDto(assets: 6)
+        await vm.refresh()
+
+        XCTAssertEqual(mock.searchPersonCalls.count, searches + 1)
+        XCTAssertEqual(mock.searchPersonCalls.last, PersonSearchCall(name: "ali", withHidden: true))
+        XCTAssertEqual(statsCalls(mock, "r1"), 2)
+        XCTAssertEqual(statsCalls(mock, "r2"), 2)
+        XCTAssertEqual(vm.assetCount(for: "r1"), 6)
+        XCTAssertEqual(mock.getPeopleCalls.count, getCalls)
+    }
+
+    @MainActor
+    func test_People_AC_41_searchAsksOnlyUnknownCounts() async {
+        let mock = MockImmichClient()
+        mock.searchPersonResponse = [makePerson(id: "r1", name: "Alice"), makePerson(id: "r2", name: "Alicia")]
+        mock.personStatisticsResponse = ["r1": PersonStatisticsResponseDto(assets: 99), "r2": PersonStatisticsResponseDto(assets: 2)]
+        let vm = makeSearchVM(mock)
+        vm.statsByID["r1"] = 5
+
+        await enterSearch(vm, "ali")
+
+        XCTAssertEqual(statsCalls(mock, "r1"), 0)
+        XCTAssertEqual(statsCalls(mock, "r2"), 1)
+        XCTAssertEqual(vm.assetCount(for: "r1"), 5)
+        XCTAssertEqual(vm.assetCount(for: "r2"), 2)
+    }
+
+    @MainActor
+    func test_People_AC_42_debounceSendsOneRequest() async {
+        let mock = MockImmichClient()
+        let r = makePerson(id: "r", name: "Alice")
+        mock.searchPersonResponse = [r]
+        let vm = makeVM(mock)
+        let latch = TestLatch()
+        let entered = TestBox(0)
+        vm.debounceWait = { @MainActor in
+            entered.value += 1
+            try await latch.wait()
+        }
+
+        for (index, text) in ["a", "al", "ali"].enumerated() {
+            vm.searchQuery = text
+            vm.searchQueryDidChange()
+            await pollUntil("debounce wait \(index + 1) entered") { entered.value == index + 1 }
+            XCTAssertTrue(mock.searchPersonCalls.isEmpty)
+        }
+        latch.open()
+        await vm.searchTask?.value
+
+        XCTAssertEqual(mock.searchPersonCalls, [PersonSearchCall(name: "ali", withHidden: false)])
+        XCTAssertEqual(vm.searchState, .results([r]))
+    }
+
+    @MainActor
+    func test_People_AC_43_resultsKeepServerOrderInOneList() async {
+        let mock = MockImmichClient()
+        let r1 = makePerson(id: "r1", name: "Alice")
+        let r2 = makePerson(id: "r2", name: "Alicia", isFavorite: true)
+        mock.searchPersonResponse = [r1, r2]
+        mock.personStatisticsResponse = ["r1": PersonStatisticsResponseDto(assets: 2), "r2": PersonStatisticsResponseDto(assets: 9)]
+        let vm = makeSearchVM(mock)
+
+        await enterSearch(vm, "ali")
+
+        XCTAssertEqual(vm.searchState, .results([r1, r2]))
+        XCTAssertEqual(vm.searchResults.map(\.id), ["r1", "r2"])
+    }
+
+    @MainActor
+    func test_People_AC_44_resultRowNeverRequestsNextPage() async {
+        let (mock, vm) = pagedPeople()
+        vm.debounceWait = {}
+        await vm.appear(visit: UUID())
+        XCTAssertEqual(vm.lastDisplayedPersonID, "p2")
+        XCTAssertTrue(vm.hasMorePeople)
+        mock.searchPersonResponse = [makePerson(id: "p2", name: "p2")]
+        await enterSearch(vm, "p")
+        let getCalls = mock.getPeopleCalls.count
+
+        await vm.personRowAppeared("p2")
+        XCTAssertEqual(mock.getPeopleCalls.count, getCalls)
+
+        // The same row asks for page 2 once the search is left.
+        await enterSearch(vm, "")
+        await vm.personRowAppeared("p2")
+        XCTAssertEqual(mock.getPeopleCalls.last?.page, 2)
+    }
+
+    @MainActor
+    func test_People_AC_45_sameVisitKeepsSearchNewVisitClearsIt() async {
+        let (mock, vm) = pagedPeople()
+        vm.debounceWait = {}
+        mock.personStatisticsResponse = ["p1": PersonStatisticsResponseDto(assets: 5)]
+        let r1 = makePerson(id: "r1", name: "Alice")
+        mock.searchPersonResponse = [r1]
+        let visit = UUID()
+        await vm.appear(visit: visit)
+        await enterSearch(vm, "ali")
+        let searches = mock.searchPersonCalls.count
+        let getCalls = mock.getPeopleCalls.count
+        let stats = mock.personStatisticsCalls.count
+
+        await vm.appear(visit: visit)
+        XCTAssertEqual(vm.searchQuery, "ali")
+        XCTAssertEqual(vm.searchState, .results([r1]))
+        XCTAssertEqual(mock.searchPersonCalls.count, searches)
+        XCTAssertEqual(mock.getPeopleCalls.count, getCalls)
+        XCTAssertEqual(mock.personStatisticsCalls.count, stats)
+
+        await vm.appear(visit: UUID())
+        XCTAssertEqual(vm.searchQuery, "")
+        XCTAssertEqual(vm.searchState, .inactive)
+        XCTAssertEqual(mock.getPeopleCalls.count, getCalls + 1)
+        XCTAssertEqual(mock.getPeopleCalls.last, PeopleCall(page: 1, withHidden: false))
+        XCTAssertEqual(statsCalls(mock, "p1"), 2)
+        XCTAssertEqual(statsCalls(mock, "p2"), 2)
+        XCTAssertEqual(mock.searchPersonCalls.count, searches)
+    }
+
+    @MainActor
+    func test_People_AC_46_searchWorksInReadOnlyMode() async {
+        let mock = MockImmichClient()
+        let r = makePerson(id: "r", name: "Alice")
+        mock.searchPersonResponse = [r]
+        let vm = PeopleViewModel(client: ReadOnlyGuardClient(inner: mock, isEnabled: { true }))
+        vm.debounceWait = {}
+
+        await enterSearch(vm, "ali")
+
+        XCTAssertEqual(mock.searchPersonCalls, [PersonSearchCall(name: "ali", withHidden: false)])
+        XCTAssertEqual(vm.searchState, .results([r]))
+        XCTAssertNil(vm.errorMessage)
+    }
+
+    @MainActor
+    func test_People_AC_47_clearingDropsInFlightResponse() async {
+        let (mock, vm) = pagedPeople()
+        vm.debounceWait = {}
+        await vm.appear(visit: UUID())
+        let gate = SearchGate()
+        let r = makePerson(id: "r", name: "Alice")
+        mock.searchPersonHandler = { _ in
+            await gate.wait()
+            return [r]
+        }
+        vm.searchQuery = "ali"
+        vm.searchQueryDidChange()
+        let task = vm.searchTask
+        await pollUntil("ali requested") { mock.searchPersonCalls.count == 1 }
+        let getCalls = mock.getPeopleCalls.count
+
+        vm.searchQuery = ""
+        vm.searchQueryDidChange()
+        gate.open()
+        await task?.value
+
+        XCTAssertEqual(vm.searchState, .inactive)
+        XCTAssertEqual(vm.people.map(\.id), ["p1", "p2"])
+        XCTAssertEqual(mock.getPeopleCalls.count, getCalls)
+        XCTAssertEqual(mock.searchPersonCalls.count, 1)
+        XCTAssertEqual(statsCalls(mock, "r"), 0)
+    }
+
+    @MainActor
+    func test_People_AC_48_staleRelaunchIsDroppedByGeneration() async {
+        let mock = MockImmichClient()
+        let a1 = makePerson(id: "a1", name: "Alice")
+        let s1 = makePerson(id: "s1", name: "Stale one")
+        let b1 = makePerson(id: "b1", name: "Bob")
+        let s2 = makePerson(id: "s2", name: "Stale two")
+        let gate1 = SearchGate()
+        let gate2 = SearchGate()
+        let calls = TestBox(0)
+        mock.searchPersonHandler = { call in
+            calls.value += 1
+            if calls.value == 2 {
+                await gate1.wait()
+                return [a1, s1]
+            }
+            if calls.value == 4 {
+                await gate2.wait()
+                return [b1, s2]
+            }
+            return call.name == "ali" ? [a1] : [b1]
+        }
+        let vm = makeSearchVM(mock)
+        await enterSearch(vm, "ali")
+        XCTAssertEqual(vm.searchState, .results([a1]))
+
+        // A relaunch runs in its caller's task, not in `searchTask`: a new
+        // name is the only thing that can drop it, and the generation does.
+        let relaunch1 = Task { await vm.refresh() }
+        await pollUntil("first relaunch requested") { mock.searchPersonCalls.count == 2 }
+        await enterSearch(vm, "bob")
+        XCTAssertEqual(vm.searchState, .results([b1]))
+        gate1.open()
+        await relaunch1.value
+        XCTAssertEqual(vm.searchState, .results([b1]))
+        XCTAssertEqual(statsCalls(mock, "s1"), 0)
+        XCTAssertEqual(statsCalls(mock, "a1"), 1)
+
+        // Clearing the field drops a relaunch in flight too.
+        let relaunch2 = Task { await vm.refresh() }
+        await pollUntil("second relaunch requested") { mock.searchPersonCalls.count == 4 }
+        await enterSearch(vm, "")
+        gate2.open()
+        await relaunch2.value
+        XCTAssertEqual(vm.searchState, .inactive)
+        XCTAssertEqual(statsCalls(mock, "s2"), 0)
+        XCTAssertEqual(statsCalls(mock, "b1"), 1)
+        XCTAssertEqual(mock.searchPersonCalls.count, 4)
+    }
 }

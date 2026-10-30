@@ -17,7 +17,9 @@ struct PeopleView: View {
 
     var body: some View {
         Group {
-            if vm.isLoading && vm.people.isEmpty {
+            if vm.isSearchActive {
+                searchList
+            } else if vm.isLoading && vm.people.isEmpty {
                 ProgressView()
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
             } else if vm.people.isEmpty, let error = vm.errorMessage {
@@ -42,6 +44,8 @@ struct PeopleView: View {
                 personList
             }
         }
+        .searchable(text: $vm.searchQuery, placement: .navigationBarDrawer(displayMode: .always), prompt: "Search people")
+        .onChange(of: vm.searchQuery) { _, _ in vm.searchQueryDidChange() }
         .navigationTitle("People")
         .toolbar {
             ToolbarItem(placement: .topBarTrailing) {
@@ -82,26 +86,73 @@ struct PeopleView: View {
                 }
                 listFooter
             }
-            if vm.hiddenCount > 0 {
+            hiddenToggleSection
+            actionErrorSection
+        }
+    }
+
+    /// Search mode: one section of results in server order (no "Featured", no
+    /// count sort), or the state that replaces it. The hidden toggle and the
+    /// action error stay available in every state.
+    private var searchList: some View {
+        List {
+            switch vm.searchState {
+            case .inactive, .loading:
+                ProgressView()
+                    .frame(maxWidth: .infinity)
+                    .accessibilityIdentifier("peopleSearchLoading")
+            case .results(let list):
                 Section {
-                    Button {
-                        Task { await vm.toggleShowHidden() }
-                    } label: {
-                        Label(
-                            vm.showingHidden ? "Hide hidden people" : "Show \(vm.hiddenCount) hidden people",
-                            systemImage: "eye.slash"
-                        )
-                        .font(.pvBody)
-                        .foregroundStyle(Color.textSecondaryPV)
+                    ForEach(list) { person in
+                        personRow(person)
                     }
                 }
-            }
-            if let error = vm.errorMessage {
-                Section {
-                    Label(error, systemImage: "exclamationmark.triangle.fill")
-                        .font(.pvCaption)
-                        .foregroundStyle(Color.immichError)
+            case .empty:
+                ContentUnavailableView.search(text: vm.trimmedSearchQuery)
+                    .accessibilityIdentifier("peopleSearchEmpty")
+            case .failed(let message):
+                ContentUnavailableView {
+                    Label("Couldn't search people", systemImage: "exclamationmark.magnifyingglass")
+                } description: {
+                    Text(message)
+                } actions: {
+                    Button("Retry") {
+                        Task { await vm.refresh() }
+                    }
+                    .buttonStyle(PVPrimaryButtonStyle())
                 }
+                .accessibilityIdentifier("peopleSearchError")
+            }
+            hiddenToggleSection
+            actionErrorSection
+        }
+    }
+
+    @ViewBuilder
+    private var hiddenToggleSection: some View {
+        if vm.hiddenCount > 0 {
+            Section {
+                Button {
+                    Task { await vm.toggleShowHidden() }
+                } label: {
+                    Label(
+                        vm.showingHidden ? "Hide hidden people" : "Show \(vm.hiddenCount) hidden people",
+                        systemImage: "eye.slash"
+                    )
+                    .font(.pvBody)
+                    .foregroundStyle(Color.textSecondaryPV)
+                }
+            }
+        }
+    }
+
+    @ViewBuilder
+    private var actionErrorSection: some View {
+        if let error = vm.errorMessage {
+            Section {
+                Label(error, systemImage: "exclamationmark.triangle.fill")
+                    .font(.pvCaption)
+                    .foregroundStyle(Color.immichError)
             }
         }
     }

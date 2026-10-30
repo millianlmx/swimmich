@@ -517,6 +517,13 @@ final class ImmichAPIClient: ImmichClient, @unchecked Sendable {
         try await sendAuthed(.GET, path: ImmichAPI.people.path("/\(id)/statistics"))
     }
 
+    func searchPerson(name: String, withHidden: Bool) async throws -> [PersonResponseDto] {
+        try await sendAuthed(.GET, path: ImmichAPI.search.path("/person"), query: [
+            URLQueryItem(name: "name", value: name),
+            URLQueryItem(name: "withHidden", value: String(withHidden)),
+        ])
+    }
+
     func reassignFace(faceId: String, toPersonId: String) async throws -> PersonResponseDto {
         try await sendAuthed(.PUT, path: ImmichAPI.faces.path("/\(toPersonId)"), body: AnyEncodable(FaceDto(id: faceId)))
     }

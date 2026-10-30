@@ -19,6 +19,12 @@ struct PeopleCall: Equatable {
     let withHidden: Bool?
 }
 
+/// One `searchPerson` request, comparable in tests.
+struct PersonSearchCall: Equatable {
+    let name: String
+    let withHidden: Bool
+}
+
 /// Test double for ImmichClient. Records the last call per endpoint + lets
 /// tests inject canned responses / errors.
 final class MockImmichClient: ImmichClient, @unchecked Sendable {
@@ -312,6 +318,11 @@ final class MockImmichClient: ImmichClient, @unchecked Sendable {
     var peopleResponsesByPage: [Int: PeopleResponseDto] = [:]
     /// Every statistics id requested, under `lock` (the VM calls it concurrently).
     private(set) var personStatisticsCalls: [String] = []
+    var searchPersonResponse: [PersonResponseDto] = []
+    var searchPersonError: Error?
+    var searchPersonHandler: ((PersonSearchCall) async throws -> [PersonResponseDto])?
+    /// Every `searchPerson` call, recorded under `lock` before the error and the handler.
+    private(set) var searchPersonCalls: [PersonSearchCall] = []
     var partnersSharedWithResponse: [PartnerResponseDto]?
     var partnersSharedByResponse: [PartnerResponseDto]?
     var partnersError: Error?
@@ -973,6 +984,15 @@ final class MockImmichClient: ImmichClient, @unchecked Sendable {
         lock.lock(); personStatisticsCalls.append(id); lock.unlock()
         if let e = globalError ?? peopleError { throw e }
         return personStatisticsResponse[id] ?? PersonStatisticsResponseDto(assets: 0)
+    }
+
+    func searchPerson(name: String, withHidden: Bool) async throws -> [PersonResponseDto] {
+        bump()
+        let call = PersonSearchCall(name: name, withHidden: withHidden)
+        lock.lock(); searchPersonCalls.append(call); lock.unlock()
+        if let e = globalError ?? searchPersonError { throw e }
+        if let h = searchPersonHandler { return try await h(call) }
+        return searchPersonResponse
     }
 
     // MARK: - Partners (P0 api-surface-expansion; direction required)

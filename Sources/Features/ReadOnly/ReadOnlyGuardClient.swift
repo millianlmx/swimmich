@@ -409,6 +409,10 @@ final class ReadOnlyGuardClient: ImmichClient {
         try await inner.getPersonStatistics(id: id)
     }
 
+    func searchPerson(name: String, withHidden: Bool) async throws -> [PersonResponseDto] {
+        try await inner.searchPerson(name: name, withHidden: withHidden)
+    }
+
     func reassignFace(faceId: String, toPersonId: String) async throws -> PersonResponseDto {
         try assertWritable()
         return try await inner.reassignFace(faceId: faceId, toPersonId: toPersonId)

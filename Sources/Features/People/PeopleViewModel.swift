@@ -8,6 +8,15 @@ enum ListFooter: Equatable {
     case error(String)
 }
 
+/// What the People screen shows while the search field holds a name.
+enum PeopleSearchState: Equatable {
+    case inactive                       // blank field: the paginated list shows
+    case loading                        // first answer pending, nothing to show
+    case results([PersonResponseDto])   // server order, unique ids
+    case empty                          // the server returned []
+    case failed(String)                 // user-facing message; not `errorMessage`
+}
+
 /// People & faces state (P3 people-faces): person list, face-thumbnail counts,
 /// rename / favorite / hide / merge, and a faces drill-down grid of one
 /// person's assets (via `searchMetadata(personIds:)` — the server no longer
@@ -48,6 +57,19 @@ final class PeopleViewModel {
     /// on page 2+, reload to page 1) keeps its edits in the detail.
     private var lastKnownPeople: [String: PersonResponseDto] = [:]
 
+    /// Search by name (`GET /search/person`): the field, its observable state,
+    /// and the debounce token. `errorMessage` is never written by a search.
+    var searchQuery = ""
+    private(set) var searchState: PeopleSearchState = .inactive
+    /// The debounce wait, called in `searchTask` before each request. Tests
+    /// inject an empty wait, or one held by a latch.
+    @ObservationIgnored var debounceWait: @Sendable () async throws -> Void = {
+        try await Task.sleep(for: .milliseconds(400))
+    }
+    @ObservationIgnored private(set) var searchTask: Task<Void, Never>?
+    private var searchGeneration = 0
+    private var lastQueried = ""
+
     /// Faces drill-down state.
     var personAssets: [AssetReactItem] = []
     var assetsLoading = false
@@ -85,9 +107,13 @@ final class PeopleViewModel {
     }
 
     /// The row to show for a person the navigation pushed: the loaded row, else
-    /// the last server answer of this session, else the pushed snapshot.
+    /// a search result, else the last server answer of this session, else the
+    /// pushed snapshot.
     func livePerson(_ pushed: PersonResponseDto) -> PersonResponseDto {
-        people.first { $0.id == pushed.id } ?? lastKnownPeople[pushed.id] ?? pushed
+        people.first { $0.id == pushed.id }
+            ?? searchResults.first { $0.id == pushed.id }
+            ?? lastKnownPeople[pushed.id]
+            ?? pushed
     }
 
     // MARK: - Displayed order
@@ -130,11 +156,17 @@ final class PeopleViewModel {
     func appear(visit: UUID) async {
         guard visit != lastVisit else { return }
         lastVisit = visit
+        exitSearch()
         await refresh()
     }
 
     /// Pull to refresh, "Refresh people", "Retry": page 1, then every count.
+    /// In search mode: the search again and the counts of its results only.
     func refresh() async {
+        if isSearchActive {
+            await relaunchSearch(refreshAllCounts: true)
+            return
+        }
         await load(force: true)
         await loadStatistics()
     }
@@ -168,7 +200,7 @@ final class PeopleViewModel {
     /// The last displayed row appeared: ask for the next page. Any other row,
     /// including a search result, does nothing.
     func personRowAppeared(_ id: String) async {
-        guard id == lastDisplayedPersonID else { return }
+        guard !isSearchActive, id == lastDisplayedPersonID else { return }
         await loadMorePeople()
     }
 
@@ -203,6 +235,89 @@ final class PeopleViewModel {
         showingHidden.toggle()
         await load(force: true)
         await fetchMissingStatistics(for: people.map(\.id))
+        if isSearchActive { await relaunchSearch(refreshAllCounts: false) }
+    }
+
+    // MARK: - Search by name
+
+    var trimmedSearchQuery: String {
+        searchQuery.trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+
+    /// The one definition of "search mode": a non-blank field.
+    var isSearchActive: Bool { !trimmedSearchQuery.isEmpty }
+
+    var searchResults: [PersonResponseDto] {
+        if case .results(let list) = searchState { return list }
+        return []
+    }
+
+    /// `.onChange(of: searchQuery)`: debounced `GET /search/person`. A stale
+    /// response is dropped by `searchGeneration` (bumped on every effective
+    /// change, clearing included), never by `Task.isCancelled`.
+    func searchQueryDidChange() {
+        let trimmed = trimmedSearchQuery
+        guard trimmed != lastQueried else { return }
+        searchTask?.cancel()
+        searchGeneration += 1
+        guard !trimmed.isEmpty else {
+            lastQueried = ""
+            searchTask = nil
+            searchState = .inactive
+            return
+        }
+        lastQueried = trimmed
+        if case .results = searchState {} else { searchState = .loading }
+        let g = searchGeneration
+        let wait = debounceWait
+        searchTask = Task {
+            try? await wait()
+            guard !Task.isCancelled else { return }
+            await runSearch(generation: g, refreshAllCounts: false)
+        }
+    }
+
+    private func runSearch(generation g: Int, refreshAllCounts: Bool) async {
+        let name = trimmedSearchQuery
+        guard !name.isEmpty else { return }
+        lastQueried = name
+        let withHidden = showingHidden
+        if case .results = searchState {} else { searchState = .loading }
+        do {
+            let found = try await client.searchPerson(name: name, withHidden: withHidden)
+            guard g == searchGeneration else { return }
+            var seen = Set<String>()
+            let list = found.filter { seen.insert($0.id).inserted }
+            searchState = list.isEmpty ? .empty : .results(list)
+            let ids = list.map(\.id)
+            if refreshAllCounts {
+                await fetchStatistics(for: ids)
+            } else {
+                await fetchMissingStatistics(for: ids)
+            }
+        } catch {
+            guard g == searchGeneration, let message = error.userFacingMessage else { return }
+            searchState = .failed(message)
+        }
+    }
+
+    /// Re-runs the current search at once, in the caller's task (no debounce).
+    /// Only the generation drops its stale answer.
+    private func relaunchSearch(refreshAllCounts: Bool) async {
+        searchTask?.cancel()
+        searchTask = nil
+        searchGeneration += 1
+        await runSearch(generation: searchGeneration, refreshAllCounts: refreshAllCounts)
+    }
+
+    /// Leaves search mode without any request (a new visit from Profile).
+    private func exitSearch() {
+        searchTask?.cancel()
+        searchTask = nil
+        searchGeneration += 1
+        searchQuery = ""
+        lastQueried = ""
+        searchState = .inactive
     }
 
     // MARK: - Statistics
@@ -302,6 +417,11 @@ final class PeopleViewModel {
             let updated = try await call()
             if let i = people.firstIndex(where: { $0.id == id }) { people[i] = updated }
             lastKnownPeople[id] = updated
+            // A search result is updated in place (same position, no relaunch).
+            if case .results(var list) = searchState, let j = list.firstIndex(where: { $0.id == id }) {
+                list[j] = updated
+                searchState = .results(list)
+            }
             errorMessage = nil
             return true
         } catch {
@@ -326,6 +446,7 @@ final class PeopleViewModel {
         await fetchMissingStatistics(for: people.map(\.id))
         // The target absorbed photos: its known count is stale.
         await fetchStatistics(for: [person.id])
+        if isSearchActive { await relaunchSearch(refreshAllCounts: false) }
         // `loadAssets()` would return at once (same id already loaded).
         if selectedPersonID == person.id { await refreshAssets() }
     }

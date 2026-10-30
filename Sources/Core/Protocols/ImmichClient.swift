@@ -219,6 +219,8 @@ protocol ImmichClient: AnyObject, Sendable {
     /// `POST /api/people/{id}/merge` — merge persons; returns bulk results.
     func mergePeople(ids: [String], into id: String) async throws -> [BulkIdResponseDto]
     func getPersonStatistics(id: String) async throws -> PersonStatisticsResponseDto
+    /// GET /api/search/person?name=&withHidden= — bare array, ≤100, name-similarity order.
+    func searchPerson(name: String, withHidden: Bool) async throws -> [PersonResponseDto]
     /// `PUT /api/faces/{personId}` body `{ id: faceId }` — re-assign one face (gap #5).
     func reassignFace(faceId: String, toPersonId: String) async throws -> PersonResponseDto
     /// `GET /api/faces?id={assetId}` — all faces detected on an asset (gap #5).
