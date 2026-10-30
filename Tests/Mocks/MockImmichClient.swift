@@ -68,6 +68,9 @@ final class MockImmichClient: ImmichClient, @unchecked Sendable {
     var logoutResponse: LogoutResponseDto?
     var validateResponse: ValidateAccessTokenResponseDto?
     var validateError: Error?
+    var validateTokenCallCount = 0
+    /// Awaited in `validateToken` after `bump()` and the recording, before the error check.
+    var validateTokenGate: (() async throws -> Void)?
 
     // Locked folder (gap G12)
     /// `GET /api/auth/status` answer; defaults to a PIN-protected, unelevated
@@ -147,6 +150,10 @@ final class MockImmichClient: ImmichClient, @unchecked Sendable {
     var bucketResponses: [String: TimeBucketAssetResponseDto] = [:]
 
     var getAssetResponse: [String: AssetResponseDto] = [:]
+    /// Ids passed to `getAsset`, recorded before the gate.
+    var getAssetCalls: [String] = []
+    /// Awaited in `getAsset` after `bump()` and the recording, before the error check.
+    var getAssetGate: ((String) async throws -> Void)?
     var lastUpdateAssetId: String?
     var lastUpdateAssetBody: UpdateAssetDto?
     var updateAssetResponse: AssetResponseDto?
@@ -453,8 +460,13 @@ final class MockImmichClient: ImmichClient, @unchecked Sendable {
         return logoutResponse ?? LogoutResponseDto(successful: true, redirectUri: "")
     }
 
+    private func recordValidateToken() { lock.lock(); validateTokenCallCount += 1; lock.unlock() }
+    private func recordGetAsset(_ id: String) { lock.lock(); getAssetCalls.append(id); lock.unlock() }
+
     func validateToken() async throws -> ValidateAccessTokenResponseDto {
         bump()
+        recordValidateToken()
+        if let gate = validateTokenGate { try await gate() }
         if let e = globalError ?? validateError { throw e }
         return validateResponse ?? ValidateAccessTokenResponseDto(authStatus: true)
     }
@@ -517,6 +529,8 @@ final class MockImmichClient: ImmichClient, @unchecked Sendable {
 
     func getAsset(id: String) async throws -> AssetResponseDto {
         bump()
+        recordGetAsset(id)
+        if let gate = getAssetGate { try await gate(id) }
         if let e = globalError { throw e }
         return getAssetResponse[id] ?? AssetResponseDto(
             id: id, type: "IMAGE", thumbhash: nil, localDateTime: "2024-07-01T00:00:00.000Z",

@@ -28,6 +28,8 @@ final class MockFileDownloadTransport: FileDownloadTransport, @unchecked Sendabl
     private let lock = NSLock()
     private(set) var downloadCount = 0
     private(set) var lastRequest: URLRequest?
+    /// Temp file most recently written for the store (set when it is written).
+    private(set) var lastFileURL: URL?
 
     func download(
         _ request: URLRequest,
@@ -54,6 +56,7 @@ final class MockFileDownloadTransport: FileDownloadTransport, @unchecked Sendabl
         let url = FileManager.default.temporaryDirectory
             .appendingPathComponent("mock-download-\(UUID().uuidString)")
         try payload.write(to: url)
+        lock.lock(); lastFileURL = url; lock.unlock()
         return DownloadedFile(url: url, statusCode: status, contentType: contentType)
     }
 }

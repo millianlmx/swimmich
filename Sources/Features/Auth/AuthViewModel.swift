@@ -98,7 +98,8 @@ final class AuthViewModel: AuthSessionDelegate {
     /// so widgets stop showing the previous account's photos. Tests inject a spy.
     private let reloadWidgets: () -> Void
     private var _cachedBaseURL: URL?
-    /// The local stores wiped by a voluntary logout. `nil` = none attached.
+    /// The local stores bound to the active account at each session change
+    /// (`scopeLocalData`) and wiped by a voluntary logout. `nil` = none attached.
     private let localData: LocalDataPurger?
 
     init(
@@ -147,6 +148,7 @@ final class AuthViewModel: AuthSessionDelegate {
             resetSession()
             return
         }
+        scopeLocalData()
         client.configure(baseURL: url, token: token)
         do {
             _ = try await client.validateToken()
@@ -379,6 +381,7 @@ final class AuthViewModel: AuthSessionDelegate {
         if let baseURL { realtime.connect(baseURL: baseURL, token: token) }
         publishWidgetSession()
         addCurrentAccountToSaved()
+        scopeLocalData()
     }
 
     /// Voluntary, confirmed sign-out. Beyond `resetSession()` it wipes everything
@@ -425,6 +428,17 @@ final class AuthViewModel: AuthSessionDelegate {
         defaults.removeObject(forKey: Self.isAdminDefaultsKey)
         client.configure(baseURL: baseURL, token: nil)
         realtime.disconnect()
+        scopeLocalData()
+    }
+
+    /// Binds the per-account local stores (offline copies) to the account the
+    /// session now belongs to, or to none when there is no session. Synchronous
+    /// and called before any `await` that follows an identity change, so no
+    /// later read serves the previous account's copies. "Other accounts
+    /// registered" decides where content left by the single-folder layout goes.
+    private func scopeLocalData() {
+        let active = isAuthenticated ? activeAccountID : nil
+        localData?.activateAccount(active, otherAccountsRegistered: savedAccounts.contains { $0.id != active })
     }
 
     /// The password was changed: the server cleared its own `shouldChangePassword`
@@ -517,6 +531,7 @@ final class AuthViewModel: AuthSessionDelegate {
         userId = account.userId
         isAdmin = account.isAdmin
         serverURLString = account.url
+        scopeLocalData()
         keychain.saveToken(token)
         defaults.set(url.absoluteString, forKey: Self.serverURLDefaultsKey)
         defaults.set(account.email, forKey: Self.userEmailDefaultsKey)
@@ -567,5 +582,6 @@ final class AuthViewModel: AuthSessionDelegate {
         sessionExpired = true
         client.configure(baseURL: baseURL, token: nil)
         realtime.disconnect()
+        scopeLocalData()
     }
 }

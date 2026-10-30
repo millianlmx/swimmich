@@ -398,8 +398,8 @@ final class DownloadQueueViewModel {
     /// Where a finished file lands: `Documents/Downloads/`.
     ///
     /// Deliberately neither the offline cache's folder (`Application
-    /// Support/OfflineAssets/<assetId>.<ext>`, trimmed by `setMaxCacheSize` and
-    /// wiped by `clearAll`) nor `NSTemporaryDirectory()`, which the OS evicts:
+    /// Support/OfflineAssets/Accounts/<key>/<assetId>.<ext>`, trimmed by
+    /// `setMaxCacheSize` and wiped by `clearAll`) nor `NSTemporaryDirectory()`, which the OS evicts:
     /// a file the user asked for has to survive and be findable. A name
     /// already taken gets a `-2`, `-3` suffix instead of being overwritten —
     /// two assets may share a server file name.

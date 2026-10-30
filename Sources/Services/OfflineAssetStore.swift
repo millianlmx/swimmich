@@ -67,60 +67,150 @@ enum OfflineStoreError: LocalizedError, Equatable {
     }
 }
 
-/// Durable local cache of asset originals, backed by files under
-/// **Application Support** (never `Caches`: the OS purges that directory under
-/// disk pressure, and an asset advertised as available offline must not vanish).
+/// Everything `OfflineAssetStore` needs to know about who is signed in.
+struct OfflineScope: Sendable, Equatable {
+    /// `SavedAccount.id` of the active account; `nil` = none (nothing is served,
+    /// every operation is refused).
+    let accountID: String?
+    /// Whether the registry holds an account other than the active one — decides
+    /// where the legacy single-folder content goes.
+    let otherAccountsRegistered: Bool
+    /// Bumped each time `accountID` changes.
+    let epoch: Int
+}
+
+/// What `OfflineAssetStore.listing()` saw, tagged with the scope it was read
+/// under so a slow reader can be recognised as stale.
+struct OfflineListing: Sendable, Equatable {
+    let accountID: String?
+    let scopeEpoch: Int
+    /// Folder of the listed account; `nil` when no account was active.
+    let folderURL: URL?
+    /// Most recent first.
+    let items: [CachedAssetInfo]
+
+    var totalBytes: Int64 { items.reduce(0) { $0 + $1.size } }
+}
+
+/// Lock-protected scope, readable and writable synchronously from any thread.
+private final class OfflineScopeBox: @unchecked Sendable {
+    private let lock = NSLock()
+    private var scope = OfflineScope(accountID: nil, otherAccountsRegistered: false, epoch: 0)
+
+    func snapshot() -> OfflineScope {
+        lock.lock()
+        defer { lock.unlock() }
+        return scope
+    }
+
+    func set(_ accountID: String?, otherAccountsRegistered: Bool) -> Bool {
+        lock.lock()
+        defer { lock.unlock() }
+        let changed = scope.accountID != accountID
+        scope = OfflineScope(
+            accountID: accountID,
+            otherAccountsRegistered: otherAccountsRegistered,
+            epoch: changed ? scope.epoch + 1 : scope.epoch
+        )
+        return changed
+    }
+}
+
+/// Durable local cache of asset originals, one folder per account, backed by
+/// files under **Application Support** (never `Caches`: the OS purges that
+/// directory under disk pressure, and an asset advertised as available offline
+/// must not vanish).
 ///
-/// Layout:
+/// Layout (`OfflineAssets` carries `isExcludedFromBackup`, re-set whenever a
+/// folder is created; everything below inherits it):
 /// ```
-/// Application Support/OfflineAssets/
-/// ├── index.json          # [CachedAssetInfo] — metadata, reconciled with disk
-/// └── <assetId>.<ext>     # the payload
+/// Application Support/OfflineAssets/          # excluded from backup
+/// ├── Accounts/<storageKey>/                  # storageKey = SavedAccount.storageKey(forID:)
+/// │   ├── index.json                          # [CachedAssetInfo] — metadata, reconciled with disk
+/// │   └── <assetId>.<ext>                     # the payload
+/// └── Unassigned/                             # legacy content that fit no account: never read, wiped at logout
 /// ```
+///
+/// The active account is set synchronously by `setActiveAccount`. Reads serve
+/// that account only; `download`, `remove` and `clearAll` take the account they
+/// were issued for and are refused (`CancellationError` / `false`) when it is
+/// not the active one. `maxCacheSize` applies to each account's folder
+/// separately. Content left by the single-folder layout is moved, never
+/// deleted, at the first load of an account: into its folder when no other
+/// account is registered, into `Unassigned/` otherwise. The root is never
+/// reconciled (it would adopt `Accounts/` and `Unassigned/` as copies).
 ///
 /// Downloads stream to disk (`URLSession.download(for:delegate:)` writes a temp
 /// file; nothing is ever materialized as `Data` in memory) and land through an
 /// atomic move, so a killed process leaves at most a `.partial` file that the
-/// next launch deletes.
+/// next load of that account deletes.
 actor OfflineAssetStore {
 
     /// `UserDefaults` key holding the cache budget in bytes.
     static let maxCacheSizeKey = "offlineMaxSize"
     static let defaultMaxCacheSize: Int64 = 5 * 1024 * 1024 * 1024
+    static let accountsFolderName = "Accounts"
+    static let unassignedFolderName = "Unassigned"
 
-    /// Directory holding `index.json` and the payloads. `nonisolated` so the
-    /// UI-side index can resolve a cached file's URL synchronously from a cell.
-    nonisolated let folderURL: URL
+    /// `OfflineAssets`. `nonisolated` so the UI-side index can resolve paths
+    /// synchronously.
+    nonisolated let rootURL: URL
 
     private let transport: any FileDownloadTransport
     private let fileManager: FileManager
     private let defaults: UserDefaults
+    private nonisolated let scope = OfflineScopeBox()
 
+    /// Account whose index is in memory, with the epoch it was loaded under.
+    private var loaded: (epoch: Int, accountID: String, folder: URL)?
     private var index: [String: CachedAssetInfo] = [:]
     private var didLoadIndex = false
-    /// Bumped by `clearAll()`. A download that captured an older value must not
-    /// write anything: its payload belongs to a cache that no longer exists.
+    /// Bumped by `clearAll(accountID:)` and `clearEveryAccount()`. A download
+    /// that captured an older value must not write anything: its payload
+    /// belongs to a cache that no longer exists.
     private var generation = 0
     private var inFlight: [UUID: Task<DownloadedFile, Error>] = [:]
 
-    /// The folder every store writes to unless a test injects its own.
-    static func defaultFolderURL(fileManager: FileManager = .default) -> URL {
+    /// The root every store writes to unless a test injects its own.
+    static func defaultRootURL(fileManager: FileManager = .default) -> URL {
         let base = fileManager.urls(for: .applicationSupportDirectory, in: .userDomainMask).first
             ?? fileManager.temporaryDirectory
         return base.appendingPathComponent("OfflineAssets", isDirectory: true)
     }
 
     init(
-        folderURL: URL? = nil,
+        rootURL: URL? = nil,
         transport: any FileDownloadTransport,
         fileManager: FileManager = .default,
         defaults: UserDefaults = .standard
     ) {
-        self.folderURL = folderURL ?? Self.defaultFolderURL(fileManager: fileManager)
+        self.rootURL = rootURL ?? Self.defaultRootURL(fileManager: fileManager)
         self.transport = transport
         self.fileManager = fileManager
         self.defaults = defaults
     }
+
+    // MARK: - Active account
+
+    nonisolated func folderURL(forAccount accountID: String) -> URL {
+        rootURL
+            .appendingPathComponent(Self.accountsFolderName, isDirectory: true)
+            .appendingPathComponent(SavedAccount.storageKey(forID: accountID), isDirectory: true)
+    }
+
+    nonisolated var unassignedURL: URL {
+        rootURL.appendingPathComponent(Self.unassignedFolderName, isDirectory: true)
+    }
+
+    /// Synchronous (no `await`, no disk access). Returns `true` when the active
+    /// account changed; otherwise only `otherAccountsRegistered` is refreshed.
+    @discardableResult
+    nonisolated func setActiveAccount(_ accountID: String?, otherAccountsRegistered: Bool) -> Bool {
+        scope.set(accountID, otherAccountsRegistered: otherAccountsRegistered)
+    }
+
+    nonisolated var scopeEpoch: Int { scope.snapshot().epoch }
+    nonisolated var activeAccountID: String? { scope.snapshot().accountID }
 
     // MARK: - Configuration
 
@@ -131,16 +221,23 @@ actor OfflineAssetStore {
         return stored == 0 ? 0 : Int64(stored)
     }
 
-    /// Persists a new budget and immediately trims the cache down to it.
+    /// Persists a new budget and immediately trims the active account's copies
+    /// down to it. Other accounts are only trimmed when they next download or
+    /// change the budget while active.
     func setMaxCacheSize(_ bytes: Int64) async {
         defaults.set(Int(max(0, bytes)), forKey: Self.maxCacheSizeKey)
-        evictIfNeeded()
+        if let folder = activeFolder() { evictIfNeeded(folder) }
     }
 
     // MARK: - Download
 
     /// Downloads `url` (the asset's `/original`, built by the caller with
     /// `ImmichAssetURL.original`) into the cache.
+    ///
+    /// Bound to `accountID`: refused with `CancellationError` (no request, no
+    /// disk access) when it isn't the active account, and dropped the same way
+    /// — temp file deleted, nothing written — when it isn't any more when the
+    /// transfer ends.
     ///
     /// - Parameters:
     ///   - announcedSize: the server's `fileSizeInByte` when known — the budget
@@ -149,6 +246,7 @@ actor OfflineAssetStore {
     ///     sends no `Content-Length` (the caller then shows an indeterminate bar).
     @discardableResult
     func download(
+        accountID: String,
         assetID: String,
         url: URL,
         token: String?,
@@ -161,8 +259,13 @@ actor OfflineAssetStore {
         announcedSize: Int64?,
         onProgress: @escaping @Sendable (Int64, Int64) -> Void = { _, _ in }
     ) async throws -> CachedAssetInfo {
-        try loadIndexIfNeeded()
-        try ensureFolderExists()
+        // Refused before any disk access or request when `accountID` isn't the
+        // active account (nor any account at all).
+        let entry = scope.snapshot()
+        guard entry.accountID == accountID, let folder = try prepare(entry) else {
+            throw CancellationError()
+        }
+        try ensureFolderExists(folder)
 
         let limit = maxCacheSize
         if let announcedSize, limit > 0, announcedSize > limit {
@@ -174,10 +277,12 @@ actor OfflineAssetStore {
             request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
         }
 
-        // The transport runs in a registered Task so `clearAll()` can cancel it.
-        // The actor is re-entrant across this await: `generation` tells us after
-        // the fact whether a purge happened meanwhile, even when the transport
-        // ignores the cancellation and finishes anyway.
+        // The transport runs in a registered Task so `clearAll(accountID:)` /
+        // `clearEveryAccount()` can cancel it. The actor is re-entrant across
+        // this await: `generation` tells us after the fact whether a purge
+        // happened meanwhile, even when the transport ignores the cancellation
+        // and finishes anyway. A switch of account does NOT cancel the transfer;
+        // it is dropped when it ends.
         let startGeneration = generation
         let transport = self.transport
         let transferID = UUID()
@@ -192,11 +297,15 @@ actor OfflineAssetStore {
             }
         } catch {
             inFlight[transferID] = nil
-            if startGeneration != generation { throw CancellationError() }
+            if startGeneration != generation || scope.snapshot().accountID != accountID {
+                throw CancellationError()
+            }
             throw error
         }
         inFlight[transferID] = nil
-        guard startGeneration == generation else {
+        let now = scope.snapshot()
+        guard startGeneration == generation, now.accountID == accountID,
+              let target = try? prepare(now) else {
             try? fileManager.removeItem(at: downloaded.url)
             throw CancellationError()
         }
@@ -220,9 +329,9 @@ actor OfflineAssetStore {
         // Replace in place: a re-download with a different extension must not
         // leave the previous payload behind.
         if let previous = index[assetID], previous.fileName != storedName {
-            try? fileManager.removeItem(at: folderURL.appendingPathComponent(previous.fileName))
+            try? fileManager.removeItem(at: target.appendingPathComponent(previous.fileName))
         }
-        let destination = folderURL.appendingPathComponent(storedName)
+        let destination = target.appendingPathComponent(storedName)
         try? fileManager.removeItem(at: destination)
         try fileManager.moveItem(at: downloaded.url, to: destination)
 
@@ -239,21 +348,21 @@ actor OfflineAssetStore {
             thumbhash: thumbhash
         )
         index[assetID] = info
-        saveIndex()
-        evictIfNeeded(keeping: assetID)
+        saveIndex(target)
+        evictIfNeeded(target, keeping: assetID)
         return info
     }
 
-    // MARK: - Reads
+    // MARK: - Reads (active account)
 
     func cachedInfo(assetID: String) -> CachedAssetInfo? {
-        try? loadIndexIfNeeded()
+        guard let folder = activeFolder() else { return nil }
         guard let info = index[assetID] else { return nil }
         // A stale entry (file deleted behind our back, e.g. purge or a failed
         // write) must never be reported as cached.
-        guard fileManager.fileExists(atPath: fileURL(for: info.fileName).path) else {
+        guard fileManager.fileExists(atPath: folder.appendingPathComponent(info.fileName).path) else {
             index[assetID] = nil
-            saveIndex()
+            saveIndex(folder)
             return nil
         }
         return info
@@ -261,12 +370,13 @@ actor OfflineAssetStore {
 
     /// On-disk URL of a cached asset, or nil when it isn't cached.
     func fileURL(assetID: String) -> URL? {
-        cachedInfo(assetID: assetID).map { fileURL(for: $0.fileName) }
+        guard let info = cachedInfo(assetID: assetID), let folder = loaded?.folder else { return nil }
+        return folder.appendingPathComponent(info.fileName)
     }
 
-    /// Every cached asset, most recent first.
+    /// Every cached asset of the active account, most recent first.
     func allCached() -> [CachedAssetInfo] {
-        try? loadIndexIfNeeded()
+        guard activeFolder() != nil else { return [] }
         return index.values.sorted { $0.cachedAt > $1.cachedAt }
     }
 
@@ -274,70 +384,172 @@ actor OfflineAssetStore {
         cachedInfo(assetID: assetID) != nil
     }
 
-    /// Total bytes currently held on disk.
+    /// Total bytes the active account holds on disk.
     func totalBytes() -> Int64 {
         allCached().reduce(0) { $0 + $1.size }
     }
 
-    // MARK: - Removal
-
-    func remove(assetID: String) {
-        try? loadIndexIfNeeded()
-        guard let info = index.removeValue(forKey: assetID) else { return }
-        try? fileManager.removeItem(at: fileURL(for: info.fileName))
-        saveIndex()
+    /// Snapshot of the active account's copies, tagged with the scope it was
+    /// read under so the UI mirror can drop it when the account changed since.
+    func listing() -> OfflineListing {
+        let s = scope.snapshot()
+        guard let id = s.accountID else {
+            _ = try? prepare(s)
+            return OfflineListing(accountID: nil, scopeEpoch: s.epoch, folderURL: nil, items: [])
+        }
+        guard let folder = try? prepare(s) else {
+            return OfflineListing(
+                accountID: id, scopeEpoch: s.epoch, folderURL: folderURL(forAccount: id), items: []
+            )
+        }
+        return OfflineListing(
+            accountID: id,
+            scopeEpoch: s.epoch,
+            folderURL: folder,
+            items: index.values.sorted { $0.cachedAt > $1.cachedAt }
+        )
     }
 
-    /// Wipes the cache and aborts every transfer still in flight: each pending
-    /// `download` throws a cancellation and writes nothing (see `generation`).
-    func clearAll() {
+    // MARK: - Removal
+
+    /// Removes one copy of `accountID`; refused (`false`, nothing touched) when
+    /// that account is not the active one.
+    @discardableResult
+    func remove(assetID: String, accountID: String) -> Bool {
+        let s = scope.snapshot()
+        guard s.accountID == accountID else { return false }
+        guard let folder = try? prepare(s),
+              let info = index.removeValue(forKey: assetID) else { return true }
+        try? fileManager.removeItem(at: folder.appendingPathComponent(info.fileName))
+        saveIndex(folder)
+        return true
+    }
+
+    /// Wipes the copies of `accountID` (and only those) and aborts every
+    /// transfer still in flight: each pending `download` throws a cancellation
+    /// and writes nothing (see `generation`). Refused (`false`) when that
+    /// account is not the active one.
+    @discardableResult
+    func clearAll(accountID: String) -> Bool {
+        let s = scope.snapshot()
+        guard s.accountID == accountID else { return false }
         generation += 1
         for task in inFlight.values { task.cancel() }
-        try? loadIndexIfNeeded()
+        _ = try? prepare(s)
+        let folder = folderURL(forAccount: accountID)
         index.removeAll()
-        for url in (try? fileManager.contentsOfDirectory(
-            at: folderURL, includingPropertiesForKeys: nil
-        )) ?? [] {
+        for url in (try? fileManager.contentsOfDirectory(at: folder, includingPropertiesForKeys: nil)) ?? [] {
             try? fileManager.removeItem(at: url)
         }
-        saveIndex()
+        saveIndex(folder)
+        try? ensureFolderExists(folder)
+        return true
+    }
+
+    /// Wipes every account's copies, `Unassigned/` and any legacy leftover,
+    /// whatever the active account, and aborts every transfer in flight. The
+    /// root stays (and stays excluded from backup); no `index.json` is written.
+    func clearEveryAccount() {
+        generation += 1
+        for task in inFlight.values { task.cancel() }
+        index = [:]
+        didLoadIndex = false
+        loaded = nil
+        for url in (try? fileManager.contentsOfDirectory(at: rootURL, includingPropertiesForKeys: nil)) ?? [] {
+            try? fileManager.removeItem(at: url)
+        }
+        try? ensureFolderExists(rootURL)
     }
 
     // MARK: - Index
 
-    private func fileURL(for fileName: String) -> URL {
-        folderURL.appendingPathComponent(fileName)
+    /// Points the actor at the snapshot's account (reloading its index when the
+    /// epoch moved) and returns that account's folder; `nil` when no account is
+    /// active. Never evicts: activation does not trim (decision req #3).
+    private func prepare(_ s: OfflineScope) throws -> URL? {
+        guard let id = s.accountID else {
+            index = [:]
+            didLoadIndex = false
+            loaded = nil
+            return nil
+        }
+        if loaded?.epoch != s.epoch {
+            index = [:]
+            didLoadIndex = false
+            loaded = (s.epoch, id, folderURL(forAccount: id))
+        }
+        let folder = folderURL(forAccount: id)
+        try loadIndexIfNeeded(folder: folder, otherAccountsRegistered: s.otherAccountsRegistered)
+        return folder
     }
 
-    private func ensureFolderExists() throws {
-        try fileManager.createDirectory(at: folderURL, withIntermediateDirectories: true)
+    private func activeFolder() -> URL? {
+        try? prepare(scope.snapshot())
     }
 
-    private func loadIndexIfNeeded() throws {
+    /// Creates the root (flagged excluded from backup, every time: file
+    /// operations can reset the flag) then `folder`. The flag sits on the root
+    /// alone and is inherited by everything below; never on Application Support.
+    private func ensureFolderExists(_ folder: URL) throws {
+        try fileManager.createDirectory(at: rootURL, withIntermediateDirectories: true)
+        var root = rootURL
+        var values = URLResourceValues()
+        values.isExcludedFromBackup = true
+        try? root.setResourceValues(values)
+        try fileManager.createDirectory(at: folder, withIntermediateDirectories: true)
+    }
+
+    private func loadIndexIfNeeded(folder: URL, otherAccountsRegistered: Bool) throws {
         guard !didLoadIndex else { return }
         didLoadIndex = true
-        try ensureFolderExists()
+        try ensureFolderExists(folder)
+        adoptLegacyContent(into: folder, otherAccountsRegistered: otherAccountsRegistered)
         // Drop half-written payloads from a previous run that a jetsam kill
         // (or an interrupted move) left behind.
-        for url in (try? fileManager.contentsOfDirectory(at: folderURL, includingPropertiesForKeys: nil)) ?? []
+        for url in (try? fileManager.contentsOfDirectory(at: folder, includingPropertiesForKeys: nil)) ?? []
         where url.pathExtension == "partial" {
             try? fileManager.removeItem(at: url)
         }
-        let data = try? Data(contentsOf: fileURL(for: "index.json"))
+        let data = try? Data(contentsOf: folder.appendingPathComponent("index.json"))
         if let data, let decoded = try? JSONDecoder.immich.decode([CachedAssetInfo].self, from: data) {
             index = Dictionary(uniqueKeysWithValues: decoded.map { ($0.id, $0) })
         } else {
             index = [:]
         }
-        reconcile()
+        reconcile(folder)
+    }
+
+    /// Moves what the single-folder layout left directly under the root into
+    /// `folder` (the account is the only one registered) or `Unassigned/`.
+    /// A `.partial` or a name already taken goes to `Unassigned/` too (prefixed
+    /// by a UUID when that name is taken as well). Never deletes or overwrites.
+    private func adoptLegacyContent(into folder: URL, otherAccountsRegistered: Bool) {
+        let reserved: Set<String> = [Self.accountsFolderName, Self.unassignedFolderName]
+        let legacy = ((try? fileManager.contentsOfDirectory(at: rootURL, includingPropertiesForKeys: nil)) ?? [])
+            .filter { !reserved.contains($0.lastPathComponent) }
+        guard !legacy.isEmpty else { return }
+        let destination = otherAccountsRegistered ? unassignedURL : folder
+        for item in legacy {
+            let name = item.lastPathComponent
+            var target = destination.appendingPathComponent(name)
+            if item.pathExtension == "partial" || fileManager.fileExists(atPath: target.path) {
+                target = unassignedURL.appendingPathComponent(name)
+                if fileManager.fileExists(atPath: target.path) {
+                    target = unassignedURL.appendingPathComponent("\(UUID().uuidString)-\(name)")
+                }
+            }
+            try? ensureFolderExists(target.deletingLastPathComponent())
+            try? fileManager.moveItem(at: item, to: target)
+        }
     }
 
     /// Confronts the index with the disk: entries whose file is gone are
     /// dropped, and files with no entry (an index lost to a crash) are adopted
-    /// from their filesystem attributes rather than orphaned.
-    private func reconcile() {
+    /// from their filesystem attributes rather than orphaned. Only ever run on
+    /// an account folder, never on the root.
+    private func reconcile(_ folder: URL) {
         let contents = (try? fileManager.contentsOfDirectory(
-            at: folderURL,
+            at: folder,
             includingPropertiesForKeys: [.fileSizeKey, .contentModificationDateKey]
         )) ?? []
         let payloads = contents.filter { $0.lastPathComponent != "index.json" }
@@ -367,20 +579,20 @@ actor OfflineAssetStore {
             )
             changed = true
         }
-        if changed { saveIndex() }
+        if changed { saveIndex(folder) }
     }
 
-    private func saveIndex() {
+    private func saveIndex(_ folder: URL) {
         let encoder = JSONEncoder.immich
         encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
         guard let data = try? encoder.encode(index.values.sorted { $0.id < $1.id }) else { return }
-        try? fileManager.createDirectory(at: folderURL, withIntermediateDirectories: true)
-        try? data.write(to: fileURL(for: "index.json"), options: .atomic)
+        try? ensureFolderExists(folder)
+        try? data.write(to: folder.appendingPathComponent("index.json"), options: .atomic)
     }
 
-    /// Trims the oldest entries until the cache fits the budget. The asset that
-    /// was just written is never the one evicted (`keeping:`).
-    private func evictIfNeeded(keeping protectedID: String? = nil) {
+    /// Trims the oldest entries of the loaded account until it fits the budget.
+    /// The asset that was just written is never the one evicted (`keeping:`).
+    private func evictIfNeeded(_ folder: URL, keeping protectedID: String? = nil) {
         let limit = maxCacheSize
         guard limit > 0 else { return }
         var total = index.values.reduce(Int64(0)) { $0 + $1.size }
@@ -389,10 +601,10 @@ actor OfflineAssetStore {
             guard total > limit else { break }
             guard candidate.id != protectedID else { continue }
             index[candidate.id] = nil
-            try? fileManager.removeItem(at: fileURL(for: candidate.fileName))
+            try? fileManager.removeItem(at: folder.appendingPathComponent(candidate.fileName))
             total -= candidate.size
         }
-        saveIndex()
+        saveIndex(folder)
     }
 
     // MARK: - Naming

@@ -11,6 +11,12 @@ import XCTest
 /// call is hoisted into a `let` first.
 final class OfflineAssetStoreTests: XCTestCase {
 
+    static let accountA = "https://photos.example.com|alice@example.com"
+    static let accountB = "https://other.example.com|bob@example.com"
+
+    /// `OfflineAssets/` of this test (its parent is removed in `tearDown`).
+    private var root: URL!
+    /// Folder of account A under `root`.
     private var folder: URL!
     private var defaults: UserDefaults!
     private var transport: MockFileDownloadTransport!
@@ -18,20 +24,23 @@ final class OfflineAssetStoreTests: XCTestCase {
 
     override func setUp() {
         super.setUp()
-        folder = FileManager.default.temporaryDirectory
+        root = FileManager.default.temporaryDirectory
             .appendingPathComponent("offline-tests-\(UUID().uuidString)", isDirectory: true)
+            .appendingPathComponent("OfflineAssets", isDirectory: true)
         // A private suite keeps the budget out of the app's real defaults.
         defaults = UserDefaults(suiteName: "offline-tests-\(UUID().uuidString)")!
         transport = MockFileDownloadTransport()
         store = OfflineAssetStore(
-            folderURL: folder,
+            rootURL: root,
             transport: transport,
             defaults: defaults
         )
+        store.setActiveAccount(Self.accountA, otherAccountsRegistered: false)
+        folder = store.folderURL(forAccount: Self.accountA)
     }
 
     override func tearDown() {
-        try? FileManager.default.removeItem(at: folder)
+        try? FileManager.default.removeItem(at: root.deletingLastPathComponent())
         super.tearDown()
     }
 
@@ -43,9 +52,11 @@ final class OfflineAssetStoreTests: XCTestCase {
         fileName: String? = "photo.jpg",
         isVideo: Bool = false,
         announcedSize: Int64? = nil,
+        accountID: String = OfflineAssetStoreTests.accountA,
         onProgress: @escaping @Sendable (Int64, Int64) -> Void = { _, _ in }
     ) async throws -> CachedAssetInfo {
         try await store.download(
+            accountID: accountID,
             assetID: id,
             url: URL(string: "https://example.com/api/assets/\(id)/original")!,
             token: "tok",
@@ -62,7 +73,9 @@ final class OfflineAssetStoreTests: XCTestCase {
 
     /// Same folder, fresh actor — proves persistence rather than in-memory state.
     private func reopenedStore() -> OfflineAssetStore {
-        OfflineAssetStore(folderURL: folder, transport: transport, defaults: defaults)
+        let reopened = OfflineAssetStore(rootURL: root, transport: transport, defaults: defaults)
+        reopened.setActiveAccount(Self.accountA, otherAccountsRegistered: false)
+        return reopened
     }
 
     // MARK: - Write + index
@@ -146,7 +159,7 @@ final class OfflineAssetStoreTests: XCTestCase {
         try await download("asset-1")
         let file = await store.fileURL(assetID: "asset-1")!
 
-        await store.remove(assetID: "asset-1")
+        await store.remove(assetID: "asset-1", accountID: Self.accountA)
 
         XCTAssertFalse(FileManager.default.fileExists(atPath: file.path))
         let cached = await store.isCached(assetID: "asset-1")
@@ -161,7 +174,7 @@ final class OfflineAssetStoreTests: XCTestCase {
         let before = await store.allCached()
         XCTAssertEqual(before.count, 2)
 
-        await store.clearAll()
+        await store.clearAll(accountID: Self.accountA)
 
         let after = await store.allCached()
         let total = await store.totalBytes()
@@ -345,7 +358,7 @@ final class OfflineAssetStoreTests: XCTestCase {
         let pending = Task { () -> Result<CachedAssetInfo, Error> in
             do {
                 return .success(try await store.download(
-                    assetID: "late", url: URL(string: "https://example.com/late")!, token: nil,
+                    accountID: Self.accountA, assetID: "late", url: URL(string: "https://example.com/late")!, token: nil,
                     fileName: "late.jpg", isVideo: false, ratio: 1, fileCreatedAt: "", duration: nil,
                     thumbhash: nil, announcedSize: nil
                 ))
@@ -353,7 +366,7 @@ final class OfflineAssetStoreTests: XCTestCase {
         }
         while transport.downloadCount == 0 { try await Task.sleep(for: .milliseconds(10)) }
 
-        await store.clearAll()
+        await store.clearAll(accountID: Self.accountA)
 
         guard case .failure(let error) = await pending.value else {
             return XCTFail("a download overtaken by clearAll() must not succeed")
@@ -370,5 +383,160 @@ final class OfflineAssetStoreTests: XCTestCase {
         try await download("after")
         let after = await store.isCached(assetID: "after")
         XCTAssertTrue(after)
+    }
+    // MARK: - Per-account scoping (ACC)
+
+    private static let legacyInfos: [CachedAssetInfo] = [
+        CachedAssetInfo(
+            id: "legacy-1", fileName: "legacy-1.jpg", originalFileName: "IMG_0001.jpg",
+            cachedAt: Date(timeIntervalSince1970: 1_700_000_000), size: 100, isVideo: false,
+            ratio: 0.75, fileCreatedAt: "2024-07-01T10:00:00.000Z", duration: nil, thumbhash: "th-1"
+        ),
+        CachedAssetInfo(
+            id: "legacy-2", fileName: "legacy-2.jpg", originalFileName: "IMG_0002.jpg",
+            cachedAt: Date(timeIntervalSince1970: 1_700_000_100), size: 300, isVideo: false,
+            ratio: 1.5, fileCreatedAt: "2024-07-02T10:00:00.000Z", duration: nil, thumbhash: "th-2"
+        ),
+    ]
+
+    /// An `index.json` and two payloads (100 + 300 bytes) as the single-folder
+    /// layout left them directly under `root`.
+    static func seedLegacyContent(into root: URL) throws {
+        try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
+        let encoder = JSONEncoder.immich
+        encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
+        try encoder.encode(legacyInfos).write(to: root.appendingPathComponent("index.json"))
+        for info in legacyInfos {
+            try Data(repeating: 0x07, count: Int(info.size)).write(to: root.appendingPathComponent(info.fileName))
+        }
+    }
+
+    private func regularFileSizes(under directory: URL) -> [String: Int] {
+        var sizes: [String: Int] = [:]
+        let enumerator = FileManager.default.enumerator(
+            at: directory, includingPropertiesForKeys: [.isRegularFileKey, .fileSizeKey]
+        )
+        while let url = enumerator?.nextObject() as? URL {
+            let values = try? url.resourceValues(forKeys: [.isRegularFileKey, .fileSizeKey])
+            if values?.isRegularFile == true { sizes[url.lastPathComponent] = values?.fileSize ?? 0 }
+        }
+        return sizes
+    }
+
+    /// Read on a **new** URL: `URL` caches the resource values it has read.
+    private func excluded(_ url: URL) -> Bool? {
+        let fresh = URL(fileURLWithPath: url.path, isDirectory: true)
+        return try? fresh.resourceValues(forKeys: [.isExcludedFromBackupKey]).isExcludedFromBackup
+    }
+
+    func test_ACC_AC7_legacyContent_movesIntoTheOnlyAccount() async throws {
+        try Self.seedLegacyContent(into: root)
+
+        store.setActiveAccount(Self.accountA, otherAccountsRegistered: false)
+        let listing = await store.listing()
+
+        XCTAssertEqual(listing.items.count, 2)
+        XCTAssertEqual(listing.items.sorted { $0.id < $1.id }, Self.legacyInfos, "original metadata survives the move")
+        XCTAssertEqual(listing.totalBytes, 400)
+        let sizes = regularFileSizes(under: folder)
+        XCTAssertEqual(sizes["legacy-1.jpg"], 100)
+        XCTAssertEqual(sizes["legacy-2.jpg"], 300)
+        let rootChildren = try FileManager.default.contentsOfDirectory(atPath: root.path)
+        XCTAssertEqual(rootChildren, ["Accounts"], "no copy and no index.json left at the root")
+    }
+
+    func test_ACC_AC8_legacyContent_withOtherAccounts_goesToUnassigned() async throws {
+        try Self.seedLegacyContent(into: root)
+
+        store.setActiveAccount(Self.accountA, otherAccountsRegistered: true)
+        let forA = await store.listing()
+        store.setActiveAccount(Self.accountB, otherAccountsRegistered: true)
+        let forB = await store.listing()
+
+        XCTAssertTrue(forA.items.isEmpty)
+        XCTAssertTrue(forB.items.isEmpty)
+        let unassigned = regularFileSizes(under: store.unassignedURL)
+        XCTAssertEqual(unassigned["legacy-1.jpg"], 100)
+        XCTAssertEqual(unassigned["legacy-2.jpg"], 300)
+        XCTAssertNotNil(unassigned["index.json"])
+        XCTAssertEqual(regularFileSizes(under: store.folderURL(forAccount: Self.accountA)).filter { $0.key != "index.json" }, [:])
+        XCTAssertEqual(regularFileSizes(under: store.folderURL(forAccount: Self.accountB)).filter { $0.key != "index.json" }, [:])
+    }
+
+    func test_ACC_AC9_rootIsExcludedFromBackup_durably() async throws {
+        _ = await store.listing()
+        XCTAssertEqual(excluded(root), true, "serving a account excludes the root")
+        XCTAssertNotEqual(excluded(root.deletingLastPathComponent()), true, "the parent is never excluded")
+
+        try await download("a1")
+        XCTAssertEqual(excluded(root), true, "after a download")
+
+        await store.clearAll(accountID: Self.accountA)
+        XCTAssertEqual(excluded(root), true, "after clearAll")
+
+        await store.clearEveryAccount()
+        XCTAssertEqual(excluded(root), true, "after clearEveryAccount")
+
+        try FileManager.default.removeItem(at: root)
+        try await download("a2")
+        XCTAssertEqual(excluded(root), true, "after the folders were recreated")
+        XCTAssertNotEqual(excluded(root.deletingLastPathComponent()), true)
+    }
+
+    func test_ACC_AC19_capAppliesToEachAccountSeparately() async throws {
+        await store.setMaxCacheSize(1000)
+        transport.payload = Data(repeating: 0x01, count: 900)
+        try await download("a1")
+
+        store.setActiveAccount(Self.accountB, otherAccountsRegistered: true)
+        transport.payload = Data(repeating: 0x02, count: 400)
+        try await download("b1", announcedSize: 400, accountID: Self.accountB)
+        try await Task.sleep(nanoseconds: 20_000_000)
+        try await download("b2", announcedSize: 400, accountID: Self.accountB)
+        try await Task.sleep(nanoseconds: 20_000_000)
+        try await download("b3", announcedSize: 400, accountID: Self.accountB)
+
+        let cachedForB = await store.allCached()
+        let totalForB = await store.totalBytes()
+        XCTAssertEqual(cachedForB.map(\.id), ["b3", "b2"])
+        XCTAssertEqual(totalForB, 800)
+        XCTAssertTrue(FileManager.default.fileExists(atPath: folder.appendingPathComponent("a1.jpg").path))
+
+        store.setActiveAccount(Self.accountA, otherAccountsRegistered: true)
+        let forA = await store.listing()
+        XCTAssertEqual(forA.items.map(\.id), ["a1"])
+    }
+
+    func test_ACC_AC22_loweringTheCap_trimsOnlyTheActiveAccount() async throws {
+        await store.setMaxCacheSize(1000)
+        transport.payload = Data(repeating: 0x01, count: 450)
+        try await download("a1")
+        try await Task.sleep(nanoseconds: 20_000_000)
+        try await download("a2")
+
+        store.setActiveAccount(Self.accountB, otherAccountsRegistered: true)
+        transport.payload = Data(repeating: 0x02, count: 400)
+        try await download("b1", accountID: Self.accountB)
+        try await Task.sleep(nanoseconds: 20_000_000)
+        try await download("b2", accountID: Self.accountB)
+
+        await store.setMaxCacheSize(500)
+
+        let cachedForB = await store.allCached()
+        XCTAssertEqual(cachedForB.map(\.id), ["b2"])
+        XCTAssertTrue(FileManager.default.fileExists(atPath: folder.appendingPathComponent("a1.jpg").path))
+        XCTAssertTrue(FileManager.default.fileExists(atPath: folder.appendingPathComponent("a2.jpg").path))
+
+        store.setActiveAccount(Self.accountA, otherAccountsRegistered: true)
+        let forA = await store.listing()
+        XCTAssertEqual(forA.items.map(\.id), ["a2", "a1"], "activation never trims")
+        XCTAssertEqual(forA.totalBytes, 900)
+
+        transport.payload = Data(repeating: 0x03, count: 100)
+        try await download("a3")
+        let afterDownload = await store.allCached()
+        let total = await store.totalBytes()
+        XCTAssertEqual(afterDownload.map(\.id), ["a3"])
+        XCTAssertEqual(total, 100)
     }
 }

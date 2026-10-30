@@ -6,14 +6,19 @@ import Observation
 ///
 /// It owns no transport of its own — every byte and every index mutation goes
 /// through `OfflineAssetStore`, which is the single source of truth on disk.
-/// After each mutation the mirror (`OfflineAssetIndex`) is refreshed, because
-/// the timeline badge reads it.
+/// It is bound to one account at construction (`accountID`): a view model that
+/// outlives a switch of account touches neither that account's files nor the
+/// shared mirror (`OfflineAssetIndex`) it no longer owns. After each mutation
+/// the mirror is refreshed, because the timeline badge reads it.
 @MainActor
 @Observable
 final class OfflineDownloadViewModel {
     private let store: OfflineAssetStore
     private let client: any ImmichClient
     let index: OfflineAssetIndex
+    /// `SavedAccount.id` this view model acts for: every mutation is refused by
+    /// the store once another account (or none) is active.
+    let accountID: String
 
     /// Cached assets, most recent first — the storage screen's list.
     private(set) var cachedAssets: [CachedAssetInfo] = []
@@ -32,10 +37,11 @@ final class OfflineDownloadViewModel {
     private var progressByID: [String: Double] = [:]
     private var downloadingIDs: Set<String> = []
 
-    init(store: OfflineAssetStore, client: any ImmichClient, index: OfflineAssetIndex) {
+    init(store: OfflineAssetStore, client: any ImmichClient, index: OfflineAssetIndex, accountID: String) {
         self.store = store
         self.client = client
         self.index = index
+        self.accountID = accountID
     }
 
     // MARK: - Derived state
@@ -81,19 +87,22 @@ final class OfflineDownloadViewModel {
     }
 
     private func reload() async {
-        let cached = await store.allCached()
-        cachedAssets = cached
-        cacheUsage = await store.totalBytes()
+        let listing = await store.listing()
+        let mine = listing.accountID == accountID
+        cachedAssets = mine ? listing.items : []
+        cacheUsage = mine ? listing.totalBytes : 0
         maxCacheSize = await store.maxCacheSize
-        await index.refresh(from: store)
+        index.apply(listing, from: store)
     }
 
     // MARK: - Download
 
-    /// Downloads the asset's original into the cache.
+    /// Downloads the asset's original into the cache of `accountID`. When that
+    /// account is no longer the active one — at the start or when the transfer
+    /// ends — the store refuses or drops the download and it ends silently.
     ///
-    /// Credentials are per-call: this view model is built once in the app
-    /// container, long before a server is connected, so it cannot hold them.
+    /// Credentials are per-call: the server may change while this view model
+    /// (bound to one account) lives, so it cannot hold them.
     func downloadAsset(_ asset: AssetReactItem, baseURL: URL, token: String?) async {
         guard !downloadingIDs.contains(asset.id) else { return }
         downloadingIDs.insert(asset.id)
@@ -111,6 +120,7 @@ final class OfflineDownloadViewModel {
             // lets the store refuse an oversized download *before* it starts.
             let dto = try await client.getAsset(id: asset.id)
             let info = try await store.download(
+                accountID: accountID,
                 assetID: asset.id,
                 url: ImmichAssetURL.original(assetId: asset.id, baseURL: baseURL),
                 token: token,
@@ -146,13 +156,13 @@ final class OfflineDownloadViewModel {
     // MARK: - Removal
 
     func removeFromOffline(_ assetID: String) async {
-        await store.remove(assetID: assetID)
+        guard await store.remove(assetID: assetID, accountID: accountID) else { return }
         index.remove(assetID)
         await reload()
     }
 
     func clearAll() async {
-        await store.clearAll()
+        guard await store.clearAll(accountID: accountID) else { return }
         index.removeAll()
         errorMessage = nil
         await reload()

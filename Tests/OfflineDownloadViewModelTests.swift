@@ -7,7 +7,7 @@ import XCTest
 @MainActor
 final class OfflineDownloadViewModelTests: XCTestCase {
 
-    private var folder: URL!
+    private var root: URL!
     private var defaults: UserDefaults!
     private var transport: MockFileDownloadTransport!
     private var store: OfflineAssetStore!
@@ -19,18 +19,20 @@ final class OfflineDownloadViewModelTests: XCTestCase {
 
     override func setUp() {
         super.setUp()
-        folder = FileManager.default.temporaryDirectory
+        root = FileManager.default.temporaryDirectory
             .appendingPathComponent("offline-vm-tests-\(UUID().uuidString)", isDirectory: true)
+            .appendingPathComponent("OfflineAssets", isDirectory: true)
         defaults = UserDefaults(suiteName: "offline-vm-tests-\(UUID().uuidString)")!
         transport = MockFileDownloadTransport()
-        store = OfflineAssetStore(folderURL: folder, transport: transport, defaults: defaults)
+        store = OfflineAssetStore(rootURL: root, transport: transport, defaults: defaults)
+        store.setActiveAccount(Self.accountA, otherAccountsRegistered: false)
         client = MockImmichClient()
         index = OfflineAssetIndex()
-        vm = OfflineDownloadViewModel(store: store, client: client, index: index)
+        vm = OfflineDownloadViewModel(store: store, client: client, index: index, accountID: Self.accountA)
     }
 
     override func tearDown() {
-        try? FileManager.default.removeItem(at: folder)
+        try? FileManager.default.removeItem(at: root.deletingLastPathComponent())
         super.tearDown()
     }
 
@@ -53,7 +55,7 @@ final class OfflineDownloadViewModelTests: XCTestCase {
 
         // A fresh view model over the same folder sees what is on disk.
         let reopenedIndex = OfflineAssetIndex()
-        let fresh = OfflineDownloadViewModel(store: store, client: client, index: reopenedIndex)
+        let fresh = OfflineDownloadViewModel(store: store, client: client, index: reopenedIndex, accountID: Self.accountA)
         await fresh.load()
 
         XCTAssertEqual(fresh.cachedAssets.count, 2)
@@ -171,6 +173,139 @@ final class OfflineDownloadViewModelTests: XCTestCase {
 
         XCTAssertEqual(vm.usageFraction, 0.5)
         XCTAssertEqual(vm.maxCacheSize, 1000)
+    }
+    // MARK: - Per-account scoping (ACC)
+
+    private static let accountA = OfflineAssetStoreTests.accountA
+    private static let accountB = OfflineAssetStoreTests.accountB
+
+    private func makeViewModel(_ accountID: String) -> OfflineDownloadViewModel {
+        OfflineDownloadViewModel(store: store, client: client, index: index, accountID: accountID)
+    }
+
+    private func regularFileNames(under directory: URL) -> [String] {
+        var names: [String] = []
+        let enumerator = FileManager.default.enumerator(
+            at: directory, includingPropertiesForKeys: [.isRegularFileKey]
+        )
+        while let url = enumerator?.nextObject() as? URL {
+            if (try? url.resourceValues(forKeys: [.isRegularFileKey]))?.isRegularFile == true {
+                names.append(url.lastPathComponent)
+            }
+        }
+        return names.sorted()
+    }
+
+    /// Activates B and downloads `ids` for it (B stays active); returns the mirror as it was then.
+    private func seedB(_ ids: [String]) async -> [CachedAssetInfo] {
+        await index.activate(Self.accountB, otherAccountsRegistered: true, store: store).value
+        let vmB = makeViewModel(Self.accountB)
+        for id in ids {
+            await vmB.downloadAsset(makeAsset(id: id), baseURL: baseURL, token: "tok")
+        }
+        return index.items
+    }
+
+    /// B's mirror after a switch round-trip is reloaded from `index.json`, whose dates are
+    /// encoded at millisecond precision; `cachedAt` of the in-memory snapshot is not, so the
+    /// synthesized `==` cannot be used. Compare everything that is stable instead.
+    private func assertSameContent(
+        _ items: [CachedAssetInfo], _ snapshot: [CachedAssetInfo], _ message: String,
+        file: StaticString = #filePath, line: UInt = #line
+    ) {
+        XCTAssertEqual(items.map(\.id), snapshot.map(\.id), message, file: file, line: line)
+        XCTAssertEqual(items.map(\.fileName), snapshot.map(\.fileName), message, file: file, line: line)
+        XCTAssertEqual(items.map(\.size), snapshot.map(\.size), message, file: file, line: line)
+        XCTAssertFalse(items.isEmpty, message, file: file, line: line)
+        XCTAssertEqual(
+            index.localURL(for: "b1"),
+            store.folderURL(forAccount: Self.accountB).appendingPathComponent("b1.jpg"),
+            message, file: file, line: line
+        )
+    }
+
+    func test_ACC_AC5_downloadStartedUnderA_isDroppedWhenGetAssetEndsAfterTheSwitch() async throws {
+        let snapshot = await seedB(["b1"])
+        await index.activate(Self.accountA, otherAccountsRegistered: true, store: store).value
+        let downloadsBefore = transport.downloadCount
+
+        let latch = TestLatch()
+        client.getAssetGate = { _ in try await latch.wait() }
+        let pending = Task { await vm.downloadAsset(makeAsset(id: "x"), baseURL: baseURL, token: "tok") }
+        await pollUntil("getAsset(x)") { client.getAssetCalls.last == "x" }
+
+        await index.activate(Self.accountB, otherAccountsRegistered: true, store: store).value
+        latch.open()
+        await pending.value
+
+        XCTAssertEqual(transport.downloadCount, downloadsBefore, "no transfer request is issued")
+        XCTAssertFalse(regularFileNames(under: root).contains { $0.hasPrefix("x.") }, "no file of x at A or B")
+        XCTAssertNil(vm.errorMessage)
+        XCTAssertNil(vm.lastDownloadedID)
+        assertSameContent(index.items, snapshot, "B's index is untouched")
+    }
+
+    func test_ACC_AC6_staleViewModel_touchesNeitherFilesNorTheSharedIndex() async throws {
+        await vm.downloadAsset(makeAsset(id: "a1"), baseURL: baseURL, token: "tok")
+        let snapshot = await seedB(["b1"])
+
+        await vm.removeFromOffline("a1")
+        await vm.removeFromOffline("b1")
+        await vm.clearAll()
+
+        let folderA = store.folderURL(forAccount: Self.accountA)
+        let folderB = store.folderURL(forAccount: Self.accountB)
+        XCTAssertTrue(FileManager.default.fileExists(atPath: folderA.appendingPathComponent("a1.jpg").path))
+        XCTAssertTrue(FileManager.default.fileExists(atPath: folderB.appendingPathComponent("b1.jpg").path))
+        let storeContent = await store.allCached()
+        XCTAssertEqual(storeContent.map(\.id), ["b1"])
+        XCTAssertTrue(index.isCached("b1"))
+        XCTAssertNotNil(index.localURL(for: "b1"))
+        XCTAssertEqual(index.items, snapshot)
+    }
+
+    func test_ACC_AC18_removeAndClearAll_touchOnlyTheActiveAccount() async throws {
+        await vm.downloadAsset(makeAsset(id: "a1"), baseURL: baseURL, token: "tok")
+        _ = await seedB(["b1", "b2"])
+        let vmB = makeViewModel(Self.accountB)
+        await vmB.load()
+        XCTAssertEqual(vmB.cachedAssets.count, 2)
+
+        await vmB.removeFromOffline("b1")
+        await vmB.clearAll()
+
+        XCTAssertTrue(vmB.cachedAssets.isEmpty)
+        XCTAssertTrue(index.isEmpty)
+        let folderB = store.folderURL(forAccount: Self.accountB)
+        XCTAssertEqual(regularFileNames(under: folderB), ["index.json"], "only the empty index remains")
+        let folderA = store.folderURL(forAccount: Self.accountA)
+        XCTAssertTrue(FileManager.default.fileExists(atPath: folderA.appendingPathComponent("a1.jpg").path))
+        await index.activate(Self.accountA, otherAccountsRegistered: true, store: store).value
+        XCTAssertTrue(index.isCached("a1"))
+    }
+
+    func test_ACC_AC21_transferFinishingAfterTheSwitch_isDropped() async throws {
+        let snapshot = await seedB(["b1"])
+        await index.activate(Self.accountA, otherAccountsRegistered: true, store: store).value
+        let downloadsBefore = transport.downloadCount
+
+        let latch = TestLatch()
+        transport.gate = { try await latch.wait() }
+        let pending = Task { await vm.downloadAsset(makeAsset(id: "x"), baseURL: baseURL, token: "tok") }
+        await pollUntil("transfer of x") { transport.downloadCount == downloadsBefore + 1 }
+
+        await index.activate(Self.accountB, otherAccountsRegistered: true, store: store).value
+        latch.open()
+        await pending.value
+
+        XCTAssertNil(vm.errorMessage)
+        XCTAssertNil(vm.lastDownloadedID)
+        let temporaryFile = try XCTUnwrap(transport.lastFileURL)
+        XCTAssertFalse(FileManager.default.fileExists(atPath: temporaryFile.path), "the temp file is deleted")
+        XCTAssertFalse(regularFileNames(under: root).contains { $0.hasPrefix("x.") })
+        assertSameContent(index.items, snapshot, "B's index is untouched")
+        await index.activate(Self.accountA, otherAccountsRegistered: true, store: store).value
+        XCTAssertFalse(index.isCached("x"))
     }
 
     // MARK: - Helpers

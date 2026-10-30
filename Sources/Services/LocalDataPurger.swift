@@ -9,6 +9,11 @@ import Foundation
 /// would otherwise write into the stores right after they were emptied. The
 /// order is the contract; see `purgeAll()`.
 ///
+/// It also scopes the per-account offline copies: `activateAccount` is called
+/// on every session change. At logout, step 2 deactivates the account first,
+/// then calls `clearEveryAccount`, so nothing rewrites the store during the
+/// rest of the purge.
+///
 /// Credentials, the registered-accounts list and the trusted-servers list are
 /// not owned here: `AuthViewModel.logout()` clears them itself, the trusted
 /// servers *before* calling this purge so the final connection reset leaves no
@@ -46,12 +51,23 @@ final class LocalDataPurger {
         self.mapCacheDirectory = mapCacheDirectory
     }
 
+    /// Scopes the offline copies to `accountID` (`nil` = no session). Called by
+    /// `AuthViewModel` on every session change; synchronous, so the offline
+    /// index is already empty of the previous account's copies on return.
+    func activateAccount(_ accountID: String?, otherAccountsRegistered: Bool) {
+        offlineIndex.activate(accountID, otherAccountsRegistered: otherAccountsRegistered, store: offlineStore)
+    }
+
     func purgeAll() async {
         // 1. Stop the backup run and wait for it: no `markBackedUp` / `save()`
         //    may reach the ledger after step 4.
         await backupEngine.stopAndWait()
-        // 2. Offline copies: cancels in-flight downloads, then wipes disk + index.
-        await offlineStore.clearAll()
+        // 2. Offline copies. No account is active first, so a download, removal
+        //    or clear that reaches the store from here until `resetSession()` is
+        //    refused and nothing rewrites `OfflineAssets/`; then every account's
+        //    copies (and `Unassigned/`) go, in-flight transfers cancelled.
+        activateAccount(nil, otherAccountsRegistered: false)
+        await offlineStore.clearEveryAccount()
         offlineIndex.removeAll()
         // 3. Map markers (GPS positions of every account, legacy file included)
         //    and thumbnails: memory tier (its epoch drops loads in flight) +

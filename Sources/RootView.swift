@@ -199,10 +199,10 @@ private struct AuthenticatedRoot: View {
         _stacks = State(initialValue: container.makeStacksViewModel())
         _partners = State(initialValue: container.makePartnersViewModel())
         _admin = State(initialValue: container.makeAdminViewModel())
-        _offline = State(initialValue: container.makeOfflineDownloadViewModel())
+        _offline = State(initialValue: container.makeOfflineDownloadViewModel(accountID: accountID))
         _syncStatus = State(initialValue: container.makeSyncStatusViewModel(
             upload: container.upload,
-            offline: container.makeOfflineDownloadViewModel()
+            offline: container.makeOfflineDownloadViewModel(accountID: accountID)
         ))
         _localLibrary = State(initialValue: container.makeLocalLibraryViewModel())
         _notifications = State(initialValue: container.makeNotificationsViewModel())
@@ -224,8 +224,8 @@ private struct AuthenticatedRoot: View {
         // Same offline view model the offline screens and the sync-status screen
         // project: the inventory must describe the cache the viewer writes to.
         _appLog = State(initialValue: container.makeAppLogViewModel())
-        _mediaStats = State(initialValue: container.makeMediaStatsViewModel(offline: container.makeOfflineDownloadViewModel()))
-        _downloadInfo = State(initialValue: container.makeDownloadInfoViewModel(offline: container.makeOfflineDownloadViewModel()))
+        _mediaStats = State(initialValue: container.makeMediaStatsViewModel(offline: container.makeOfflineDownloadViewModel(accountID: accountID)))
+        _downloadInfo = State(initialValue: container.makeDownloadInfoViewModel(offline: container.makeOfflineDownloadViewModel(accountID: accountID)))
     }
 
     var body: some View {

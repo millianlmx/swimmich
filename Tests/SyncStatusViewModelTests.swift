@@ -63,9 +63,12 @@ final class SyncStatusViewModelTests: XCTestCase {
             activityService: MockBackupLiveActivityService(),
             readOnly: .ephemeral()
         )
-        let store = OfflineAssetStore(folderURL: folder, transport: transport, defaults: defaults)
+        let store = OfflineAssetStore(rootURL: folder, transport: transport, defaults: defaults)
+        store.setActiveAccount(OfflineAssetStoreTests.accountA, otherAccountsRegistered: false)
         let index = OfflineAssetIndex()
-        let offline = OfflineDownloadViewModel(store: store, client: client, index: index)
+        let offline = OfflineDownloadViewModel(
+            store: store, client: client, index: index, accountID: OfflineAssetStoreTests.accountA
+        )
         return Harness(
             sut: SyncStatusViewModel(upload: upload, offline: offline),
             upload: upload,

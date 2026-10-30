@@ -789,9 +789,14 @@ final class AuthViewModelTests: XCTestCase {
         let image = await fx.imageCache.image(for: fx.thumbURL)
         XCTAssertNotNil(image, "ImageCache must keep its thumbnail", file: file, line: line)
         XCTAssertNotNil(fx.diskCache.cachedResponse(for: fx.diskRequest), "disk image tier must be kept", file: file, line: line)
-        let offline = await fx.offlineStore.allCached()
-        XCTAssertEqual(offline.count, 1, "OfflineAssetStore must keep its asset", file: file, line: line)
-        XCTAssertFalse(fx.offlineIndex.isEmpty, file: file, line: line)
+        // On disk, not through the store or the index: after a 401 or a reset no
+        // account is active and the index is empty by design.
+        let copy = fx.accountFolder(fx.alice.id).appendingPathComponent("offline-1.jpg")
+        XCTAssertTrue(FileManager.default.fileExists(atPath: copy.path), "alice's copy must stay on disk", file: file, line: line)
+        let reopened = OfflineAssetStore(rootURL: fx.offlineRoot, transport: fx.transport, defaults: fx.offlineDefaults)
+        reopened.setActiveAccount(fx.alice.id, otherAccountsRegistered: true)
+        let listing = await reopened.listing()
+        XCTAssertEqual(listing.items.map(\.id), ["offline-1"], "a fresh store still lists it", file: file, line: line)
         XCTAssertEqual(fx.ledger.trackedCount(), 1, "BackupLedger must keep its entry", file: file, line: line)
         XCTAssertTrue(fx.trustStore.contains(LogoutFixture.host), "TrustedServerStore must keep its host", file: file, line: line)
     }
@@ -825,10 +830,9 @@ final class AuthViewModelTests: XCTestCase {
         let offlineBytes = await fx.offlineStore.totalBytes()
         XCTAssertEqual(offlineBytes, 0)
         XCTAssertTrue(fx.offlineIndex.isEmpty)
-        let leftovers = ((try? FileManager.default.contentsOfDirectory(atPath: fx.offlineFolder.path)) ?? [])
-            .filter { $0 != "index.json" }
-        XCTAssertTrue(leftovers.isEmpty, "AC-1: no payload on disk, found \(leftovers)")
-        let reopened = OfflineAssetStore(folderURL: fx.offlineFolder, transport: fx.transport, defaults: fx.offlineDefaults)
+        XCTAssertTrue(fx.regularFiles(under: fx.offlineRoot).isEmpty, "AC-1: no payload on disk")
+        let reopened = OfflineAssetStore(rootURL: fx.offlineRoot, transport: fx.transport, defaults: fx.offlineDefaults)
+        reopened.setActiveAccount(fx.alice.id, otherAccountsRegistered: true)
         let reopenedCached = await reopened.allCached()
         XCTAssertTrue(reopenedCached.isEmpty, "AC-1: a fresh store on the folder finds nothing")
         XCTAssertEqual(fx.ledger.trackedCount(), 0, "AC-1: no ledger entry")
@@ -981,10 +985,9 @@ final class AuthViewModelTests: XCTestCase {
         try await Task.sleep(for: .milliseconds(300))
         let cached = await fx.offlineStore.allCached()
         XCTAssertTrue(cached.isEmpty)
-        let leftovers = ((try? FileManager.default.contentsOfDirectory(atPath: fx.offlineFolder.path)) ?? [])
-            .filter { $0 != "index.json" }
-        XCTAssertTrue(leftovers.isEmpty, "no payload on disk, found \(leftovers)")
-        let reopened = OfflineAssetStore(folderURL: fx.offlineFolder, transport: fx.transport, defaults: fx.offlineDefaults)
+        XCTAssertTrue(fx.regularFiles(under: fx.offlineRoot).isEmpty, "no payload on disk")
+        let reopened = OfflineAssetStore(rootURL: fx.offlineRoot, transport: fx.transport, defaults: fx.offlineDefaults)
+        reopened.setActiveAccount(fx.alice.id, otherAccountsRegistered: true)
         let reopenedCached = await reopened.allCached()
         XCTAssertTrue(reopenedCached.isEmpty)
         let image = await fx.imageCache.image(for: fx.thumbURL)
@@ -1082,6 +1085,305 @@ final class AuthViewModelTests: XCTestCase {
               let accounts = try? JSONDecoder.immich.decode([SavedAccount].self, from: data) else { return [] }
         return accounts.map(\.id)
     }
+    // MARK: - Offline copies scoped per account (ACC)
+
+    private static func makeCarol() -> LoginResponseDto {
+        LoginResponseDto(
+            accessToken: "carol-jwt", userId: "u3", userEmail: "carol@example.com", name: "Carol",
+            profileImagePath: "", isAdmin: false, shouldChangePassword: false, isOnboarded: true
+        )
+    }
+
+    @MainActor
+    func test_ACC_AC1_switchToAccount_scopesTheIndexToB() async throws {
+        let fx = await LogoutFixture.make()
+        defer { fx.cleanup() }
+        try await fx.seedOffline("b1", for: fx.bob.id)
+        XCTAssertTrue(fx.offlineIndex.isCached("offline-1"), "precondition: alice's copy is served")
+        let stale = await fx.offlineStore.listing()
+        let latch = TestLatch()
+        fx.mock.validateTokenGate = { try await latch.wait() }
+        let validationsBefore = fx.mock.validateTokenCallCount
+
+        let switching = Task { await fx.auth.switchToAccount(fx.bob) }
+        await pollUntil("validateToken") { fx.mock.validateTokenCallCount == validationsBefore + 1 }
+
+        XCTAssertFalse(fx.offlineIndex.isCached("offline-1"), "emptied at the switch, before the validation ends")
+        XCTAssertNil(fx.offlineIndex.localURL(for: "offline-1"))
+        latch.open()
+        await switching.value
+        await pollUntil("b1 listed") { fx.offlineIndex.isCached("b1") }
+
+        XCTAssertEqual(fx.offlineIndex.items.map(\.id), ["b1"])
+        let items = fx.offlineIndex.items
+        XCTAssertFalse(fx.offlineIndex.apply(stale, from: fx.offlineStore), "a listing read under alice is dropped")
+        XCTAssertEqual(fx.offlineIndex.items, items)
+        XCTAssertTrue(FileManager.default.fileExists(atPath: fx.accountFolder(fx.alice.id).appendingPathComponent("offline-1.jpg").path))
+    }
+
+    @MainActor
+    func test_ACC_AC2_switchBackToA_servesItsCopiesAgain() async throws {
+        let fx = await LogoutFixture.make()
+        defer { fx.cleanup() }
+        try await fx.seedOffline("b1", for: fx.bob.id)
+        await fx.auth.switchToAccount(fx.bob)
+        await pollUntil("b1 listed") { fx.offlineIndex.isCached("b1") }
+        let downloadsBefore = fx.transport.downloadCount
+        let alice = try XCTUnwrap(fx.auth.savedAccounts.first { $0.id == fx.alice.id })
+
+        await fx.auth.switchToAccount(alice)
+        await pollUntil("offline-1 listed") { fx.offlineIndex.isCached("offline-1") }
+
+        let info = fx.offlineIndex.info("offline-1")
+        XCTAssertEqual(info?.originalFileName, "offline-1.jpg")
+        XCTAssertEqual(info?.size, Int64(fx.transport.payload.count))
+        let url = try XCTUnwrap(fx.offlineIndex.localURL(for: "offline-1"))
+        XCTAssertEqual(try Data(contentsOf: url), fx.transport.payload)
+        XCTAssertFalse(fx.offlineIndex.isCached("b1"))
+        XCTAssertEqual(fx.transport.downloadCount, downloadsBefore, "no download request")
+        XCTAssertTrue(fx.mock.getAssetCalls.isEmpty)
+    }
+
+    @MainActor
+    func test_ACC_AC3_offlineRestore_servesTheRestoredAccount() async throws {
+        let fx = await LogoutFixture.make()
+        defer { fx.cleanup() }
+        try await fx.seedOffline("b1", for: fx.bob.id)
+        fx.mock.validateError = URLError(.notConnectedToInternet)
+
+        let (auth, _, index) = fx.relaunch()
+        await auth.restoreSession()
+        await pollUntil("offline-1 listed") { index.isCached("offline-1") }
+
+        XCTAssertTrue(auth.isAuthenticated, "a network failure keeps the session")
+        XCTAssertNotNil(index.localURL(for: "offline-1"))
+        XCTAssertFalse(index.isCached("b1"))
+    }
+
+    @MainActor
+    private func assertNewAccountSeesNoCopy(_ fx: LogoutFixture, file: StaticString = #filePath, line: UInt = #line) async {
+        XCTAssertTrue(fx.auth.isAuthenticated, file: file, line: line)
+        await fx.offlineIndex.refresh(from: fx.offlineStore)
+        XCTAssertTrue(fx.offlineIndex.isEmpty, file: file, line: line)
+        let vm = OfflineDownloadViewModel(
+            store: fx.offlineStore, client: fx.mock, index: fx.offlineIndex, accountID: fx.auth.activeAccountID!
+        )
+        await vm.load()
+        XCTAssertTrue(vm.cachedAssets.isEmpty, file: file, line: line)
+        let aliceFile = fx.accountFolder(fx.alice.id).appendingPathComponent("offline-1.jpg")
+        XCTAssertTrue(FileManager.default.fileExists(atPath: aliceFile.path), file: file, line: line)
+    }
+
+    @MainActor
+    func test_ACC_AC4_passwordLogin_newAccountSeesNoCopy() async {
+        let fx = await LogoutFixture.make()
+        defer { fx.cleanup() }
+        fx.auth.addNewServer()
+        fx.auth.serverURLString = "https://third.example.com"
+        _ = fx.auth.baseURL
+        fx.mock.loginResponse = Self.makeCarol()
+
+        await fx.auth.login(email: "carol@example.com", password: "secret")
+
+        await assertNewAccountSeesNoCopy(fx)
+    }
+
+    @MainActor
+    func test_ACC_AC4_oauthLogin_newAccountSeesNoCopy() async {
+        let fx = await LogoutFixture.make()
+        defer { fx.cleanup() }
+        fx.auth.addNewServer()
+        fx.auth.serverURLString = "https://third.example.com"
+        _ = fx.auth.baseURL
+        fx.auth.serverConfig = makeOAuthConfig()
+        fx.mock.oauthCallbackResponse = Self.makeCarol()
+        fx.auth.oauthSessionHandler = { _ in URL(string: "app.immich:///oauth-callback?code=abc") }
+
+        await fx.auth.startOAuthFlow()
+
+        await assertNewAccountSeesNoCopy(fx)
+    }
+
+    /// Legacy single-folder content is written at the root after the account
+    /// folders of the fixture were dropped (an install coming from the old version).
+    @MainActor
+    private func seedLegacyContent(_ fx: LogoutFixture) throws {
+        try FileManager.default.removeItem(at: fx.offlineRoot.appendingPathComponent(OfflineAssetStore.accountsFolderName))
+        try OfflineAssetStoreTests.seedLegacyContent(into: fx.offlineRoot)
+    }
+
+    @MainActor
+    func test_ACC_AC7_restoreSession_onlyAccount_adoptsLegacyContent() async throws {
+        for registry in ["[a]", "[]"] {
+            let fx = await LogoutFixture.make()
+            defer { fx.cleanup() }
+            if registry == "[a]" {
+                let a = try XCTUnwrap(fx.auth.savedAccounts.first { $0.id == fx.auth.activeAccountID })
+                fx.defaults.set(try JSONEncoder.immich.encode([a]), forKey: AuthViewModel.serverListDefaultsKey)
+            } else {
+                fx.defaults.set(try JSONEncoder.immich.encode([SavedAccount]()), forKey: AuthViewModel.serverListDefaultsKey)
+            }
+            try seedLegacyContent(fx)
+
+            let (auth, store, index) = fx.relaunch()
+            await auth.restoreSession()
+            await index.refresh(from: store)
+
+            XCTAssertTrue(auth.isAuthenticated, registry)
+            XCTAssertEqual(Set(index.items.map(\.id)), ["legacy-1", "legacy-2"], "registry \(registry)")
+            XCTAssertEqual(index.info("legacy-1")?.originalFileName, "IMG_0001.jpg", registry)
+            XCTAssertEqual(index.items.reduce(Int64(0)) { $0 + $1.size }, 400, registry)
+            XCTAssertEqual(
+                fx.regularFiles(under: fx.accountFolder(fx.alice.id)),
+                ["index.json", "legacy-1.jpg", "legacy-2.jpg"], "registry \(registry)"
+            )
+            XCTAssertTrue(fx.directRegularFiles(in: fx.offlineRoot).isEmpty, "registry \(registry)")
+            XCTAssertTrue(fx.regularFiles(under: fx.offlineRoot.appendingPathComponent("Unassigned")).isEmpty, "registry \(registry)")
+        }
+    }
+
+    @MainActor
+    func test_ACC_AC8_restoreSession_otherAccounts_legacyGoesToUnassigned() async throws {
+        let fx = await LogoutFixture.make()
+        defer { fx.cleanup() }
+        try seedLegacyContent(fx)
+
+        let (auth, store, index) = fx.relaunch()
+        await auth.restoreSession()
+        await index.refresh(from: store)
+
+        XCTAssertTrue(index.isEmpty)
+        XCTAssertEqual(
+            fx.regularFiles(under: fx.offlineRoot.appendingPathComponent("Unassigned")),
+            ["index.json", "legacy-1.jpg", "legacy-2.jpg"]
+        )
+        XCTAssertEqual(fx.regularFiles(under: fx.accountFolder(fx.alice.id)).filter { $0 != "index.json" }, [])
+        XCTAssertTrue(fx.directRegularFiles(in: fx.offlineRoot).isEmpty)
+    }
+
+    @MainActor
+    func test_ACC_AC14_logout_wipesEveryAccountAndUnassigned() async throws {
+        let fx = await LogoutFixture.make()
+        defer { fx.cleanup() }
+        try await fx.seedOffline("b1", for: fx.bob.id)
+        let unassigned = fx.offlineRoot.appendingPathComponent("Unassigned", isDirectory: true)
+        try FileManager.default.createDirectory(at: unassigned, withIntermediateDirectories: true)
+        try Data(repeating: 9, count: 64).write(to: unassigned.appendingPathComponent("u1.jpg"))
+        let n0 = fx.transport.downloadCount
+        fx.transport.gate = suspendUntilCancelled
+        let store = fx.offlineStore
+        let inFlight = Task { () -> Result<CachedAssetInfo, Error> in
+            do { return .success(try await fx.downloadOffline("inflight", into: store)) } catch { return .failure(error) }
+        }
+        await pollUntil("transfer in flight") { fx.transport.downloadCount == n0 + 1 }
+
+        // A view model download stuck before the store, released during the purge.
+        let vm = OfflineDownloadViewModel(store: fx.offlineStore, client: fx.mock, index: fx.offlineIndex, accountID: fx.alice.id)
+        let latch = TestLatch()
+        fx.mock.getAssetGate = { _ in try await latch.wait() }
+        let late = Task {
+            await vm.downloadAsset(fx.makeAsset(id: "late"), baseURL: URL(string: "https://photos.example.com")!, token: "alice-jwt")
+        }
+        await pollUntil("getAsset(late)") { fx.mock.getAssetCalls == ["late"] }
+        var resetObserved = false
+        var activeDuringReset: String?
+        fx.serverSessions.onReset = {
+            resetObserved = true
+            activeDuringReset = fx.offlineStore.activeAccountID
+        }
+        fx.serverSessions.onResetAsync = {
+            fx.transport.gate = nil
+            latch.open()
+            await late.value
+        }
+
+        await fx.auth.logout()
+
+        guard case .failure(let error) = await inFlight.value else {
+            return XCTFail("the in-flight download must not succeed")
+        }
+        XCTAssertTrue(UserFacingError.isCancellation(error), "got \(error)")
+        XCTAssertTrue(resetObserved)
+        XCTAssertNil(activeDuringReset, "no account is active when the connections reset")
+        XCTAssertEqual(fx.transport.downloadCount, n0 + 1, "`late` is refused at the store's entry")
+        XCTAssertNil(vm.errorMessage)
+        XCTAssertNil(vm.lastDownloadedID)
+        XCTAssertTrue(fx.regularFiles(under: fx.offlineRoot).isEmpty)
+        XCTAssertTrue(fx.offlineIndex.isEmpty)
+        let reopened = OfflineAssetStore(rootURL: fx.offlineRoot, transport: fx.transport, defaults: fx.offlineDefaults)
+        reopened.setActiveAccount(fx.alice.id, otherAccountsRegistered: true)
+        let forAlice = await reopened.listing()
+        reopened.setActiveAccount(fx.bob.id, otherAccountsRegistered: true)
+        let forBob = await reopened.listing()
+        XCTAssertTrue(forAlice.items.isEmpty)
+        XCTAssertTrue(forBob.items.isEmpty)
+    }
+
+    @MainActor
+    func test_ACC_AC17_sessionReset_servesNothingAndRefuses() async throws {
+        enum Trigger: String, CaseIterable {
+            case restoreRejected, switchRejected, addNewServer, removeActiveAccount, unauthorized401
+        }
+        for trigger in Trigger.allCases {
+            let fx = await LogoutFixture.make()
+            defer { fx.cleanup() }
+            let name = trigger.rawValue
+            XCTAssertTrue(fx.offlineIndex.isCached("offline-1"), "\(name): precondition")
+            let downloadsBefore = fx.transport.downloadCount
+
+            switch trigger {
+            case .restoreRejected:
+                fx.mock.validateError = APIError.unauthorized
+                await fx.auth.restoreSession()
+            case .switchRejected:
+                fx.mock.validateError = APIError.unauthorized
+                await fx.auth.switchToAccount(fx.bob)
+            case .addNewServer:
+                fx.auth.addNewServer()
+            case .removeActiveAccount:
+                let alice = try XCTUnwrap(fx.auth.savedAccounts.first { $0.id == fx.alice.id })
+                fx.auth.removeSavedAccount(alice)
+            case .unauthorized401:
+                fx.auth.didReceiveUnauthorized()
+                await pollUntil("session expired") { !fx.auth.isAuthenticated }
+            }
+
+            XCTAssertFalse(fx.offlineIndex.isCached("offline-1"), "\(name): index emptied by the reset")
+            XCTAssertNil(fx.offlineIndex.localURL(for: "offline-1"), name)
+            do {
+                _ = try await fx.downloadOffline("again", into: fx.offlineStore)
+                XCTFail("\(name): a download for the signed-out account must be refused")
+            } catch {
+                XCTAssertTrue(error is CancellationError, "\(name): got \(error)")
+            }
+            XCTAssertEqual(fx.transport.downloadCount, downloadsBefore, name)
+            let removed = await fx.offlineStore.remove(assetID: "offline-1", accountID: fx.alice.id)
+            XCTAssertFalse(removed, name)
+            let file = fx.accountFolder(fx.alice.id).appendingPathComponent("offline-1.jpg")
+            XCTAssertTrue(FileManager.default.fileExists(atPath: file.path), name)
+
+            fx.mock.validateError = nil
+            fx.auth.serverURLString = "https://photos.example.com"
+            _ = fx.auth.baseURL
+            await fx.auth.login(email: "alice@example.com", password: "secret")
+            await pollUntil("\(name): offline-1 listed again") { fx.offlineIndex.isCached("offline-1") }
+        }
+    }
+
+    @MainActor
+    func test_ACC_AC23_offlineSwitch_servesB() async throws {
+        let fx = await LogoutFixture.make()
+        defer { fx.cleanup() }
+        try await fx.seedOffline("b1", for: fx.bob.id)
+        fx.mock.validateError = URLError(.notConnectedToInternet)
+
+        await fx.auth.switchToAccount(fx.bob)
+        XCTAssertTrue(fx.auth.isAuthenticated, "a network failure keeps B's session")
+        await pollUntil("b1 listed") { fx.offlineIndex.isCached("b1") }
+
+        XCTAssertNotNil(fx.offlineIndex.localURL(for: "b1"))
+        XCTAssertFalse(fx.offlineIndex.isCached("offline-1"))
+    }
 }
 
 /// A signed-in app container on temp folders and UUID suites: two registered accounts
@@ -1116,7 +1418,7 @@ private final class LogoutFixture {
     let thumbURL = URL(string: "https://photos.example.com/api/assets/t1/thumbnail")!
     let diskRequest: URLRequest
 
-    var offlineFolder: URL { root.appendingPathComponent("offline", isDirectory: true) }
+    var offlineRoot: URL { root.appendingPathComponent("OfflineAssets", isDirectory: true) }
     var ledgerFile: URL { root.appendingPathComponent("ledger.json") }
     var mapCacheDirectory: URL { root.appendingPathComponent("caches", isDirectory: true) }
 
@@ -1143,7 +1445,7 @@ private final class LogoutFixture {
             directory: root.appendingPathComponent("urlcache", isDirectory: true)
         )
         diskRequest = URLRequest(url: thumbURL)
-        offlineStore = OfflineAssetStore(folderURL: root.appendingPathComponent("offline", isDirectory: true), transport: transport, defaults: offlineDefaults)
+        offlineStore = OfflineAssetStore(rootURL: root.appendingPathComponent("OfflineAssets", isDirectory: true), transport: transport, defaults: offlineDefaults)
         ledger = BackupLedger(fileURL: root.appendingPathComponent("ledger.json"))
         engine = BackupEngine(client: mock, source: source, environment: MockBackupEnvironment(), ledger: ledger)
         purger = LocalDataPurger(
@@ -1185,12 +1487,70 @@ private final class LogoutFixture {
         return fx
     }
 
-    func downloadOffline(_ id: String, into store: OfflineAssetStore) async throws -> CachedAssetInfo {
+    func downloadOffline(_ id: String, into store: OfflineAssetStore, accountID: String? = nil) async throws -> CachedAssetInfo {
         try await store.download(
+            accountID: accountID ?? alice.id,
             assetID: id,
             url: URL(string: "https://photos.example.com/api/assets/\(id)/original")!,
             token: "alice-jwt", fileName: "\(id).jpg", isVideo: false, ratio: 1,
             fileCreatedAt: "2024-07-01T10:00:00.000Z", duration: nil, thumbhash: nil, announcedSize: nil
+        )
+    }
+
+    func accountFolder(_ id: String) -> URL { offlineStore.folderURL(forAccount: id) }
+
+    /// Puts a copy on disk for `accountID` through a second store, so the main
+    /// store's active account and in-memory index are left alone.
+    func seedOffline(_ assetID: String, for accountID: String) async throws {
+        let seeder = OfflineAssetStore(rootURL: offlineRoot, transport: transport, defaults: offlineDefaults)
+        seeder.setActiveAccount(accountID, otherAccountsRegistered: true)
+        _ = try await downloadOffline(assetID, into: seeder, accountID: accountID)
+    }
+
+    /// Names of every regular file below `directory`, sorted.
+    func regularFiles(under directory: URL) -> [String] {
+        var names: [String] = []
+        let enumerator = FileManager.default.enumerator(at: directory, includingPropertiesForKeys: [.isRegularFileKey])
+        while let url = enumerator?.nextObject() as? URL {
+            if (try? url.resourceValues(forKeys: [.isRegularFileKey]))?.isRegularFile == true {
+                names.append(url.lastPathComponent)
+            }
+        }
+        return names.sorted()
+    }
+
+    /// Regular files that are direct children of `directory`.
+    func directRegularFiles(in directory: URL) -> [String] {
+        let children = (try? FileManager.default.contentsOfDirectory(
+            at: directory, includingPropertiesForKeys: [.isRegularFileKey]
+        )) ?? []
+        return children.filter { (try? $0.resourceValues(forKeys: [.isRegularFileKey]))?.isRegularFile == true }
+            .map(\.lastPathComponent).sorted()
+    }
+
+    /// A new process on the same disk, defaults and keychain: fresh store, index,
+    /// purger and `AuthViewModel`, nothing active until `restoreSession()` runs.
+    func relaunch() -> (auth: AuthViewModel, store: OfflineAssetStore, index: OfflineAssetIndex) {
+        let store = OfflineAssetStore(rootURL: offlineRoot, transport: transport, defaults: offlineDefaults)
+        let index = OfflineAssetIndex()
+        let purger = LocalDataPurger(
+            backupEngine: engine, offlineStore: store, offlineIndex: index,
+            imageCache: imageCache, imageDiskCache: diskCache,
+            apiClient: ImmichAPIClient(trustStore: trustStore),
+            serverSessions: serverSessions,
+            mapCacheDirectory: mapCacheDirectory
+        )
+        let auth = AuthViewModel(client: mock, keychain: keychain, defaults: defaults, trustStore: trustStore, localData: purger)
+        return (auth, store, index)
+    }
+
+    func makeAsset(id: String) -> AssetReactItem {
+        AssetReactItem(
+            id: id, ownerId: "owner", ratio: 0.75, isFavorite: false, visibility: "timeline",
+            isTrashed: false, isImage: true, thumbhash: "thumb",
+            createdAt: "2024-07-01T10:00:00.000Z", fileCreatedAt: "2024-07-01T10:00:00.000Z",
+            localOffsetHours: 0, duration: nil, livePhotoVideoId: nil,
+            projectionType: nil, city: nil, country: nil, latitude: nil, longitude: nil, stack: []
         )
     }
 
@@ -1205,9 +1565,13 @@ private final class LogoutFixture {
 private final class ConnectionResetSpy: ConnectionResetting {
     private(set) var calls = 0
     var onReset: (() -> Void)?
+    /// Awaited right after `onReset`: runs code during the purge, after the
+    /// offline step and before `logout()` resets the session.
+    var onResetAsync: (() async -> Void)?
 
     func resetConnections() async {
         calls += 1
         onReset?()
+        await onResetAsync?()
     }
 }

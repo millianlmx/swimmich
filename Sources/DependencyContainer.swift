@@ -425,12 +425,15 @@ final class DependencyContainer {
 
     /// Offline storage screen (issue #18). Shares the process-wide store and
     /// mirror so a download made in the viewer shows up on the timeline badge
-    /// and on this screen without a relaunch.
-    func makeOfflineDownloadViewModel() -> OfflineDownloadViewModel {
+    /// and on this screen without a relaunch. The view model is bound to
+    /// `accountID` (the account of the screen tree that builds it): once another
+    /// account is active, the store refuses everything it asks for.
+    func makeOfflineDownloadViewModel(accountID: String) -> OfflineDownloadViewModel {
         OfflineDownloadViewModel(
             store: offlineStore,
             client: libraryClient,
-            index: offlineIndex
+            index: offlineIndex,
+            accountID: accountID
         )
     }
 
