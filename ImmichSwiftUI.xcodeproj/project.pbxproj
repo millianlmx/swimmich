@@ -92,6 +92,7 @@
 		1DB3F51D0ECDB05A6A44D382 /* FolderViewUITests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 78372C4588F75079AFAE958B /* FolderViewUITests.swift */; };
 		54E04449BD2F2688A94C7BC4 /* FavoritesFilterUITests.swift in Sources */ = {isa = PBXBuildFile; fileRef = B1311FF6A5F09E70FCCF983C /* FavoritesFilterUITests.swift */; };
 		5A1C0D2E7B3F4A6981D2C0E4 /* ArchiveUITests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5A1C0D2E7B3F4A6981D2C0E3 /* ArchiveUITests.swift */; };
+		7E5E1F00A1B2C3D4E5F60719 /* SelfSignedTrustUITests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7E5E1F00A1B2C3D4E5F60718 /* SelfSignedTrustUITests.swift */; };
 		1DE222F8440F7B387939A8D1 /* CastService.swift in Sources */ = {isa = PBXBuildFile; fileRef = B8B8F992F536E50B945F00D7 /* CastService.swift */; };
 		1E74193A3B7A6BCF7FAF24A1 /* LocalizationTestSupport.swift in Sources */ = {isa = PBXBuildFile; fileRef = 27692E2B260CCBE82D1B836A /* LocalizationTestSupport.swift */; };
 		1EAA004AF23F270A2AB8D92D /* CreateMemorySheet.swift in Sources */ = {isa = PBXBuildFile; fileRef = F6E00FDD2DB7F0A86DB2415E /* CreateMemorySheet.swift */; };
@@ -243,6 +244,7 @@
 		6E7B778D9F491BF5176FD1BA /* AlbumShareViewModelTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6F117AF914D1EB40979279C3 /* AlbumShareViewModelTests.swift */; };
 		6EE4B13C616AD03120A4C765 /* ImmichRenderScreenshots.swift in Sources */ = {isa = PBXBuildFile; fileRef = EAB20A19BE3CE84F21953F08 /* ImmichRenderScreenshots.swift */; };
 		6EF13C97719475355E74263C /* immich_stub_star_ratings.py in Resources */ = {isa = PBXBuildFile; fileRef = FB50BC7F53CA5A4D8CFBC05F /* immich_stub_star_ratings.py */; };
+		7E5E1F00A1B2C3D4E5F6071B /* immich_stub_selfsigned.py in Resources */ = {isa = PBXBuildFile; fileRef = 7E5E1F00A1B2C3D4E5F6071A /* immich_stub_selfsigned.py */; };
 		704BBB20259A55CF5A635683 /* ProfilePictureView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 83721676D7FCACD3EFECA14B /* ProfilePictureView.swift */; };
 		7054B0C13EF885F5CC0A1C92 /* OcrOverlayView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7033916824290F1F230DBA38 /* OcrOverlayView.swift */; };
 		7066979BA43E84DD98058FF3 /* FolderView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2E0A77E31B92E874904F6F20 /* FolderView.swift */; };
@@ -863,6 +865,7 @@
 		78372C4588F75079AFAE958B /* FolderViewUITests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FolderViewUITests.swift; sourceTree = "<group>"; };
 		B1311FF6A5F09E70FCCF983C /* FavoritesFilterUITests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FavoritesFilterUITests.swift; sourceTree = "<group>"; };
 		5A1C0D2E7B3F4A6981D2C0E3 /* ArchiveUITests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ArchiveUITests.swift; sourceTree = "<group>"; };
+		7E5E1F00A1B2C3D4E5F60718 /* SelfSignedTrustUITests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SelfSignedTrustUITests.swift; sourceTree = "<group>"; };
 		794BEC4709A8CF43A1D2DCAA /* WidgetDeepLinkTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WidgetDeepLinkTests.swift; sourceTree = "<group>"; };
 		7B165010C2BC88FD901034EF /* NotificationSettingsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NotificationSettingsView.swift; sourceTree = "<group>"; };
 		7CF7041596F97609707BFED1 /* LockedFolderViewModelTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LockedFolderViewModelTests.swift; sourceTree = "<group>"; };
@@ -1123,6 +1126,7 @@
 		FA093EC6B585CA727A510320 /* EditState.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = EditState.swift; sourceTree = "<group>"; };
 		FAED9946CE0FAEDE581A583E /* SharedLinkViewerViewModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SharedLinkViewerViewModel.swift; sourceTree = "<group>"; };
 		FB50BC7F53CA5A4D8CFBC05F /* immich_stub_star_ratings.py */ = {isa = PBXFileReference; lastKnownFileType = text.script.python; path = immich_stub_star_ratings.py; sourceTree = "<group>"; };
+		7E5E1F00A1B2C3D4E5F6071A /* immich_stub_selfsigned.py */ = {isa = PBXFileReference; lastKnownFileType = text.script.python; path = immich_stub_selfsigned.py; sourceTree = "<group>"; };
 		FC236D6643511063A426F562 /* ShareExtensionUITests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ShareExtensionUITests.swift; sourceTree = "<group>"; };
 		FC4ECBFBA7B3E274CC737EF2 /* immich_stub_chromecast.py */ = {isa = PBXFileReference; lastKnownFileType = text.script.python; path = immich_stub_chromecast.py; sourceTree = "<group>"; };
 		FCA0A3B346CA72790B97E010 /* ImmichGridWidget.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ImmichGridWidget.swift; sourceTree = "<group>"; };
@@ -1899,6 +1903,7 @@
 				FDE53ED2DD3C1FD0C04F4DB9 /* immich_stub_shared_link_viewer.py */,
 				DB7F67B8B6D1869797CBD1B7 /* immich_stub_shared_links.py */,
 				FB50BC7F53CA5A4D8CFBC05F /* immich_stub_star_ratings.py */,
+				7E5E1F00A1B2C3D4E5F6071A /* immich_stub_selfsigned.py */,
 				60264C1E2A5467BDD1DA9767 /* immich_stub_sync_badge.py */,
 				51CC70B985B1F6DBC1A305B5 /* immich_stub_sync_status.py */,
 				7DA861477F3413995E33B935 /* immich_stub_upload_detail.py */,
@@ -1987,6 +1992,7 @@
 				78372C4588F75079AFAE958B /* FolderViewUITests.swift */,
 				B1311FF6A5F09E70FCCF983C /* FavoritesFilterUITests.swift */,
 				5A1C0D2E7B3F4A6981D2C0E3 /* ArchiveUITests.swift */,
+				7E5E1F00A1B2C3D4E5F60718 /* SelfSignedTrustUITests.swift */,
 				A14A4BDD1813503721593F03 /* FreeUpSpaceUITests.swift */,
 				B2BE58A959176290845E8EF8 /* LocalLibraryUITests.swift */,
 				86533554A77DF5D2D61EA1FF /* LockedFolderUITests.swift */,
@@ -2398,6 +2404,7 @@
 				32DA0757617E602B6B277FB2 /* immich_stub_shared_link_viewer.py in Resources */,
 				04DFCD43FE2FF24449114F7B /* immich_stub_shared_links.py in Resources */,
 				6EF13C97719475355E74263C /* immich_stub_star_ratings.py in Resources */,
+				7E5E1F00A1B2C3D4E5F6071B /* immich_stub_selfsigned.py in Resources */,
 				3A4F9039F6A4ECC0AD17DAE2 /* immich_stub_sync_badge.py in Resources */,
 				BB6733F84D1B6F09D9B3702A /* immich_stub_sync_status.py in Resources */,
 				365EBE988B9DB1483C23C6FC /* immich_stub_upload_detail.py in Resources */,
@@ -2591,6 +2598,7 @@
 				1DB3F51D0ECDB05A6A44D382 /* FolderViewUITests.swift in Sources */,
 				54E04449BD2F2688A94C7BC4 /* FavoritesFilterUITests.swift in Sources */,
 				5A1C0D2E7B3F4A6981D2C0E4 /* ArchiveUITests.swift in Sources */,
+				7E5E1F00A1B2C3D4E5F60719 /* SelfSignedTrustUITests.swift in Sources */,
 				3C7D0A06D816806EBE848628 /* FreeUpSpaceUITests.swift in Sources */,
 				6EE4B13C616AD03120A4C765 /* ImmichRenderScreenshots.swift in Sources */,
 				D5CF1D6B97E1CEF46C6A53C0 /* ImmichWidgetHomeScreen.swift in Sources */,
