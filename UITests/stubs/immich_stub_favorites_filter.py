@@ -12,6 +12,11 @@ changes it:
         FavoritesFilterUITests/test_AC21_viewerUnfavoriteThenRefavorite
 
 WHAT THE WIRE HAS TO SHOW
+    0. Every asset is a favorite EXCEPT the witness (`WITNESS`, the last one of
+       the timeline): it shows on the All grid and not on the Favorites grid.
+       It is the proof that the grid on screen is the filtered grid, reloaded
+       from the server — with six favorites out of six, the tile left by the
+       All grid would pass for the Favorites one.
     1. `GET /api/timeline/bucket` carries `isFavorite=true` like `/buckets`
        does. A stub that answered `/bucket` with the same favorites whatever the
        query could not tell the two apart: this one answers the whole timeline
@@ -26,8 +31,11 @@ from immich_stub_base import (
     Response, STATE, TIMELINE_ASSETS, TIMELINE_DAY, asset, bucket_payload, main, router,
 )
 
+# The non-favorite asset: the scenario's `witness` (FavoritesFilterUITests) is this id.
+WITNESS = TIMELINE_ASSETS[-1]
+
 # Also set at import: a by-hand run that never calls `/__reset` must not crash.
-STATE["favorites"] = list(TIMELINE_ASSETS)
+STATE["favorites"] = [a for a in TIMELINE_ASSETS if a != WITNESS]
 
 
 @router.get("/api/timeline/buckets")
@@ -73,8 +81,8 @@ def write_favorite(req):
 
 @router.reset
 def fresh():
-    """`/__reset`: every asset is a favorite again."""
-    STATE["favorites"] = list(TIMELINE_ASSETS)
+    """`/__reset`: every asset is a favorite again, except the witness."""
+    STATE["favorites"] = [a for a in TIMELINE_ASSETS if a != WITNESS]
 
 
 if __name__ == "__main__":

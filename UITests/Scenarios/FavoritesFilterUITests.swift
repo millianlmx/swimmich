@@ -34,12 +34,20 @@ final class FavoritesFilterUITests: XCTestCase {
     /// The shell's first timeline asset.
     private let photo = "aaaaaaaa-1111-4111-8111-000000000001"
 
+    /// The one asset the stub leaves NON-favorite at reset (`WITNESS` in
+    /// `immich_stub_favorites_filter.py`): on the All grid, never on the
+    /// Favorites one. Its tile tells which of the two grids is on screen.
+    private let witness = "aaaaaaaa-1111-4111-8111-000000000006"
+
     private let favoritesLabels = ["Favorites", "Favoris", "Favoriten", "Favoritos", "Preferiti"]
     private let allLabels = ["All", "Tout", "Alle", "Todos", "Tutti"]
 
     override func setUpWithError() throws {
         continueAfterFailure = false
         app = XCUIApplication()
+        // The scenario's onboarding and `app.tabBars.buttons["Photos"]` only know
+        // English labels (French too for the onboarding): pin the language.
+        app.launchArguments += ["-AppleLanguages", "(en)", "-AppleLocale", "en_US"]
         try XCTSkipUnless(stubIsReachable(), "Local Immich stub not running on \(stub)")
     }
 
@@ -221,6 +229,35 @@ final class FavoritesFilterUITests: XCTestCase {
         item.tap()
     }
 
+    // MARK: - Grid helpers
+
+    private func visibleTileIdentifiers() -> [String] {
+        app.descendants(matching: .any)
+            .matching(NSPredicate(format: "identifier BEGINSWITH 'assetTile_'"))
+            .allElementsBoundByIndex.map(\.identifier)
+    }
+
+    /// The All grid is on screen: it shows the non-favorite witness.
+    private func waitForAllGrid(file: StaticString = #filePath, line: UInt = #line) {
+        XCTAssertTrue(tile(witness).waitForExistence(timeout: 30),
+                      "the All grid never showed the non-favorite witness \(witness) — tiles: \(visibleTileIdentifiers())",
+                      file: file, line: line)
+    }
+
+    /// The Favorites grid, reloaded from the server, is on screen. `reloadFirstPage`
+    /// keeps the previous grid until the first bucket arrives and restores it if
+    /// that bucket fails: the witness leaving proves the filtered response is
+    /// shown, and not coming back with the photo proves it was not a restore.
+    private func waitForFavoritesGrid(_ message: String, file: StaticString = #filePath, line: UInt = #line) {
+        XCTAssertTrue(tile(witness).waitForNonExistence(timeout: 30),
+                      "the non-favorite witness is still on screen: the Favorites grid never replaced the All grid",
+                      file: file, line: line)
+        XCTAssertTrue(tile(photo).waitForExistence(timeout: 30), message, file: file, line: line)
+        XCTAssertFalse(tile(witness).exists,
+                       "the witness came back with the photo: the Favorites bucket failed and the All grid was restored",
+                       file: file, line: line)
+    }
+
     // MARK: - Wire helpers
 
     private struct StubRequest: Decodable {
@@ -287,10 +324,11 @@ final class FavoritesFilterUITests: XCTestCase {
         }
 
         // 2. Filter the timeline on favorites.
+        waitForAllGrid()
         chooseFilter(favoritesLabels)
 
         // 3. The month's content was asked with the same filter as the month list.
-        XCTAssertTrue(tile(photo).waitForExistence(timeout: 30), "the Favorites grid never showed the photo")
+        waitForFavoritesGrid("the Favorites grid never showed the photo")
         let bucketReads = stubRequests().filter { $0.method == "GET" && $0.path == "/api/timeline/bucket" }
         XCTAssertTrue(bucketReads.contains { $0.params["isFavorite"] == "true" },
                       "no GET /api/timeline/bucket carried isFavorite=true — got:\n\(describe(bucketReads))")
@@ -332,11 +370,11 @@ final class FavoritesFilterUITests: XCTestCase {
 
         // 8. Refresh through the menu: All, then Favorites again.
         chooseFilter(allLabels)
+        waitForAllGrid()
         chooseFilter(favoritesLabels)
 
         // 9. The re-favorite was written: the photo is back.
-        XCTAssertTrue(tile(photo).waitForExistence(timeout: 30),
-                      "the re-favorited photo never came back after a refresh")
+        waitForFavoritesGrid("the re-favorited photo never came back after a refresh")
         shot("s09-grid-with-photo")
     }
 }
