@@ -3,6 +3,7 @@ import UIKit
 import CryptoKit
 import ImageIO
 import CoreImage
+import Photos
 @testable import ImmichSwiftUI
 
 /// AC-604, 605, 606, 608, 609, 610, 611, 612, 616, 617.
@@ -335,8 +336,9 @@ final class EditorViewModelTests: XCTestCase {
     private func makeVM(client: any ImmichClient = MockImmichClient(),
                         store: EditStateStore? = nil,
                         appLog: any AppLogSink = NoopAppLogSink(),
+                        photos: any PhotoLibraryService = MockPhotoLibraryService(),
                         exportDirectory: URL) -> PhotoEditorViewModel {
-        PhotoEditorViewModel(assetId: "asset-1", client: client, appLog: appLog,
+        PhotoEditorViewModel(assetId: "asset-1", client: client, appLog: appLog, photos: photos,
                              store: store ?? makeStore(), exportDirectory: exportDirectory)
     }
 
@@ -344,10 +346,12 @@ final class EditorViewModelTests: XCTestCase {
     private func editedVM(client: any ImmichClient = MockImmichClient(),
                           store: EditStateStore? = nil,
                           appLog: any AppLogSink = NoopAppLogSink(),
+                          photos: any PhotoLibraryService = MockPhotoLibraryService(),
                           exportDirectory: URL,
                           width: Int = 64, height: Int = 48,
                           orientation: UIImage.Orientation = .up) -> PhotoEditorViewModel {
-        let vm = makeVM(client: client, store: store, appLog: appLog, exportDirectory: exportDirectory)
+        let vm = makeVM(client: client, store: store, appLog: appLog, photos: photos,
+                        exportDirectory: exportDirectory)
         vm.originalImage = Support.rawImage(width: width, height: height, orientation: orientation)
         vm.setExposure(0.2)
         return vm
@@ -749,5 +753,282 @@ final class EditorViewModelTests: XCTestCase {
         let vm = editedVM(client: client, exportDirectory: exportDir())
         let result = try await saveAndDecode(vm, client: client)
         XCTAssertEqual(result.decoded.exif[kCGImagePropertyExifOffsetTimeOriginal as String] as? String, "+00:00")
+    }
+
+    // MARK: AC-10 … AC-28 (Save to Photos)
+
+    private func exif(_ decoded: EditorTestSupport.DecodedJPEG, _ key: CFString) -> String? {
+        decoded.exif[key as String] as? String
+    }
+
+    func test_AC10_saveToPhotos_writesJPEG_noUpload_confirms() async throws {
+        let client = MockImmichClient()
+        let photos = MockPhotoLibraryService()
+        let vm = editedVM(client: client, photos: photos, exportDirectory: exportDir())
+        let stateBefore = vm.editState
+
+        await vm.saveToPhotos()?.value
+
+        let data = try XCTUnwrap(photos.savedImageData)
+        XCTAssertFalse(data.isEmpty)
+        let decoded = try XCTUnwrap(Support.decodeJPEG(data))
+        XCTAssertEqual(decoded.width, 64)
+        XCTAssertEqual(decoded.height, 48)
+        XCTAssertEqual(photos.saveImageCallCount, 1)
+        XCTAssertTrue(client.uploads.isEmpty)
+        XCTAssertTrue(vm.savedToPhotos)
+        XCTAssertNil(vm.saveStep)
+        XCTAssertNil(vm.errorMessage)
+        XCTAssertNil(vm.dismissReason)
+        XCTAssertEqual(vm.editState, stateBefore)
+    }
+
+    func test_AC11_saveToPhotos_failure_isExplicit_andRetryable() async {
+        let photos = MockPhotoLibraryService()
+        let vm = editedVM(photos: photos, exportDirectory: exportDir())
+        let stateBefore = vm.editState
+        let denied = localizedString("Access to Photos is denied. Allow it in Settings to save the edited photo.")
+        let cases: [(Error, String)] = [
+            (PHPhotosError(.accessUserDenied), denied),
+            (PHPhotosError(.accessRestricted), UserFacingError.genericMessage)
+        ]
+        for (error, message) in cases {
+            photos.saveError = error
+            await vm.saveToPhotos()?.value
+            XCTAssertEqual(vm.errorMessage, message)
+            XCTAssertFalse(vm.savedToPhotos)
+            XCTAssertNil(vm.dismissReason)
+            XCTAssertEqual(vm.editState, stateBefore)
+            XCTAssertNil(vm.saveStep)
+            XCTAssertTrue(vm.canSave, "Save to Photos must be available again to retry")
+        }
+        XCTAssertNotEqual(UserFacingError.genericMessage, denied)
+    }
+
+    func test_AC19_savingToPhotos_blocksEverySaveAndCancel() async {
+        let client = MockImmichClient()
+        let photos = MockPhotoLibraryService()
+        let gate = Gate()
+        photos.saveImageGate = { await gate.wait() }
+        let vm = editedVM(client: client, photos: photos, exportDirectory: exportDir())
+
+        let task = vm.saveToPhotos()
+        // Synchronously after the call: before getAsset and the render.
+        XCTAssertNotNil(task)
+        XCTAssertEqual(vm.saveStep, .savingToPhotos)
+        XCTAssertTrue(vm.isSaving)
+        XCTAssertFalse(vm.canSave)
+        XCTAssertFalse(vm.canCancel)
+        XCTAssertNil(vm.saveToPhotos(), "a second Save to Photos must be ignored")
+        XCTAssertNil(vm.saveCopyToServer(), "Save must be ignored")
+        vm.cancel()
+        XCTAssertNil(vm.dismissReason, "cancel is blocked while saving to Photos")
+
+        await waitUntil { photos.saveImageCallCount == 1 }
+        XCTAssertEqual(photos.saveImageCallCount, 1)
+        XCTAssertEqual(vm.saveStep, .savingToPhotos)
+        XCTAssertFalse(vm.canSave)
+        XCTAssertFalse(vm.canCancel)
+        XCTAssertNil(vm.saveToPhotos())
+        XCTAssertNil(vm.saveCopyToServer())
+        vm.cancel()
+        XCTAssertNil(vm.dismissReason)
+
+        gate.open()
+        await task?.value
+        XCTAssertEqual(photos.saveImageCallCount, 1)
+        XCTAssertTrue(client.uploads.isEmpty)
+        XCTAssertTrue(vm.savedToPhotos)
+        XCTAssertNil(vm.saveStep)
+        XCTAssertNil(vm.dismissReason)
+    }
+
+    func test_AC20_saveInProgress_blocksSaveToPhotos() async {
+        let client = MockImmichClient()
+        let photos = MockPhotoLibraryService()
+        let gate = Gate()
+        client.uploadGate = { await gate.wait() }
+        let vm = editedVM(client: client, photos: photos, exportDirectory: exportDir())
+
+        let task = vm.saveCopyToServer()
+        await waitUntil { client.uploads.count == 1 }
+
+        XCTAssertEqual(vm.saveStep, .uploading)
+        XCTAssertFalse(vm.canSave)
+        XCTAssertNil(vm.saveToPhotos())
+        XCTAssertEqual(photos.saveImageCallCount, 0)
+
+        gate.open()
+        await task?.value
+        XCTAssertEqual(photos.saveImageCallCount, 0)
+    }
+
+    func test_AC21_saveToPhotos_requiresLoadedOriginalAndEdits() {
+        let client = MockImmichClient()
+        let photos = MockPhotoLibraryService()
+        let vm = makeVM(client: client, photos: photos, exportDirectory: exportDir())
+
+        vm.setExposure(0.2)
+        XCTAssertFalse(vm.canSave, "no original loaded")
+        XCTAssertNil(vm.saveToPhotos())
+
+        vm.originalImage = Support.rawImage(width: 32, height: 32)
+        vm.resetToOriginal()
+        XCTAssertFalse(vm.canSave, "no edit applied")
+        XCTAssertNil(vm.saveToPhotos())
+
+        XCTAssertEqual(photos.saveImageCallCount, 0)
+        XCTAssertEqual(client.requestCount, 0)
+        XCTAssertNil(vm.saveStep)
+
+        vm.setWarmth(0.2)
+        XCTAssertTrue(vm.canSave)
+    }
+
+    func test_AC22_readOnly_allowsSaveToPhotos() async throws {
+        let inner = MockImmichClient()
+        let photos = MockPhotoLibraryService()
+        let guarded = ReadOnlyGuardClient(inner: inner, isEnabled: { true })
+        let vm = editedVM(client: guarded, photos: photos, exportDirectory: exportDir())
+
+        await vm.saveToPhotos()?.value
+
+        XCTAssertFalse(try XCTUnwrap(photos.savedImageData).isEmpty)
+        XCTAssertTrue(vm.savedToPhotos)
+        XCTAssertNil(vm.errorMessage)
+        XCTAssertTrue(inner.uploads.isEmpty)
+    }
+
+    func test_AC23_photosJPEG_matchesSaveCopy() async throws {
+        let client = MockImmichClient()
+        let photos = MockPhotoLibraryService()
+        client.getAssetResponse["asset-1"] = Support.makeAssetDTO(
+            localDateTime: "2024-07-01T01:30:00.000Z", fileCreatedAt: "2024-06-30T23:30:00.000Z")
+        let vm = editedVM(client: client, photos: photos, exportDirectory: exportDir(),
+                          width: 4000, height: 3000, orientation: .right)
+
+        await vm.saveToPhotos()?.value
+
+        let local = try XCTUnwrap(Support.decodeJPEG(try XCTUnwrap(photos.savedImageData)))
+        XCTAssertEqual(local.width, 3000)
+        XCTAssertEqual(local.height, 4000)
+        XCTAssertEqual(local.orientation, 1)
+        XCTAssertEqual(exif(local, kCGImagePropertyExifDateTimeOriginal), "2024:07:01 01:30:00")
+        XCTAssertEqual(exif(local, kCGImagePropertyExifOffsetTimeOriginal), "+02:00")
+        XCTAssertFalse(local.hasGPS)
+
+        await vm.saveCopyToServer()?.value
+        let uploaded = try XCTUnwrap(Support.decodeJPEG(try XCTUnwrap(client.lastUploadData)))
+        XCTAssertEqual(uploaded.width, local.width)
+        XCTAssertEqual(uploaded.height, local.height)
+        XCTAssertEqual(uploaded.orientation, local.orientation)
+        for key in [kCGImagePropertyExifDateTimeOriginal, kCGImagePropertyExifOffsetTimeOriginal,
+                    kCGImagePropertyExifSubsecTimeOriginal] {
+            XCTAssertEqual(exif(uploaded, key), exif(local, key))
+        }
+    }
+
+    func test_AC24_getAssetFailure_noPhotosWrite_noTempFile() async {
+        let client = MockImmichClient()
+        let photos = MockPhotoLibraryService()
+        let dir = exportDir()
+        let vm = editedVM(client: client, photos: photos, exportDirectory: dir)
+        client.globalError = APIError.serverError(404, nil)
+
+        await vm.saveToPhotos()?.value
+
+        XCTAssertEqual(vm.errorMessage, localizedString("Couldn't read the original photo's details."))
+        XCTAssertEqual(photos.saveImageCallCount, 0)
+        XCTAssertTrue(filesIn(dir).isEmpty)
+        XCTAssertFalse(vm.savedToPhotos)
+    }
+
+    func test_AC25_tempFileRemoved_afterEveryOutcome() async {
+        let photos = MockPhotoLibraryService()
+        let dir = exportDir()
+        let vm = editedVM(photos: photos, exportDirectory: dir)
+
+        await vm.saveToPhotos()?.value
+        XCTAssertTrue(vm.savedToPhotos)
+        XCTAssertTrue(filesIn(dir).isEmpty, "temp file kept after a successful write")
+
+        photos.saveError = PHPhotosError(.accessRestricted)
+        await vm.saveToPhotos()?.value
+        XCTAssertNotNil(vm.errorMessage)
+        XCTAssertTrue(filesIn(dir).isEmpty, "temp file kept after a failed write")
+
+        photos.saveError = nil
+        vm.originalImage = UIImage(ciImage: CIImage(color: .red).cropped(to: CGRect(x: 0, y: 0, width: 10, height: 10)))
+        vm.setExposure(0.3)
+        await vm.saveToPhotos()?.value
+        XCTAssertEqual(vm.errorMessage, localizedString("Couldn't render the edited photo."))
+        XCTAssertTrue(filesIn(dir).isEmpty, "temp file kept after a failed render")
+    }
+
+    func test_AC26_confirmation_clearedByEditOrSave_draftKept() async throws {
+        let photos = MockPhotoLibraryService()
+        let vm = editedVM(photos: photos, exportDirectory: exportDir())
+
+        await vm.saveToPhotos()?.value
+        XCTAssertTrue(vm.savedToPhotos)
+        vm.setWarmth(0.1)
+        XCTAssertFalse(vm.savedToPhotos, "an edit clears the confirmation")
+
+        await vm.saveToPhotos()?.value
+        XCTAssertTrue(vm.savedToPhotos)
+        let relaunched = vm.saveToPhotos()
+        XCTAssertFalse(vm.savedToPhotos, "a new Save to Photos clears the confirmation")
+        await relaunched?.value
+        XCTAssertTrue(vm.savedToPhotos)
+
+        let saving = vm.saveCopyToServer()
+        XCTAssertFalse(vm.savedToPhotos, "Save clears the confirmation")
+        await saving?.value
+
+        // Draft: Save to Photos leaves it alone, so closing the editor rewrites it.
+        let store = makeStore()
+        let draftVM = editedVM(store: store, photos: photos, exportDirectory: exportDir())
+        await draftVM.saveToPhotos()?.value
+        XCTAssertTrue(draftVM.savedToPhotos)
+        await draftVM.saveState().value
+        let stored = await store.load(assetId: "asset-1")
+        XCTAssertEqual(stored, draftVM.editState)
+        XCTAssertTrue(draftVM.canSave)
+    }
+
+    func test_AC28_relaunch_clearsPreviousError() async {
+        let client = MockImmichClient()
+        let photos = MockPhotoLibraryService()
+        let vm = editedVM(client: client, photos: photos, exportDirectory: exportDir())
+
+        // Failed Save to Photos, then a successful one.
+        photos.saveError = PHPhotosError(.accessRestricted)
+        await vm.saveToPhotos()?.value
+        XCTAssertNotNil(vm.errorMessage)
+        photos.saveError = nil
+        let retry = vm.saveToPhotos()
+        XCTAssertNil(vm.errorMessage, "launching clears the previous error")
+        await retry?.value
+        XCTAssertNil(vm.errorMessage)
+        XCTAssertTrue(vm.savedToPhotos)
+
+        // Failed Save, then a successful Save to Photos.
+        client.uploadError = URLError(.notConnectedToInternet)
+        await vm.saveCopyToServer()?.value
+        XCTAssertEqual(vm.errorMessage, UserFacingError.offlineMessage)
+        let afterSave = vm.saveToPhotos()
+        XCTAssertNil(vm.errorMessage)
+        await afterSave?.value
+        XCTAssertNil(vm.errorMessage)
+        XCTAssertTrue(vm.savedToPhotos)
+
+        // Same failure twice: the message goes through nil again (replays the error haptic).
+        photos.saveError = PHPhotosError(.accessRestricted)
+        await vm.saveToPhotos()?.value
+        XCTAssertEqual(vm.errorMessage, UserFacingError.genericMessage)
+        let again = vm.saveToPhotos()
+        XCTAssertNil(vm.errorMessage)
+        await again?.value
+        XCTAssertEqual(vm.errorMessage, UserFacingError.genericMessage)
     }
 }

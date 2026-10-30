@@ -6,7 +6,8 @@ import UIKit
 /// MVP scope: crop (rule-of-thirds + predefined ratios), rotation fine slider (-45..+45)
 /// + 90° buttons, adjustments (exposure/contrast/saturation/warmth), local EditState persistence,
 /// "Revenir à l'original". Save renders the full-resolution edit and uploads it as a NEW asset
-/// (the original is untouched); Cancel closes without sending anything. The settings draft is
+/// (the original is untouched); Cancel closes without sending anything. Save to Photos writes
+/// the same JPEG to the device library and keeps the editor open. The settings draft is
 /// saved on disappear, except after a successful copy save.
 struct PhotoEditorView: View {
     @Bindable var vm: PhotoEditorViewModel
@@ -18,6 +19,7 @@ struct PhotoEditorView: View {
     @State private var aspectTick = 0
     @State private var rotateTick = 0
     @State private var revertTick = 0
+    @State private var savedToPhotosTick = 0
 
     var body: some View {
         NavigationStack {
@@ -85,11 +87,22 @@ struct PhotoEditorView: View {
             }
             .safeAreaInset(edge: .bottom) {
                 VStack(spacing: PVSpacing.s8) {
+                    Button { vm.saveToPhotos() } label: {
+                        Label("Save to Photos", systemImage: "photo.badge.plus")
+                    }
+                    .buttonStyle(.bordered)
+                    .disabled(!vm.canSave)
+                    .accessibilityIdentifier("editorSaveToPhotosButton")
                     if let step = vm.saveStep {
                         HStack(spacing: PVSpacing.s8) {
                             ProgressView()
                             Text(stepLabel(step)).font(.pvCaption)
                         }
+                    }
+                    if vm.savedToPhotos {
+                        PVStatusBadge(text: String(localized: "Saved to Photos"),
+                                      color: .immichSuccess, symbol: "checkmark.circle.fill")
+                            .accessibilityIdentifier("editorSavedToPhotosConfirmation")
                     }
                     if let err = vm.errorMessage, !err.isEmpty {
                         InlineErrorBadge(message: err)
@@ -103,6 +116,10 @@ struct PhotoEditorView: View {
         .appSensoryFeedback(.impact, trigger: rotateTick)
         .appSensoryFeedback(.impact(weight: .light), trigger: revertTick)
         .appSensoryFeedback(.error, trigger: vm.errorMessage)
+        .appSensoryFeedback(.success, trigger: savedToPhotosTick)
+        .onChange(of: vm.savedToPhotos) { _, saved in
+            if saved { savedToPhotosTick &+= 1 }
+        }
         .onChange(of: vm.dismissReason) { _, reason in
             guard let reason else { return }
             if reason == .savedCopy { onSavedCopy() }
@@ -127,6 +144,7 @@ struct PhotoEditorView: View {
         switch step {
         case .rendering: return "Rendering edited photo…"
         case .uploading: return "Uploading edited copy…"
+        case .savingToPhotos: return "Saving to Photos…"
         }
     }
 

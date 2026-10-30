@@ -3,10 +3,12 @@ import UIKit
 import CoreImage
 import Metal
 import Observation
+import Photos
 
-/// Step shown while a copy is being saved. Extensible: only `PhotoEditorView` switches on it.
+/// Step shown while the edited photo is being saved (copy upload or Photos).
+/// Extensible: only `PhotoEditorView` switches on it.
 enum EditorSaveStep: Equatable {
-    case rendering, uploading
+    case rendering, uploading, savingToPhotos
 }
 
 enum EditorDismissReason: Equatable {
@@ -30,6 +32,7 @@ final class PhotoEditorViewModel {
     private let store: EditStateStore
     private let client: any ImmichClient
     private let appLog: any AppLogSink
+    private let photos: any PhotoLibraryService
     private let exportDirectory: URL
 
     /// Injectable for tests (CapturingURLProtocol pattern). AC-604 / AC-617.
@@ -42,6 +45,7 @@ final class PhotoEditorViewModel {
     var editState: EditState = .neutral {
         didSet {
             draftSettled = true
+            savedToPhotos = false
             renderPreview()
         }
     }
@@ -49,6 +53,8 @@ final class PhotoEditorViewModel {
     var errorMessage: String?
     private(set) var saveStep: EditorSaveStep?
     private(set) var dismissReason: EditorDismissReason?
+    /// True after a successful "Save to Photos" until the next edit, save, or editor close.
+    private(set) var savedToPhotos = false
 
     /// True once the stored draft was read or `editState` was mutated; until then `saveState()`
     /// must not touch the store (a close during the original's download would delete the draft).
@@ -86,6 +92,7 @@ final class PhotoEditorViewModel {
         editState.hasEdits
     }
 
+    /// Gates both save actions (Save and Save to Photos): they share the same conditions.
     var isSaving: Bool { saveStep != nil }
     var canSave: Bool { originalImage != nil && editState.hasEdits && !isSaving }
     var canCancel: Bool { !isSaving }
@@ -95,12 +102,14 @@ final class PhotoEditorViewModel {
     init(assetId: String,
          client: any ImmichClient,
          appLog: any AppLogSink = NoopAppLogSink(),
+         photos: any PhotoLibraryService = PhotoLibraryServiceImpl(),
          store: EditStateStore = EditStateStore(),
          urlSession: URLSession = .shared,
          exportDirectory: URL = FileManager.default.temporaryDirectory.appendingPathComponent("immich-editor", isDirectory: true)) {
         self.assetId = assetId
         self.client = client
         self.appLog = appLog
+        self.photos = photos
         self.store = store
         self.urlSession = urlSession
         self.exportDirectory = exportDirectory
@@ -267,59 +276,99 @@ final class PhotoEditorViewModel {
     func saveCopyToServer() -> Task<Void, Never>? {
         guard canSave else { return nil }
         errorMessage = nil
+        savedToPhotos = false
         saveStep = .rendering
         return Task { await performSave() }
     }
 
+    /// Renders the edited original at full resolution to a temp JPEG and writes it to the
+    /// device photo library — the same file Save would upload, nothing is uploaded.
+    /// Returns nil (and changes nothing) when `!canSave`.
+    @discardableResult
+    func saveToPhotos() -> Task<Void, Never>? {
+        guard canSave else { return nil }
+        errorMessage = nil
+        savedToPhotos = false
+        saveStep = .savingToPhotos
+        return Task { await performSaveToPhotos() }
+    }
+
+    private func performSaveToPhotos() async {
+        do {
+            try await withRenderedCopy { fileURL, _, _ in
+                let data: Data
+                do { data = try await Task.detached { try Data(contentsOf: fileURL) }.value }
+                catch { throw EditorSaveError.fileWriteFailed }
+                do { _ = try await photos.saveImage(data: data) }
+                catch { throw Self.classifyPhotosError(error) }
+            }
+        } catch {
+            errorMessage = message(for: error)
+            saveStep = nil
+            return
+        }
+        savedToPhotos = true
+        saveStep = nil
+    }
+
+    /// Renders the edited original to a temp JPEG in `exportDirectory`, runs `body` with it,
+    /// and always removes the file.
+    private func withRenderedCopy<T>(_ body: (_ fileURL: URL, _ asset: AssetResponseDto,
+                                              _ metadata: EditedCopyMetadata) async throws -> T) async throws -> T {
+        guard let original = originalImage, let cgImage = original.cgImage else {
+            throw EditorSaveError.renderFailed
+        }
+        let orientation = original.imageOrientation
+        let state = editState
+
+        let asset = try await fetchOriginalAsset()
+        let metadata = try EditedCopyMetadata(asset: asset)
+
+        let directory = exportDirectory
+        do {
+            try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        } catch {
+            throw EditorSaveError.fileWriteFailed
+        }
+        let fileURL = directory.appendingPathComponent("edit-\(UUID().uuidString).jpg")
+        defer { try? FileManager.default.removeItem(at: fileURL) }
+
+        try await Task.detached(priority: .userInitiated) {
+            try EditedImageRenderer.writeJPEG(cgImage: cgImage, orientation: orientation,
+                                              state: state, metadata: metadata, to: fileURL)
+        }.value
+
+        return try await body(fileURL, asset, metadata)
+    }
+
     private func performSave() async {
         do {
-            guard let original = originalImage, let cgImage = original.cgImage else {
-                throw EditorSaveError.renderFailed
-            }
-            let orientation = original.imageOrientation
-            let state = editState
+            try await withRenderedCopy { fileURL, asset, metadata in
+                let checksum: String
+                do {
+                    checksum = try await Task.detached { try BackupEngine.streamingSHA1Base64(fileURL) }.value
+                } catch {
+                    throw EditorSaveError.fileWriteFailed
+                }
 
-            let asset = try await fetchOriginalAsset()
-            let metadata = try EditedCopyMetadata(asset: asset)
-
-            let directory = exportDirectory
-            do {
-                try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
-            } catch {
-                throw EditorSaveError.fileWriteFailed
-            }
-            let fileURL = directory.appendingPathComponent("edit-\(UUID().uuidString).jpg")
-            defer { try? FileManager.default.removeItem(at: fileURL) }
-
-            try await Task.detached(priority: .userInitiated) {
-                try EditedImageRenderer.writeJPEG(cgImage: cgImage, orientation: orientation,
-                                                  state: state, metadata: metadata, to: fileURL)
-            }.value
-
-            let checksum: String
-            do {
-                checksum = try await Task.detached { try BackupEngine.streamingSHA1Base64(fileURL) }.value
-            } catch {
-                throw EditorSaveError.fileWriteFailed
-            }
-
-            saveStep = .uploading
-            do {
-                _ = try await client.uploadAsset(
-                    fileURL: fileURL,
-                    fileCreatedAt: asset.fileCreatedAt,
-                    fileModifiedAt: asset.fileModifiedAt,
-                    filename: metadata.fileName,
-                    duration: nil,
-                    isFavorite: false,
-                    visibility: .timeline,
-                    livePhotoVideoId: nil,
-                    checksum: checksum,
-                    deviceAssetId: "edited-\(assetId)-\(UUID().uuidString)",
-                    deviceId: DeviceIdentity.current
-                )
-            } catch {
-                throw Self.classifyUploadError(error)
+                saveStep = .uploading
+                do {
+                    _ = try await client.uploadAsset(
+                        fileURL: fileURL,
+                        fileCreatedAt: asset.fileCreatedAt,
+                        fileModifiedAt: asset.fileModifiedAt,
+                        filename: metadata.fileName,
+                        duration: nil,
+                        isFavorite: false,
+                        visibility: .timeline,
+                        livePhotoVideoId: nil,
+                        checksum: checksum,
+                        deviceAssetId: "edited-\(assetId)-\(UUID().uuidString)",
+                        deviceId: DeviceIdentity.current
+                    )
+                } catch {
+                    throw Self.classifyUploadError(error)
+                }
             }
         } catch {
             errorMessage = message(for: error)
@@ -360,6 +409,15 @@ final class PhotoEditorViewModel {
         }
     }
 
+    /// Only the user's exact refusal is singled out; any other PhotoKit error keeps the generic message.
+    private static func classifyPhotosError(_ error: Error) -> Error {
+        let ns = error as NSError
+        if ns.domain == PHPhotosErrorDomain && ns.code == PHPhotosError.Code.accessUserDenied.rawValue {
+            return EditorSaveError.photosAccessDenied
+        }
+        return error
+    }
+
     /// `nil` for a cancellation (no message).
     private func message(for error: Error) -> String? {
         switch error as? EditorSaveError {
@@ -367,6 +425,8 @@ final class PhotoEditorViewModel {
         case .renderFailed: return String(localized: "Couldn't render the edited photo.")
         case .fileWriteFailed: return String(localized: "Couldn't write the edited photo to storage.")
         case .uploadRejected: return String(localized: "The server refused the edited photo.")
+        case .photosAccessDenied:
+            return String(localized: "Access to Photos is denied. Allow it in Settings to save the edited photo.")
         case nil: return error.userFacingMessage
         }
     }

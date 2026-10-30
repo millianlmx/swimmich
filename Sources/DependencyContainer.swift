@@ -526,10 +526,11 @@ final class DependencyContainer {
     }
 
     /// AC-615: photo editor VM factory. The editor downloads the original with URLSession +
-    /// ImmichAssetURL, and saves its edited copy through `libraryClient` (the read-only guard).
+    /// ImmichAssetURL, saves its edited copy through `libraryClient` (the read-only guard) and
+    /// writes "Save to Photos" to the device library through `photos`.
     /// V1.5 polish (AC-718): wire 0.033s render debounce (≈30fps cap) for production.
     func makePhotoEditorViewModel(asset: AssetReactItem) -> PhotoEditorViewModel {
-        let vm = PhotoEditorViewModel(assetId: asset.id, client: libraryClient, appLog: appLog)
+        let vm = PhotoEditorViewModel(assetId: asset.id, client: libraryClient, appLog: appLog, photos: photos)
         vm.renderDebounceInterval = 0.033
         return vm
     }

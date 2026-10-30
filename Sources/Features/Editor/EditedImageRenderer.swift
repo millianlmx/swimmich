@@ -4,12 +4,14 @@ import CoreImage
 import ImageIO
 import UniformTypeIdentifiers
 
-/// Failures of the "save edited copy" path. Messages live in `PhotoEditorViewModel.message(for:)`.
+/// Failures of the "save edited copy" path (Save and Save to Photos).
+/// Messages live in `PhotoEditorViewModel.message(for:)`.
 enum EditorSaveError: Error, Equatable {
     case metadataUnavailable
     case renderFailed
     case fileWriteFailed
     case uploadRejected
+    case photosAccessDenied
 }
 
 /// What the edited JPEG inherits from the original asset: a file name and the capture date,

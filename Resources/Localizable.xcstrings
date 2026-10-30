@@ -589,6 +589,35 @@
         }
       }
     },
+    "Access to Photos is denied. Allow it in Settings to save the edited photo." : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "L'accès à Photos est refusé. Autorisez-le dans Réglages pour enregistrer la photo modifiée."
+          }
+        },
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Der Zugriff auf Fotos wurde verweigert. Erlaube ihn in den Einstellungen, um das bearbeitete Foto zu sichern."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "El acceso a Fotos está denegado. Permítelo en Ajustes para guardar la foto editada."
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "L'accesso a Foto è negato. Consentilo nelle Impostazioni per salvare la foto modificata."
+          }
+        }
+      }
+    },
     "Account Deletion" : {
       "localizations" : {
         "fr" : {
@@ -25133,6 +25162,64 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Salvate"
+          }
+        }
+      }
+    },
+    "Saved to Photos" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Enregistrée dans Photos"
+          }
+        },
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "In Fotos gesichert"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Guardada en Fotos"
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Salvata in Foto"
+          }
+        }
+      }
+    },
+    "Saving to Photos…" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Enregistrement dans Photos…"
+          }
+        },
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Wird in Fotos gesichert …"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Guardando en Fotos…"
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Salvataggio in Foto…"
           }
         }
       }
