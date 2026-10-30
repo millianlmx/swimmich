@@ -64,6 +64,9 @@ struct TimelineView: View {
     @State private var pendingDeleteSingleID: String?
     @State private var presentAlbumPicker = false // AC-515 — Add to Album sheet
     @State private var viewerItem: PhotoViewerItem? // Full-screen photo viewer
+    /// True from `openViewer` until the cover's `onDismiss`: the grid alert
+    /// must not be presented while the cover is on screen or closing.
+    @State private var viewerOnScreen = false
     /// Stack opened from a stacked tile (grid → stack detail). Nil = no push.
     @State private var openedStackID: String?
     @State private var scrollPosition = ScrollPosition()
@@ -324,7 +327,7 @@ struct TimelineView: View {
         }
         // D3: surface VM errors (favorite/delete/load failures) — never swallow silently.
         .alert("Something went wrong", isPresented: Binding(
-            get: { vm.actionErrorMessage != nil },
+            get: { vm.actionErrorMessage != nil && !viewerOnScreen },
             set: { if !$0 { vm.actionErrorMessage = nil } }
         )) {
             Button("OK", role: .cancel) {}
@@ -370,9 +373,13 @@ struct TimelineView: View {
             onDelete: { asset in
                 Task { await vm.delete(id: asset.id) }
             },
-            onArchive: { asset in
-                Task { await vm.archive(id: asset.id) }
-            }
+            // A refusal is handed back to the viewer (its banner) while it is
+            // still open; once it is closed (last page removed) the message
+            // stays on the grid VM, whose alert waits for `onDismiss`.
+            onArchive: { asset, archive in
+                await vm.setArchived(id: asset.id, archived: archive, handOffError: viewerItem != nil)
+            },
+            onDismiss: { viewerOnScreen = false }
         )
     }
 
@@ -555,6 +562,7 @@ struct TimelineView: View {
 
     @ViewBuilder
     private func cellView(for item: AssetReactItem) -> some View {
+        let unarchive = vm.offersUnarchive(for: item)
         let cell = AssetThumbnailCell(
             asset: item,
             baseURL: auth.baseURL ?? URL(string: "https://example.com")!,
@@ -586,11 +594,16 @@ struct TimelineView: View {
             onDelete: {
                 pendingDeleteSingleID = item.id
             },
-            onArchive: {
+            onArchive: unarchive ? nil : {
                 Task {
                     await vm.archive(id: item.id)
                 }
             },
+            onUnarchive: unarchive ? {
+                Task {
+                    await vm.unarchive(id: item.id)
+                }
+            } : nil,
             onMoveToLockedFolder: {
                 Task {
                     await vm.moveToLockedFolder(id: item.id)
@@ -621,6 +634,7 @@ struct TimelineView: View {
     /// timeline order (matches grid visual order — `groupedByDay` preserves it).
     private func openViewer(for item: AssetReactItem) {
         guard let idx = vm.items.firstIndex(where: { $0.id == item.id }) else { return }
+        viewerOnScreen = true
         viewerItem = PhotoViewerItem(assets: vm.items, index: idx)
     }
 
@@ -693,17 +707,30 @@ struct TimelineView: View {
                 .disabled(vm.selectedIds.isEmpty)
                 .accessibilityIdentifier("addToAlbumButton")
 
-                // Archive selected assets — bulk visibility "archive".
-                Button {
-                    Task {
-                        await vm.archiveSelected()
+                // Archive / Unarchive selected assets — bulk visibility.
+                if vm.selectionOffersUnarchive {
+                    Button {
+                        Task {
+                            await vm.unarchiveSelected()
+                        }
+                    } label: {
+                        Label("Unarchive", systemImage: "tray.and.arrow.up")
+                            .labelStyle(.iconOnly)
                     }
-                } label: {
-                    Label("Archive", systemImage: "archivebox")
-                        .labelStyle(.iconOnly)
+                    .disabled(vm.selectedIds.isEmpty)
+                    .accessibilityIdentifier("unarchiveButton")
+                } else {
+                    Button {
+                        Task {
+                            await vm.archiveSelected()
+                        }
+                    } label: {
+                        Label("Archive", systemImage: "archivebox")
+                            .labelStyle(.iconOnly)
+                    }
+                    .disabled(vm.selectedIds.isEmpty)
+                    .accessibilityIdentifier("archiveButton")
                 }
-                .disabled(vm.selectedIds.isEmpty)
-                .accessibilityIdentifier("archiveButton")
 
                 // Locked folder (gap G12) — bulk visibility "locked". The
                 // assets leave the grid here and are the folder's business

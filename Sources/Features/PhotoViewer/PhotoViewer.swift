@@ -87,6 +87,29 @@ enum PhotoViewerSwipeDecision {
     }
 }
 
+/// Which button the viewer offers for a photo, from its visibility. Pure logic.
+enum ViewerArchiveAction: Equatable {
+    case archive, unarchive
+
+    /// `archive` visibility → unarchive; an unresolved one (map) → none, the
+    /// viewer must not guess; anything else (`timeline`, `locked`, `hidden`)
+    /// → archive, as before.
+    init?(visibility: String) {
+        switch visibility {
+        case AssetVisibility.archive.rawValue: self = .unarchive
+        case AssetReactItem.unresolvedVisibility: return nil
+        default: self = .archive
+        }
+    }
+
+    /// The visibility of `asset`: its own when its source knows it (no
+    /// request), else read from the server. `nil` when the read fails.
+    static func resolveVisibility(of asset: AssetReactItem, client: any ImmichClient) async -> String? {
+        guard asset.visibility == AssetReactItem.unresolvedVisibility else { return asset.visibility }
+        return (try? await client.getAsset(id: asset.id))?.visibility
+    }
+}
+
 /// Presents the Photos-style full-screen photo viewer for `assets`, opened at
 /// `item.index`. `item` is nilled out to dismiss.
 struct PhotoViewerPresentation: ViewModifier {
@@ -103,14 +126,15 @@ struct PhotoViewerPresentation: ViewModifier {
     var troubleshoot: AssetTroubleshootViewModel? = nil
     var onToggleFavorite: ((AssetReactItem, Bool) -> Void)? = nil
     var onDelete: ((AssetReactItem) -> Void)? = nil
-    var onArchive: ((AssetReactItem) -> Void)? = nil
+    var onArchive: (@MainActor (AssetReactItem, Bool) async -> String?)? = nil
     var onRestore: ((AssetReactItem) -> Void)? = nil
     var onDeletePermanent: ((AssetReactItem) -> Void)? = nil
     var onDataChanged: (() -> Void)? = nil
+    var onDismiss: (() -> Void)? = nil
 
     func body(content: Content) -> some View {
         content
-            .fullScreenCover(item: $item) { item in
+            .fullScreenCover(item: $item, onDismiss: onDismiss) { item in
                 PhotoViewer(
                     assets: item.assets,
                     index: item.index,
@@ -139,6 +163,11 @@ extension View {
     /// take precedence for favorite/delete/restore so the grid updates in
     /// place. `onDataChanged` fires after self-contained mutations so the
     /// surface can refresh its list.
+    ///
+    /// `onArchive(asset, archive)`: `archive == true` archives, `false`
+    /// unarchives; it returns `nil` when the server accepted, else the refusal
+    /// message, which the viewer shows in its own banner. `onDismiss` runs once
+    /// the full-screen cover is gone (a surface alert must wait for it).
     func photoViewer(
         item: Binding<PhotoViewerItem?>,
         baseURL: URL,
@@ -147,10 +176,11 @@ extension View {
         troubleshoot: AssetTroubleshootViewModel? = nil,
         onToggleFavorite: ((AssetReactItem, Bool) -> Void)? = nil,
         onDelete: ((AssetReactItem) -> Void)? = nil,
-        onArchive: ((AssetReactItem) -> Void)? = nil,
+        onArchive: (@MainActor (AssetReactItem, Bool) async -> String?)? = nil,
         onRestore: ((AssetReactItem) -> Void)? = nil,
         onDeletePermanent: ((AssetReactItem) -> Void)? = nil,
-        onDataChanged: (() -> Void)? = nil
+        onDataChanged: (() -> Void)? = nil,
+        onDismiss: (() -> Void)? = nil
     ) -> some View {
         modifier(
             PhotoViewerPresentation(
@@ -164,7 +194,8 @@ extension View {
                 onArchive: onArchive,
                 onRestore: onRestore,
                 onDeletePermanent: onDeletePermanent,
-                onDataChanged: onDataChanged
+                onDataChanged: onDataChanged,
+                onDismiss: onDismiss
             )
         )
     }
@@ -205,13 +236,18 @@ struct PhotoViewer: View {
     var troubleshoot: AssetTroubleshootViewModel? = nil
     var onToggleFavorite: ((AssetReactItem, Bool) -> Void)? = nil
     var onDelete: ((AssetReactItem) -> Void)? = nil
-    var onArchive: ((AssetReactItem) -> Void)? = nil
+    var onArchive: (@MainActor (AssetReactItem, Bool) async -> String?)? = nil
     var onRestore: ((AssetReactItem) -> Void)? = nil
     var onDeletePermanent: ((AssetReactItem) -> Void)? = nil
     var onDataChanged: (() -> Void)? = nil
 
     /// Local working copy so a delete can shrink the pager live.
     @State private var localAssets: [AssetReactItem]
+    /// Visibility read from the server for pages whose source did not know it.
+    @State private var resolvedVisibility: [String: String] = [:]
+    /// Refusal handed back by the surface's `onArchive`; cleared by the next
+    /// accepted archive/unarchive.
+    @State private var surfaceActionError: String?
     @State private var selectedIndex: Int
     @State private var favoriteIDs: Set<String>
     @State private var showChrome = true
@@ -268,7 +304,7 @@ struct PhotoViewer: View {
         troubleshoot: AssetTroubleshootViewModel? = nil,
         onToggleFavorite: ((AssetReactItem, Bool) -> Void)? = nil,
         onDelete: ((AssetReactItem) -> Void)? = nil,
-        onArchive: ((AssetReactItem) -> Void)? = nil,
+        onArchive: (@MainActor (AssetReactItem, Bool) async -> String?)? = nil,
         onRestore: ((AssetReactItem) -> Void)? = nil,
         onDeletePermanent: ((AssetReactItem) -> Void)? = nil,
         onDataChanged: (() -> Void)? = nil
@@ -448,6 +484,17 @@ struct PhotoViewer: View {
                     onClose: { slideshowVM = nil }
                 )
                 .zIndex(10)
+            }
+        }
+        // The map hands over items of unknown visibility: read the displayed
+        // page's from the server (re-runs on a page change, and on a return to
+        // a page whose read failed). No Archive/Unarchive button until resolved.
+        .task(id: currentAsset?.id) {
+            guard let asset = currentAsset,
+                  asset.visibility == AssetReactItem.unresolvedVisibility,
+                  resolvedVisibility[asset.id] == nil else { return }
+            if let v = await ViewerArchiveAction.resolveVisibility(of: asset, client: client) {
+                resolvedVisibility[asset.id] = v
             }
         }
     }
@@ -884,18 +931,20 @@ struct PhotoViewer: View {
 
                 Spacer()
 
-                if !isTrash {
+                if !isTrash, let action = ViewerArchiveAction(visibility: visibility(of: asset)) {
+                    let archived = action == .unarchive
                     Button {
                         archive(asset)
                     } label: {
-                        Image(systemName: "archivebox")
+                        Image(systemName: archived ? "tray.and.arrow.up" : "archivebox")
                             .font(.pvHeadline)
                             .foregroundStyle(Color.white)
                             .frame(width: 40, height: 40)
                             .glassEffect(.regular.tint(.black.opacity(0.6)), in: Circle())
                     }
                     .buttonStyle(.plain)
-                    .accessibilityLabel("Archive")
+                    .accessibilityLabel(archived ? "Unarchive" : "Archive")
+                    .accessibilityIdentifier(archived ? "viewerUnarchiveButton" : "viewerArchiveButton")
                 }
 
                 Button(role: .destructive) {
@@ -926,10 +975,11 @@ struct PhotoViewer: View {
     /// delete-permanently (no share).
     private var isTrash: Bool { onRestore != nil }
 
-    /// The refusal of the last mutation this viewer performed itself — the
-    /// presenting surface's callback is not consulted here, because a surface
-    /// that provided one owns its own error surface.
-    private var actionError: String? { timeline.actionErrorMessage ?? trash.actionErrorMessage }
+    /// The refusal of the last mutation shown in the banner: the one a
+    /// presenting surface's callback handed back (`surfaceActionError`), then
+    /// the ones of this viewer's own VMs. Favorite/delete callbacks of a
+    /// surface still own their error surface.
+    private var actionError: String? { surfaceActionError ?? timeline.actionErrorMessage ?? trash.actionErrorMessage }
 
     /// Starts the slideshow on the currently visible photo. The VM is created
     /// here (top bar button), never stored while inactive — closing the
@@ -1094,22 +1144,33 @@ struct PhotoViewer: View {
         }
     }
 
-    /// Archive — surface VM callback when provided, else self-contained
-    /// (bulk visibility "archive", mirrors the delete self-contained path).
-    /// No confirmation: archiving is reversible.
+    /// Archive / Unarchive of the displayed photo — the target comes from its
+    /// visibility (`ViewerArchiveAction`). The surface callback runs when
+    /// provided (it returns the refusal message, shown in this viewer's
+    /// banner), else the viewer's own VM runs it and the banner reads that VM.
+    /// The page leaves the pager at once in both cases (optimistic, like
+    /// delete); no confirmation: the action is reversible.
     private func archive(_ asset: AssetReactItem) {
+        guard let action = ViewerArchiveAction(visibility: visibility(of: asset)) else { return }
+        let archiving = action == .archive
         if let onArchive {
-            onArchive(asset)
-            return
-        }
-        Task {
-            if await timeline.archive(id: asset.id) {
-                onDataChanged?()
+            Task { surfaceActionError = await onArchive(asset, archiving) }
+        } else {
+            Task {
+                if await timeline.setArchived(id: asset.id, archived: archiving, handOffError: false) == nil {
+                    onDataChanged?()
+                }
             }
         }
         if let index = localAssets.firstIndex(where: { $0.id == asset.id }) {
             removeAsset(at: index)
         }
+    }
+
+    /// Visibility of `asset`: the one read from the server for a source that
+    /// does not know it (map), else the one the item carries.
+    private func visibility(of asset: AssetReactItem) -> String {
+        resolvedVisibility[asset.id] ?? asset.visibility
     }
 
     /// Restore (Trash) — VM callback when provided, else self-contained.

@@ -471,6 +471,7 @@ final class MapViewModelTests: XCTestCase {
         XCTAssertEqual(item.id, "a1")
         XCTAssertEqual(item.latitude, 48.8566)
         XCTAssertEqual(item.longitude, 2.3522)
+        XCTAssertEqual(item.visibility, AssetReactItem.unresolvedVisibility, "markers do not carry the visibility")
         XCTAssertEqual(item.city, "Paris")
     }
 

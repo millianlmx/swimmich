@@ -31,9 +31,11 @@ struct MapPhoto: Identifiable, Equatable, Hashable, Sendable {
     /// Placeholder `AssetReactItem` for pushing `AssetDetailView`. Thumbnail
     /// URL only needs the id; the detail VM refetches the full asset via
     /// `getAsset(id:)` — same contract as search's ratio-1.0 default (AC-410).
+    /// The markers do not carry the visibility (the map can list archived
+    /// photos): it is marked unresolved and the photo viewer reads it.
     var asAssetItem: AssetReactItem {
         AssetReactItem(
-            id: id, ownerId: "", ratio: 1.0, isFavorite: false, visibility: "timeline",
+            id: id, ownerId: "", ratio: 1.0, isFavorite: false, visibility: AssetReactItem.unresolvedVisibility,
             isTrashed: false, isImage: true, thumbhash: nil,
             createdAt: "", fileCreatedAt: "", localOffsetHours: 0.0,
             duration: nil, livePhotoVideoId: nil, projectionType: nil,

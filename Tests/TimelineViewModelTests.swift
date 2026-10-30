@@ -1209,4 +1209,330 @@ final class TimelineViewModelTests: XCTestCase {
         XCTAssertFalse(failed)
         XCTAssertNotNil(vm.actionErrorMessage)
     }
+
+    // MARK: - Unarchive
+
+    /// Items a1…a3, all archived, under the Archived filter.
+    @MainActor
+    private func archivedGridVM(_ mock: MockImmichClient) async -> TimelineViewModel {
+        mock.bucketsResponse = [TimeBucketsResponseDto(timeBucket: "2024-07-01", count: 3)]
+        mock.bucketResponses = [
+            "2024-07-01": columnar(
+                ids: ["a1", "a2", "a3"], ratios: [1, 1, 1], thumbhashes: [nil, nil, nil],
+                favorites: [false, false, false], visibilities: ["archive", "archive", "archive"]
+            )
+        ]
+        let vm = TimelineViewModel(client: mock)
+        await vm.setFilter(.archived)
+        return vm
+    }
+
+    /// Favorites filter listing a1, a2 (archived) and a3 (not archived).
+    @MainActor
+    private func favoritesMixedVM(_ mock: MockImmichClient, client: (any ImmichClient)? = nil) async -> TimelineViewModel {
+        mock.bucketsResponse = [TimeBucketsResponseDto(timeBucket: "2024-07-01", count: 3)]
+        mock.bucketResponses = [
+            "2024-07-01": columnar(
+                ids: ["a1", "a2", "a3"], ratios: [1, 1, 1], thumbhashes: [nil, nil, nil],
+                favorites: [true, true, true], visibilities: ["archive", "archive", "timeline"]
+            )
+        ]
+        let vm = TimelineViewModel(client: client ?? mock)
+        await vm.setFilter(.favorites)
+        return vm
+    }
+
+    /// The items the grid renders (from the memoized sections), by id.
+    @MainActor
+    private func renderedItems(_ vm: TimelineViewModel) -> [String: AssetReactItem] {
+        var byId: [String: AssetReactItem] = [:]
+        for section in vm.timelineSections(groupBy: .day) {
+            if case .dayGroup(_, let items) = section {
+                for item in items { byId[item.id] = item }
+            }
+        }
+        return byId
+    }
+
+    @MainActor
+    func test_unarchive_AC1_archivedFilterOffersUnarchive() async {
+        let vm = await archivedGridVM(MockImmichClient())
+
+        XCTAssertFalse(vm.items.isEmpty)
+        for item in vm.items { XCTAssertTrue(vm.offersUnarchive(for: item)) }
+        // Under Archived the filter alone decides, whatever the item says.
+        XCTAssertTrue(vm.offersUnarchive(for: vm.items[0].with(visibility: "timeline")))
+    }
+
+    @MainActor
+    func test_unarchive_AC2_allFilterTimelineAssetOffersArchive() async {
+        let vm = await makeLoadedVM(MockImmichClient())
+        let item = vm.items[0]
+
+        XCTAssertEqual(vm.filter, .all)
+        XCTAssertFalse(vm.offersUnarchive(for: item))
+
+        let copy = item.with(visibility: "archive")
+        XCTAssertEqual(copy.visibility, "archive")
+        XCTAssertEqual(copy.with(visibility: item.visibility), item, "only the visibility differs")
+        XCTAssertEqual(copy.id, item.id)
+        XCTAssertEqual(copy.isFavorite, item.isFavorite)
+        XCTAssertEqual(copy.ownerId, item.ownerId)
+        XCTAssertEqual(copy.ratio, item.ratio)
+        XCTAssertEqual(copy.stack, item.stack)
+        XCTAssertTrue(vm.offersUnarchive(for: copy), "an archived item offers Unarchive under All too")
+    }
+
+    @MainActor
+    func test_unarchive_AC3_favoritesFilterArchivedAssetOffersUnarchive() async {
+        let vm = await favoritesMixedVM(MockImmichClient())
+        let byId = Dictionary(uniqueKeysWithValues: vm.items.map { ($0.id, $0) })
+
+        XCTAssertTrue(vm.offersUnarchive(for: byId["a1"]!))
+        XCTAssertFalse(vm.offersUnarchive(for: byId["a3"]!))
+    }
+
+    @MainActor
+    func test_unarchive_AC4_singleUnderArchivedSendsTimelineAndRemoves() async {
+        let mock = MockImmichClient()
+        let vm = await archivedGridVM(mock)
+
+        let ok = await vm.unarchive(id: "a2")
+
+        XCTAssertTrue(ok)
+        XCTAssertEqual(mock.lastBulkUpdateDto?.ids, ["a2"])
+        XCTAssertEqual(mock.lastBulkUpdateDto?.visibility, .timeline)
+        XCTAssertFalse(vm.items.contains { $0.id == "a2" })
+        XCTAssertFalse(vm.loadedIds.contains("a2"))
+        XCTAssertEqual(vm.items.count, 2)
+    }
+
+    @MainActor
+    func test_unarchive_AC5_archivedFilterSelectionOffersUnarchive() async {
+        let vm = await archivedGridVM(MockImmichClient())
+        vm.enterSelectionMode()
+        vm.toggleSelection(id: "a1")
+        vm.toggleSelection(id: "a2")
+
+        XCTAssertTrue(vm.selectionOffersUnarchive)
+    }
+
+    @MainActor
+    func test_unarchive_AC6_selectedUnderArchivedSingleRequestRemovesAndExits() async {
+        let mock = MockImmichClient()
+        let vm = await archivedGridVM(mock)
+        vm.enterSelectionMode()
+        vm.toggleSelection(id: "a1")
+        vm.toggleSelection(id: "a2")
+        let before = mock.requestCount
+
+        await vm.unarchiveSelected()
+
+        XCTAssertEqual(mock.requestCount, before + 1)
+        XCTAssertEqual(Set(mock.lastBulkUpdateDto?.ids ?? []), ["a1", "a2"])
+        XCTAssertEqual(mock.lastBulkUpdateDto?.visibility, .timeline)
+        XCTAssertEqual(vm.items.map(\.id), ["a3"])
+        XCTAssertEqual(vm.loadedIds, ["a3"])
+        XCTAssertFalse(vm.selectionMode)
+        XCTAssertTrue(vm.selectedIds.isEmpty)
+    }
+
+    @MainActor
+    func test_unarchive_AC6_emptySelectionIsNoOp() async {
+        let mock = MockImmichClient()
+        let vm = await archivedGridVM(mock)
+        vm.enterSelectionMode()
+        let before = mock.requestCount
+
+        await vm.unarchiveSelected()
+
+        XCTAssertEqual(mock.requestCount, before)
+        XCTAssertNil(mock.lastBulkUpdateDto)
+        XCTAssertEqual(vm.items.count, 3)
+    }
+
+    @MainActor
+    func test_unarchive_AC7_favoritesMixedSelectionOffersArchive() async {
+        let vm = await favoritesMixedVM(MockImmichClient())
+        vm.enterSelectionMode()
+        XCTAssertFalse(vm.selectionOffersUnarchive, "empty selection → Archive")
+
+        vm.toggleSelection(id: "a1")
+        vm.toggleSelection(id: "a3")
+        XCTAssertFalse(vm.selectionOffersUnarchive, "mixed selection → Archive")
+
+        vm.toggleSelection(id: "a3")
+        vm.toggleSelection(id: "a2")
+        XCTAssertEqual(vm.selectedIds, ["a1", "a2"])
+        XCTAssertTrue(vm.selectionOffersUnarchive, "only archived photos → Unarchive")
+    }
+
+    @MainActor
+    func test_unarchive_AC7_selectedIdAbsentFromGridCountsAsNotArchived() async {
+        let vm = await favoritesMixedVM(MockImmichClient())
+        vm.enterSelectionMode()
+        vm.toggleSelection(id: "ghost")
+
+        XCTAssertFalse(vm.selectionOffersUnarchive)
+    }
+
+    @MainActor
+    func test_unarchive_AC10_idOutsideGridStillSent() async {
+        let mock = MockImmichClient()
+        let vm = TimelineViewModel(client: mock)
+
+        let ok = await vm.unarchive(id: "A")
+
+        XCTAssertTrue(ok)
+        XCTAssertEqual(mock.lastBulkUpdateDto?.ids, ["A"])
+        XCTAssertEqual(mock.lastBulkUpdateDto?.visibility, .timeline)
+        XCTAssertTrue(vm.items.isEmpty)
+    }
+
+    @MainActor
+    func test_setArchived_AC10_standaloneDispatchesTargetVisibility() async {
+        let mock = MockImmichClient()
+        let vm = TimelineViewModel(client: mock)
+
+        let first = await vm.setArchived(id: "A", archived: false, handOffError: false)
+        XCTAssertNil(first)
+        XCTAssertEqual(mock.lastBulkUpdateDto?.ids, ["A"])
+        XCTAssertEqual(mock.lastBulkUpdateDto?.visibility, .timeline)
+
+        let second = await vm.setArchived(id: "B", archived: true, handOffError: false)
+        XCTAssertNil(second)
+        XCTAssertEqual(mock.lastBulkUpdateDto?.ids, ["B"])
+        XCTAssertEqual(mock.lastBulkUpdateDto?.visibility, .archive)
+    }
+
+    @MainActor
+    func test_unarchive_AC13_favoritesKeepsAssetPatchedAndSectionsRefreshed() async {
+        let mock = MockImmichClient()
+        let vm = await favoritesMixedVM(mock)
+        let idsBefore = vm.items.map(\.id)
+        XCTAssertEqual(renderedItems(vm)["a1"]?.visibility, "archive", "primes the section cache")
+
+        let ok = await vm.unarchive(id: "a1")
+
+        XCTAssertTrue(ok)
+        XCTAssertEqual(vm.items.map(\.id), idsBefore, "same rows, same positions")
+        let patched = vm.items.first { $0.id == "a1" }
+        XCTAssertEqual(patched?.visibility, "timeline")
+        XCTAssertFalse(vm.offersUnarchive(for: patched!))
+        XCTAssertEqual(renderedItems(vm)["a1"]?.visibility, "timeline", "the grid reads fresh copies")
+        XCTAssertEqual(renderedItems(vm)["a2"]?.visibility, "archive", "other rows untouched")
+        XCTAssertTrue(vm.loadedIds.contains("a1"))
+    }
+
+    @MainActor
+    func test_unarchive_AC14_refusedOrReadOnlyKeepsAsset() async {
+        let mock = MockImmichClient()
+        let vm = await archivedGridVM(mock)
+        let itemsBefore = vm.items
+        let loadedBefore = vm.loadedIds
+        mock.globalError = APIError.serverError(500, "boom")
+
+        let ok = await vm.unarchive(id: "a1")
+
+        XCTAssertFalse(ok)
+        XCTAssertEqual(vm.actionErrorMessage, localizedString("The server ran into a problem. Please try again."))
+        XCTAssertEqual(vm.items, itemsBefore)
+        XCTAssertEqual(vm.loadedIds, loadedBefore)
+
+        // Read-only mode: the guard refuses before anything reaches the mock.
+        let roMock = MockImmichClient()
+        let roVM = await favoritesMixedVM(roMock, client: ReadOnlyGuardClient(inner: roMock, isEnabled: { true }))
+        let roItems = roVM.items
+        let roOk = await roVM.unarchive(id: "a1")
+
+        XCTAssertFalse(roOk)
+        XCTAssertEqual(roVM.actionErrorMessage, UserFacingError.readOnlyModeMessage)
+        XCTAssertNil(roMock.lastBulkUpdateDto)
+        XCTAssertEqual(roVM.items, roItems)
+    }
+
+    @MainActor
+    func test_unarchive_AC15_refusedSelectionKeepsItemsAndSelection() async {
+        let mock = MockImmichClient()
+        let vm = await archivedGridVM(mock)
+        vm.enterSelectionMode()
+        vm.toggleSelection(id: "a1")
+        vm.toggleSelection(id: "a2")
+        let itemsBefore = vm.items
+        let loadedBefore = vm.loadedIds
+        mock.globalError = APIError.serverError(500, "boom")
+
+        await vm.unarchiveSelected()
+
+        XCTAssertNotNil(vm.actionErrorMessage)
+        XCTAssertEqual(vm.items, itemsBefore)
+        XCTAssertEqual(vm.loadedIds, loadedBefore)
+        XCTAssertEqual(vm.selectedIds, ["a1", "a2"])
+        XCTAssertTrue(vm.selectionMode)
+    }
+
+    @MainActor
+    func test_setArchived_AC16_refusalHandedOffToViewer() async {
+        let mock = MockImmichClient()
+        let vm = await archivedGridVM(mock)
+        let itemsBefore = vm.items
+        let loadedBefore = vm.loadedIds
+        mock.globalError = APIError.serverError(500, "boom")
+
+        let message = await vm.setArchived(id: "a1", archived: false, handOffError: true)
+
+        XCTAssertEqual(message, localizedString("The server ran into a problem. Please try again."))
+        XCTAssertNil(vm.actionErrorMessage, "the grid no longer presents it")
+        XCTAssertEqual(vm.items, itemsBefore)
+        XCTAssertEqual(vm.loadedIds, loadedBefore)
+
+        // Read-only variant.
+        let roMock = MockImmichClient()
+        let roVM = TimelineViewModel(client: ReadOnlyGuardClient(inner: roMock, isEnabled: { true }))
+        let roMessage = await roVM.setArchived(id: "a1", archived: false, handOffError: true)
+        XCTAssertEqual(roMessage, UserFacingError.readOnlyModeMessage)
+        XCTAssertNil(roVM.actionErrorMessage)
+    }
+
+    @MainActor
+    func test_unarchive_AC17_favoritesSelectionStaysPatchedAndExits() async {
+        let mock = MockImmichClient()
+        let vm = await favoritesMixedVM(mock)
+        let idsBefore = vm.items.map(\.id)
+        vm.enterSelectionMode()
+        vm.toggleSelection(id: "a1")
+        vm.toggleSelection(id: "a2")
+        XCTAssertEqual(renderedItems(vm)["a1"]?.visibility, "archive", "primes the section cache")
+        let before = mock.requestCount
+
+        await vm.unarchiveSelected()
+
+        XCTAssertEqual(mock.requestCount, before + 1)
+        XCTAssertEqual(Set(mock.lastBulkUpdateDto?.ids ?? []), ["a1", "a2"])
+        XCTAssertEqual(mock.lastBulkUpdateDto?.visibility, .timeline)
+        XCTAssertEqual(vm.items.map(\.id), idsBefore)
+        for id in ["a1", "a2"] {
+            let item = vm.items.first { $0.id == id }
+            XCTAssertEqual(item?.visibility, "timeline")
+            XCTAssertFalse(vm.offersUnarchive(for: item!))
+            XCTAssertEqual(renderedItems(vm)[id]?.visibility, "timeline")
+        }
+        XCTAssertFalse(vm.selectionMode)
+        XCTAssertTrue(vm.selectedIds.isEmpty)
+    }
+
+    @MainActor
+    func test_setArchived_AC19_refusalKeptForGridWhenViewerClosed() async {
+        let mock = MockImmichClient()
+        let vm = await archivedGridVM(mock)
+        let itemsBefore = vm.items
+        mock.globalError = APIError.serverError(500, "boom")
+        let expected = localizedString("The server ran into a problem. Please try again.")
+
+        let message = await vm.setArchived(id: "a1", archived: false, handOffError: false)
+
+        XCTAssertEqual(message, expected)
+        XCTAssertEqual(vm.actionErrorMessage, expected)
+        XCTAssertEqual(vm.items, itemsBefore)
+    }
 }

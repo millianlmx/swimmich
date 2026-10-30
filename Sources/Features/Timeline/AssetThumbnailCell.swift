@@ -37,6 +37,8 @@ struct AssetThumbnailCell: View {
     var onToggleFavorite: () -> Void = {}
     var onDelete: () -> Void = {}
     var onArchive: (() -> Void)? = nil
+    /// Replaces the Archive entry for an archived asset (the grid decides).
+    var onUnarchive: (() -> Void)? = nil
     /// Locked folder (gap G12): moves this asset into the PIN-protected
     /// folder. Optional like `onArchive` — surfaces that show assets the user
     /// cannot lock (trash) leave it nil and get no menu entry.
@@ -143,7 +145,13 @@ struct AssetThumbnailCell: View {
                             systemImage: asset.isFavorite ? "heart.slash" : "heart"
                         )
                     }
-                    if let onArchive {
+                    if let onUnarchive {
+                        Button {
+                            onUnarchive()
+                        } label: {
+                            Label("Unarchive", systemImage: "tray.and.arrow.up")
+                        }
+                    } else if let onArchive {
                         Button {
                             onArchive()
                         } label: {

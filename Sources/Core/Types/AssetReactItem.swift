@@ -160,6 +160,36 @@ struct AssetReactItem: Identifiable, Equatable, Hashable, Sendable {
             stack: stack
         )
     }
+
+    /// Visibility of an item whose source does not know it (map markers carry
+    /// none): the photo viewer resolves it with `getAsset` before offering
+    /// Archive / Unarchive.
+    static let unresolvedVisibility = ""
+
+    /// Copy with `visibility` overridden; every other field is intact.
+    func with(visibility: String) -> AssetReactItem {
+        AssetReactItem(
+            id: id,
+            ownerId: ownerId,
+            ratio: ratio,
+            isFavorite: isFavorite,
+            visibility: visibility,
+            isTrashed: isTrashed,
+            isImage: isImage,
+            thumbhash: thumbhash,
+            createdAt: createdAt,
+            fileCreatedAt: fileCreatedAt,
+            localOffsetHours: localOffsetHours,
+            duration: duration,
+            livePhotoVideoId: livePhotoVideoId,
+            projectionType: projectionType,
+            city: city,
+            country: country,
+            latitude: latitude,
+            longitude: longitude,
+            stack: stack
+        )
+    }
 }
 
 extension AssetReactItem {

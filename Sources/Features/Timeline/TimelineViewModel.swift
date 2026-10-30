@@ -200,6 +200,89 @@ final class TimelineViewModel {
         }
     }
 
+    /// Moves a single asset back to the timeline (`visibility: timeline`).
+    /// Try-then-mutate: a refusal (server or read-only) leaves `items`,
+    /// `loadedIds` and `selectedIds` untouched and is published in
+    /// `actionErrorMessage`. An id the grid does not hold is still sent (the
+    /// photo viewer's standalone path runs on an empty private VM).
+    /// - Returns: `true` when the server accepted.
+    @MainActor
+    @discardableResult
+    func unarchive(id: String) async -> Bool {
+        do {
+            try await client.bulkUpdateAssets(dto: AssetBulkUpdateDto(ids: [id], visibility: .timeline))
+            applyUnarchived([id])
+            return true
+        } catch let e {
+            actionErrorMessage = e.userFacingMessage
+            return false
+        }
+    }
+
+    /// Unarchives the whole selection in one request, then exits selection
+    /// mode whatever the filter. A refusal keeps items, selection and mode.
+    @MainActor
+    func unarchiveSelected() async {
+        guard !selectedIds.isEmpty else { return }
+        let ids = Array(selectedIds)
+        do {
+            try await client.bulkUpdateAssets(dto: AssetBulkUpdateDto(ids: ids, visibility: .timeline))
+            applyUnarchived(Set(ids))
+            exitSelectionMode()
+        } catch let e {
+            actionErrorMessage = e.userFacingMessage
+        }
+    }
+
+    /// Reflects an unarchive that already succeeded on the server. Under the
+    /// Archived filter the assets leave the grid; elsewhere (Favorites also
+    /// lists archived photos) they stay, patched in place, and the section
+    /// caches are reset so the cells re-read the new visibility.
+    @MainActor
+    private func applyUnarchived(_ ids: Set<String>) {
+        if filter == .archived {
+            items.removeAll { ids.contains($0.id) }
+            loadedIds.subtract(ids)
+            selectedIds.subtract(ids)
+        } else {
+            for idx in items.indices where ids.contains(items[idx].id) {
+                items[idx] = items[idx].with(visibility: AssetVisibility.timeline.rawValue)
+            }
+            _groupedByDay = nil
+            _groupedByDayKey = nil
+            _timelineSections = nil
+            _timelineSectionsKey = nil
+        }
+    }
+
+    /// Single entry point of the photo viewer's archive/unarchive button, with
+    /// or without a surface callback.
+    /// - Parameter handOffError: `true` = the caller shows the refusal itself
+    ///   (the viewer's banner), so the grid must no longer present it.
+    /// - Returns: `nil` when the server accepted, else the refusal message.
+    @MainActor
+    func setArchived(id: String, archived: Bool, handOffError: Bool) async -> String? {
+        let accepted = archived ? await archive(id: id) : await unarchive(id: id)
+        if accepted { return nil }
+        let message = actionErrorMessage
+        if handOffError { actionErrorMessage = nil }
+        return message
+    }
+
+    /// True when the cell menu / viewer should offer "Unarchive" for `item`:
+    /// the Archived filter, or an item that is archived (Favorites lists both).
+    func offersUnarchive(for item: AssetReactItem) -> Bool {
+        filter == .archived || item.visibility == AssetVisibility.archive.rawValue
+    }
+
+    /// True when the selection toolbar shows "Unarchive": the Archived filter,
+    /// or a non-empty selection made only of archived items still in the grid.
+    var selectionOffersUnarchive: Bool {
+        filter == .archived || (!selectedIds.isEmpty && selectedIds.allSatisfy { id in
+            items.first { $0.id == id }?.visibility == AssetVisibility.archive.rawValue
+        })
+    }
+
     // MARK: - Locked folder (gap G12)
 
     /// Moves the selection into the locked folder — the same bulk route as
@@ -369,10 +452,11 @@ final class TimelineViewModel {
     /// Memoized: the Dictionary grouping + two sorts ran on every `body`
     /// evaluation (audit P1) even though the grouping only depends on `items`.
     /// The cache is invalidated by a `(count, lastId)` signature — every
-    /// `items` mutation (append, replace-all, removeAll) changes one of these,
-    /// so the cache is always fresh. In-place favorite patches change neither,
-    /// but favorite state isn't part of the grouping (only `fileCreatedAt` is),
-    /// so they correctly reuse the cache.
+    /// `items` mutation that adds or removes rows (append, replace-all,
+    /// removeAll) changes one of these. An in-place patch (`items[idx] = …`)
+    /// changes neither, and the cells render the cached COPIES: a patch that
+    /// must show in the grid (`applyUnarchived`) resets the four cache
+    /// storages itself. The in-place favorite patch does not (pre-existing).
     private var _groupedByDay: [(day: String, items: [AssetReactItem])]?
     private var _groupedByDayKey: (count: Int, lastId: String?)?
 
