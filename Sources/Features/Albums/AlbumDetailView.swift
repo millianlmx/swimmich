@@ -47,10 +47,10 @@ struct AlbumDetailView: View {
     /// not a spinner; the freshly-fetched `vm.album` replaces it once loaded.
     private let initialAlbum: AlbumResponseDto
 
-    /// True when the signed-in user owns the album. The server always lists the
-    /// owner first in `albumUsers`; only owners may manage collaborators.
-    private var isAlbumOwner: Bool {
-        (vm.album ?? initialAlbum).albumUsers.first?.user.id == auth.userId
+    /// Gated actions for `surface`, recomputed on every render from the view
+    /// model (role + owned selection); never cached in `@State`.
+    private func allowed(on surface: AlbumDetailSurface) -> Set<AlbumDetailAction> {
+        vm.allowedActions(on: surface, currentUserId: auth.userId, fallback: initialAlbum)
     }
 
     init(
@@ -122,19 +122,21 @@ struct AlbumDetailView: View {
                     }
                     .disabled(vm.selectedIds.isEmpty)
 
-                    Button {
-                        guard vm.selectedIds.count == 1, let first = vm.selectedIds.first else { return }
-                        Task {
-                            // Exit only on success (retry keeps selection).
-                            if await vm.setCover(assetId: first) {
-                                vm.exitSelectionMode()
+                    if allowed(on: .selectionBar).contains(.setCover) {
+                        Button {
+                            guard vm.selectedIds.count == 1, let first = vm.selectedIds.first else { return }
+                            Task {
+                                // Exit only on success (retry keeps selection).
+                                if await vm.setCover(assetId: first) {
+                                    vm.exitSelectionMode()
+                                }
                             }
+                        } label: {
+                            Label("Set as Cover", systemImage: "photo.badge.checkmark")
+                                .labelStyle(.iconOnly)
                         }
-                    } label: {
-                        Label("Set as Cover", systemImage: "photo.badge.checkmark")
-                            .labelStyle(.iconOnly)
+                        .disabled(vm.selectedIds.count != 1)
                     }
-                    .disabled(vm.selectedIds.count != 1)
 
                     Button {
                         presentRoadTrip(assets: vm.assets.filter { vm.selectedIds.contains($0.id) })
@@ -145,40 +147,48 @@ struct AlbumDetailView: View {
                     .disabled(vm.selectedIds.isEmpty)
                 }
                 // Native trailing ellipsis menu — Photos-parity bulk actions.
-                ToolbarItem(placement: .topBarTrailing) {
-                    Menu {
-                        Button(role: .destructive) {
-                            pendingRemoveSelected = true
-                        } label: {
-                            Label {
-                                Text("Remove from Album")
-                                    .foregroundStyle(Color.red)
-                            } icon: {
-                                Image(systemName: "rectangle.stack.badge.minus")
-                                    .foregroundStyle(Color.red)
+                // Not rendered when the user has nothing to do in it.
+                let menuActions = allowed(on: .selectionMenu)
+                if !menuActions.isEmpty {
+                    ToolbarItem(placement: .topBarTrailing) {
+                        Menu {
+                            if menuActions.contains(.removeFromAlbum) {
+                                Button(role: .destructive) {
+                                    pendingRemoveSelected = true
+                                } label: {
+                                    Label {
+                                        Text("Remove from Album")
+                                            .foregroundStyle(Color.red)
+                                    } icon: {
+                                        Image(systemName: "rectangle.stack.badge.minus")
+                                            .foregroundStyle(Color.red)
+                                    }
+                                }
+                                .tint(.red)
+                                .disabled(vm.selectedIds.isEmpty)
                             }
-                        }
-                        .tint(.red)
-                        .disabled(vm.selectedIds.isEmpty)
 
-                        Button(role: .destructive) {
-                            pendingDeleteSelected = true
-                        } label: {
-                            Label {
-                                Text("Delete")
-                                    .foregroundStyle(Color.red)
-                            } icon: {
-                                Image(systemName: "trash")
-                                    .foregroundStyle(Color.red)
+                            if menuActions.contains(.deleteAssets) {
+                                Button(role: .destructive) {
+                                    pendingDeleteSelected = true
+                                } label: {
+                                    Label {
+                                        Text("Delete")
+                                            .foregroundStyle(Color.red)
+                                    } icon: {
+                                        Image(systemName: "trash")
+                                            .foregroundStyle(Color.red)
+                                    }
+                                }
+                                .tint(.red)
+                                .disabled(vm.selectedIds.isEmpty)
                             }
+                        } label: {
+                            Label("Album actions", systemImage: "ellipsis")
+                                .labelStyle(.iconOnly)
                         }
-                        .tint(.red)
-                        .disabled(vm.selectedIds.isEmpty)
-                    } label: {
-                        Label("Album actions", systemImage: "ellipsis")
-                            .labelStyle(.iconOnly)
+                        .tint(.primary)
                     }
-                    .tint(.primary)
                 }
             } else if !vm.isDeleted {
                 // Native trailing ellipsis menu — Apple Files parity. Bare
@@ -188,6 +198,7 @@ struct AlbumDetailView: View {
                 // (see AlbumsView); on iOS 26 this screen uses a standard push,
                 // so the bar (back chevron + title + this menu) renders as one.
                 ToolbarItem(placement: .topBarTrailing) {
+                    let albumActions = allowed(on: .albumMenu)
                     Menu {
                         Button {
                             vm.enterSelectionMode()
@@ -196,14 +207,16 @@ struct AlbumDetailView: View {
                                 .foregroundStyle(Color.primary)
                         }
                         .tint(Color.primary)
-                        Divider()
-                        Button {
-                            presentingEditAlbum = true
-                        } label: {
-                            Label("Edit Album", systemImage: "pencil")
-                                .foregroundStyle(Color.primary)
+                        if albumActions.contains(.editAlbum) {
+                            Divider()
+                            Button {
+                                presentingEditAlbum = true
+                            } label: {
+                                Label("Edit Album", systemImage: "pencil")
+                                    .foregroundStyle(Color.primary)
+                            }
+                            .tint(Color.primary)
                         }
-                        .tint(Color.primary)
                         Divider()
                         Button {
                             presentingShare = true
@@ -232,11 +245,10 @@ struct AlbumDetailView: View {
                                 .foregroundStyle(Color.primary)
                         }
                         .tint(Color.primary)
-                        Divider()
-                        // "Shared With" is owner-only: the server puts the
-                        // album owner first in `albumUsers`, and only owners
-                        // may manage collaborators (403 otherwise).
-                        if isAlbumOwner {
+                        if !albumActions.isEmpty {
+                            Divider()
+                        }
+                        if albumActions.contains(.sharedWith) {
                             Button {
                                 shareSheetItem = AlbumShareSheetItem(
                                     vm: vm.makeShareViewModel(
@@ -250,22 +262,24 @@ struct AlbumDetailView: View {
                             }
                             .tint(Color.primary)
                         }
-                        Divider()
-                        // Forced red: the menu-level `.tint(.primary)` below can
-                        // override the destructive role on iOS 26, so the icon
-                        // AND the title carry their own explicit red style.
-                        Button(role: .destructive) {
-                            presentingDeleteConfirm = true
-                        } label: {
-                            Label {
-                                Text("Delete Album")
-                                    .foregroundStyle(Color.red)
-                            } icon: {
-                                Image(systemName: "trash")
-                                    .foregroundStyle(Color.red)
+                        if albumActions.contains(.deleteAlbum) {
+                            Divider()
+                            // Forced red: the menu-level `.tint(.primary)` below can
+                            // override the destructive role on iOS 26, so the icon
+                            // AND the title carry their own explicit red style.
+                            Button(role: .destructive) {
+                                presentingDeleteConfirm = true
+                            } label: {
+                                Label {
+                                    Text("Delete Album")
+                                        .foregroundStyle(Color.red)
+                                } icon: {
+                                    Image(systemName: "trash")
+                                        .foregroundStyle(Color.red)
+                                }
                             }
+                            .tint(Color.red)
                         }
-                        .tint(Color.red)
                     } label: {
                         Label("Album actions", systemImage: "ellipsis")
                             .labelStyle(.iconOnly)
@@ -312,10 +326,10 @@ struct AlbumDetailView: View {
         } message: {
             Text(vm.actionErrorMessage ?? "")
         }
-        .alert("Delete \(vm.selectedIds.count) asset(s)?", isPresented: $pendingDeleteSelected) {
+        .alert("Delete \(vm.ownedSelectedIds(currentUserId: auth.userId).count) asset(s)?", isPresented: $pendingDeleteSelected) {
             Button("Delete", role: .destructive) {
                 Task {
-                    await vm.deleteSelected()
+                    await vm.deleteSelected(currentUserId: auth.userId)
                     lastDeleteTick &+= 1
                 }
             }
@@ -424,24 +438,39 @@ struct AlbumDetailView: View {
                     lastSelectionTick &+= 1
                 }
         } else {
-            cell
-                .contextMenu {
-                    Button {
-                        Task { await vm.setCover(assetId: item.id) }
-                    } label: {
-                        Label("Set as Cover", systemImage: "photo.badge.checkmark")
+            let cellActions = allowed(on: .assetContextMenu)
+            if cellActions.isEmpty {
+                // Nothing to offer (viewer): no context menu, long-press selects.
+                cell
+                    .onLongPressGesture(minimumDuration: 0.4) {
+                        vm.enterSelectionMode()
+                        vm.toggleSelection(id: item.id)
+                        lastSelectionTick &+= 1
                     }
-                    Button(role: .destructive) {
-                        pendingRemoveAssetId = item.id
-                    } label: {
-                        Label("Remove from Album", systemImage: "rectangle.stack.badge.minus")
+            } else {
+                cell
+                    .contextMenu {
+                        if cellActions.contains(.setCover) {
+                            Button {
+                                Task { await vm.setCover(assetId: item.id) }
+                            } label: {
+                                Label("Set as Cover", systemImage: "photo.badge.checkmark")
+                            }
+                        }
+                        if cellActions.contains(.removeFromAlbum) {
+                            Button(role: .destructive) {
+                                pendingRemoveAssetId = item.id
+                            } label: {
+                                Label("Remove from Album", systemImage: "rectangle.stack.badge.minus")
+                            }
+                        }
                     }
-                }
-                .onLongPressGesture(minimumDuration: 0.4) {
-                    vm.enterSelectionMode()
-                    vm.toggleSelection(id: item.id)
-                    lastSelectionTick &+= 1
-                }
+                    .onLongPressGesture(minimumDuration: 0.4) {
+                        vm.enterSelectionMode()
+                        vm.toggleSelection(id: item.id)
+                        lastSelectionTick &+= 1
+                    }
+            }
         }
     }
 

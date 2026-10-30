@@ -237,6 +237,7 @@
 		6D1C1F2D07E65A460842BB9E /* VideoPlaybackViewModelTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = C67294C6BF167F99826A12F2 /* VideoPlaybackViewModelTests.swift */; };
 		6DB42ADF994B02E2121B4E45 /* AuthViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA3BB3A9E0C7AC8A15BFCFA2 /* AuthViewModel.swift */; };
 		6E0CA305C84E7449F703A226 /* PeopleViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 83103D68387ED91742297BAB /* PeopleViewModel.swift */; };
+		5C81E0A7D2B94F36E8A1C0B4 /* AlbumDetailViewModelTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = B3D7A41C9E0F52861AC4D7E1 /* AlbumDetailViewModelTests.swift */; };
 		6E7B778D9F491BF5176FD1BA /* AlbumShareViewModelTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6F117AF914D1EB40979279C3 /* AlbumShareViewModelTests.swift */; };
 		6EE4B13C616AD03120A4C765 /* ImmichRenderScreenshots.swift in Sources */ = {isa = PBXBuildFile; fileRef = EAB20A19BE3CE84F21953F08 /* ImmichRenderScreenshots.swift */; };
 		6EF13C97719475355E74263C /* immich_stub_star_ratings.py in Resources */ = {isa = PBXBuildFile; fileRef = FB50BC7F53CA5A4D8CFBC05F /* immich_stub_star_ratings.py */; };
@@ -834,6 +835,7 @@
 		6E7FE6FC2411C4B49F43B418 /* DTOs.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DTOs.swift; sourceTree = "<group>"; };
 		6E9FC5CB9439ACC48B2E780B /* RoadTripVideoRenderer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RoadTripVideoRenderer.swift; sourceTree = "<group>"; };
 		6EAD24F5B38A7C4BD9F60C14 /* AboutLinksTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AboutLinksTests.swift; sourceTree = "<group>"; };
+		B3D7A41C9E0F52861AC4D7E1 /* AlbumDetailViewModelTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AlbumDetailViewModelTests.swift; sourceTree = "<group>"; };
 		6F117AF914D1EB40979279C3 /* AlbumShareViewModelTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AlbumShareViewModelTests.swift; sourceTree = "<group>"; };
 		6FA470C3C036E0918556DE7F /* UserApiKeysUITests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = UserApiKeysUITests.swift; sourceTree = "<group>"; };
 		6FC3814BFC146B5B49F9091F /* TimelineGridZoomTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TimelineGridZoomTests.swift; sourceTree = "<group>"; };
@@ -1529,6 +1531,7 @@
 			children = (
 				6EAD24F5B38A7C4BD9F60C14 /* AboutLinksTests.swift */,
 				3A58694C1512E94C9B889525 /* ActivityFeedViewModelTests.swift */,
+				B3D7A41C9E0F52861AC4D7E1 /* AlbumDetailViewModelTests.swift */,
 				6F117AF914D1EB40979279C3 /* AlbumShareViewModelTests.swift */,
 				484079900F41D46E0DC1B904 /* AlbumsTests.swift */,
 				92A83C640944B384F967A555 /* AlbumSyncServiceTests.swift */,
@@ -2456,6 +2459,7 @@
 			files = (
 				5D9C13E4A27F6B3AC8E5FB03 /* AboutLinksTests.swift in Sources */,
 				FD76418DA93C59C24B69C915 /* ActivityFeedViewModelTests.swift in Sources */,
+				5C81E0A7D2B94F36E8A1C0B4 /* AlbumDetailViewModelTests.swift in Sources */,
 				6E7B778D9F491BF5176FD1BA /* AlbumShareViewModelTests.swift in Sources */,
 				27A019056646723558776C6E /* AlbumSyncServiceTests.swift in Sources */,
 				54C2F7EB6719891AEF726BBB /* AlbumsTests.swift in Sources */,

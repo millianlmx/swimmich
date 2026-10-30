@@ -7,8 +7,10 @@ import Foundation
 // Album assets are fetched separately via searchMetadata(albumIds:) — see FM-2.
 
 /// `AlbumResponseDto` from `GET /api/albums` and `GET /api/albums/:id`.
-/// `albumUsers` is always present server-side (owner first). Explicit CodingKeys
-/// keeps decoding resilient to server-side field additions.
+/// Up to v2.x the owner is NOT in `albumUsers` and is designated by `ownerId`;
+/// from v3 the owner is an `albumUsers` entry with role `owner` and `ownerId`
+/// is no longer sent. Explicit CodingKeys keeps decoding resilient to
+/// server-side field additions.
 struct AlbumResponseDto: Codable, Equatable {
     let id: String
     var albumName: String
@@ -22,11 +24,12 @@ struct AlbumResponseDto: Codable, Equatable {
     var isActivityEnabled: Bool
     let order: AssetOrder?
     var albumUsers: [AlbumUserResponseDto] = []
+    var ownerId: String? = nil
 
     enum CodingKeys: String, CodingKey {
         case id, albumName, description, createdAt, updatedAt
         case albumThumbnailAssetId, shared, hasSharedLink, assetCount
-        case isActivityEnabled, order, albumUsers
+        case isActivityEnabled, order, albumUsers, ownerId
     }
 }
 

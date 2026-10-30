@@ -66,8 +66,7 @@ final class AlbumDetailViewModel {
         do {
             let results = try await client.removeAssetsFromAlbum(albumId: albumId, dto: BulkIdsDto(ids: ids))
             let removeSet = removedIds(results)
-            assets.removeAll { removeSet.contains($0.id) }
-            loadedIds.subtract(removeSet)
+            removeLocally(removeSet)
             exitSelectionMode()
             actionErrorMessage = nil
         } catch {
@@ -98,22 +97,67 @@ final class AlbumDetailViewModel {
         return true
     }
 
-    /// Deletes all selected assets from the library. On success removes them
-    /// from `assets` + `loadedIds` and exits selection mode. On throw, state is
-    /// preserved so the user can retry (actionErrorMessage set, selection kept).
-    func deleteSelected() async {
-        guard !selectedIds.isEmpty else { return }
-        let ids = Array(selectedIds)
+    /// Moves to the trash the selected assets the current user owns (the server
+    /// refuses the whole request when one id is not owned). Other members'
+    /// photos stay in `assets`. On success removes them from `assets` +
+    /// `loadedIds` and exits selection mode; on throw, state is preserved so the
+    /// user can retry (actionErrorMessage set, selection kept).
+    /// - Returns: the ids actually removed from `assets`.
+    @discardableResult
+    func deleteSelected(currentUserId: String?) async -> Set<String> {
+        let ids = ownedSelectedIds(currentUserId: currentUserId)
+        guard !ids.isEmpty else { return [] }
         do {
             // MUST throw-or-succeed before mutating anything.
             try await client.deleteAssets(ids: ids, force: false)
-            let removeSet = Set(ids)
-            assets.removeAll { removeSet.contains($0.id) }
-            loadedIds.subtract(removeSet)
+            let removed = removeLocally(Set(ids))
             exitSelectionMode()
+            actionErrorMessage = nil
+            return removed
         } catch {
             actionErrorMessage = error.userFacingMessage
+            return []
         }
+    }
+
+    /// Ids of the selected assets present in `assets` that the current user
+    /// owns, in `assets` order. A nil/empty user id or an empty asset `ownerId`
+    /// (offline items) is never "owned". Pure.
+    func ownedSelectedIds(currentUserId: String?) -> [String] {
+        guard let currentUserId, !currentUserId.isEmpty else { return [] }
+        return assets
+            .filter { selectedIds.contains($0.id) && !$0.ownerId.isEmpty && $0.ownerId == currentUserId }
+            .map(\.id)
+    }
+
+    /// Single point of local removal. Returns the ids actually removed from `assets`.
+    @discardableResult
+    func removeLocally(_ ids: Set<String>) -> Set<String> {
+        let removed = ids.intersection(assets.map(\.id))
+        assets.removeAll { removed.contains($0.id) }
+        loadedIds.subtract(removed)
+        return removed
+    }
+
+    // MARK: - Permissions
+
+    /// Role-derived permissions; before `load()` the role comes from `fallback`.
+    func permissions(currentUserId: String?, fallback: AlbumResponseDto) -> AlbumDetailPermissions {
+        AlbumDetailPermissions(album: album ?? fallback, userId: currentUserId)
+    }
+
+    /// Actions rendered on `surface`. The owned-selection count is computed
+    /// here, never supplied by the caller.
+    func allowedActions(
+        on surface: AlbumDetailSurface,
+        currentUserId: String?,
+        fallback: AlbumResponseDto
+    ) -> Set<AlbumDetailAction> {
+        permissions(currentUserId: currentUserId, fallback: fallback)
+            .allowedActions(
+                on: surface,
+                ownedSelectionCount: ownedSelectedIds(currentUserId: currentUserId).count
+            )
     }
 
     // MARK: - Load (AC-508)
@@ -187,8 +231,7 @@ final class AlbumDetailViewModel {
             let results = try await client.removeAssetsFromAlbum(albumId: albumId, dto: BulkIdsDto(ids: ids))
             // try-then-mutate: update local list only on success.
             let removeSet = removedIds(results)
-            assets.removeAll { removeSet.contains($0.id) }
-            loadedIds.subtract(removeSet)
+            removeLocally(removeSet)
             // Keep the selection set consistent when a selected asset is
             // removed via the context menu (audit fix — stale "N selected").
             selectedIds.subtract(removeSet)
@@ -349,5 +392,55 @@ final class AlbumDetailViewModel {
             actionErrorMessage = error.userFacingMessage
             return false
         }
+    }
+}
+
+// MARK: - Permissions (pure predicate)
+
+/// Actions whose availability depends on the user's album role (or, for
+/// `deleteAssets`, on the photos selected). Other actions are always rendered.
+enum AlbumDetailAction: Hashable {
+    case editAlbum, setCover, deleteAlbum, sharedWith, removeFromAlbum, deleteAssets
+}
+
+/// Places in the album detail screen where gated actions can appear.
+enum AlbumDetailSurface {
+    case albumMenu, selectionBar, selectionMenu, assetContextMenu
+}
+
+/// The signed-in user's role in an album and what it allows.
+struct AlbumDetailPermissions: Equatable {
+    let role: AlbumUserRole
+
+    init(album: AlbumResponseDto, userId: String?) {
+        role = Self.role(of: userId, in: album)
+    }
+
+    /// v2.x: owner = `ownerId` (absent from `albumUsers`). v3+: owner is an
+    /// `albumUsers` entry. Unknown or id-less users are viewers.
+    static func role(of userId: String?, in album: AlbumResponseDto) -> AlbumUserRole {
+        guard let userId, !userId.isEmpty else { return .viewer }
+        if let ownerId = album.ownerId, !ownerId.isEmpty, ownerId == userId { return .owner }
+        return album.albumUsers.first { $0.user.id == userId }?.role ?? .viewer
+    }
+
+    var canAddAssets: Bool { role == .owner || role == .editor }
+    var canRemoveAssets: Bool { role == .owner || role == .editor }
+
+    func allowedActions(on surface: AlbumDetailSurface, ownedSelectionCount: Int = 0) -> Set<AlbumDetailAction> {
+        var result: Set<AlbumDetailAction> = []
+        switch surface {
+        case .albumMenu:
+            if role == .owner { result = [.editAlbum, .sharedWith, .deleteAlbum] }
+        case .selectionBar:
+            if role == .owner { result = [.setCover] }
+        case .selectionMenu:
+            if canRemoveAssets { result.insert(.removeFromAlbum) }
+            if ownedSelectionCount > 0 { result.insert(.deleteAssets) }
+        case .assetContextMenu:
+            if role == .owner { result.insert(.setCover) }
+            if canRemoveAssets { result.insert(.removeFromAlbum) }
+        }
+        return result
     }
 }

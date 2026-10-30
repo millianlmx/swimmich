@@ -436,7 +436,7 @@ final class AlbumsTests: XCTestCase {
         vm.enterSelectionMode()
         vm.toggleSelection(id: "a1")
         vm.toggleSelection(id: "a2")
-        await vm.deleteSelected()
+        await vm.deleteSelected(currentUserId: "owner")
 
         XCTAssertEqual(Set(mock.lastDeleteBody?.ids ?? []), ["a1", "a2"])
         XCTAssertEqual(mock.lastDeleteBody?.force, false)
@@ -456,7 +456,7 @@ final class AlbumsTests: XCTestCase {
 
         vm.enterSelectionMode()
         vm.toggleSelection(id: "a1")
-        await vm.deleteSelected()
+        await vm.deleteSelected(currentUserId: "owner")
 
         // State preserved so the user can retry.
         XCTAssertEqual(vm.assets.count, 2)
@@ -504,7 +504,7 @@ final class AlbumsTests: XCTestCase {
         let mock = MockImmichClient()
         let vm = AlbumDetailViewModel(client: mock, albumId: "alb")
         await vm.removeSelected()
-        await vm.deleteSelected()
+        await vm.deleteSelected(currentUserId: "owner")
         XCTAssertNil(mock.lastRemoveAssetsAlbumId)
         XCTAssertNil(mock.lastDeleteBody)
     }
