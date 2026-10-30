@@ -346,6 +346,7 @@
 		A432EA0181226570EFBA6C6E /* FeatureHighlight.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4FC933543D736EB9FE5EDA1C /* FeatureHighlight.swift */; };
 		A46826F2DFA543BC997110ED /* LocalAssetCell.swift in Sources */ = {isa = PBXBuildFile; fileRef = 983D0095F908FD57DE3E6A66 /* LocalAssetCell.swift */; };
 		A468C49DD2A880890888849C /* EditorViewModelTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 91ADA316512F5C0FDC8ADC61 /* EditorViewModelTests.swift */; };
+		E1D17ED000000000000B0002 /* EditedImageRendererTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = E1D17ED000000000000A0002 /* EditedImageRendererTests.swift */; };
 		A4A99A5EAA5587CDC26C3A10 /* SearchFilterDTOs.swift in Sources */ = {isa = PBXBuildFile; fileRef = 908F137389F63CA8A90E5B5E /* SearchFilterDTOs.swift */; };
 		A566553BA77373342DFF4FCA /* StackDetailView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0B951CDF4C6CA41ADFC0E2DF /* StackDetailView.swift */; };
 		A58C2668C6B29C0620B3D902 /* StacksViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = A38EABF5B50A56174DFB661B /* StacksViewModel.swift */; };
@@ -524,6 +525,7 @@
 		FE1DB9771F8B3F4EBF88890D /* LocationGeocodingService.swift in Sources */ = {isa = PBXBuildFile; fileRef = FDDC77DDD11CB5C7E3E91324 /* LocationGeocodingService.swift */; };
 		FE878E244F2125507ECDCB36 /* PVStatusBadge.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5B50D4A922CF1A0C2F3FD209 /* PVStatusBadge.swift */; };
 		FF60B669921EB2F1A3B38BFD /* PhotoEditorViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1D54D90775F8E62B8FCDA9E4 /* PhotoEditorViewModel.swift */; };
+		E1D17ED000000000000B0001 /* EditedImageRenderer.swift in Sources */ = {isa = PBXBuildFile; fileRef = E1D17ED000000000000A0001 /* EditedImageRenderer.swift */; };
 		FF78C43053848321ADA8A783 /* RoadTripSmoothPath.swift in Sources */ = {isa = PBXBuildFile; fileRef = EE1BCE57E2D0C2BD94AF459F /* RoadTripSmoothPath.swift */; };
 /* End PBXBuildFile section */
 
@@ -682,6 +684,7 @@
 		1B949AE38E1E59FD0B8922B1 /* immich_stub_base.py */ = {isa = PBXFileReference; lastKnownFileType = text.script.python; path = immich_stub_base.py; sourceTree = "<group>"; };
 		1BBFFBCA7F1A04CEFC4D00A9 /* immich_stub_person_birthday.py */ = {isa = PBXFileReference; lastKnownFileType = text.script.python; path = immich_stub_person_birthday.py; sourceTree = "<group>"; };
 		1D54D90775F8E62B8FCDA9E4 /* PhotoEditorViewModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PhotoEditorViewModel.swift; sourceTree = "<group>"; };
+		E1D17ED000000000000A0001 /* EditedImageRenderer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = EditedImageRenderer.swift; sourceTree = "<group>"; };
 		1D58BB447FEF7A1EE41810F9 /* TrustedServerStoreTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TrustedServerStoreTests.swift; sourceTree = "<group>"; };
 		A1C0DE0000000000000000A1 /* ServerSessions.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ServerSessions.swift; sourceTree = "<group>"; };
 		A1C0DE0000000000000000A2 /* ConnectionResetting.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ConnectionResetting.swift; sourceTree = "<group>"; };
@@ -901,6 +904,7 @@
 		908F137389F63CA8A90E5B5E /* SearchFilterDTOs.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SearchFilterDTOs.swift; sourceTree = "<group>"; };
 		90B8F6365D4ED0D74A34245A /* PrivacyInfo.xcprivacy */ = {isa = PBXFileReference; path = PrivacyInfo.xcprivacy; sourceTree = "<group>"; };
 		91ADA316512F5C0FDC8ADC61 /* EditorViewModelTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = EditorViewModelTests.swift; sourceTree = "<group>"; };
+		E1D17ED000000000000A0002 /* EditedImageRendererTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = EditedImageRendererTests.swift; sourceTree = "<group>"; };
 		922AA6F900C9DFD8F696050E /* AlbumShareSheet.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AlbumShareSheet.swift; sourceTree = "<group>"; };
 		923753AF1B4E81B4AA636C2D /* ImmichSwiftUITests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = ImmichSwiftUITests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 		92A83C640944B384F967A555 /* AlbumSyncServiceTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AlbumSyncServiceTests.swift; sourceTree = "<group>"; };
@@ -1433,6 +1437,7 @@
 			children = (
 				4ED9968C2C247474C961C93E /* PhotoEditorView.swift */,
 				1D54D90775F8E62B8FCDA9E4 /* PhotoEditorViewModel.swift */,
+				E1D17ED000000000000A0001 /* EditedImageRenderer.swift */,
 			);
 			path = Editor;
 			sourceTree = "<group>";
@@ -1548,6 +1553,7 @@
 				5894E2DA334D7213B1F4D76B /* DTOEncodingTests.swift */,
 				A99236CA4586F8976F95D2EF /* DuplicatesViewModelTests.swift */,
 				91ADA316512F5C0FDC8ADC61 /* EditorViewModelTests.swift */,
+				E1D17ED000000000000A0002 /* EditedImageRendererTests.swift */,
 				562CB12C829E9A741A247B3C /* EditStateTests.swift */,
 				98E0B8212195B42B1C1648C5 /* ExifFormatterTests.swift */,
 				34C99B2842CD9ACF3D642158 /* FolderViewModelTests.swift */,
@@ -2475,6 +2481,7 @@
 				253319A5F227F3EC76D62CB6 /* DuplicatesViewModelTests.swift in Sources */,
 				B30270B0AD8AF036F1D42C74 /* EditStateTests.swift in Sources */,
 				A468C49DD2A880890888849C /* EditorViewModelTests.swift in Sources */,
+				E1D17ED000000000000B0002 /* EditedImageRendererTests.swift in Sources */,
 				ED7C560FE8069CB0135098C2 /* ExifFormatterTests.swift in Sources */,
 				F3BD3D71309CD7A786DD4670 /* FolderViewModelTests.swift in Sources */,
 				EB867EE92317B560ABE0DC31 /* FreeUpSpaceViewModelTests.swift in Sources */,
@@ -2793,6 +2800,7 @@
 				F442D61509FCC4B2289B47A5 /* PersonBirthday.swift in Sources */,
 				C07A98D608A0E44577FACF28 /* PhotoEditorView.swift in Sources */,
 				FF60B669921EB2F1A3B38BFD /* PhotoEditorViewModel.swift in Sources */,
+				E1D17ED000000000000B0001 /* EditedImageRenderer.swift in Sources */,
 				D63DFBD7A0C3010F2BE60774 /* PhotoInfoPanel.swift in Sources */,
 				ACCF382D86C6CBA5831FF9C0 /* PhotoLibraryChangeMonitor.swift in Sources */,
 				3624B2A08F9652A63ED13453 /* PhotoLibraryChangeMonitoring.swift in Sources */,

@@ -278,6 +278,11 @@ struct PhotoViewer: View {
     @State private var pendingDeleteIndex: Int?
     @State private var deleteIsPermanent = false
     @State private var presentEdit = false
+    /// Editor VM, created once per presentation at the Edit tap and dropped on dismiss.
+    @State private var editorVM: PhotoEditorViewModel?
+    /// Transient "edited copy saved" banner; hidden after 3 s.
+    @State private var editedCopyNotice: String?
+    @State private var editedCopyTick = 0
     @State private var presentShare = false
     @State private var showCastSheet = false
     @State private var showInfo = false
@@ -376,7 +381,34 @@ struct PhotoViewer: View {
                     }
                     .transition(.opacity)
                 }
+
+                if let editedCopyNotice {
+                    VStack {
+                        Label {
+                            Text(editedCopyNotice)
+                        } icon: {
+                            Image(systemName: "checkmark.circle.fill")
+                                .foregroundStyle(Color.immichSuccess)
+                        }
+                        .font(.pvCaption)
+                        .foregroundStyle(.primary)
+                        .padding(.horizontal, PVSpacing.s16)
+                        .padding(.vertical, PVSpacing.s8)
+                        .background(.regularMaterial, in: Capsule())
+                        .padding(.top, PVSpacing.s8)
+                        .accessibilityIdentifier("editedCopySavedBanner")
+                        Spacer()
+                    }
+                    .transition(.opacity)
+                }
             }
+            .task(id: editedCopyNotice) {
+                guard editedCopyNotice != nil else { return }
+                try? await Task.sleep(for: .seconds(3))
+                guard !Task.isCancelled else { return }
+                withAnimation { editedCopyNotice = nil }
+            }
+            .appSensoryFeedback(.success, trigger: editedCopyTick)
             // The chrome RESERVES layout space (not an overlay): the top bar and
             // the filmstrip+bottom bar inset the pager, so the photo fits the box
             // "screen width × height between the top buttons and the filmstrip".
@@ -439,9 +471,12 @@ struct PhotoViewer: View {
                      ? "This photo will be permanently removed. Action cannot be undone."
                      : "This removes the photo from your library.")
             }
-            .sheet(isPresented: $presentEdit) {
-                if let asset = currentAsset {
-                    PhotoEditorView(vm: DependencyContainer.shared.makePhotoEditorViewModel(asset: asset))
+            .sheet(isPresented: $presentEdit, onDismiss: { editorVM = nil }) {
+                if let editorVM {
+                    PhotoEditorView(vm: editorVM, onSavedCopy: {
+                        editedCopyNotice = String(localized: "Edited copy saved")
+                        editedCopyTick &+= 1
+                    })
                 }
             }
             .sheet(isPresented: $presentShare) {
@@ -946,6 +981,10 @@ struct PhotoViewer: View {
 
                         if actions.showsEdit {
                             Button {
+                                // One VM per presentation: building it in the sheet's content
+                                // closure would recreate it (and drop the edits or a running
+                                // save) on every re-evaluation of the viewer.
+                                editorVM = DependencyContainer.shared.makePhotoEditorViewModel(asset: asset)
                                 presentEdit = true
                             } label: {
                                 Image(systemName: "slider.horizontal.3")

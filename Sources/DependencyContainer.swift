@@ -525,11 +525,11 @@ final class DependencyContainer {
         )
     }
 
-    /// AC-615: photo editor VM factory. Editor uses URLSession + ImmichAssetURL directly,
-    /// not `ImmichClient`, so we pass nothing but asset identity.
+    /// AC-615: photo editor VM factory. The editor downloads the original with URLSession +
+    /// ImmichAssetURL, and saves its edited copy through `libraryClient` (the read-only guard).
     /// V1.5 polish (AC-718): wire 0.033s render debounce (≈30fps cap) for production.
     func makePhotoEditorViewModel(asset: AssetReactItem) -> PhotoEditorViewModel {
-        let vm = PhotoEditorViewModel(assetId: asset.id)
+        let vm = PhotoEditorViewModel(assetId: asset.id, client: libraryClient, appLog: appLog)
         vm.renderDebounceInterval = 0.033
         return vm
     }

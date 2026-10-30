@@ -118,7 +118,7 @@ final class EditStateTests: XCTestCase {
         let beforeDelete = await store.load(assetId: "asset-2")
         XCTAssertNotNil(beforeDelete)
 
-        await store.delete(assetId: "asset-2")
+        try await store.delete(assetId: "asset-2")
         let afterDelete = await store.load(assetId: "asset-2")
         XCTAssertNil(afterDelete)
     }

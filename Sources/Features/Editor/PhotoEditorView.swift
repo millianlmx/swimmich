@@ -5,10 +5,14 @@ import UIKit
 ///
 /// MVP scope: crop (rule-of-thirds + predefined ratios), rotation fine slider (-45..+45)
 /// + 90° buttons, adjustments (exposure/contrast/saturation/warmth), local EditState persistence,
-/// "Revenir à l'original". Auto-saves on disappear.
+/// "Revenir à l'original". Save renders the full-resolution edit and uploads it as a NEW asset
+/// (the original is untouched); Cancel closes without sending anything. The settings draft is
+/// saved on disappear, except after a successful copy save.
 struct PhotoEditorView: View {
     @Bindable var vm: PhotoEditorViewModel
+    var onSavedCopy: () -> Void = {}
     @Environment(AuthViewModel.self) private var auth
+    @Environment(\.dismiss) private var dismiss
 
     // V1.5 polish — haptic triggers (AC-707/708/719).
     @State private var aspectTick = 0
@@ -55,30 +59,74 @@ struct PhotoEditorView: View {
                     .tint(.red)
                     .disabled(!vm.canRevert)
                     .accessibilityIdentifier("revertToOriginalButton")
-
-                    if let err = vm.errorMessage {
-                        Text(err).foregroundStyle(Color.immichError).font(.pvCaption)
-                    }
                 }
                 .padding()
+                .disabled(vm.isSaving)
             }
             .navigationTitle("Edit")
             .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) {
+                    Button("Cancel") { vm.cancel() }
+                        .disabled(!vm.canCancel)
+                        .accessibilityIdentifier("editorCancelButton")
+                }
+                ToolbarItem(placement: .confirmationAction) {
+                    if vm.isSaving {
+                        ProgressView()
+                            .accessibilityIdentifier("editorSaveProgress")
+                    } else {
+                        Button("Save") { vm.saveCopyToServer() }
+                            .fontWeight(.semibold)
+                            .disabled(!vm.canSave)
+                            .accessibilityIdentifier("editorSaveButton")
+                    }
+                }
+            }
+            .safeAreaInset(edge: .bottom) {
+                VStack(spacing: PVSpacing.s8) {
+                    if let step = vm.saveStep {
+                        HStack(spacing: PVSpacing.s8) {
+                            ProgressView()
+                            Text(stepLabel(step)).font(.pvCaption)
+                        }
+                    }
+                    if let err = vm.errorMessage, !err.isEmpty {
+                        InlineErrorBadge(message: err)
+                    }
+                }
+                .padding(.horizontal, PVSpacing.s16)
+            }
         }
+        .interactiveDismissDisabled(vm.isSaving)
         .appSensoryFeedback(.selection, trigger: aspectTick)
         .appSensoryFeedback(.impact, trigger: rotateTick)
         .appSensoryFeedback(.impact(weight: .light), trigger: revertTick)
+        .appSensoryFeedback(.error, trigger: vm.errorMessage)
+        .onChange(of: vm.dismissReason) { _, reason in
+            guard let reason else { return }
+            if reason == .savedCopy { onSavedCopy() }
+            dismiss()
+        }
         .task {
-            // AC-616: load on appear.
+            // AC-616: read the draft first (local, fast) so a close during the original's
+            // download never runs `saveState()` against an unread draft.
+            await vm.loadState()
             if let baseURL = auth.baseURL {
                 let url = ImmichAssetURL.original(assetId: vm.assetId, baseURL: baseURL)
                 await vm.loadOriginal(url: url, token: auth.accessToken)
-                await vm.loadState()
             }
         }
         .onDisappear {
-            // AC-616: save on disappear.
+            // AC-616: save the draft on disappear (no-op after a successful copy save).
             vm.saveState()
+        }
+    }
+
+    private func stepLabel(_ step: EditorSaveStep) -> LocalizedStringKey {
+        switch step {
+        case .rendering: return "Rendering edited photo…"
+        case .uploading: return "Uploading edited copy…"
         }
     }
 

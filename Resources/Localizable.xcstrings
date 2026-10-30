@@ -2325,6 +2325,93 @@
         }
       }
     },
+    "Couldn't read the original photo's details." : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Impossible de lire les détails de la photo d'origine."
+          }
+        },
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Die Details des Originalfotos konnten nicht gelesen werden."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "No se pudieron leer los detalles de la foto original."
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Impossibile leggere i dettagli della foto originale."
+          }
+        }
+      }
+    },
+    "Couldn't render the edited photo." : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Impossible de générer la photo modifiée."
+          }
+        },
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Das bearbeitete Foto konnte nicht gerendert werden."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "No se pudo generar la foto editada."
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Impossibile elaborare la foto modificata."
+          }
+        }
+      }
+    },
+    "Couldn't write the edited photo to storage." : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Impossible d'écrire la photo modifiée dans le stockage."
+          }
+        },
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Das bearbeitete Foto konnte nicht im Speicher abgelegt werden."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "No se pudo escribir la foto editada en el almacenamiento."
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Impossibile scrivere la foto modificata nella memoria."
+          }
+        }
+      }
+    },
     "Country" : {
       "localizations" : {
         "fr" : {
@@ -3357,6 +3444,35 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Modificato"
+          }
+        }
+      }
+    },
+    "Edited copy saved" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Copie modifiée enregistrée"
+          }
+        },
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Bearbeitete Kopie gesichert"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Copia editada guardada"
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Copia modificata salvata"
           }
         }
       }
@@ -8205,6 +8321,35 @@
         }
       }
     },
+    "Rendering edited photo…" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Génération de la photo modifiée…"
+          }
+        },
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Bearbeitetes Foto wird gerendert …"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Generando la foto editada…"
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Elaborazione della foto modificata…"
+          }
+        }
+      }
+    },
     "Reorganization failed" : {
       "localizations" : {
         "fr" : {
@@ -9857,6 +10002,35 @@
         }
       }
     },
+    "The server refused the edited photo." : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Le serveur a refusé la photo modifiée."
+          }
+        },
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Der Server hat das bearbeitete Foto abgelehnt."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "El servidor rechazó la foto editada."
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Il server ha rifiutato la foto modificata."
+          }
+        }
+      }
+    },
     "The shared file is no longer available." : {
       "localizations" : {
         "fr" : {
@@ -10777,6 +10951,35 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Caricamento %lld/%lld"
+          }
+        }
+      }
+    },
+    "Uploading edited copy…" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Envoi de la copie modifiée…"
+          }
+        },
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Bearbeitete Kopie wird hochgeladen …"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Subiendo la copia editada…"
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Caricamento della copia modificata…"
           }
         }
       }

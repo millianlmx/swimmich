@@ -47,12 +47,14 @@ actor EditStateStore {
         return try? JSONDecoder.immich.decode(EditState.self, from: data)
     }
 
-    /// Deletes the state for the given asset. No-op if absent.
-    /// Used by `PhotoEditorViewModel.saveState()` when `hasEdits == false`
-    /// (loop 3 challenger SIGNIFICANT — preserves "Revenir à l'original" across app kill).
-    func delete(assetId: String) {
-        let url = fileURL(for: assetId)
-        try? FileManager.default.removeItem(at: url)
+    /// Deletes the state for the given asset. No stored draft is not a failure; any other error is thrown.
+    /// Used by `PhotoEditorViewModel` when `hasEdits == false` and after a successful copy save.
+    func delete(assetId: String) throws {
+        do {
+            try FileManager.default.removeItem(at: fileURL(for: assetId))
+        } catch let error as CocoaError where error.code == .fileNoSuchFile {
+            return
+        }
     }
 
     /// Removes all stored states. Useful for tests and "reset all" maintenance actions.
