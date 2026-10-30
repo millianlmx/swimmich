@@ -1,6 +1,7 @@
 import Foundation
 import ImmichSharedKit
 import SwiftUI
+import WidgetKit
 
 /// Authoritative app-wide auth state. Drives RootView routing.
 ///
@@ -93,6 +94,9 @@ final class AuthViewModel: AuthSessionDelegate {
     /// own process and cannot read this object, so every sign-in, restore and
     /// account switch mirrors the session into the shared keychain.
     private let widgetSession: any WidgetSessionStoring
+    /// Refreshes the home screen after every write/clear of the widget session,
+    /// so widgets stop showing the previous account's photos. Tests inject a spy.
+    private let reloadWidgets: () -> Void
     private var _cachedBaseURL: URL?
     /// The local stores wiped by a voluntary logout. `nil` = none attached.
     private let localData: LocalDataPurger?
@@ -104,6 +108,7 @@ final class AuthViewModel: AuthSessionDelegate {
         trustStore: TrustedServerStore = TrustedServerStoreImpl(),
         realtime: RealtimeService = RealtimeService(),
         widgetSession: any WidgetSessionStoring = WidgetSessionStore(),
+        reloadWidgets: @escaping () -> Void = { WidgetCenter.shared.reloadAllTimelines() },
         localData: LocalDataPurger? = nil
     ) {
         self.client = client
@@ -112,6 +117,7 @@ final class AuthViewModel: AuthSessionDelegate {
         self.trustStore = trustStore
         self.realtime = realtime
         self.widgetSession = widgetSession
+        self.reloadWidgets = reloadWidgets
         self.localData = localData
         self.serverURLString = defaults.string(forKey: Self.serverURLDefaultsKey) ?? ""
         self.userEmail = defaults.string(forKey: Self.userEmailDefaultsKey)
@@ -183,6 +189,7 @@ final class AuthViewModel: AuthSessionDelegate {
             // device in the web UI's per-device filter.
             deviceId: DeviceIdentity.current
         ))
+        reloadWidgets()
     }
 
     // MARK: - URL helpers
@@ -411,6 +418,7 @@ final class AuthViewModel: AuthSessionDelegate {
         shouldChangePassword = false
         keychain.deleteToken()
         widgetSession.clear()
+        reloadWidgets()
         defaults.removeObject(forKey: Self.userEmailDefaultsKey)
         defaults.removeObject(forKey: Self.userNameDefaultsKey)
         defaults.removeObject(forKey: Self.userIdDefaultsKey)

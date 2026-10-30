@@ -114,9 +114,9 @@ final class WidgetDataProviderTests: XCTestCase {
         XCTAssertTrue(requests.allSatisfy { $0.value(forHTTPHeaderField: "Authorization") == "Bearer widget-jwt" })
 
         let api = requests.filter { $0.url?.path.contains("/api/timeline/") == true }
-        XCTAssertEqual(url(api[0]), "https://photos.example.com/api/timeline/buckets", "the buckets come first")
+        XCTAssertEqual(url(api[0]), "https://photos.example.com/api/timeline/buckets?visibility=timeline", "the buckets come first")
         XCTAssertFalse(url(api[0]).contains("isFavorite"), "the photos wall is not the favorites one")
-        XCTAssertEqual(url(api[1]), "https://photos.example.com/api/timeline/bucket?timeBucket=2026-09-13T00:00:00.000Z")
+        XCTAssertEqual(url(api[1]), "https://photos.example.com/api/timeline/bucket?timeBucket=2026-09-13T00:00:00.000Z&visibility=timeline")
 
         // The thumbnails are fetched concurrently, so assert the set, not the order.
         let thumbnails = requests.filter { $0.url?.path.contains("/thumbnail") == true }
@@ -170,7 +170,7 @@ final class WidgetDataProviderTests: XCTestCase {
         _ = await provider(spy).favoritePhotos(limit: 1)
 
         let bucket = bucketRequest(spy)
-        XCTAssertEqual(bucket.map(url), "https://photos.example.com/api/timeline/bucket?timeBucket=2026-08-01T00:00:00.000Z&isFavorite=true")
+        XCTAssertEqual(bucket.map(url), "https://photos.example.com/api/timeline/bucket?timeBucket=2026-08-01T00:00:00.000Z&isFavorite=true&visibility=timeline")
         let buckets = spy.requests.first { $0.url?.path == "/api/timeline/buckets" }
         XCTAssertTrue(buckets.map(url)?.contains("isFavorite=true") == true, "same filter as the buckets request")
     }
@@ -180,7 +180,79 @@ final class WidgetDataProviderTests: XCTestCase {
 
         _ = await provider(spy).recentPhotos(limit: 1)
 
-        XCTAssertEqual(bucketRequest(spy).map(url), "https://photos.example.com/api/timeline/bucket?timeBucket=2026-08-01T00:00:00.000Z")
+        XCTAssertEqual(bucketRequest(spy).map(url), "https://photos.example.com/api/timeline/bucket?timeBucket=2026-08-01T00:00:00.000Z&visibility=timeline")
+    }
+
+    private func queryItems(_ request: URLRequest?) -> [URLQueryItem] {
+        request?.url.flatMap { URLComponents(url: $0, resolvingAgainstBaseURL: false)?.queryItems } ?? []
+    }
+
+    private func bucketsRequest(_ spy: TransportSpy) -> URLRequest? {
+        spy.requests.first { $0.url?.path == "/api/timeline/buckets" }
+    }
+
+    func test_AC1_recentPhotos_bucketsRequestAsksTimelineVisibilityOnly() async {
+        let spy = wallSpy()
+
+        _ = await provider(spy).recentPhotos(limit: 1)
+
+        XCTAssertEqual(bucketsRequest(spy).map(url), "https://photos.example.com/api/timeline/buckets?visibility=timeline")
+    }
+
+    func test_AC2_recentPhotos_bucketRequestAsksTimelineVisibility() async {
+        let spy = wallSpy()
+
+        _ = await provider(spy).recentPhotos(limit: 1)
+
+        XCTAssertEqual(bucketRequest(spy).map(url), "https://photos.example.com/api/timeline/bucket?timeBucket=2026-08-01T00:00:00.000Z&visibility=timeline")
+    }
+
+    func test_AC3_favoritePhotos_bothRoutesAskFavoritesInTimeline() async {
+        let spy = wallSpy()
+
+        _ = await provider(spy).favoritePhotos(limit: 1)
+
+        XCTAssertEqual(bucketsRequest(spy).map(url), "https://photos.example.com/api/timeline/buckets?isFavorite=true&visibility=timeline")
+        XCTAssertEqual(bucketRequest(spy).map(url), "https://photos.example.com/api/timeline/bucket?timeBucket=2026-08-01T00:00:00.000Z&isFavorite=true&visibility=timeline")
+    }
+
+    func test_AC4_bothWalls_bucketsAndBucketCarryTheSameFilters() async {
+        for favorites in [false, true] {
+            let spy = wallSpy()
+            if favorites {
+                _ = await provider(spy).favoritePhotos(limit: 1)
+            } else {
+                _ = await provider(spy).recentPhotos(limit: 1)
+            }
+
+            let bucketsFilters = Set(queryItems(bucketsRequest(spy)))
+            let bucketItems = queryItems(bucketRequest(spy))
+            XCTAssertEqual(bucketItems.filter { $0.name == "timeBucket" }.count, 1)
+            XCTAssertEqual(bucketsFilters, Set(bucketItems.filter { $0.name != "timeBucket" }), "favorites: \(favorites)")
+            XCTAssertTrue(bucketsFilters.contains(URLQueryItem(name: "visibility", value: "timeline")))
+        }
+    }
+
+    func test_AC5_recentPhotos_totalCountsTimelineOnly() async {
+        let spy = TransportSpy { request in
+            switch request.url?.path ?? "" {
+            case "/api/timeline/buckets":
+                let timelineOnly = request.url?.query?.contains("visibility=timeline") == true
+                let body = timelineOnly
+                    ? #"[{"timeBucket":"2026-08-01T00:00:00.000Z","count":3},{"timeBucket":"2026-07-01T00:00:00.000Z","count":2}]"#
+                    : #"[{"timeBucket":"2026-08-01T00:00:00.000Z","count":4},{"timeBucket":"2026-07-01T00:00:00.000Z","count":9}]"#
+                return (200, Data(body.utf8))
+            case "/api/timeline/bucket":
+                return (200, Data(#"{"id":["p1"]}"#.utf8))
+            default:
+                return (200, self.tinyImage())
+            }
+        }
+
+        let wall = await provider(spy).recentPhotos(limit: 1)
+
+        XCTAssertEqual(wall.totalCount, 5)
+        XCTAssertEqual(wall.newestCount, 3)
     }
 
     // MARK: - Memories
@@ -672,6 +744,281 @@ final class WidgetSessionPublishingTests: XCTestCase {
 
         XCTAssertNil(spy.session, "a widget must never keep showing a signed-out account's photos")
         XCTAssertGreaterThanOrEqual(spy.clearCount, 1)
+    }
+
+    // MARK: - Widget reload requests
+
+    /// Records, at every reload request, what the shared store held at that
+    /// moment — a reload asked *before* the write/clear would read the old session.
+    private final class ReloadSpy: @unchecked Sendable {
+        struct Snapshot {
+            let session: WidgetSession?
+            let clearCount: Int
+        }
+
+        private let lock = NSLock()
+        private var snapshots: [Snapshot] = []
+
+        var reloads: [Snapshot] {
+            lock.lock()
+            defer { lock.unlock() }
+            return snapshots
+        }
+
+        func record(_ store: SessionSpy) {
+            let snapshot = Snapshot(session: store.session, clearCount: store.clearCount)
+            lock.lock()
+            snapshots.append(snapshot)
+            lock.unlock()
+        }
+    }
+
+    private func makeOAuthConfig() -> ServerConfigDto {
+        ServerConfigDto(
+            oauthButtonText: "Continue with Immich SSO", loginPageMessage: "", trashDays: 30,
+            userDeleteDelay: 7, isInitialized: true, isOnboarded: true, externalDomain: "",
+            publicUsers: false, mapDarkStyleUrl: "", mapLightStyleUrl: "",
+            maintenanceMode: false, minFaces: 0
+        )
+    }
+
+    private func seedSavedAccounts(_ accounts: [SavedAccount], defaults: UserDefaults) {
+        defaults.set(try! JSONEncoder.immich.encode(accounts), forKey: AuthViewModel.serverListDefaultsKey)
+    }
+
+    @MainActor
+    private func makeAuth(
+        mock: MockImmichClient,
+        keychain: MockKeychainStore = MockKeychainStore(),
+        defaults: UserDefaults,
+        spy: SessionSpy,
+        reloads: ReloadSpy
+    ) -> AuthViewModel {
+        let auth = AuthViewModel(
+            client: mock,
+            keychain: keychain,
+            defaults: defaults,
+            widgetSession: spy,
+            reloadWidgets: { reloads.record(spy) }
+        )
+        auth.serverURLString = "https://photos.example.com"
+        _ = auth.baseURL
+        return auth
+    }
+
+    @MainActor
+    func test_AC6_switchToAccount_reloadsWidgetsAfterPublishingTheNewAccount() async {
+        let (defaults, suite) = makeDefaults()
+        defer { defaults.removePersistentDomain(forName: suite) }
+        let keychain = MockKeychainStore()
+        let alice = SavedAccount(url: "https://photos.example.com", email: "alice@example.com", name: "Alice", userId: "u1", isAdmin: false)
+        let bob = SavedAccount(url: "https://photos.example.com", email: "bob@example.com", name: "Bob", userId: "u2", isAdmin: false)
+        keychain.saveToken("alice-jwt", for: alice.id)
+        keychain.saveToken("bob-jwt", for: bob.id)
+        seedSavedAccounts([alice, bob], defaults: defaults)
+        let spy = SessionSpy()
+        let reloads = ReloadSpy()
+        let mock = MockImmichClient()
+        mock.validateError = nil
+        let auth = makeAuth(mock: mock, keychain: keychain, defaults: defaults, spy: spy, reloads: reloads)
+        auth.userEmail = "alice@example.com"
+        auth.userName = "Alice"
+        auth.userId = "u1"
+        auth.accessToken = "alice-jwt"
+
+        await auth.switchToAccount(bob)
+
+        XCTAssertEqual(spy.session?.token, "bob-jwt")
+        XCTAssertEqual(spy.session?.userId, "u2")
+        XCTAssertFalse(reloads.reloads.isEmpty)
+        XCTAssertEqual(reloads.reloads.last?.session?.token, "bob-jwt", "the reload must follow the write")
+    }
+
+    @MainActor
+    func test_AC7_passwordLogin_reloadsWidgetsAfterPublishing() async {
+        let (defaults, suite) = makeDefaults()
+        defer { defaults.removePersistentDomain(forName: suite) }
+        let mock = MockImmichClient()
+        mock.loginResponse = loginResponse(token: "widget-jwt", name: "Milian")
+        let spy = SessionSpy()
+        let reloads = ReloadSpy()
+        let auth = makeAuth(mock: mock, defaults: defaults, spy: spy, reloads: reloads)
+        XCTAssertTrue(reloads.reloads.isEmpty)
+
+        await auth.login(email: "t@e.com", password: "secret")
+
+        XCTAssertFalse(reloads.reloads.isEmpty)
+        XCTAssertEqual(reloads.reloads.last?.session?.token, "widget-jwt")
+    }
+
+    @MainActor
+    func test_AC7_oauthLogin_reloadsWidgetsAfterPublishing() async {
+        let (defaults, suite) = makeDefaults()
+        defer { defaults.removePersistentDomain(forName: suite) }
+        let spy = SessionSpy()
+        let reloads = ReloadSpy()
+        let auth = makeAuth(mock: MockImmichClient(), defaults: defaults, spy: spy, reloads: reloads)
+        auth.serverConfig = makeOAuthConfig()
+        auth.oauthSessionHandler = { _ in URL(string: "app.immich:///oauth-callback?code=abc") }
+        XCTAssertTrue(reloads.reloads.isEmpty)
+
+        await auth.startOAuthFlow()
+
+        XCTAssertFalse(reloads.reloads.isEmpty)
+        XCTAssertEqual(reloads.reloads.last?.session?.token, "oauth-token")
+    }
+
+    @MainActor
+    func test_AC8_logout_reloadsWidgetsAfterClearing() async {
+        let (defaults, suite) = makeDefaults()
+        defer { defaults.removePersistentDomain(forName: suite) }
+        let mock = MockImmichClient()
+        mock.loginResponse = loginResponse(token: "widget-jwt", name: "Milian")
+        let spy = SessionSpy()
+        let reloads = ReloadSpy()
+        let auth = makeAuth(mock: mock, defaults: defaults, spy: spy, reloads: reloads)
+        await auth.login(email: "t@e.com", password: "secret")
+        let before = reloads.reloads.count
+
+        await auth.logout()
+
+        XCTAssertNil(spy.session)
+        XCTAssertGreaterThan(reloads.reloads.count, before)
+        XCTAssertNil(reloads.reloads.last?.session)
+        XCTAssertGreaterThanOrEqual(reloads.reloads.last?.clearCount ?? 0, 1)
+    }
+
+    @MainActor
+    func test_AC9_switchToAccount_missingToken_reloadsWidgetsAfterClearing() async {
+        let (defaults, suite) = makeDefaults()
+        defer { defaults.removePersistentDomain(forName: suite) }
+        let ghost = SavedAccount(url: "https://photos.example.com", email: "ghost@example.com", name: "Ghost", userId: "u9", isAdmin: false)
+        seedSavedAccounts([ghost], defaults: defaults)
+        let spy = SessionSpy()
+        spy.save(WidgetSession(baseURL: "https://photos.example.com", token: "current-jwt"))
+        let reloads = ReloadSpy()
+        let auth = makeAuth(mock: MockImmichClient(), defaults: defaults, spy: spy, reloads: reloads)
+        auth.accessToken = "current-jwt"
+
+        await auth.switchToAccount(ghost)
+
+        XCTAssertNil(spy.session)
+        XCTAssertFalse(auth.isAuthenticated)
+        XCTAssertNil(reloads.reloads.last?.session)
+        XCTAssertGreaterThanOrEqual(reloads.reloads.last?.clearCount ?? 0, 1)
+    }
+
+    @MainActor
+    func test_AC9_switchToAccount_rejectedToken_reloadsWidgetsAfterClearing() async {
+        let (defaults, suite) = makeDefaults()
+        defer { defaults.removePersistentDomain(forName: suite) }
+        let keychain = MockKeychainStore()
+        let bob = SavedAccount(url: "https://photos.example.com", email: "bob@example.com", name: "Bob", userId: "u2", isAdmin: false)
+        keychain.saveToken("stale-jwt", for: bob.id)
+        seedSavedAccounts([bob], defaults: defaults)
+        let mock = MockImmichClient()
+        mock.validateError = APIError.unauthorized
+        let spy = SessionSpy()
+        let reloads = ReloadSpy()
+        let auth = makeAuth(mock: mock, keychain: keychain, defaults: defaults, spy: spy, reloads: reloads)
+        auth.accessToken = "current-jwt"
+
+        await auth.switchToAccount(bob)
+
+        XCTAssertNil(spy.session)
+        XCTAssertFalse(auth.isAuthenticated)
+        XCTAssertNil(reloads.reloads.last?.session, "the last reload must see the cleared session")
+        XCTAssertGreaterThanOrEqual(reloads.reloads.last?.clearCount ?? 0, 1)
+    }
+
+    @MainActor
+    func test_AC10_restoreSession_rejectedToken_reloadsWidgetsAfterClearing() async {
+        let (defaults, suite) = makeDefaults()
+        defer { defaults.removePersistentDomain(forName: suite) }
+        let keychain = MockKeychainStore()
+        defaults.set("https://photos.example.com", forKey: AuthViewModel.serverURLDefaultsKey)
+        keychain.saveToken("saved-jwt")
+        let mock = MockImmichClient()
+        mock.validateError = APIError.unauthorized
+        let spy = SessionSpy()
+        let reloads = ReloadSpy()
+        let auth = AuthViewModel(
+            client: mock, keychain: keychain, defaults: defaults,
+            widgetSession: spy, reloadWidgets: { reloads.record(spy) }
+        )
+
+        await auth.restoreSession()
+
+        XCTAssertNil(spy.session)
+        XCTAssertGreaterThanOrEqual(spy.clearCount, 1)
+        XCTAssertFalse(reloads.reloads.isEmpty)
+        XCTAssertNil(reloads.reloads.last?.session)
+    }
+
+    @MainActor
+    func test_AC12_addNewServer_reloadsWidgetsAfterClearing() async {
+        let (defaults, suite) = makeDefaults()
+        defer { defaults.removePersistentDomain(forName: suite) }
+        let mock = MockImmichClient()
+        mock.loginResponse = loginResponse(token: "widget-jwt", name: "Milian")
+        let spy = SessionSpy()
+        let reloads = ReloadSpy()
+        let auth = makeAuth(mock: mock, defaults: defaults, spy: spy, reloads: reloads)
+        await auth.login(email: "t@e.com", password: "secret")
+        XCTAssertEqual(spy.session?.token, "widget-jwt")
+        let before = reloads.reloads.count
+
+        auth.addNewServer()
+
+        XCTAssertNil(spy.session)
+        XCTAssertGreaterThan(reloads.reloads.count, before)
+        XCTAssertNil(reloads.reloads.last?.session)
+        XCTAssertGreaterThanOrEqual(reloads.reloads.last?.clearCount ?? 0, 1)
+    }
+
+    @MainActor
+    func test_AC12_removeActiveSavedAccount_reloadsWidgetsAfterClearing() async throws {
+        let (defaults, suite) = makeDefaults()
+        defer { defaults.removePersistentDomain(forName: suite) }
+        let mock = MockImmichClient()
+        mock.loginResponse = loginResponse(token: "widget-jwt", name: "Milian")
+        let spy = SessionSpy()
+        let reloads = ReloadSpy()
+        let auth = makeAuth(mock: mock, defaults: defaults, spy: spy, reloads: reloads)
+        await auth.login(email: "t@e.com", password: "secret")
+        let active = try XCTUnwrap(auth.savedAccounts.first)
+        XCTAssertEqual(active.id, auth.activeAccountID)
+        let before = reloads.reloads.count
+
+        auth.removeSavedAccount(active)
+
+        XCTAssertNil(spy.session)
+        XCTAssertGreaterThan(reloads.reloads.count, before)
+        XCTAssertNil(reloads.reloads.last?.session)
+        XCTAssertGreaterThanOrEqual(reloads.reloads.last?.clearCount ?? 0, 1)
+    }
+
+    @MainActor
+    func test_AC13_restoreSession_validToken_reloadsWidgetsAfterPublishing() async {
+        let (defaults, suite) = makeDefaults()
+        defer { defaults.removePersistentDomain(forName: suite) }
+        let keychain = MockKeychainStore()
+        defaults.set("https://photos.example.com", forKey: AuthViewModel.serverURLDefaultsKey)
+        keychain.saveToken("saved-jwt")
+        let spy = SessionSpy()
+        let reloads = ReloadSpy()
+        let auth = AuthViewModel(
+            client: MockImmichClient(), keychain: keychain, defaults: defaults,
+            widgetSession: spy, reloadWidgets: { reloads.record(spy) }
+        )
+        XCTAssertTrue(reloads.reloads.isEmpty)
+
+        await auth.restoreSession()
+
+        XCTAssertTrue(auth.isAuthenticated)
+        XCTAssertEqual(spy.session?.token, "saved-jwt")
+        XCTAssertFalse(reloads.reloads.isEmpty)
+        XCTAssertEqual(reloads.reloads.last?.session?.token, "saved-jwt")
     }
 }
 

@@ -264,9 +264,12 @@ public struct WidgetDataProvider: Sendable {
             logger.error("no widget session in the keychain — sign in in the app, or the widget process cannot read the shared group")
             return .empty(.signedOut, hint: "keychain")
         }
-        // Both routes must carry the same filters: the server applies its
-        // defaults (every asset, not only favorites) to a filter left out.
-        let filters = isFavorite.map { [URLQueryItem(name: "isFavorite", value: $0 ? "true" : "false")] } ?? []
+        // Both routes must carry the same filters (visibility + favorite): the
+        // server applies its defaults (timeline + archive, every asset) to a
+        // filter left out. `visibility=timeline` keeps archived photos off the
+        // home screen, and is always sent for older servers that need it.
+        var filters = isFavorite.map { [URLQueryItem(name: "isFavorite", value: $0 ? "true" : "false")] } ?? []
+        filters.append(URLQueryItem(name: "visibility", value: "timeline"))
         do {
             let buckets: [BucketPayload] = try await get(
                 path: "/api/timeline/buckets",
