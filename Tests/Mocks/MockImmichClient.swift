@@ -13,6 +13,12 @@ struct TimelineFilterCapture: Equatable {
     let orderBy: AssetOrderBy?
 }
 
+/// One `getPeople` request, comparable in tests.
+struct PeopleCall: Equatable {
+    let page: Int?
+    let withHidden: Bool?
+}
+
 /// Test double for ImmichClient. Records the last call per endpoint + lets
 /// tests inject canned responses / errors.
 final class MockImmichClient: ImmichClient, @unchecked Sendable {
@@ -291,6 +297,14 @@ final class MockImmichClient: ImmichClient, @unchecked Sendable {
     var lastMergeTargetId: String?
     var mergePeopleResponse: [BulkIdResponseDto]?
     var personStatisticsResponse: [String: PersonStatisticsResponseDto] = [:]
+    /// Every `getPeople` call, recorded under `lock` before the gate and the error check.
+    private(set) var getPeopleCalls: [PeopleCall] = []
+    /// Awaited after recording and before the error check; may throw to fail one page.
+    var peopleGate: ((PeopleCall) async throws -> Void)?
+    /// Responses keyed by `page ?? 1`, consulted after the error and before `peopleResponse`.
+    var peopleResponsesByPage: [Int: PeopleResponseDto] = [:]
+    /// Every statistics id requested, under `lock` (the VM calls it concurrently).
+    private(set) var personStatisticsCalls: [String] = []
     var partnersSharedWithResponse: [PartnerResponseDto]?
     var partnersSharedByResponse: [PartnerResponseDto]?
     var partnersError: Error?
@@ -893,7 +907,11 @@ final class MockImmichClient: ImmichClient, @unchecked Sendable {
         bump()
         lastPeoplePage = page
         lastPeopleWithHidden = withHidden
+        let call = PeopleCall(page: page, withHidden: withHidden)
+        lock.lock(); getPeopleCalls.append(call); lock.unlock()
+        if let gate = peopleGate { try await gate(call) }
         if let e = globalError ?? peopleError { throw e }
+        if let byPage = peopleResponsesByPage[page ?? 1] { return byPage }
         return peopleResponse ?? PeopleResponseDto(people: [], hidden: 0, total: 0, hasNextPage: nil)
     }
 
@@ -938,6 +956,7 @@ final class MockImmichClient: ImmichClient, @unchecked Sendable {
 
     func getPersonStatistics(id: String) async throws -> PersonStatisticsResponseDto {
         bump()
+        lock.lock(); personStatisticsCalls.append(id); lock.unlock()
         if let e = globalError ?? peopleError { throw e }
         return personStatisticsResponse[id] ?? PersonStatisticsResponseDto(assets: 0)
     }

@@ -9,6 +9,9 @@ struct PeopleView: View {
     @Environment(AuthViewModel.self) private var auth
 
     @State private var viewerItem: PhotoViewerItem?
+    /// One token per pushed screen: the task replays when the detail pops back
+    /// (same token: nothing reloads), a fresh push from Profile mints a new one.
+    @State private var visit = UUID()
 
     private let columns = Array(repeating: GridItem(.flexible(), spacing: PVSpacing.s2), count: 3)
 
@@ -24,7 +27,7 @@ struct PeopleView: View {
                     Text(error)
                 } actions: {
                     Button("Retry") {
-                        Task { await vm.load(force: true); await vm.loadStatistics() }
+                        Task { await vm.refresh() }
                     }
                     .buttonStyle(PVPrimaryButtonStyle())
                 }
@@ -43,21 +46,15 @@ struct PeopleView: View {
         .toolbar {
             ToolbarItem(placement: .topBarTrailing) {
                 Button {
-                    Task { await vm.load(force: true); await vm.loadStatistics() }
+                    Task { await vm.refresh() }
                 } label: {
                     Image(systemName: "arrow.clockwise")
                 }
                 .accessibilityLabel("Refresh people")
             }
         }
-        .task {
-            await vm.load()
-            await vm.loadStatistics()
-        }
-        .refreshable {
-            await vm.load(force: true)
-            await vm.loadStatistics()
-        }
+        .task { await vm.appear(visit: visit) }
+        .refreshable { await vm.refresh() }
         .photoViewer(
             item: $viewerItem,
             baseURL: auth.baseURL ?? URL(string: "https://example.com")!,
@@ -70,10 +67,7 @@ struct PeopleView: View {
 
     private var personList: some View {
         List {
-            let featured = vm.people.filter { $0.isFavorite == true }
-                .sorted { vm.assetCount(for: $0.id) > vm.assetCount(for: $1.id) }
-            let rest = vm.people.filter { $0.isFavorite != true }
-                .sorted { vm.assetCount(for: $0.id) > vm.assetCount(for: $1.id) }
+            let featured = vm.featuredPeople
 
             if !featured.isEmpty {
                 Section("Featured") {
@@ -83,9 +77,10 @@ struct PeopleView: View {
                 }
             }
             Section("People") {
-                ForEach(rest) { person in
+                ForEach(vm.otherPeople) { person in
                     personRow(person)
                 }
+                listFooter
             }
             if vm.hiddenCount > 0 {
                 Section {
@@ -108,6 +103,25 @@ struct PeopleView: View {
                         .foregroundStyle(Color.immichError)
                 }
             }
+        }
+    }
+
+    /// Last row of the list: a spinner that asks for the next page when it
+    /// scrolls into view (recreated on every `peopleEndRevision`, like the
+    /// album grid footer: no `onChange`, no `task(id:)`).
+    @ViewBuilder
+    private var listFooter: some View {
+        switch vm.peopleFooter {
+        case .none:
+            EmptyView()
+        case .error(let message):
+            InlineErrorBadge(message: message, retry: { Task { await vm.loadMorePeople() } })
+        case .loadingMore:
+            ProgressView()
+                .frame(maxWidth: .infinity)
+                .accessibilityIdentifier("peopleLoadMore")
+                .onAppear { Task { await vm.loadMorePeople() } }
+                .id(vm.peopleEndRevision)
         }
     }
 
@@ -156,6 +170,7 @@ struct PeopleView: View {
         // combine modifier above is NOT the reason the row does not activate for
         // XCUITest — removing it was measured to change nothing.)
         .accessibilityIdentifier("personRow_\(person.id)")
+        .onAppear { Task { await vm.personRowAppeared(person.id) } }
     }
 }
 
@@ -173,107 +188,129 @@ private struct PersonDetailView: View {
     @Environment(AuthViewModel.self) private var auth
 
     /// The live row: every write goes through `PeopleViewModel.apply`, which
-    /// replaces `vm.people[i]` with the server's answer, so reading the pushed
-    /// snapshot would keep showing a birthday that was just changed (and would
-    /// re-open the editor pre-filled with the old one).
+    /// replaces `vm.people[i]` with the server's answer and remembers it per
+    /// id, so reading the pushed snapshot would keep showing a birthday that
+    /// was just changed — and a person that left the loaded pages (merge target,
+    /// reload to page 1) would lose its edits.
     private var person: PersonResponseDto {
-        vm.people.first { $0.id == pushed.id } ?? pushed
+        vm.livePerson(pushed)
     }
 
     var body: some View {
         ScrollView {
-            VStack(spacing: PVSpacing.s16) {
-                AuthenticatedAsyncImage(
-                    url: ImmichAssetURL.personThumbnail(
-                        personId: person.id,
-                        baseURL: auth.baseURL ?? URL(string: "https://example.com")!,
-                        size: .preview
-                    ),
-                    token: auth.accessToken
-                )
-                .clipShape(Circle())
-                .frame(width: 96, height: 96)
-                .overlay(Circle().strokeBorder(Color.separatorPV, lineWidth: 1))
+            // Lazy, like the album grid: a plain stack would build the footer at
+            // once and request page 2 before any scroll.
+            LazyVStack {
+                VStack(spacing: PVSpacing.s16) {
+                    AuthenticatedAsyncImage(
+                        url: ImmichAssetURL.personThumbnail(
+                            personId: person.id,
+                            baseURL: auth.baseURL ?? URL(string: "https://example.com")!,
+                            size: .preview
+                        ),
+                        token: auth.accessToken
+                    )
+                    .clipShape(Circle())
+                    .frame(width: 96, height: 96)
+                    .overlay(Circle().strokeBorder(Color.separatorPV, lineWidth: 1))
 
-                VStack(spacing: 2) {
-                    Text(person.name)
-                        .font(.pvTitle)
-                        .foregroundStyle(Color.textPrimaryPV)
-                    Text("\(vm.assetCount(for: person.id)) photos")
-                        .font(.pvCaption)
-                        .foregroundStyle(Color.textSecondaryPV)
-                    // Nothing at all when the person has no birthday (or the
-                    // server sent something unparseable): no placeholder, no
-                    // empty line, so the header keeps its height.
-                    if let birthday = PersonBirthday.display(person.birthDate) {
-                        Label(birthday, systemImage: "calendar")
+                    VStack(spacing: 2) {
+                        Text(person.name)
+                            .font(.pvTitle)
+                            .foregroundStyle(Color.textPrimaryPV)
+                        Text("\(vm.assetCount(for: person.id)) photos")
                             .font(.pvCaption)
                             .foregroundStyle(Color.textSecondaryPV)
-                            .transition(.opacity)
-                            .accessibilityIdentifier("personBirthdayValue")
-                    }
-                }
-                .animation(.default, value: person.birthDate)
-
-                HStack(spacing: PVSpacing.s8) {
-                    actionButton("star.fill", person.isFavorite == true ? Color.immichPrimary : Color.textSecondaryPV, "Favorite") {
-                        Task { await vm.toggleFavorite(person) }
-                    }
-                    actionButton("pencil", .textSecondaryPV, "Rename") {
-                        renameText = person.name
-                        renamePerson = person
-                    }
-                    actionButton("eye.slash", .textSecondaryPV, person.isHidden ? "Unhide" : "Hide") {
-                        Task { await vm.toggleHidden(person) }
-                    }
-                    actionButton("calendar", .textSecondaryPV, "Birthday") {
-                        birthdayDraft = PersonBirthday.date(from: person.birthDate) ?? Date()
-                        birthdayPerson = person
-                    }
-                    .accessibilityIdentifier("personBirthdayAction")
-                    mergeMenu
-                }
-            }
-            .padding(.top, PVSpacing.s16)
-            .padding(.horizontal, PVSpacing.s16)
-
-            if vm.assetsLoading && vm.personAssets.isEmpty {
-                ProgressView()
-                    .padding(.vertical, PVSpacing.s32)
-            } else if vm.personAssets.isEmpty {
-                ContentUnavailableView(
-                    "No photos",
-                    systemImage: "photo.on.rectangle",
-                    description: Text("No assets tagged with this person yet.")
-                )
-                .padding(.vertical, PVSpacing.s24)
-            } else {
-                LazyVGrid(columns: columns, spacing: PVSpacing.s2) {
-                    ForEach(Array(vm.personAssets.enumerated()), id: \.element.id) { i, item in
-                        AssetThumbnailCell(
-                            asset: item,
-                            baseURL: auth.baseURL ?? URL(string: "https://example.com")!,
-                            token: auth.accessToken,
-                            onTap: { viewerItem = PhotoViewerItem(assets: vm.personAssets, index: i) }
-                        )
-                        .buttonStyle(.plain)
-                        .contextMenu {
-                            Button {
-                                Task { await vm.setFeatureFace(person, assetId: item.id) }
-                            } label: {
-                                Label("Set as cover", systemImage: "person.crop.circle.badge.checkmark")
-                            }
+                        // Nothing at all when the person has no birthday (or the
+                        // server sent something unparseable): no placeholder, no
+                        // empty line, so the header keeps its height.
+                        if let birthday = PersonBirthday.display(person.birthDate) {
+                            Label(birthday, systemImage: "calendar")
+                                .font(.pvCaption)
+                                .foregroundStyle(Color.textSecondaryPV)
+                                .transition(.opacity)
+                                .accessibilityIdentifier("personBirthdayValue")
                         }
                     }
-                }
-                .padding(.horizontal, PVSpacing.s4)
-            }
+                    .animation(.default, value: person.birthDate)
 
-            if let error = vm.assetsError {
-                Label(error, systemImage: "exclamationmark.triangle.fill")
-                    .font(.pvCaption)
-                    .foregroundStyle(Color.immichError)
-                    .padding(.vertical, PVSpacing.s8)
+                    HStack(spacing: PVSpacing.s8) {
+                        actionButton("star.fill", person.isFavorite == true ? Color.immichPrimary : Color.textSecondaryPV, "Favorite") {
+                            Task { await vm.toggleFavorite(person) }
+                        }
+                        actionButton("pencil", .textSecondaryPV, "Rename") {
+                            renameText = person.name
+                            renamePerson = person
+                        }
+                        actionButton("eye.slash", .textSecondaryPV, person.isHidden ? "Unhide" : "Hide") {
+                            Task { await vm.toggleHidden(person) }
+                        }
+                        actionButton("calendar", .textSecondaryPV, "Birthday") {
+                            birthdayDraft = PersonBirthday.date(from: person.birthDate) ?? Date()
+                            birthdayPerson = person
+                        }
+                        .accessibilityIdentifier("personBirthdayAction")
+                        mergeMenu
+                    }
+                }
+                .padding(.top, PVSpacing.s16)
+                .padding(.horizontal, PVSpacing.s16)
+
+                if vm.assetsLoading && vm.personAssets.isEmpty {
+                    ProgressView()
+                        .padding(.vertical, PVSpacing.s32)
+                } else if vm.personAssets.isEmpty {
+                    ContentUnavailableView(
+                        "No photos",
+                        systemImage: "photo.on.rectangle",
+                        description: Text("No assets tagged with this person yet.")
+                    )
+                    .padding(.vertical, PVSpacing.s24)
+                } else {
+                    LazyVGrid(columns: columns, spacing: PVSpacing.s2) {
+                        ForEach(Array(vm.personAssets.enumerated()), id: \.element.id) { i, item in
+                            AssetThumbnailCell(
+                                asset: item,
+                                baseURL: auth.baseURL ?? URL(string: "https://example.com")!,
+                                token: auth.accessToken,
+                                onTap: { viewerItem = PhotoViewerItem(assets: vm.personAssets, index: i) }
+                            )
+                            .buttonStyle(.plain)
+                            .contextMenu {
+                                Button {
+                                    Task { await vm.setFeatureFace(person, assetId: item.id) }
+                                } label: {
+                                    Label("Set as cover", systemImage: "person.crop.circle.badge.checkmark")
+                                }
+                            }
+                            .onAppear { Task { await vm.assetCellAppeared(item.id) } }
+                        }
+                    }
+                    .padding(.horizontal, PVSpacing.s4)
+                }
+
+                switch vm.assetsFooter {
+                case .none:
+                    EmptyView()
+                case .error(let message):
+                    InlineErrorBadge(message: message, retry: { Task { await vm.loadMoreAssets() } })
+                        .padding(.horizontal, PVSpacing.s4)
+                case .loadingMore:
+                    // Recreated on every `assetsEndRevision`: see `PeopleView.listFooter`.
+                    ProgressView()
+                        .padding(.vertical, PVSpacing.s12)
+                        .frame(maxWidth: .infinity)
+                        .accessibilityIdentifier("personAssetsLoadMore")
+                        .onAppear { Task { await vm.loadMoreAssets() } }
+                        .id(vm.assetsEndRevision)
+                }
+
+                if let error = vm.assetsError {
+                    Label(error, systemImage: "exclamationmark.triangle.fill")
+                        .font(.pvCaption)
+                        .foregroundStyle(Color.immichError)
+                        .padding(.vertical, PVSpacing.s8)
+                }
             }
         }
         .navigationTitle(person.name)
