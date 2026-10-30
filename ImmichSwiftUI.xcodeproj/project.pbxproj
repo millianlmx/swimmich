@@ -188,6 +188,7 @@
 		541B0578BD2153E4ACC66B63 /* DownloadQueueViewModelTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 41964E7C0DF3D2F99BBDF72C /* DownloadQueueViewModelTests.swift */; };
 		A1B9C3D4E5F60718293A4B01 /* AlbumPaginationUITests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B9C3D4E5F60718293A4B03 /* AlbumPaginationUITests.swift */; };
 		A1B9C3D4E5F60718293A4B02 /* immich_stub_album_pagination.py in Resources */ = {isa = PBXBuildFile; fileRef = A1B9C3D4E5F60718293A4B04 /* immich_stub_album_pagination.py */; };
+		A1B9C3D4E5F60718293A4B05 /* immich_stub_album_pagination_three_pages.py in Resources */ = {isa = PBXBuildFile; fileRef = A1B9C3D4E5F60718293A4B06 /* immich_stub_album_pagination_three_pages.py */; };
 		54458D16DEBEF6B70BDC9265 /* SearchFiltersUITests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0E1157A1B2E58119402D0017 /* SearchFiltersUITests.swift */; };
 		544C847D80EEB9603FAFA8D7 /* WidgetDeepLink.swift in Sources */ = {isa = PBXBuildFile; fileRef = 60461A9F32464CAF976635D8 /* WidgetDeepLink.swift */; };
 		54771F5F040924CAA348FD5B /* SharedLinkViewerViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = FAED9946CE0FAEDE581A583E /* SharedLinkViewerViewModel.swift */; };
@@ -662,6 +663,7 @@
 		0C579043BE4F6A7E408B4907 /* PVButtonStyle.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PVButtonStyle.swift; sourceTree = "<group>"; };
 		A1B9C3D4E5F60718293A4B03 /* AlbumPaginationUITests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AlbumPaginationUITests.swift; sourceTree = "<group>"; };
 		A1B9C3D4E5F60718293A4B04 /* immich_stub_album_pagination.py */ = {isa = PBXFileReference; lastKnownFileType = text.script.python; path = immich_stub_album_pagination.py; sourceTree = "<group>"; };
+		A1B9C3D4E5F60718293A4B06 /* immich_stub_album_pagination_three_pages.py */ = {isa = PBXFileReference; lastKnownFileType = text.script.python; path = immich_stub_album_pagination_three_pages.py; sourceTree = "<group>"; };
 		0E1157A1B2E58119402D0017 /* SearchFiltersUITests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SearchFiltersUITests.swift; sourceTree = "<group>"; };
 		0E20A4FDA552E6EEA34A5570 /* immich_stub_settings.py */ = {isa = PBXFileReference; lastKnownFileType = text.script.python; path = immich_stub_settings.py; sourceTree = "<group>"; };
 		0E3F725CF1DAB9C1E71FED8C /* RootView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RootView.swift; sourceTree = "<group>"; };
@@ -1880,6 +1882,7 @@
 			isa = PBXGroup;
 			children = (
 				A1B9C3D4E5F60718293A4B04 /* immich_stub_album_pagination.py */,
+				A1B9C3D4E5F60718293A4B06 /* immich_stub_album_pagination_three_pages.py */,
 				4FF1B91E9C4417E215CF8D26 /* immich_stub_album_sync.py */,
 				E1CC7019BA3B4C01BC01F2B0 /* immich_stub_app_utilities.py */,
 				1B949AE38E1E59FD0B8922B1 /* immich_stub_base.py */,
@@ -2381,6 +2384,7 @@
 			buildActionMask = 2147483647;
 			files = (
 				A1B9C3D4E5F60718293A4B02 /* immich_stub_album_pagination.py in Resources */,
+				A1B9C3D4E5F60718293A4B05 /* immich_stub_album_pagination_three_pages.py in Resources */,
 				D95AFA1D1289A6BD8EF5E2D7 /* immich_stub_album_sync.py in Resources */,
 				078AE5EE5A8BF75A6C92E947 /* immich_stub_app_utilities.py in Resources */,
 				BDCE810E91B275B20F82A24B /* immich_stub_base.py in Resources */,

@@ -561,12 +561,17 @@ struct AlbumDetailView: View {
                         InlineErrorBadge(message: message, retry: { Task { await vm.loadMore() } })
                             .padding(.horizontal, PVSpacing.s4)
                     case .loadingMore:
+                        // Recreated on every `gridEndRevision`: the lazy stack only
+                        // builds the footer, and so only fires its `onAppear`, when it
+                        // is on screen after layout. An `onChange` ran before layout
+                        // and chained pages off-screen. No `.task(id:)`: it would
+                        // cancel the request in flight.
                         ProgressView()
                             .padding(.vertical, PVSpacing.s12)
                             .frame(maxWidth: .infinity)
                             .accessibilityIdentifier("albumLoadMore")
                             .onAppear { Task { await vm.loadMore() } }
-                            .onChange(of: vm.gridEndRevision) { Task { await vm.loadMore() } }
+                            .id(vm.gridEndRevision)
                     }
                 }
             }

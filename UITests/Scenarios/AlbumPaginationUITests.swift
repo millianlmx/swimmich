@@ -48,7 +48,31 @@ import XCTest
 /// -only-testing:ImmichSwiftUIUITests/AlbumPaginationUITests`.
 ///
 /// The only green verdict is the log line
-/// `Test Case '-[ImmichSwiftUIUITests.AlbumPaginationUITests test_AC6_albumDetailLoadsPageTwoOnScroll]' passed`.
+/// `Test Case '-[ImmichSwiftUIUITests.AlbumPaginationUITests <method>]' passed`, for
+/// `test_AC6_albumDetailLoadsPageTwoOnScroll` and each method below.
+///
+/// The suite « Album : tout charger au-delà de 1000 photos » adds seven scenarios.
+/// Against `immich_stub_album_pagination.py` (« Paged Album », 60 + 6 photos):
+///
+/// * `test_AC_25_scrollLoadsSecondPage`: scrolling to the bottom asks for page 2;
+/// * `test_AC_252_noSecondPageBeforeScroll`: nothing is asked for before a scroll;
+/// * `test_AC_253_lastPageStopsLoading`: `albumLoadMore` goes away with `nextPage` null.
+///
+/// Against `immich_stub_album_pagination_three_pages.py` (three albums of three pages):
+///
+/// * `test_AC_254_noThirdPageWithoutReachingEnd`: a received tall page 2 does not
+///   chain page 3 off-screen;
+/// * `test_AC_255_thirdPageAfterReachingEnd`: reaching the last cell asks for page 3, once;
+/// * `test_AC_258_shortPageLoadsThirdPageWithoutScroll`: a one-row page 2 is followed
+///   by page 3 without any gesture;
+/// * `test_AC_259_footerRelaunchWithoutNewCell`: a page 2 that adds no cell, received
+///   while the footer is on screen, is followed by page 3 without any gesture.
+///
+///     .omp/orchestration/uitest.sh <worktree> /tmp/album-three-pages.uitest.log \
+///         UITests/stubs/immich_stub_album_pagination_three_pages.py \
+///         AlbumPaginationUITests/test_AC_254_noThirdPageWithoutReachingEnd --erase
+///
+/// The verdict of each run goes to `.harness/evidence/AC-25/verdict.txt`.
 final class AlbumPaginationUITests: XCTestCase {
 
     /// The stub's URL, as `uitest.sh` hands it over (it forwards
@@ -69,6 +93,25 @@ final class AlbumPaginationUITests: XCTestCase {
     private var firstPageIds: [String] {
         (1...60).map { "bbbbbbbb-1111-4111-8111-" + String(format: "%012d", $0) }
     }
+
+    // The three-page stub's constants, copied from
+    // `immich_stub_album_pagination_three_pages.py` (`TALL_ALBUM`, `SHORT_ALBUM`,
+    // `OVERLAP_ALBUM`, their names and pages, `OVERLAP_PAGE_2_DELAY_S`): keep the two in step.
+    private let tallAlbum = "22222222-2222-4222-8222-000000000201"
+    private let tallName = "Three Tall Pages"
+    private let tallFirst = "cccccccc-1111-4111-8111-000000000001"
+    private let tallPage2First = "cccccccc-2222-4222-8222-000000000001"
+    private let tallPage2Last = "cccccccc-2222-4222-8222-000000000060"
+    private let tallPage3Last = "cccccccc-3333-4333-8333-000000000060"
+    private let shortAlbum = "22222222-2222-4222-8222-000000000202"
+    private let shortName = "Short Middle Page"
+    private let shortFirst = "dddddddd-1111-4111-8111-000000000001"
+    private let shortPage2Last = "dddddddd-2222-4222-8222-000000000003"
+    private let overlapAlbum = "22222222-2222-4222-8222-000000000203"
+    private let overlapName = "Overlapping Middle Page"
+    private let overlapFirst = "ffffffff-1111-4111-8111-000000000001"
+    private let overlapLastOfPageOne = "ffffffff-1111-4111-8111-000000000060"
+    private let overlapPage2DelayS = 5
 
     override func setUpWithError() throws {
         continueAfterFailure = false
@@ -158,6 +201,160 @@ final class AlbumPaginationUITests: XCTestCase {
                           "a search request carried \(request.structuredKeys) next to the flat fields — "
                           + "search requests:\n\(describe(requests))")
         }
+    }
+
+    // MARK: - Pagination at scroll (stub: immich_stub_album_pagination.py)
+
+    func test_AC_25_scrollLoadsSecondPage() {
+        assertServerIsV32()
+        openAlbum(named: albumName, firstTile: firstPageTile)
+
+        let witness = scrollTo(id: "assetTile_\(secondPageWitness)", swipes: 25)
+        XCTAssertTrue(witness.exists,
+                      "assetTile_\(secondPageWitness) (page 2) never appeared after 25 swipes — tiles on screen: "
+                      + "\(visibleTileIdentifiers()); search requests:\n\(describe(metadataRequests()))")
+
+        let requests = waitForMetadata(timeout: 10) { $0.contains { self.matches($0, album: self.albumId, page: 2) } }
+        guard let pageTwo = requests.first(where: { matches($0, album: albumId, page: 2) }) else {
+            return XCTFail("no POST /api/search/metadata carried albumIds = [album] and page = 2 — search requests:\n\(describe(requests))")
+        }
+        XCTAssertEqual(pageTwo.string("order"), "asc",
+                       "the page-2 request must carry the album's order — search requests:\n\(describe(requests))")
+        XCTAssertTrue(isJSONInt(pageTwo.body["size"], 1000),
+                      "the page-2 request must carry size 1000 — search requests:\n\(describe(requests))")
+        for request in requests {
+            XCTAssertTrue(request.structuredKeys.isEmpty,
+                          "a search request carried \(request.structuredKeys) next to the flat fields — "
+                          + "search requests:\n\(describe(requests))")
+        }
+    }
+
+    func test_AC_252_noSecondPageBeforeScroll() {
+        openAlbum(named: albumName, firstTile: firstPageTile)
+
+        let requests = waitForMetadata(timeout: 30) { $0.contains { self.matches($0, album: self.albumId, page: 1) } }
+        XCTAssertTrue(requests.contains { matches($0, album: albumId, page: 1) },
+                      "page 1 was never requested for the album — search requests:\n\(describe(requests))")
+        assertNoRequest(window: 3, { isPage($0, 2) },
+                        message: "page 2 was requested before the first scroll")
+        XCTAssertFalse(tile(secondPageWitness).exists,
+                       "assetTile_\(secondPageWitness) (page 2) is on screen before any scroll")
+    }
+
+    func test_AC_253_lastPageStopsLoading() {
+        openAlbum(named: albumName, firstTile: firstPageTile)
+
+        XCTAssertTrue(scrollTo(id: "assetTile_\(secondPageWitness)", swipes: 25).exists,
+                      "assetTile_\(secondPageWitness) (page 2) never appeared — tiles: \(visibleTileIdentifiers())")
+        let requests = waitForMetadata(timeout: 10) { $0.contains { self.matches($0, album: self.albumId, page: 2) } }
+        XCTAssertTrue(requests.contains { matches($0, album: albumId, page: 2) },
+                      "page 2 was never requested — search requests:\n\(describe(requests))")
+
+        for _ in 0..<3 {
+            app.swipeUp()
+            sleep(1)
+        }
+        XCTAssertTrue(waitForAbsence(identifier: "albumLoadMore", timeout: 10),
+                      "albumLoadMore is still on screen after the last page (nextPage null) — search requests:\n\(describe(metadataRequests()))")
+        assertNoRequest(window: 3, { $0.albumIds == [albumId] && (pageNumber($0) ?? 0) >= 3 },
+                        message: "a page beyond the last one was requested")
+    }
+
+    // MARK: - Pagination at scroll, three pages (stub: immich_stub_album_pagination_three_pages.py)
+
+    /// Given of AC-254 and AC-255: « Three Tall Pages » scrolled to the first
+    /// photo of page 2, no further. Asserts AC-254's Then.
+    private func openTallAlbumAtStartOfPageTwo() {
+        openAlbum(named: tallName, firstTile: tallFirst)
+
+        let firstOfPageTwo = scrollTo(id: "assetTile_\(tallPage2First)", swipes: 25)
+        XCTAssertTrue(firstOfPageTwo.exists,
+                      "assetTile_\(tallPage2First) (first of page 2) never appeared — tiles: \(visibleTileIdentifiers()); "
+                      + "search requests:\n\(describe(metadataRequests()))")
+        XCTAssertFalse(tile(tallPage2Last).exists,
+                       "the gesture reached the end of the grid (assetTile_\(tallPage2Last) is on screen): "
+                       + "the scenario proves nothing — tiles: \(visibleTileIdentifiers())")
+
+        // No gesture from here on.
+        assertNoRequest(window: 5, { matches($0, album: tallAlbum, page: 3) },
+                        message: "page 3 was requested although the last cell of the grid was never reached")
+        XCTAssertFalse(pageRequests(album: tallAlbum, page: 2).isEmpty,
+                       "page 2 was never requested — search requests:\n\(describe(metadataRequests()))")
+        XCTAssertFalse(visibleTileIdentifiers().contains { $0.contains("cccccccc-3333-") },
+                       "a page-3 photo is on screen — tiles: \(visibleTileIdentifiers())")
+    }
+
+    func test_AC_254_noThirdPageWithoutReachingEnd() {
+        openTallAlbumAtStartOfPageTwo()
+    }
+
+    func test_AC_255_thirdPageAfterReachingEnd() {
+        openTallAlbumAtStartOfPageTwo()
+
+        let last = scrollTo(id: "assetTile_\(tallPage3Last)", swipes: 30)
+        XCTAssertTrue(last.exists,
+                      "assetTile_\(tallPage3Last) (last of page 3) never appeared — tiles: \(visibleTileIdentifiers()); "
+                      + "search requests:\n\(describe(metadataRequests()))")
+        app.swipeUp()
+        XCTAssertTrue(waitForAbsence(identifier: "albumLoadMore", timeout: 15),
+                      "albumLoadMore is still on screen after the last page — search requests:\n\(describe(metadataRequests()))")
+        XCTAssertEqual(pageRequests(album: tallAlbum, page: 3).count, 1,
+                       "page 3 must be requested exactly once — search requests:\n\(describe(metadataRequests()))")
+        assertNoRequest(window: 3, { matches($0, album: tallAlbum, page: 4) },
+                        message: "page 4 was requested after the last page")
+    }
+
+    func test_AC_258_shortPageLoadsThirdPageWithoutScroll() {
+        openAlbum(named: shortName, firstTile: shortFirst)
+
+        XCTAssertTrue(swipeUntil(swipes: 25) { !pageRequests(album: shortAlbum, page: 2).isEmpty },
+                      "page 2 was never requested after 25 swipes — tiles: \(visibleTileIdentifiers()); "
+                      + "search requests:\n\(describe(metadataRequests()))")
+
+        // No gesture from here on: the one-row page 2 must be followed by page 3.
+        let requests = waitForMetadata(timeout: 15) { $0.contains { self.matches($0, album: self.shortAlbum, page: 3) } }
+        XCTAssertTrue(requests.contains { matches($0, album: shortAlbum, page: 3) },
+                      "page 3 was never requested after a page shorter than the screen (stuck spinner) — "
+                      + "tiles: \(visibleTileIdentifiers()); search requests:\n\(describe(requests))")
+        XCTAssertTrue(tile(shortPage2Last).waitForExistence(timeout: 15),
+                      "assetTile_\(shortPage2Last) (last of page 2) does not exist — tiles: \(visibleTileIdentifiers())")
+        XCTAssertTrue(waitForAbsence(identifier: "albumLoadMore", timeout: 15),
+                      "albumLoadMore is still on screen after the last page — search requests:\n\(describe(metadataRequests()))")
+        XCTAssertEqual(pageRequests(album: shortAlbum, page: 3).count, 1,
+                       "page 3 must be requested exactly once — search requests:\n\(describe(metadataRequests()))")
+        assertNoRequest(window: 3, { matches($0, album: shortAlbum, page: 4) },
+                        message: "page 4 was requested after the last page")
+    }
+
+    func test_AC_259_footerRelaunchWithoutNewCell() {
+        openAlbum(named: overlapName, firstTile: overlapFirst)
+
+        XCTAssertTrue(swipeUntil(swipes: 25) { !pageRequests(album: overlapAlbum, page: 2).isEmpty },
+                      "page 2 was never requested after 25 swipes — tiles: \(visibleTileIdentifiers()); "
+                      + "search requests:\n\(describe(metadataRequests()))")
+
+        // The stub holds page 2 back for `overlapPage2DelayS`: the footer is
+        // still on screen, page 2 in flight, page 3 not asked for.
+        let page3Early = pageRequests(album: overlapAlbum, page: 3)
+        guard page3Early.isEmpty, tile(overlapLastOfPageOne).exists, isOnScreen("albumLoadMore") else {
+            return XCTFail("albumLoadMore was not on screen while page 2 was in flight (page-3 requests: \(page3Early.count), "
+                           + "last cell of page 1 present: \(tile(overlapLastOfPageOne).exists)): the scenario proves nothing — "
+                           + "tiles: \(visibleTileIdentifiers()); search requests:\n\(describe(metadataRequests()))")
+        }
+
+        // No gesture from here on: page 2 adds no cell, only the footer can ask.
+        let requests = waitForMetadata(timeout: 20) { $0.contains { self.matches($0, album: self.overlapAlbum, page: 3) } }
+        XCTAssertTrue(requests.contains { matches($0, album: overlapAlbum, page: 3) },
+                      "page 3 was never requested after a page that added no cell (footer not relaunched) — "
+                      + "search requests:\n\(describe(requests))")
+        XCTAssertTrue(waitForAbsence(identifier: "albumLoadMore", timeout: 15),
+                      "albumLoadMore is still on screen after the last page — search requests:\n\(describe(metadataRequests()))")
+        XCTAssertEqual(pageRequests(album: overlapAlbum, page: 2).count, 1,
+                       "page 2 must be requested exactly once — search requests:\n\(describe(metadataRequests()))")
+        XCTAssertEqual(pageRequests(album: overlapAlbum, page: 3).count, 1,
+                       "page 3 must be requested exactly once — search requests:\n\(describe(metadataRequests()))")
+        assertNoRequest(window: 3, { matches($0, album: overlapAlbum, page: 4) },
+                        message: "page 4 was requested after the last page")
     }
 
     // MARK: - The stub's own contract (no app launched)
@@ -625,5 +822,96 @@ final class AlbumPaginationUITests: XCTestCase {
             requests = metadataRequests()
         }
         return requests
+    }
+
+    // MARK: - Helpers of the three-page scenarios
+
+    private func isPage(_ request: StubRequest, _ page: Int) -> Bool { isJSONInt(request.body["page"], page) }
+
+    private func matches(_ request: StubRequest, album: String, page: Int) -> Bool {
+        request.albumIds == [album] && isPage(request, page)
+    }
+
+    /// The search requests of `album` for `page` (a JSON number), in order.
+    private func pageRequests(album: String, page: Int) -> [StubRequest] {
+        metadataRequests().filter { matches($0, album: album, page: page) }
+    }
+
+    /// The page number of a request, when it is a JSON number.
+    private func pageNumber(_ request: StubRequest) -> Int? {
+        guard let number = request.body["page"] as? NSNumber, CFGetTypeID(number) != CFBooleanGetTypeID() else { return nil }
+        return number.intValue
+    }
+
+    /// The stub announces a v3.2 server, so the flat shape is the app's choice.
+    private func assertServerIsV32() {
+        let version = stubCall("GET", "/api/server/version")
+        let json = version.json as? [String: Any]
+        let message = "the stub must announce a v3.2 server so the flat shape is a choice, got \(version.json ?? "nothing")"
+        XCTAssertEqual((json?["major"] as? NSNumber)?.intValue, 3, message)
+        XCTAssertEqual((json?["minor"] as? NSNumber)?.intValue, 2, message)
+    }
+
+    /// Clean stub → authenticated shell → Albums tab → the album named `name`
+    /// → its first tile on screen. Every step fails with what is on screen.
+    private func openAlbum(named name: String, firstTile: String) {
+        reset()
+        setProvider("manual")
+        reachAuthenticatedShell()
+
+        let tab = app.tabBars.buttons["Albums"].firstMatch
+        guard tab.waitForExistence(timeout: 30) else {
+            return XCTFail("the Albums tab is missing — tab bar buttons: "
+                           + "\(app.tabBars.buttons.allElementsBoundByIndex.map(\.label))")
+        }
+        tab.tap()
+
+        XCTAssertTrue(tapAnyButton([name], timeout: 30),
+                      "no card named \(name) — buttons on screen: "
+                      + "\(app.buttons.allElementsBoundByIndex.map(\.label))")
+        XCTAssertTrue(tile(firstTile).waitForExistence(timeout: 30),
+                      "the album detail never showed assetTile_\(firstTile) — tiles: "
+                      + "\(visibleTileIdentifiers()); search requests:\n\(describe(metadataRequests()))")
+    }
+
+    /// Fails as soon as a search request satisfies `matches`, polling the log
+    /// every 0.5 s for `window` seconds: the explicit, bounded observation window.
+    private func assertNoRequest(window: TimeInterval, _ matches: (StubRequest) -> Bool, message: String) {
+        let deadline = Date().addingTimeInterval(window)
+        repeat {
+            let requests = metadataRequests()
+            if let hit = requests.first(where: matches) {
+                return XCTFail("\(message) — offending request: \(hit.bodyJSON); tiles: "
+                               + "\(visibleTileIdentifiers()); search requests:\n\(describe(requests))")
+            }
+            Thread.sleep(forTimeInterval: 0.5)
+        } while Date() < deadline
+    }
+
+    /// Polls until the element with `identifier` is gone; false when it never was.
+    private func waitForAbsence(identifier: String, timeout: TimeInterval) -> Bool {
+        let element = app.descendants(matching: .any).matching(identifier: identifier).firstMatch
+        let deadline = Date().addingTimeInterval(timeout)
+        while element.exists && Date() < deadline { Thread.sleep(forTimeInterval: 0.5) }
+        return !element.exists
+    }
+
+    /// Swipes up, one second apart, until `condition` holds — tested before each
+    /// gesture, so the swipe that satisfied it is the last one.
+    private func swipeUntil(swipes: Int, _ condition: () -> Bool) -> Bool {
+        for _ in 0..<swipes {
+            if condition() { return true }
+            app.swipeUp()
+            sleep(1)
+        }
+        return condition()
+    }
+
+    /// The element exists, has a frame, and lies inside the window.
+    private func isOnScreen(_ identifier: String) -> Bool {
+        let element = app.descendants(matching: .any).matching(identifier: identifier).firstMatch
+        guard element.exists else { return false }
+        let frame = element.frame
+        return !frame.isEmpty && app.windows.firstMatch.frame.contains(frame)
     }
 }
