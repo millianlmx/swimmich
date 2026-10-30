@@ -14,7 +14,7 @@ final class MapViewModelTests: XCTestCase {
     private func makeIsolatedCache() -> (MapMarkerCache, URL) {
         let dir = FileManager.default.temporaryDirectory
             .appendingPathComponent("MapViewModelTests-\(UUID().uuidString)", isDirectory: true)
-        return (MapMarkerCache(directory: dir), dir)
+        return (MapMarkerCache(accountID: "test-account", directory: dir), dir)
     }
 
     // MARK: - Load (AC-710)
@@ -579,5 +579,60 @@ final class MapViewModelTests: XCTestCase {
             vm.activeFilterSummary,
             "\(localizedString("30 days")), \(localizedString("Favorites only"))"
         )
+    }
+
+    // MARK: - Per-account cache through the production wiring (AC-12, AC-20)
+
+    private var realCachesRoot: URL {
+        FileManager.default.urls(for: .cachesDirectory, in: .userDomainMask)[0]
+    }
+
+    func test_ACC_AC12_productionMapIgnoresLegacyCacheFile() async throws {
+        let variant = DependencyContainer.shared.mapSettings.filter.cacheVariant
+        // A file written by the version without accounts, still fresh.
+        let scratch = FileManager.default.temporaryDirectory
+            .appendingPathComponent("MapLegacy-\(UUID().uuidString)", isDirectory: true)
+        defer { try? FileManager.default.removeItem(at: scratch) }
+        let accountID = UUID().uuidString
+        let seed = MapMarkerCache(accountID: accountID, directory: scratch, variant: variant)
+        seed.save([makeMarker(id: "legacy-1", lat: 48.85, lon: 2.35)])
+        let seeded = scratch.appendingPathComponent("MapMarkers/\(SavedAccount.storageKey(forID: accountID))")
+            .appendingPathComponent(variant.map { "markers-\($0).json" } ?? "markers.json")
+        let legacyFolder = realCachesRoot.appendingPathComponent("MapMarkers", isDirectory: true)
+        let legacy = legacyFolder.appendingPathComponent(seeded.lastPathComponent)
+        try FileManager.default.createDirectory(at: legacyFolder, withIntermediateDirectories: true)
+        try? FileManager.default.removeItem(at: legacy)
+        try FileManager.default.copyItem(at: seeded, to: legacy)
+        defer { try? FileManager.default.removeItem(at: legacy) }
+
+        let vm = DependencyContainer.shared.makeMapViewModel(accountID: UUID().uuidString)
+        await vm.loadMarkers()
+
+        XCTAssertFalse(vm.markers.contains { $0.id == "legacy-1" }, "legacy file must not be served")
+    }
+
+    func test_ACC_AC20_productionMapIsScopedPerAccount() async {
+        let container = DependencyContainer.shared
+        let variant = container.mapSettings.filter.cacheVariant
+        let accountA = UUID().uuidString
+        let accountB = UUID().uuidString
+        let ids = ["a-1", "a-2", "a-3"]
+        MapMarkerCache(accountID: accountA).variant(variant)
+            .save(ids.map { makeMarker(id: $0, lat: 48.85, lon: 2.35) })
+        defer {
+            let folder = realCachesRoot.appendingPathComponent("MapMarkers", isDirectory: true)
+            for account in [accountA, accountB] {
+                try? FileManager.default.removeItem(
+                    at: folder.appendingPathComponent(SavedAccount.storageKey(forID: account)))
+            }
+        }
+
+        let mapB = container.makeMapViewModel(accountID: accountB)
+        await mapB.loadMarkers()
+        XCTAssertTrue(mapB.markers.filter { ids.contains($0.id) }.isEmpty, "B must not see A's markers")
+
+        let mapA = container.makeMapViewModel(accountID: accountA)
+        await mapA.loadMarkers()
+        XCTAssertEqual(Set(mapA.markers.map(\.id)), Set(ids), "A is served from its own disk cache")
     }
 }

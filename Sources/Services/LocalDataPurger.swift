@@ -1,9 +1,9 @@
 import Foundation
 
 /// Wipes what the app keeps on disk and in memory *about the account*, when the
-/// user signs out on purpose: backup ledger, offline copies, thumbnail caches
-/// and the network connections of the API client and of the server sessions
-/// (`ServerSessions`: images, transfers, road trip).
+/// user signs out on purpose: backup ledger, offline copies, map markers,
+/// thumbnail caches and the network connections of the API client and of the
+/// server sessions (`ServerSessions`: images, transfers, road trip).
 ///
 /// Transfers are stopped first — a backup or an offline download still running
 /// would otherwise write into the stores right after they were emptied. The
@@ -22,7 +22,10 @@ final class LocalDataPurger {
     private let imageDiskCache: URLCache
     private let apiClient: ImmichAPIClient
     private let serverSessions: any ConnectionResetting
+    private let mapCacheDirectory: URL?
 
+    /// `mapCacheDirectory`: root of the map cache (`nil` = `Caches`, same default
+    /// as `MapMarkerCache`); tests inject a temporary one.
     init(
         backupEngine: BackupEngine,
         offlineStore: OfflineAssetStore,
@@ -30,7 +33,8 @@ final class LocalDataPurger {
         imageCache: ImageCache,
         imageDiskCache: URLCache,
         apiClient: ImmichAPIClient,
-        serverSessions: any ConnectionResetting
+        serverSessions: any ConnectionResetting,
+        mapCacheDirectory: URL? = nil
     ) {
         self.backupEngine = backupEngine
         self.offlineStore = offlineStore
@@ -39,6 +43,7 @@ final class LocalDataPurger {
         self.imageDiskCache = imageDiskCache
         self.apiClient = apiClient
         self.serverSessions = serverSessions
+        self.mapCacheDirectory = mapCacheDirectory
     }
 
     func purgeAll() async {
@@ -48,7 +53,10 @@ final class LocalDataPurger {
         // 2. Offline copies: cancels in-flight downloads, then wipes disk + index.
         await offlineStore.clearAll()
         offlineIndex.removeAll()
-        // 3. Thumbnails: memory tier (its epoch drops loads in flight) + disk tier.
+        // 3. Map markers (GPS positions of every account, legacy file included)
+        //    and thumbnails: memory tier (its epoch drops loads in flight) +
+        //    disk tier.
+        MapMarkerCache.removeAll(directory: mapCacheDirectory)
         await imageCache.removeAll()
         imageDiskCache.removeAllCachedResponses()
         // 4. Backup ledger (also refreshes the cloud-status badges).

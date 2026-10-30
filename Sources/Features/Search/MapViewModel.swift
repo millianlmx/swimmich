@@ -232,7 +232,7 @@ final class MapViewModel {
 
     init(
         client: any ImmichClient,
-        cache: MapMarkerCache = MapMarkerCache(),
+        cache: MapMarkerCache,
         settings: MapSettingsStore? = nil
     ) {
         self.client = client

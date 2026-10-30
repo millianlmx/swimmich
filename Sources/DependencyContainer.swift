@@ -267,8 +267,8 @@ final class DependencyContainer {
         SearchViewModel(client: libraryClient)
     }
 
-    func makeMapViewModel() -> MapViewModel {
-        MapViewModel(client: libraryClient, settings: mapSettings)
+    func makeMapViewModel(accountID: String) -> MapViewModel {
+        MapViewModel(client: libraryClient, cache: MapMarkerCache(accountID: accountID), settings: mapSettings)
     }
 
     func makeAlbumsViewModel() -> AlbumsViewModel {

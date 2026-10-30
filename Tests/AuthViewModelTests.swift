@@ -864,6 +864,36 @@ final class AuthViewModelTests: XCTestCase {
         XCTAssertEqual(fx.auth.pendingUntrustedHost, LogoutFixture.host, "AC-3: trust is asked again")
     }
 
+    // AC-13 — the logout purge empties the map cache: every account, every
+    // variant, and the file left by the version without accounts.
+    @MainActor
+    func test_ACC_AC13_purgeAll_removesEveryMapMarkerFile() async throws {
+        let fx = await LogoutFixture.make()
+        defer { fx.cleanup() }
+        let dir = fx.mapCacheDirectory
+        let marker = MapMarkerResponseDto(id: "m1", lat: 48.85, lon: 2.35, city: nil, state: nil, country: nil)
+        for account in [fx.alice.id, fx.bob.id] {
+            MapMarkerCache(accountID: account, directory: dir).save([marker])
+            MapMarkerCache(accountID: account, directory: dir, variant: "fav").save([marker])
+        }
+        let mapFolder = dir.appendingPathComponent("MapMarkers", isDirectory: true)
+        try Data("{}".utf8).write(to: mapFolder.appendingPathComponent("markers.json"))
+        func markerFiles() -> [String] {
+            (FileManager.default.enumerator(atPath: mapFolder.path)?.allObjects as? [String] ?? [])
+                .filter { $0.hasSuffix(".json") }
+        }
+        XCTAssertEqual(markerFiles().count, 5, "precondition: 2 accounts x 2 variants + legacy file")
+
+        await fx.purger.purgeAll()
+
+        XCTAssertTrue(markerFiles().isEmpty, "no marker file left, found \(markerFiles())")
+        let mock = MockImmichClient()
+        mock.mapMarkersError = URLError(.notConnectedToInternet)
+        let map = MapViewModel(client: mock, cache: MapMarkerCache(accountID: fx.alice.id, directory: dir))
+        await map.loadMarkers()
+        XCTAssertTrue(map.markers.isEmpty, "no marker before a server answer")
+    }
+
     // AC-13 — the server sessions are reset once, after every store was emptied and
     // after the trusted-servers list was cleared (so no trusted connection survives).
     @MainActor
@@ -1088,6 +1118,7 @@ private final class LogoutFixture {
 
     var offlineFolder: URL { root.appendingPathComponent("offline", isDirectory: true) }
     var ledgerFile: URL { root.appendingPathComponent("ledger.json") }
+    var mapCacheDirectory: URL { root.appendingPathComponent("caches", isDirectory: true) }
 
     static func makeImage() -> UIImage {
         UIGraphicsImageRenderer(size: CGSize(width: 8, height: 8)).image { ctx in
@@ -1119,7 +1150,8 @@ private final class LogoutFixture {
             backupEngine: engine, offlineStore: offlineStore, offlineIndex: offlineIndex,
             imageCache: imageCache, imageDiskCache: diskCache,
             apiClient: ImmichAPIClient(trustStore: trustStore),
-            serverSessions: serverSessions
+            serverSessions: serverSessions,
+            mapCacheDirectory: root.appendingPathComponent("caches", isDirectory: true)
         )
 
         // Two registered accounts with a token each; alice signs in for real below.

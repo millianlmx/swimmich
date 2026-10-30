@@ -186,7 +186,7 @@ private struct AuthenticatedRoot: View {
         _recentAdded = State(initialValue: container.makeRecentAssetsViewModel(mode: .added))
         _trash = State(initialValue: container.makeTrashViewModel())
         _search = State(initialValue: container.makeSearchViewModel())
-        _map = State(initialValue: container.makeMapViewModel())
+        _map = State(initialValue: container.makeMapViewModel(accountID: accountID))
         _albums = State(initialValue: container.makeAlbumsViewModel())
         _sharedLinks = State(initialValue: container.makeSharedLinksViewModel())
         _storage = State(initialValue: container.makeStorageStatsViewModel())

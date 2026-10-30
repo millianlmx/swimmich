@@ -1425,6 +1425,105 @@ final class ImmichAPIClientTests: XCTestCase {
         XCTAssertNil(replay.value(forHTTPHeaderField: "Authorization"))
     }
 
+    // MARK: - Shared-link cookie vs configure (ACC AC-15, AC-16)
+
+    private let cookieHost = URL(string: "https://example.com")!
+
+    /// Client on a production-style session (ephemeral, cookies on, trust
+    /// delegate) that has logged in to a protected link and whose session
+    /// storage also holds the visitor cookie, as the system would store it.
+    /// Preconditions are asserted here, before any `configure`.
+    private func makeCookieClient() async throws -> (ImmichAPIClient, HTTPCookieStorage) {
+        let config = URLSessionConfiguration.ephemeral
+        config.protocolClasses = [CapturingURLProtocol.self]
+        let suite = UserDefaults(suiteName: "cookie-tests-\(UUID().uuidString)")!
+        let client = ImmichAPIClient(
+            trustStore: TrustedServerStoreImpl(defaults: suite),
+            sessionConfiguration: config
+        )
+        client.configure(baseURL: cookieHost, token: "token-a")
+
+        CapturingURLProtocol.reset()
+        CapturingURLProtocol.nextData = Self.sharedLinkJSON(key: "a2V5")
+        CapturingURLProtocol.nextStatus = 201
+        CapturingURLProtocol.nextHeaders = [
+            "Content-Type": "application/json",
+            "Set-Cookie": "\(ImmichCookie.sharedLinkToken)=tok123; Path=/"
+        ]
+        _ = try await client.loginToSharedLink(.slug("secured"), password: "pw")
+
+        let storage = try XCTUnwrap(client.sessionCookieStorage)
+        let cookie = try XCTUnwrap(HTTPCookie(properties: [
+            .name: ImmichCookie.sharedLinkToken, .value: "tok123",
+            .domain: try XCTUnwrap(cookieHost.host), .path: "/"
+        ]))
+        storage.setCookie(cookie)
+
+        // Preconditions: the seeded cookie is visible through the accessor the
+        // purge uses, and the slot is loaded (the header is set by hand).
+        let stored = client.sessionCookieStorage?.cookies(for: cookieHost) ?? []
+        XCTAssertTrue(stored.contains { $0.name == ImmichCookie.sharedLinkToken }, "precondition: storage seeded")
+        CapturingURLProtocol.reset()
+        CapturingURLProtocol.nextData = Self.sharedLinkJSON(key: "a2V5")
+        _ = try await client.getSharedLinkMine(.slug("secured"))
+        XCTAssertEqual(
+            CapturingURLProtocol.lastRequest?.value(forHTTPHeaderField: ImmichHeader.cookie),
+            "\(ImmichCookie.sharedLinkToken)=tok123", "precondition: slot loaded")
+        return (client, storage)
+    }
+
+    /// After a reconfiguration: a visitor request and an authenticated one
+    /// must both go out without the cookie, and the storage must be clean.
+    private func assertCookieGone(_ client: ImmichAPIClient, file: StaticString = #filePath, line: UInt = #line) async {
+        CapturingURLProtocol.reset()
+        CapturingURLProtocol.nextData = Self.sharedLinkJSON(key: "a2V5")
+        _ = try? await client.getSharedLinkMine(.slug("secured"))
+        let visitorCookie = CapturingURLProtocol.lastRequest?.value(forHTTPHeaderField: ImmichHeader.cookie) ?? ""
+        XCTAssertFalse(visitorCookie.contains(ImmichCookie.sharedLinkToken), "visitor request", file: file, line: line)
+
+        CapturingURLProtocol.reset()
+        _ = try? await client.validateToken()
+        let authedCookie = CapturingURLProtocol.lastRequest?.value(forHTTPHeaderField: ImmichHeader.cookie) ?? ""
+        XCTAssertFalse(authedCookie.contains(ImmichCookie.sharedLinkToken), "authenticated request", file: file, line: line)
+
+        let left = client.sessionCookieStorage?.cookies(for: cookieHost) ?? []
+        XCTAssertFalse(left.contains { $0.name == ImmichCookie.sharedLinkToken }, "session storage", file: file, line: line)
+    }
+
+    func test_ACC_AC15_reconfigureWithOtherURL_dropsSharedLinkCookie() async throws {
+        let (client, _) = try await makeCookieClient()
+        client.configure(baseURL: URL(string: "https://other.example.com")!, token: "token-a")
+        // Back on the original host: the cookie must not come back.
+        client.configure(baseURL: cookieHost, token: "token-a")
+        await assertCookieGone(client)
+    }
+
+    func test_ACC_AC15_reconfigureWithOtherToken_dropsSharedLinkCookie() async throws {
+        let (client, _) = try await makeCookieClient()
+        client.configure(baseURL: cookieHost, token: "token-b")
+        await assertCookieGone(client)
+    }
+
+    func test_ACC_AC15_reconfigureWithNilToken_dropsSharedLinkCookie() async throws {
+        let (client, _) = try await makeCookieClient()
+        client.configure(baseURL: cookieHost, token: nil)
+        await assertCookieGone(client)
+    }
+
+    func test_ACC_AC16_reconfigureWithSameValues_keepsSharedLinkCookie() async throws {
+        let (client, _) = try await makeCookieClient()
+        client.configure(baseURL: cookieHost, token: "token-a")
+
+        CapturingURLProtocol.reset()
+        CapturingURLProtocol.nextData = Self.sharedLinkJSON(key: "a2V5")
+        _ = try await client.getSharedLinkMine(.slug("secured"))
+        XCTAssertEqual(
+            CapturingURLProtocol.lastRequest?.value(forHTTPHeaderField: ImmichHeader.cookie),
+            "\(ImmichCookie.sharedLinkToken)=tok123")
+        let stored = client.sessionCookieStorage?.cookies(for: cookieHost) ?? []
+        XCTAssertTrue(stored.contains { $0.name == ImmichCookie.sharedLinkToken })
+    }
+
     /// A 401 on this path is about the *link*, not the session — so it must not
     /// reach `authDelegate`, which resets the whole app session (FM-4). The raw
     /// server message is preserved because it is the only way to tell "needs a

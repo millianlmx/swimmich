@@ -215,6 +215,7 @@
 		5D406E669B09C43E0BBEE48F /* WhatsNewStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8E10833BB2E562F9BC1B9D79 /* WhatsNewStore.swift */; };
 		5D4565FF9CF4D70DB7BC8172 /* LockedFolderViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = E37ABD278FAFD6C76FE9AC69 /* LockedFolderViewModel.swift */; };
 		5D4E5A919E2B67A7ED62AAF5 /* MapMarkerFilterTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2970A4FF95065888177A239C /* MapMarkerFilterTests.swift */; };
+		7A1C5E0B3D9F4A6285C1E0B7 /* MapMarkerCacheTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3E8D2F6A9C1B4D7052A8F3C1 /* MapMarkerCacheTests.swift */; };
 		5DD2BA9714C4ECF473B4525A /* immich_stub_recent.py in Resources */ = {isa = PBXBuildFile; fileRef = DF5A1A6BBB06B8A5ACB84EA2 /* immich_stub_recent.py */; };
 		5D9C13E4A27F6B3AC8E5FB03 /* AboutLinksTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6EAD24F5B38A7C4BD9F60C14 /* AboutLinksTests.swift */; };
 		5E4689D6F2D16D97A3851F71 /* BackupActivityAttributes.swift in Sources */ = {isa = PBXBuildFile; fileRef = CE912093BAAB79EC778D1B0B /* BackupActivityAttributes.swift */; };
@@ -717,6 +718,7 @@
 		28BA3D71DA9D6130CE81A744 /* immich_stub_map_settings.py */ = {isa = PBXFileReference; lastKnownFileType = text.script.python; path = immich_stub_map_settings.py; sourceTree = "<group>"; };
 		28FA8E2BDDFA7D112FF30F16 /* immich_stub_search_filters.py */ = {isa = PBXFileReference; lastKnownFileType = text.script.python; path = immich_stub_search_filters.py; sourceTree = "<group>"; };
 		2970A4FF95065888177A239C /* MapMarkerFilterTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MapMarkerFilterTests.swift; sourceTree = "<group>"; };
+		3E8D2F6A9C1B4D7052A8F3C1 /* MapMarkerCacheTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MapMarkerCacheTests.swift; sourceTree = "<group>"; };
 		2A58444351443E75BCBD91E2 /* PrivacyInfo.xcprivacy */ = {isa = PBXFileReference; path = PrivacyInfo.xcprivacy; sourceTree = "<group>"; };
 		2AAC708CF79B8E441BEB0481 /* LockedFolderPINStoring.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LockedFolderPINStoring.swift; sourceTree = "<group>"; };
 		2AC83A2848BCC8C9285FB4A1 /* PhotoShareViewModelTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PhotoShareViewModelTests.swift; sourceTree = "<group>"; };
@@ -1578,6 +1580,7 @@
 				7CF7041596F97609707BFED1 /* LockedFolderViewModelTests.swift */,
 				EF765460A9F23AF055BC2B42 /* LongDateFormatterTests.swift */,
 				2970A4FF95065888177A239C /* MapMarkerFilterTests.swift */,
+				3E8D2F6A9C1B4D7052A8F3C1 /* MapMarkerCacheTests.swift */,
 				0ACCFA90EEFC41A346AE3CCB /* MapSettingsStoreTests.swift */,
 				0296808F41BB923762620C64 /* MapViewModelTests.swift */,
 				EE5C44DF36B05BC76C36E75F /* MemoriesViewModelTests.swift */,
@@ -2512,6 +2515,7 @@
 				C5633CB110D5F4869B0C2010 /* LockedFolderViewModelTests.swift in Sources */,
 				6BBF10DBCF183A13F14A2393 /* LongDateFormatterTests.swift in Sources */,
 				5D4E5A919E2B67A7ED62AAF5 /* MapMarkerFilterTests.swift in Sources */,
+				7A1C5E0B3D9F4A6285C1E0B7 /* MapMarkerCacheTests.swift in Sources */,
 				F67A67B0F2D84C1E37A0D55C /* MapSettingsStoreTests.swift in Sources */,
 				0033168128061F9717ED66A2 /* MapViewModelTests.swift in Sources */,
 				8B5C2E2B72F838414A1D0C28 /* MemoriesViewModelTests.swift in Sources */,

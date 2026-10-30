@@ -41,13 +41,13 @@ final class ImmichAPIClient: ImmichClient, @unchecked Sendable {
     init(
         session: URLSession = .shared,
         trustStore: TrustedServerStore? = nil,
+        sessionConfiguration: URLSessionConfiguration = .ephemeral,
         log: any AppLogSink = NoopAppLogSink()
     ) {
         self.log = log
         if let trustStore {
             let delegate = TrustEvaluatingURLSessionDelegate(trustStore: trustStore)
-            let config = URLSessionConfiguration.ephemeral
-            self.session = URLSession(configuration: config, delegate: delegate, delegateQueue: nil)
+            self.session = URLSession(configuration: sessionConfiguration, delegate: delegate, delegateQueue: nil)
         } else {
             self.session = session
         }
@@ -55,11 +55,24 @@ final class ImmichAPIClient: ImmichClient, @unchecked Sendable {
 
     // MARK: - Configuration
 
+    /// A changed base URL or token (switch, logout, login, expired session) ends
+    /// the shared-link visit: the visitor cookie is dropped from the slot and
+    /// from the session's cookie storage. Same values → nothing changes.
     func configure(baseURL: URL?, token: String?) {
-        lock.lock(); defer { lock.unlock() }
+        lock.lock()
+        let changed = baseURL != _baseURL || token != _token
         _baseURL = baseURL
         _token = token
+        if changed { _sharedLinkCookie = nil }
+        lock.unlock()
+        guard changed, let storage = sessionCookieStorage else { return }
+        for cookie in storage.cookies ?? [] where cookie.name == ImmichCookie.sharedLinkToken {
+            storage.deleteCookie(cookie)
+        }
     }
+
+    /// Cookie storage of the client's session; the one `configure` purges.
+    var sessionCookieStorage: HTTPCookieStorage? { session.configuration.httpCookieStorage }
 
     /// Drops every open connection, cache and credential of this client's own
     /// session, so the next request opens a fresh socket and a fresh TLS
@@ -1007,9 +1020,9 @@ final class ImmichAPIClient: ImmichClient, @unchecked Sendable {
     }
 
     /// Builds the request for a public shared link: credential in the query, no
-    /// `Authorization`, and the login cookie replayed explicitly (rather than
-    /// relying on `URLSession`'s cookie store, whose accept policy is not ours
-    /// to set on the shared session).
+    /// `Authorization`, and the login cookie replayed explicitly. The slot is
+    /// the only carrier: `httpShouldHandleCookies = false` keeps the session's
+    /// cookie storage neither read nor fed on this path.
     private func sharedLinkURLRequest(
         _ method: HTTPMethod,
         path: String,
@@ -1030,6 +1043,7 @@ final class ImmichAPIClient: ImmichClient, @unchecked Sendable {
         if let cookie = sharedLinkCookie {
             request.setValue(cookie, forHTTPHeaderField: ImmichHeader.cookie)
         }
+        request.httpShouldHandleCookies = false
         return request
     }
 

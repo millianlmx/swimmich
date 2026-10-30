@@ -4,11 +4,11 @@ import Foundation
 /// network round-trip) while a silent, TTL-throttled background refresh in
 /// `MapViewModel` keeps coordinates fresh.
 ///
-/// Stored as a JSON file in Caches/ (regenerable from the server, so
+/// Stored as JSON files in Caches/ (regenerable from the server, so
 /// Caches is the correct domain — the OS may evict it under pressure), one
-/// file per marker-filter variant. The whole-catalogue payload can be large
-/// (10k+ markers); callers therefore run `load`/`save` off the MainActor
-/// (`MapMarkerCache` is `Sendable`).
+/// folder per account and one file per marker-filter variant. The
+/// whole-catalogue payload can be large (10k+ markers); callers therefore run
+/// `load`/`save` off the MainActor (`MapMarkerCache` is `Sendable`).
 ///
 /// The persisted entry carries a `savedAt` timestamp so the ViewModel can
 /// decide whether the cached set is fresh enough to skip the background
@@ -21,32 +21,36 @@ struct MapMarkerCache: Sendable {
     }
 
     private let fileURL: URL
+    private let accountID: String
 
     /// Root the cache was opened on (Caches/ by default), kept so the same
     /// cache can be re-opened for another filter variant.
     private let root: URL
 
-    /// Default location: Caches/MapMarkers/markers.json.
+    /// Default location: Caches/MapMarkers/<storageKey(accountID)>/markers.json.
+    ///
+    /// Every file lives under the account's folder, so one account never reads
+    /// another's positions (GPS coordinates). A file from a version without
+    /// accounts (`MapMarkers/markers*.json`) is never read; `removeAll` wipes it.
     ///
     /// `variant` comes from `MapMarkerFilter.cacheVariant`: `nil` (the
-    /// unconstrained filter) keeps the historical `markers.json` path, so a
-    /// cache written by an earlier version is still served — no migration. A
-    /// constrained filter gets its own `markers-<variant>.json`, because two
-    /// filters must never overwrite each other's payload (a filtered response
-    /// is not a valid answer for another filter).
-    init(directory: URL? = nil, variant: String? = nil) {
-        let root = directory
-            ?? FileManager.default.urls(for: .cachesDirectory, in: .userDomainMask).first
-            ?? FileManager.default.temporaryDirectory
+    /// unconstrained filter) uses `markers.json`. A constrained filter gets its
+    /// own `markers-<variant>.json`, because two filters must never overwrite
+    /// each other's payload (a filtered response is not a valid answer for
+    /// another filter).
+    init(accountID: String, directory: URL? = nil, variant: String? = nil) {
+        let root = directory ?? Self.defaultRoot
+        self.accountID = accountID
         self.root = root
-        let base = root.appendingPathComponent("MapMarkers", isDirectory: true)
+        let base = Self.markersFolder(in: root)
+            .appendingPathComponent(SavedAccount.storageKey(forID: accountID), isDirectory: true)
         self.fileURL = variant.map { base.appendingPathComponent("markers-\($0).json") }
             ?? base.appendingPathComponent("markers.json")
     }
 
-    /// Same cache location, another filter variant.
+    /// Same account and location, another filter variant.
     func variant(_ variant: String?) -> MapMarkerCache {
-        MapMarkerCache(directory: root, variant: variant)
+        MapMarkerCache(accountID: accountID, directory: root, variant: variant)
     }
 
     /// Cached markers, or nil if the cache is empty/unreadable.
@@ -79,5 +83,20 @@ struct MapMarkerCache: Sendable {
 
     func clear() {
         try? FileManager.default.removeItem(at: fileURL)
+    }
+
+    /// Deletes `<root>/MapMarkers` entirely: every account, every variant and
+    /// any file left by a version that had no account notion. No-op when absent.
+    static func removeAll(directory: URL? = nil) {
+        try? FileManager.default.removeItem(at: markersFolder(in: directory ?? defaultRoot))
+    }
+
+    private static var defaultRoot: URL {
+        FileManager.default.urls(for: .cachesDirectory, in: .userDomainMask).first
+            ?? FileManager.default.temporaryDirectory
+    }
+
+    private static func markersFolder(in root: URL) -> URL {
+        root.appendingPathComponent("MapMarkers", isDirectory: true)
     }
 }
