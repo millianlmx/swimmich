@@ -36,6 +36,10 @@ final class DownloadQueueViewModel {
     /// Bumped on every launch: a cancelled run must not clear the handle of
     /// the run that replaced it (cancel → retry is one tap apart).
     private var generations: [String: Int] = [:]
+    /// Completed rows whose file is gone from disk (see
+    /// `refreshFileAvailability()`). Observed on purpose: it is what redraws
+    /// the screen when Files deletes a file, since `items` does not change.
+    private var vanishedFileIDs: Set<String> = []
 
     init(
         client: any ImmichClient,
@@ -118,6 +122,38 @@ final class DownloadQueueViewModel {
     func isDownloading(_ assetId: String) -> Bool {
         let status = status(for: assetId)
         return status == .queued || status == .running
+    }
+
+    /// The file a completed row can hand to the share sheet, or nil.
+    ///
+    /// The disk is read on EVERY call: the user can delete or rename the file
+    /// in Files while the screen is open. Reading `vanishedFileIDs` makes the
+    /// caller depend on `refreshFileAvailability()`, so a view that called this
+    /// is redrawn when the set changes even though `items` did not.
+    func shareableURL(for id: String) -> URL? {
+        guard let item = items.first(where: { $0.id == id }),
+              item.status == .completed,
+              let url = item.destinationURL,
+              !vanishedFileIDs.contains(id) else { return nil }
+        return Self.isRegularFile(url, fileManager: fileManager) ? url : nil
+    }
+
+    /// Re-reads the disk for every completed row. Assigns only on change, so a
+    /// refresh that finds nothing new invalidates nobody.
+    func refreshFileAvailability() {
+        let vanished = Set(items.lazy
+            .filter { $0.status == .completed }
+            .filter { item in
+                guard let url = item.destinationURL else { return true }
+                return !Self.isRegularFile(url, fileManager: self.fileManager)
+            }
+            .map(\.id))
+        if vanished != vanishedFileIDs { vanishedFileIDs = vanished }
+    }
+
+    private static func isRegularFile(_ url: URL, fileManager: FileManager) -> Bool {
+        var isDirectory: ObjCBool = false
+        return fileManager.fileExists(atPath: url.path, isDirectory: &isDirectory) && !isDirectory.boolValue
     }
 
     // MARK: - Enqueueing
@@ -243,6 +279,7 @@ final class DownloadQueueViewModel {
             .map(\.id)
         guard !finished.isEmpty else { return }
         items.removeAll { finished.contains($0.id) }
+        vanishedFileIDs.subtract(finished)
         for id in finished {
             tasks[id]?.cancel()
             tasks[id] = nil
@@ -353,6 +390,7 @@ final class DownloadQueueViewModel {
             ? items[index].expectedBytes
             : Int64(written)
         items[index].destinationURL = destination
+        vanishedFileIDs.remove(id)
         items[index].status = .completed
         items[index].errorMessage = nil
     }

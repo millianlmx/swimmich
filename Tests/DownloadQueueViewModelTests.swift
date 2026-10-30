@@ -290,6 +290,136 @@ final class DownloadQueueViewModelTests: XCTestCase {
         XCTAssertEqual(vm.totalCount, 1)
         XCTAssertEqual(vm.completedCount, 1)
     }
+
+    // MARK: - Completed rows are shareable (B-1, B-4)
+
+    func test_AC2_completedRow_sharesItsWrittenFile_evenWhenSuffixed() async throws {
+        stubAsset(id: "a", name: "IMG_0421.HEIC")
+        stubAsset(id: "b", name: "IMG_0421.HEIC")
+
+        await vm.enqueue(asset: makeAsset(id: "a"))
+        await settle()
+        await vm.enqueue(asset: makeAsset(id: "b"))
+        await settle()
+
+        let requests = transport.requestCount
+        let first = try XCTUnwrap(vm.items.first { $0.id == "a" })
+        let second = try XCTUnwrap(vm.items.first { $0.id == "b" })
+        XCTAssertEqual(vm.shareableURL(for: "a"), first.destinationURL)
+        XCTAssertEqual(vm.shareableURL(for: "b"), second.destinationURL)
+        let written = try XCTUnwrap(second.destinationURL).lastPathComponent
+        XCTAssertNotEqual(written, try XCTUnwrap(first.destinationURL).lastPathComponent)
+        XCTAssertTrue(written.hasPrefix("IMG_0421-") && written.hasSuffix(".HEIC"), "suffixed name, got \(written)")
+        XCTAssertEqual(second.fileName, "IMG_0421.HEIC", "the row keeps displaying the server name")
+        XCTAssertEqual(transport.requestCount, requests, "sharing is local: no new transfer")
+    }
+
+    func test_AC3_onlyACompletedRow_isShareable() async {
+        stubAsset(id: "f", name: "f.jpg")
+        stubAsset(id: "c", name: "c.jpg")
+        stubAsset(id: "r", name: "r.jpg")
+        transport.failures = ["/assets/f/original": APIError.serverError(500, nil)]
+        await vm.enqueue(asset: makeAsset(id: "f"))
+        await settle()
+        transport.failures = [:]
+
+        transport.stalls = true
+        await vm.enqueue(asset: makeAsset(id: "c"))
+        await drain(transport, requests: 2)
+        vm.cancel(assetId: "c")
+
+        // A stalled transport that was cancelled once refuses the next stall,
+        // so the running row lives in a queue of its own.
+        let runningTransport = FakeDownloadTransport()
+        runningTransport.stalls = true
+        let runningVM = DownloadQueueViewModel(client: client, transport: runningTransport)
+        await runningVM.enqueue(asset: makeAsset(id: "r"))
+        await drain(runningTransport)
+
+        XCTAssertEqual(vm.status(for: "f"), .failed)
+        XCTAssertEqual(vm.status(for: "c"), .cancelled)
+        XCTAssertEqual(runningVM.status(for: "r"), .running)
+        XCTAssertNil(vm.shareableURL(for: "f"))
+        XCTAssertNil(vm.shareableURL(for: "c"))
+        XCTAssertNil(runningVM.shareableURL(for: "r"))
+        XCTAssertNil(vm.shareableURL(for: "unknown"))
+
+        runningVM.cancel(assetId: "r")
+    }
+
+    func test_AC4_completedArchive_sharesTheZipInDocumentsDownloads() async throws {
+        client.downloadInfoResponse = DownloadInfoResponse(
+            totalSize: 4000,
+            archives: [DownloadInfoResponse.Archive(assetIds: ["a", "b"], size: 4000)]
+        )
+
+        await vm.enqueue(assets: [makeAsset(id: "a"), makeAsset(id: "b")])
+        await settle()
+
+        let item = try XCTUnwrap(vm.items.first)
+        XCTAssertTrue(item.isArchive)
+        let url = try XCTUnwrap(vm.shareableURL(for: item.id))
+        XCTAssertEqual(url.pathExtension, "zip")
+        XCTAssertTrue(url.path.contains("/Documents/Downloads/"), url.path)
+        XCTAssertTrue(FileManager.default.fileExists(atPath: url.path))
+    }
+
+    func test_AC10_vanishedFile_isNoLongerShareable_andTheRowStaysCompleted() async throws {
+        // Own VM: `tearDown` removes the files of the VM it finds in `vm`.
+        vm = DownloadQueueViewModel(client: client, transport: MockFileDownloadTransport())
+        stubAsset(id: "a", name: "obs-a.jpg")
+        stubAsset(id: "b", name: "obs-b.jpg")
+        await vm.enqueue(asset: makeAsset(id: "a"))
+        await settle()
+        await vm.enqueue(asset: makeAsset(id: "b"))
+        await settle()
+        let urlA = try XCTUnwrap(vm.items.first { $0.id == "a" }?.destinationURL)
+        let urlB = try XCTUnwrap(vm.items.first { $0.id == "b" }?.destinationURL)
+        vm.refreshFileAvailability()
+        XCTAssertEqual(vm.shareableURL(for: "a"), urlA)
+
+        // One-shot witness: `withObservationTracking` fires once.
+        func watch(_ id: String) -> TestBox<Bool> {
+            let fired = TestBox(false)
+            withObservationTracking { _ = vm.shareableURL(for: id) } onChange: { fired.value = true }
+            return fired
+        }
+
+        // Deleted: the disk check answers at once, the observers wait for a refresh.
+        var fired = watch("a")
+        try FileManager.default.removeItem(at: urlA)
+        XCTAssertNil(vm.shareableURL(for: "a"))
+        XCTAssertFalse(fired.value, "the disk alone notifies nobody")
+        vm.refreshFileAvailability()
+        XCTAssertTrue(fired.value, "an open screen would not redraw on return to .active")
+        XCTAssertEqual(vm.status(for: "a"), .completed)
+        XCTAssertEqual(vm.items.count, 2)
+
+        // Nothing changed on disk: nobody is notified.
+        fired = watch("a")
+        vm.refreshFileAvailability()
+        XCTAssertFalse(fired.value)
+
+        // Renamed.
+        let renamed = urlB.deletingLastPathComponent().appendingPathComponent("renamed-\(urlB.lastPathComponent)")
+        try FileManager.default.moveItem(at: urlB, to: renamed)
+        defer { try? FileManager.default.removeItem(at: renamed) }
+        XCTAssertNil(vm.shareableURL(for: "b"))
+        vm.refreshFileAvailability()
+        XCTAssertEqual(vm.status(for: "b"), .completed)
+
+        // Back.
+        fired = watch("a")
+        try Data("back".utf8).write(to: urlA)
+        vm.refreshFileAvailability()
+        XCTAssertTrue(fired.value)
+        XCTAssertEqual(vm.shareableURL(for: "a"), urlA)
+    }
+
+    func test_AC6_infoPlist_exposesDocumentsToFiles() {
+        XCTAssertEqual(Bundle.main.object(forInfoDictionaryKey: "UIFileSharingEnabled") as? Bool, true)
+        XCTAssertEqual(Bundle.main.object(forInfoDictionaryKey: "LSSupportsOpeningDocumentsInPlace") as? Bool, true)
+    }
 }
 
 /// Transport double for the queue.
@@ -375,5 +505,122 @@ private final class FakeDownloadTransport: FileDownloadTransport, @unchecked Sen
             lock.unlock()
             continuation?.resume(throwing: CancellationError())
         }
+    }
+}
+
+/// A request that never gets an answer: the real task stays suspended while the
+/// test drives the delegate's callbacks by hand.
+private final class NeverRespondingURLProtocol: URLProtocol {
+    override class func canInit(with request: URLRequest) -> Bool { true }
+    override class func canonicalRequest(for request: URLRequest) -> URLRequest { request }
+    override func startLoading() {}
+    override func stopLoading() {}
+}
+
+/// `URLSessionFileDownloadTransport`'s delegate: what it deletes when a
+/// transfer ends. Its witnesses live in the real `NSTemporaryDirectory()` under
+/// unique names — nothing here lists or empties that folder.
+final class URLSessionFileDownloadTransportTests: XCTestCase {
+
+    private var cleanup: [URL] = []
+
+    override func tearDown() {
+        for url in cleanup { try? FileManager.default.removeItem(at: url) }
+        cleanup = []
+        super.tearDown()
+    }
+
+    private struct Witnesses {
+        let file: URL
+        let inner: URL
+    }
+
+    private var tmp: URL { URL(fileURLWithPath: NSTemporaryDirectory(), isDirectory: true) }
+
+    private func makeWitnesses() throws -> Witnesses {
+        let file = tmp.appendingPathComponent("ac8-witness-\(UUID().uuidString).txt")
+        let folder = tmp.appendingPathComponent("ac8-witness-\(UUID().uuidString)", isDirectory: true)
+        let inner = folder.appendingPathComponent("inner.txt")
+        try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
+        try Data("witness-file".utf8).write(to: file)
+        try Data("witness-inner".utf8).write(to: inner)
+        cleanup += [file, folder]
+        return Witnesses(file: file, inner: inner)
+    }
+
+    private func assertIntact(_ w: Witnesses, file: StaticString = #filePath, line: UInt = #line) {
+        var isDirectory: ObjCBool = false
+        XCTAssertTrue(FileManager.default.fileExists(atPath: NSTemporaryDirectory(), isDirectory: &isDirectory),
+                      "NSTemporaryDirectory() itself must survive", file: file, line: line)
+        XCTAssertEqual(try? Data(contentsOf: w.file), Data("witness-file".utf8), file: file, line: line)
+        XCTAssertEqual(try? Data(contentsOf: w.inner), Data("witness-inner".utf8), file: file, line: line)
+    }
+
+    private func makeLocation(_ body: String) throws -> URL {
+        let location = tmp.appendingPathComponent("ac8-location-\(UUID().uuidString)")
+        try Data(body.utf8).write(to: location)
+        cleanup.append(location)
+        return location
+    }
+
+    /// Runs `didFinishDownloadingTo` then `didCompleteWithError` on a fresh
+    /// delegate, the way URLSession does for a transfer that ends after the body
+    /// was moved. The real task never answers, so nothing races the callbacks.
+    private func run(location: URL, error: Error?) async -> (delegate: DownloadDelegate, result: Result<DownloadedFile, Error>) {
+        let configuration = URLSessionConfiguration.ephemeral
+        configuration.protocolClasses = [NeverRespondingURLProtocol.self]
+        let session = URLSession(configuration: configuration)
+        defer { session.invalidateAndCancel() }
+
+        let delegate = DownloadDelegate(onProgress: { _, _ in })
+        let request = URLRequest(url: URL(string: "https://example.invalid/original")!)
+        let probe = session.downloadTask(with: request)
+        do {
+            let file = try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<DownloadedFile, Error>) in
+                delegate.start(request, in: session, continuation: continuation)
+                delegate.urlSession(session, downloadTask: probe, didFinishDownloadingTo: location)
+                delegate.urlSession(session, task: probe, didCompleteWithError: error)
+            }
+            return (delegate, .success(file))
+        } catch {
+            return (delegate, .failure(error))
+        }
+    }
+
+    func test_AC8_lateError_deletesOnlyTheDownloadedFile() async throws {
+        for failure in [URLError(.cancelled), URLError(.networkConnectionLost)] {
+            let witnesses = try makeWitnesses()
+            let location = try makeLocation("body")
+
+            let (delegate, result) = await run(location: location, error: failure)
+
+            guard case .failure(let thrown) = result else { return XCTFail("the late error must be thrown") }
+            XCTAssertEqual((thrown as? URLError)?.code, failure.code)
+            let moved = try XCTUnwrap(delegate.movedFileURL, "the body was moved before the error")
+            cleanup.append(moved)
+            XCTAssertFalse(FileManager.default.fileExists(atPath: moved.path), "the downloaded file must be deleted")
+            XCTAssertFalse(FileManager.default.fileExists(atPath: location.path), "the body was moved out of `location`")
+            assertIntact(witnesses)
+        }
+    }
+
+    func test_AC9_success_handsBackTheFile_andLeavesTmpAlone() async throws {
+        let witnesses = try makeWitnesses()
+        let location = try makeLocation("received body")
+
+        let (delegate, result) = await run(location: location, error: nil)
+
+        guard case .success(let downloaded) = result else { return XCTFail("a successful transfer must hand back its file") }
+        cleanup.append(downloaded.url)
+        XCTAssertEqual(downloaded.url, delegate.movedFileURL)
+        XCTAssertTrue(FileManager.default.fileExists(atPath: downloaded.url.path))
+        XCTAssertTrue(downloaded.url.lastPathComponent.hasPrefix("immich-download-"))
+        XCTAssertEqual(downloaded.url.pathExtension, "tmp")
+        XCTAssertEqual(
+            downloaded.url.deletingLastPathComponent().standardizedFileURL.resolvingSymlinksInPath(),
+            tmp.standardizedFileURL.resolvingSymlinksInPath()
+        )
+        XCTAssertEqual(try Data(contentsOf: downloaded.url), Data("received body".utf8))
+        assertIntact(witnesses)
     }
 }

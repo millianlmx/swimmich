@@ -41,7 +41,8 @@ struct URLSessionFileDownloadTransport: FileDownloadTransport {
 /// Resumes one download: bridges `URLSessionDownloadDelegate` to a continuation
 /// and to the progress closure. URLSession calls it on its own delegate queue,
 /// hence the lock around the three pieces of state it hands back.
-private final class DownloadDelegate: NSObject, URLSessionDownloadDelegate, @unchecked Sendable {
+/// Internal (not `private`) so the transport tests can drive its callbacks.
+final class DownloadDelegate: NSObject, URLSessionDownloadDelegate, @unchecked Sendable {
     private let onProgress: @Sendable (Int64, Int64) -> Void
 
     private let lock = NSLock()
@@ -56,6 +57,13 @@ private final class DownloadDelegate: NSObject, URLSessionDownloadDelegate, @unc
 
     init(onProgress: @escaping @Sendable (Int64, Int64) -> Void) {
         self.onProgress = onProgress
+    }
+
+    /// Where `didFinishDownloadingTo` moved the body, or nil. Read by tests.
+    var movedFileURL: URL? {
+        lock.lock()
+        defer { lock.unlock() }
+        return file
     }
 
     // MARK: - Lifecycle
@@ -160,8 +168,10 @@ private final class DownloadDelegate: NSObject, URLSessionDownloadDelegate, @unc
         ))
     }
 
+    /// Deletes the received file ONLY. It sits flat in `NSTemporaryDirectory()`,
+    /// so removing its parent would wipe every other temp file of the app.
     private func discard(_ file: URL?) {
         guard let file else { return }
-        try? FileManager.default.removeItem(at: file.deletingLastPathComponent())
+        try? FileManager.default.removeItem(at: file)
     }
 }

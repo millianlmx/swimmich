@@ -71,6 +71,10 @@ targets:
         NSCameraUsageDescription: "Swimmich uses the camera to scan server configuration QR codes."
         NSSupportsLiveActivities: true
         NSSupportsLiveActivitiesFrequentUpdates: true
+        # Documents/Downloads is exposed to the Files app (Downloads panel).
+        # Nothing internal may ever live in Documents/.
+        UIFileSharingEnabled: true
+        LSSupportsOpeningDocumentsInPlace: true
         BGTaskSchedulerPermittedIdentifiers:
           - app.immich.background-backup
         UIBackgroundModes:

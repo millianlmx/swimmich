@@ -451,17 +451,24 @@ final class DownloadPanelUITests: XCTestCase {
         // MARK: The transfer ENDS, and the row is COMPLETED — not failed
         //
         // `Cancel` disappears exactly when the row leaves `running`; from there
-        // the row must carry NO action at all (`DownloadInfoView` offers Cancel
-        // while running, Retry when failed or cancelled, and nothing when
-        // completed). `finish()` is the only path to `.completed` and it throws
-        // before that unless the streamed body was moved to `Documents/Downloads/`,
-        // so a completed row IS a written file — which is what makes the failure
-        // leg of this scenario (stub `ORIGINAL_STATUS = 500`) discriminate.
+        // the row carries Share (its file is on disk) and neither Cancel nor
+        // Retry (`DownloadInfoView` offers Cancel while running, Retry when
+        // failed or cancelled). `finish()` is the only path to `.completed` and
+        // it throws before that unless the streamed body was moved to
+        // `Documents/Downloads/`, so a completed row IS a written file — which
+        // is what makes the failure leg of this scenario (stub
+        // `ORIGINAL_STATUS = 500`) discriminate.
         XCTAssertTrue(waitForDisappearance(cancel, timeout: 90),
                       "the transfer never left 'running' (still offered a Cancel after 90 s); \(screenDump())")
         XCTAssertTrue(row.exists, "the completed row vanished from the info screen; \(screenDump())")
+        let shareButton = app.buttons.matching(identifier: "downloadInfoShare_\(target)").firstMatch
+        XCTAssertTrue(shareButton.waitForExistence(timeout: 10),
+                      "the row does not offer Share: only a row that is not completed, or whose file is not "
+                        + "on disk, lacks it; \(screenDump())")
+        XCTAssertTrue(shareButton.isHittable,
+                      "Share exists but cannot be touched (absorbed by the row's combined element?); \(screenDump())")
         // `DownloadInfoView` draws Retry for a row that FAILED or was CANCELLED,
-        // and nothing at all for a completed one. The message therefore states
+        // and Share for a completed one. The message therefore states
         // the observation, not what the stub was told to answer: it has to read
         // correctly both on the green run and on the 500 negative control.
         XCTAssertFalse(retry.exists,
@@ -493,6 +500,36 @@ final class DownloadPanelUITests: XCTestCase {
         XCTAssertTrue(requests.contains { $0.method == "GET" && $0.path == "/api/assets/\(target)" },
                       "the queue never asked the server for the asset itself, so the file name and its "
                         + "announced size could only be invented — got:\n\(describe(requests))")
+
+        // MARK: Sharing the written file — a local operation
+        //
+        // The sheet opens on `destinationURL` (the written file, possibly
+        // suffixed `-2` by an earlier run on this simulator — the file name is
+        // never compared here). The wire must stay silent: no asset or batch
+        // request between the tap and the sheet (decision #7: background traffic
+        // of the app is not counted).
+        let before = stubRequests().count
+        shareButton.tap()
+        // [INFERENCE] iOS 26 may expose the sheet under another identifier: the
+        // first run on a macOS host replaces this set with the one `screenDump()`
+        // shows. The criterion stays "an element owned by the system sheet appears".
+        let sheet = app.descendants(matching: .any)
+            .matching(NSPredicate(format: "identifier IN %@", ["ActivityListView", "UIActivityContentView"]))
+            .firstMatch
+        XCTAssertTrue(sheet.waitForExistence(timeout: 15),
+                      "tapping Share did not open the system share sheet; \(screenDump())")
+        shot("d10b-share-sheet")
+        let afterTap = Array(stubRequests().dropFirst(before))
+        XCTAssertTrue(afterTap.filter { $0.path.contains("/api/assets/") || $0.path.contains("/download/") }.isEmpty,
+                      "sharing a finished file went back to the server — got:\n\(describe(afterTap))")
+        let dismissSheet = app.buttons.matching(labelPredicate(["Close", "Fermer", "Schließen", "Cerrar", "Chiudi"])).firstMatch
+        if dismissSheet.exists {
+            dismissSheet.tap()
+        } else {
+            sheet.swipeDown()
+        }
+        XCTAssertTrue(waitForDisappearance(sheet, timeout: 15),
+                      "the share sheet did not close; \(screenDump())")
 
         // MARK: Clearing the finished row, then leaving the screen
 

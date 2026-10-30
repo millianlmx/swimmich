@@ -10,6 +10,7 @@ import SwiftUI
 struct DownloadInfoView: View {
     @Bindable var vm: DownloadQueueViewModel
     @Environment(\.dismiss) private var dismiss
+    @Environment(\.scenePhase) private var scenePhase
     /// The offline cache's mirror, so a row can say "you already have this
     /// one" without this screen writing to the cache.
     @Environment(OfflineAssetIndex.self) private var offlineIndex: OfflineAssetIndex?
@@ -50,6 +51,11 @@ struct DownloadInfoView: View {
                     .fontWeight(.semibold)
                     .accessibilityIdentifier("downloadInfoDone")
             }
+        }
+        .onAppear { vm.refreshFileAvailability() }
+        .onChange(of: scenePhase) { _, phase in
+            guard phase == .active else { return }
+            vm.refreshFileAvailability()
         }
     }
 
@@ -177,7 +183,25 @@ struct DownloadInfoView: View {
                 .buttonStyle(PVSubtleButtonStyle())
                 .accessibilityIdentifier("downloadInfoRetry_\(item.assetId)")
         case .completed:
-            EmptyView()
+            // The file belongs to the user (it lives in Documents/Downloads,
+            // visible in Files): shown only while it is still on disk.
+            if vm.shareableURL(for: item.id) != nil {
+                Button("Share") { share(item) }
+                    .buttonStyle(PVSubtleButtonStyle())
+                    .accessibilityIdentifier("downloadInfoShare_\(item.assetId)")
+            }
+        }
+    }
+
+    /// Re-checks the file at the touch: a file removed since the last render
+    /// presents nothing, and the button goes away. No completion is passed —
+    /// `ActivityPresenter`'s callers delete the file in theirs, and this one is
+    /// the user's.
+    private func share(_ item: DownloadItem) {
+        if let url = vm.shareableURL(for: item.id) {
+            ActivityPresenter.present(items: [url])
+        } else {
+            vm.refreshFileAvailability()
         }
     }
 }
