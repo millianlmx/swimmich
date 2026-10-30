@@ -180,6 +180,16 @@ final class MockImmichClient: ImmichClient, @unchecked Sendable {
     var lastMetadataSearchDto: MetadataSearchDto?
     var searchMetadataResponse: SearchResponseDto?
     var searchMetadataError: Error?
+    /// Every `searchMetadata` call, recorded before any gate or error.
+    var searchMetadataCalls: [MetadataSearchDto] = []
+    /// Awaited after recording and before the error check.
+    var searchMetadataGate: ((MetadataSearchDto) async throws -> Void)?
+    /// When set, supplies the response (after the gate and error check): a fake offset server.
+    var searchMetadataHandler: ((MetadataSearchDto) async throws -> SearchResponseDto)?
+    /// Responses keyed by `dto.page ?? 1`, consulted after the handler.
+    var searchMetadataResponsesByPage: [Int: SearchResponseDto] = [:]
+    /// Awaited in `removeAssetsFromAlbum` after `lastRemoveAssetsIds` is recorded, before the error check.
+    var removeAssetsFromAlbumGate: ((BulkIdsDto) async throws -> Void)?
     var lastSmartSearchDto: SmartSearchDto?
     var smartSearchResponse: SearchResponseDto?
     var smartSearchError: Error?
@@ -577,7 +587,11 @@ final class MockImmichClient: ImmichClient, @unchecked Sendable {
     func searchMetadata(dto: MetadataSearchDto) async throws -> SearchResponseDto {
         bump()
         lastMetadataSearchDto = dto
+        searchMetadataCalls.append(dto)
+        if let gate = searchMetadataGate { try await gate(dto) }
         if let e = globalError ?? searchMetadataError { throw e }
+        if let handler = searchMetadataHandler { return try await handler(dto) }
+        if let byPage = searchMetadataResponsesByPage[dto.page ?? 1] { return byPage }
         return searchMetadataResponse ?? SearchResponseDto(
             assets: SearchAssetResponseDto(count: 0, items: [], nextPage: nil)
         )
@@ -744,6 +758,7 @@ final class MockImmichClient: ImmichClient, @unchecked Sendable {
         bump()
         lastRemoveAssetsAlbumId = albumId
         lastRemoveAssetsIds = dto.ids
+        if let gate = removeAssetsFromAlbumGate { try await gate(dto) }
         if let e = globalError ?? removeAssetsError { throw e }
         return removeAssetsResponse ?? dto.ids.map { BulkIdResponseDto(id: $0, success: true, error: nil, errorMessage: nil) }
     }

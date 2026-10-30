@@ -39,6 +39,9 @@ struct AlbumDetailView: View {
     @State private var lastFavoriteTick = 0
     @State private var lastSelectionTick = 0
     @State private var viewerItem: PhotoViewerItem?
+    /// True from the moment the viewer is requested until it is dismissed, so
+    /// an action error is shown in the viewer's banner, then in the album alert.
+    @State private var viewerOnScreen = false
 
     private let columns = Array(repeating: GridItem(.flexible(), spacing: PVSpacing.s2), count: 3)
 
@@ -55,7 +58,7 @@ struct AlbumDetailView: View {
 
     init(
         album: AlbumResponseDto,
-        client: any ImmichClient = DependencyContainer.shared.client
+        client: any ImmichClient = DependencyContainer.shared.libraryClient
     ) {
         self.initialAlbum = album
         _vm = State(initialValue: AlbumDetailViewModel(client: client, albumId: album.id))
@@ -319,7 +322,7 @@ struct AlbumDetailView: View {
             Button("Cancel", role: .cancel) {}
         }
         .alert("Error", isPresented: Binding(
-            get: { vm.actionErrorMessage != nil },
+            get: { vm.actionErrorMessage != nil && !viewerOnScreen },
             set: { if !$0 { vm.actionErrorMessage = nil } }
         )) {
             Button("OK", role: .cancel) {}
@@ -365,9 +368,16 @@ struct AlbumDetailView: View {
             item: $viewerItem,
             baseURL: auth.baseURL ?? URL(string: "https://example.com")!,
             token: auth.accessToken,
-            onDataChanged: {
-                Task { await vm.load() }
-            }
+            onToggleFavorite: { asset, value in
+                Task { await vm.setFavorite(id: asset.id, isFavorite: value) }
+            },
+            onDelete: { asset in
+                Task { await vm.delete(id: asset.id) }
+            },
+            onArchive: { asset, archive in
+                await vm.setArchived(id: asset.id, archived: archive, handOffError: viewerItem != nil)
+            },
+            onDismiss: { viewerOnScreen = false }
         )
         .fullScreenCover(isPresented: $presentingRoadTrip) {
             if let roadTripVM {
@@ -404,6 +414,7 @@ struct AlbumDetailView: View {
     /// Opens the Photos-style viewer at `item`, paging through album order.
     private func openViewer(for item: AssetReactItem) {
         guard let idx = vm.assets.firstIndex(where: { $0.id == item.id }) else { return }
+        viewerOnScreen = true
         viewerItem = PhotoViewerItem(assets: vm.assets, index: idx)
     }
 
@@ -536,9 +547,27 @@ struct AlbumDetailView: View {
                     LazyVGrid(columns: columns, spacing: PVSpacing.s2) {
                         ForEach(vm.assets, id: \.id) { item in
                             cellView(for: item)
+                                .onAppear {
+                                    Task { await vm.loadMoreIfNeeded(currentItemId: item.id) }
+                                }
                         }
                     }
                     .padding(.horizontal, PVSpacing.s4)
+
+                    switch vm.gridFooter {
+                    case .none:
+                        EmptyView()
+                    case .error(let message):
+                        InlineErrorBadge(message: message, retry: { Task { await vm.loadMore() } })
+                            .padding(.horizontal, PVSpacing.s4)
+                    case .loadingMore:
+                        ProgressView()
+                            .padding(.vertical, PVSpacing.s12)
+                            .frame(maxWidth: .infinity)
+                            .accessibilityIdentifier("albumLoadMore")
+                            .onAppear { Task { await vm.loadMore() } }
+                            .onChange(of: vm.gridEndRevision) { Task { await vm.loadMore() } }
+                    }
                 }
             }
             // D6: tap on empty grid area exits selection mode. Cell taps win
@@ -615,7 +644,7 @@ struct AlbumDetailView: View {
                     .shadow(color: .black.opacity(0.4), radius: 4)
                 // While loading, the grid-known count is authoritative; once
                 // loaded the fetched asset list wins (matches grid contents).
-                Text("\(vm.album == nil ? album.assetCount : vm.assets.count) Photos")
+                Text("\(vm.displayedPhotoCount(fallback: album.assetCount)) Photos")
                     .font(.pvSubhead)
                     .foregroundStyle(.white.opacity(0.9))
                     .shadow(color: .black.opacity(0.4), radius: 3)

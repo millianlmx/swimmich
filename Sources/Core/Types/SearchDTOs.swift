@@ -30,9 +30,10 @@ struct MetadataSearchDto: Codable, Equatable {
     var rating: Int?
     var personIds: [String]?
     var albumIds: [String]? // AC-519 — enables album asset fetch (FM-2 mitigation)
-    /// Direction-only sort, deprecated since v3.2.0 — **never written**: the
-    /// sheet's Sort option goes through `orderBy` (which names a field; `order`
-    /// cannot). Kept declared because the DTO mirrors the published schema.
+    /// Direction-only sort (`asc`/`desc`), deprecated since v3.2.0. Written by
+    /// the album detail screen on the flat route (the album's own direction);
+    /// never written by search, whose Sort option goes through `orderBy` (which
+    /// names a field; `order` cannot). Absent from the body when nil.
     var order: String?
     var page: Int?
     var size: Int?
@@ -45,8 +46,8 @@ struct MetadataSearchDto: Codable, Equatable {
     var takenAfter: String?
     var takenBefore: String?
     /// Sort of the result set — a `SearchOrder` (`field` × `direction`), added
-    /// in v3.2.0 and the non-deprecated replacement of `order`, which is
-    /// therefore never written (it cannot name a field).
+    /// in v3.2.0 and the non-deprecated replacement of `order`, which search
+    /// therefore never writes (it cannot name a field).
     var orderBy: SearchOrderDto?
     /// Pagination of the structured route: the opaque cursor the previous
     /// response handed out (`SearchAssetResponseDto.nextCursor`), added in

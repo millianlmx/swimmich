@@ -25,6 +25,45 @@ final class AlbumDetailViewModel {
     var actionErrorMessage: String?
     var isDeleted = false
 
+    // MARK: - Pagination state
+
+    /// Items per `POST /api/search/metadata` page. Fixed.
+    static let pageSize = 1000
+
+    /// True while the server announced a next page that is still to be requested.
+    private(set) var hasMorePages = false
+    private(set) var isLoadingMore = false
+    /// Error of a next-page request, distinct from `loadErrorMessage` (album / page 1).
+    var loadMoreErrorMessage: String?
+    /// Changes whenever the end of the grid may have moved, so the footer
+    /// spinner can re-trigger `loadMore()` while the user already sits at the bottom.
+    private(set) var gridEndRevision = 0
+
+    enum GridFooter: Equatable {
+        case none
+        case loadingMore
+        case error(String)
+    }
+
+    var gridFooter: GridFooter {
+        if let message = loadMoreErrorMessage { return .error(message) }
+        return hasMorePages ? .loadingMore : .none
+    }
+
+    private var nextPage: Int?
+    /// Direction sent by the page 1 that established the current grid; later
+    /// pages reuse it so a mid-pagination album refresh never mixes two orders.
+    private var pageOrder: String?
+    /// Local removals since the last page that advanced the pagination. The
+    /// server paginates by offset, so each one shifts the next page by one photo.
+    private var removedSinceLastPage = 0
+    /// Ids removed locally since the last applied page 1 (never re-inserted).
+    private var removedIdsSinceLoad: Set<String> = []
+    private var removalsInFlight = 0
+    private var removalEpoch = 0
+    private var loadGeneration = 0
+    private var isFetchingFirstPage = false
+
     init(client: any ImmichClient, albumId: String) {
         self.client = client
         self.albumId = albumId
@@ -64,7 +103,9 @@ final class AlbumDetailViewModel {
         guard !selectedIds.isEmpty else { return }
         let ids = Array(selectedIds)
         do {
-            let results = try await client.removeAssetsFromAlbum(albumId: albumId, dto: BulkIdsDto(ids: ids))
+            let results = try await trackingRemoval {
+                try await client.removeAssetsFromAlbum(albumId: albumId, dto: BulkIdsDto(ids: ids))
+            }
             let removeSet = removedIds(results)
             removeLocally(removeSet)
             exitSelectionMode()
@@ -109,7 +150,7 @@ final class AlbumDetailViewModel {
         guard !ids.isEmpty else { return [] }
         do {
             // MUST throw-or-succeed before mutating anything.
-            try await client.deleteAssets(ids: ids, force: false)
+            try await trackingRemoval { try await client.deleteAssets(ids: ids, force: false) }
             let removed = removeLocally(Set(ids))
             exitSelectionMode()
             actionErrorMessage = nil
@@ -130,13 +171,31 @@ final class AlbumDetailViewModel {
             .map(\.id)
     }
 
-    /// Single point of local removal. Returns the ids actually removed from `assets`.
+    /// Single point of local removal. Returns the ids actually removed from
+    /// `assets`; they count as removals for the pagination offset (the server
+    /// paginates by offset, so each one shifts the next page).
     @discardableResult
     func removeLocally(_ ids: Set<String>) -> Set<String> {
         let removed = ids.intersection(assets.map(\.id))
         assets.removeAll { removed.contains($0.id) }
         loadedIds.subtract(removed)
+        removedSinceLastPage += removed.count
+        removedIdsSinceLoad.formUnion(removed)
+        if !removed.isEmpty { gridEndRevision += 1 }
         return removed
+    }
+
+    /// Wraps the network call of a removal. A page request that overlaps one
+    /// cannot know whether the server processed it before or after the removal.
+    private func trackingRemoval<T>(_ op: () async throws -> T) async rethrows -> T {
+        removalsInFlight += 1
+        removalEpoch &+= 1
+        defer {
+            removalsInFlight -= 1
+            removalEpoch &+= 1
+            if removalsInFlight == 0 { gridEndRevision += 1 }
+        }
+        return try await op()
     }
 
     // MARK: - Permissions
@@ -162,50 +221,183 @@ final class AlbumDetailViewModel {
 
     // MARK: - Load (AC-508)
 
-    /// Two-phase load: album metadata (try-then-mutate `album`) THEN assets
-    /// via searchMetadata (try-then-mutate `assets` independently). A failure
-    /// in the second phase still leaves `album` populated.
+    /// Two-phase load: album metadata (try-then-mutate `album`) THEN page 1 of
+    /// the assets via searchMetadata. A failure in the second phase still
+    /// leaves `album` populated. Later pages come from `loadMore()`.
     func load() async {
+        loadGeneration += 1
+        let g = loadGeneration
         isLoading = true
-        defer { isLoading = false }
+        isLoadingMore = false
 
         // Selection is scoped to the current asset list; a reload starts clean.
         exitSelectionMode()
 
         // Phase 1: album metadata.
         do {
-            album = try await client.getAlbum(id: albumId)
+            let fetched = try await client.getAlbum(id: albumId)
+            guard g == loadGeneration else { return }
+            album = fetched
             loadErrorMessage = nil
         } catch {
-            // Album fetch failed: nothing else to do.
+            guard g == loadGeneration else { return }
             loadErrorMessage = error.userFacingMessage
+            isLoading = false
             return
         }
 
-        // Phase 2: assets via search (albumIds filter).
-        await fetchAssets()
+        // Phase 2: page 1 via search (albumIds filter).
+        await fetchFirstPage(generation: g)
     }
 
-    private func fetchAssets() async {
+    /// Requests page 1 with the album's current order and replaces the grid.
+    /// Ignored (no mutation) when a newer load started meanwhile.
+    private func fetchFirstPage(generation g: Int) async {
+        let order = album?.order?.rawValue
+        let epoch = removalEpoch
+        let before = removedIdsSinceLoad
+        isFetchingFirstPage = true
+        defer {
+            if g == loadGeneration {
+                isFetchingFirstPage = false
+                isLoading = false
+            }
+        }
         do {
-            let dto = MetadataSearchDto(albumIds: [albumId], size: 1000)
-            let response = try await client.searchMetadata(dto: dto)
-            applyAssets(response.assets.items, append: false)
+            let response = try await client.searchMetadata(dto: pageDto(page: 1, order: order))
+            guard g == loadGeneration else { return }
+            removedIdsSinceLoad.subtract(before)
+            assets = []
+            loadedIds = []
+            append(response.assets.items.filter { !removedIdsSinceLoad.contains($0.id) })
+            pageOrder = order
+            if removalEpoch != epoch || removalsInFlight > 0 {
+                // A removal crossed this request: re-request page 1, duplicates are absorbed.
+                nextPage = 1
+                hasMorePages = true
+            } else {
+                nextPage = response.assets.nextPage.flatMap(Int.init)
+                hasMorePages = nextPage != nil
+            }
+            removedSinceLastPage = 0
+            loadMoreErrorMessage = nil
+            loadErrorMessage = nil
+            gridEndRevision += 1
         } catch {
-            // Album metadata already populated; surface asset-fetch error but
-            // keep `album` intact (try-then-mutate discipline).
+            guard g == loadGeneration else { return }
+            // Album metadata already populated; surface the error but keep
+            // `album` and the grid intact (try-then-mutate discipline).
             loadErrorMessage = error.userFacingMessage
         }
     }
 
-    private func applyAssets(_ dtos: [AssetResponseDto], append: Bool) {
-        if !append {
-            assets = []
-            loadedIds = []
-        }
+    private func pageDto(page: Int, order: String?) -> MetadataSearchDto {
+        MetadataSearchDto(albumIds: [albumId], order: order, page: page, size: Self.pageSize)
+    }
+
+    private func append(_ dtos: [AssetResponseDto]) {
         for dto in dtos where !loadedIds.contains(dto.id) {
             loadedIds.insert(dto.id)
             assets.append(AssetReactItem(from: dto))
+        }
+    }
+
+    // MARK: - Next pages (scroll)
+
+    /// Requests the next page when `currentItemId` is the last photo of the grid.
+    func loadMoreIfNeeded(currentItemId: String) async {
+        guard let last = assets.last, last.id == currentItemId else { return }
+        await loadMore()
+    }
+
+    /// Requests the next page. No-op while a (re)load, another page or a removal
+    /// is in flight, or when the server announced no further page. The page
+    /// asked for is the one holding the real boundary once local removals are
+    /// subtracted; the overlap is absorbed by `loadedIds`. A response that
+    /// crossed a removal is discarded and requested again from the same boundary.
+    func loadMore() async {
+        guard !isLoading, !isFetchingFirstPage, !isLoadingMore, removalsInFlight == 0,
+              hasMorePages, let next = nextPage else { return }
+        isLoadingMore = true
+        let g = loadGeneration
+        let removed = removedSinceLastPage
+        let epoch = removalEpoch
+        let page = max(1, ((next - 1) * Self.pageSize - removed) / Self.pageSize + 1)
+        do {
+            let response = try await client.searchMetadata(dto: pageDto(page: page, order: pageOrder))
+            guard g == loadGeneration else { return }
+            if removalEpoch == epoch && removalsInFlight == 0 {
+                append(response.assets.items)
+                nextPage = response.assets.nextPage.flatMap(Int.init)
+                hasMorePages = nextPage != nil
+                removedSinceLastPage = max(0, removedSinceLastPage - removed)
+            }
+            loadMoreErrorMessage = nil
+            isLoadingMore = false
+            gridEndRevision += 1
+        } catch {
+            guard g == loadGeneration else { return }
+            loadMoreErrorMessage = error.userFacingMessage
+            isLoadingMore = false
+        }
+    }
+
+    /// Photo count for the header: the server total (minus local removals) while
+    /// pages remain, never less than what is loaded; the loaded count once complete.
+    func displayedPhotoCount(fallback: Int) -> Int {
+        guard let album else { return fallback }
+        guard hasMorePages else { return assets.count }
+        return max(assets.count, album.assetCount - removedIdsSinceLoad.count)
+    }
+
+    // MARK: - In-place updates (viewer)
+
+    /// Favorite toggled from the viewer: patched in place, no reload.
+    @discardableResult
+    func setFavorite(id: String, isFavorite: Bool) async -> Bool {
+        do {
+            _ = try await client.updateAsset(id: id, dto: UpdateAssetDto(isFavorite: isFavorite))
+            if let idx = assets.firstIndex(where: { $0.id == id }) {
+                assets[idx] = assets[idx].with(isFavorite: isFavorite)
+            }
+            actionErrorMessage = nil
+            return true
+        } catch {
+            actionErrorMessage = error.userFacingMessage
+            return false
+        }
+    }
+
+    /// Trashes one photo from the viewer; it leaves the grid and counts as a removal.
+    @discardableResult
+    func delete(id: String) async -> Bool {
+        do {
+            try await trackingRemoval { try await client.deleteAssets(ids: [id], force: false) }
+            removeLocally([id])
+            actionErrorMessage = nil
+            return true
+        } catch {
+            actionErrorMessage = error.userFacingMessage
+            return false
+        }
+    }
+
+    /// Archives / unarchives one photo from the viewer. The photo stays in the
+    /// album (the server keeps archived photos in it) with its visibility updated.
+    /// - Returns: the error message on failure (shown in the viewer when
+    ///   `handOffError`, else also in `actionErrorMessage`), nil on success.
+    func setArchived(id: String, archived: Bool, handOffError: Bool) async -> String? {
+        let visibility: AssetVisibility = archived ? .archive : .timeline
+        do {
+            try await client.bulkUpdateAssets(dto: AssetBulkUpdateDto(ids: [id], visibility: visibility))
+            if let idx = assets.firstIndex(where: { $0.id == id }) {
+                assets[idx] = assets[idx].with(visibility: visibility.rawValue)
+            }
+            return nil
+        } catch {
+            let message = error.userFacingMessage
+            actionErrorMessage = handOffError ? nil : message
+            return message
         }
     }
 
@@ -215,12 +407,15 @@ final class AlbumDetailViewModel {
         guard !ids.isEmpty else { return }
         do {
             _ = try await client.addAssetsToAlbum(albumId: albumId, dto: BulkIdsDto(ids: ids))
-            // Refresh assets from server after a successful add.
-            await fetchAssets()
-            actionErrorMessage = nil
         } catch {
             actionErrorMessage = error.userFacingMessage
+            return
         }
+        // Restart from page 1 with the album's current order; any page still in flight is dropped.
+        loadGeneration += 1
+        isLoadingMore = false
+        await fetchFirstPage(generation: loadGeneration)
+        actionErrorMessage = nil
     }
 
     // MARK: - Remove assets (AC-510)
@@ -228,7 +423,9 @@ final class AlbumDetailViewModel {
     func removeAssets(ids: [String]) async {
         guard !ids.isEmpty else { return }
         do {
-            let results = try await client.removeAssetsFromAlbum(albumId: albumId, dto: BulkIdsDto(ids: ids))
+            let results = try await trackingRemoval {
+                try await client.removeAssetsFromAlbum(albumId: albumId, dto: BulkIdsDto(ids: ids))
+            }
             // try-then-mutate: update local list only on success.
             let removeSet = removedIds(results)
             removeLocally(removeSet)
