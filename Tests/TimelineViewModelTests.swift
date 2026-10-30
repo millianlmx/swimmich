@@ -252,14 +252,14 @@ final class TimelineViewModelTests: XCTestCase {
 
         // Empty selection → no-op.
         vm.enterSelectionMode()
-        await vm.deleteSelected()
+        await vm.deleteSelected(currentUserId: nil)
         XCTAssertNil(mock.lastDeleteBody, "no delete call when nothing selected")
         XCTAssertEqual(vm.items.count, 4, "empty delete must not mutate items")
 
         // Select 2, delete.
         vm.toggleSelection(id: "a2")
         vm.toggleSelection(id: "a4")
-        await vm.deleteSelected()
+        await vm.deleteSelected(currentUserId: nil)
 
         XCTAssertEqual(Set(mock.lastDeleteBody?.ids ?? []), ["a2", "a4"])
         XCTAssertEqual(mock.lastDeleteBody?.force, false)
@@ -294,7 +294,7 @@ final class TimelineViewModelTests: XCTestCase {
         vm.enterSelectionMode()
         vm.toggleSelection(id: "a1")
         vm.toggleSelection(id: "a3")
-        await vm.deleteSelected()
+        await vm.deleteSelected(currentUserId: nil)
 
         XCTAssertEqual(vm.items.count, before, "items unchanged on throw")
         XCTAssertEqual(vm.loadedIds, loadedBefore, "loadedIds unchanged on throw")
@@ -428,7 +428,7 @@ final class TimelineViewModelTests: XCTestCase {
         vm.toggleSelection(id: "a1")
         vm.toggleSelection(id: "a3")
 
-        await vm.archiveSelected()
+        await vm.archiveSelected(currentUserId: nil)
 
         XCTAssertEqual(mock.lastBulkUpdateDto?.ids.sorted(), ["a1", "a3"])
         XCTAssertEqual(mock.lastBulkUpdateDto?.visibility, .archive)
@@ -441,7 +441,7 @@ final class TimelineViewModelTests: XCTestCase {
         vm.enterSelectionMode()
         vm.toggleSelection(id: "a2")
 
-        await vm.archiveSelected()
+        await vm.archiveSelected(currentUserId: nil)
 
         XCTAssertEqual(vm.items.map(\.id), ["a1", "a3"])
         XCTAssertEqual(vm.loadedIds, Set(["a1", "a3"]))
@@ -457,7 +457,7 @@ final class TimelineViewModelTests: XCTestCase {
         vm.enterSelectionMode()
         vm.toggleSelection(id: "a1")
 
-        await vm.archiveSelected()
+        await vm.archiveSelected(currentUserId: nil)
 
         XCTAssertEqual(vm.items.map(\.id), ["a1", "a2", "a3"], "failure keeps items for retry")
         XCTAssertTrue(vm.selectionMode, "selection survives failure")
@@ -483,7 +483,7 @@ final class TimelineViewModelTests: XCTestCase {
         let vm = await makeLoadedVM(mock)
         vm.enterSelectionMode()
 
-        await vm.archiveSelected()
+        await vm.archiveSelected(currentUserId: nil)
 
         XCTAssertNil(mock.lastBulkUpdateDto)
         XCTAssertEqual(vm.items.count, 3)
@@ -581,13 +581,15 @@ final class TimelineViewModelTests: XCTestCase {
 
     /// Seeds a VM in « All » with one month holding `owners`' photos (ids `p1…`).
     @MainActor
-    private func makePartnerVM(_ mock: MockImmichClient, owners: [String]) async -> TimelineViewModel {
+    private func makePartnerVM(
+        _ mock: MockImmichClient, owners: [String], favorites: [Bool]? = nil
+    ) async -> TimelineViewModel {
         let ids = owners.indices.map { "p\($0 + 1)" }
         mock.bucketsResponse = [TimeBucketsResponseDto(timeBucket: "2024-07-01", count: ids.count)]
         mock.bucketResponses = [
             "2024-07-01": columnar(
                 ids: ids, ratios: ids.map { _ in 1 }, thumbhashes: ids.map { _ in nil },
-                favorites: ids.map { _ in false }, owners: owners
+                favorites: favorites ?? ids.map { _ in false }, owners: owners
             )
         ]
         let vm = TimelineViewModel(client: mock)
@@ -752,56 +754,259 @@ final class TimelineViewModelTests: XCTestCase {
         XCTAssertEqual(vm.items.map(\.id), ["ar1"])
     }
 
+    // MARK: - Owner-only batch actions (partner photos are skipped, not refused)
+
+    /// Selects `ids` in a fresh selection mode.
     @MainActor
-    func test_partnerTimeline_AC10_mixedSelectionDeleteRefusedKeepsGridAndSelection() async {
+    private func select(_ vm: TimelineViewModel, _ ids: [String]) {
+        vm.enterSelectionMode()
+        for id in ids { vm.toggleSelection(id: id) }
+    }
+
+    /// p1, p2 mine; p3 a partner's — everything selected.
+    @MainActor
+    private func makeMixedVM(_ mock: MockImmichClient, favorites: [Bool]? = nil) async -> TimelineViewModel {
+        let vm = await makePartnerVM(mock, owners: ["me", "me", "partner"], favorites: favorites)
+        select(vm, ["p1", "p2", "p3"])
+        return vm
+    }
+
+    @MainActor
+    func test_ownerOnly_AC1_AC13_mixedDeleteSendsOwnedIdsOnly() async {
+        let mock = MockImmichClient()
+        let vm = await makeMixedVM(mock)
+
+        await vm.deleteSelected(currentUserId: "me")
+
+        XCTAssertEqual(Set(mock.lastDeleteBody?.ids ?? []), ["p1", "p2"])
+        XCTAssertEqual(vm.items.map(\.id), ["p3"])
+        XCTAssertEqual(vm.loadedIds, ["p3"])
+        XCTAssertFalse(vm.selectionMode)
+        XCTAssertNil(vm.skippedPartnerCount, "the confirmation already announced the partner photo")
+        XCTAssertNil(vm.actionErrorMessage)
+    }
+
+    @MainActor
+    func test_ownerOnly_AC2_AC13_mixedArchiveSendsOwnedIdsOnly() async {
+        let mock = MockImmichClient()
+        let vm = await makeMixedVM(mock)
+
+        await vm.archiveSelected(currentUserId: "me")
+
+        XCTAssertEqual(Set(mock.lastBulkUpdateDto?.ids ?? []), ["p1", "p2"])
+        XCTAssertEqual(mock.lastBulkUpdateDto?.visibility, .archive)
+        XCTAssertEqual(vm.items.map(\.id), ["p3"])
+        XCTAssertEqual(vm.loadedIds, ["p3"])
+        XCTAssertFalse(vm.selectionMode)
+    }
+
+    @MainActor
+    func test_ownerOnly_AC16_AC13_mixedLockSendsOwnedIdsOnly() async {
+        let mock = MockImmichClient()
+        let vm = await makeMixedVM(mock)
+
+        await vm.moveSelectedToLockedFolder(currentUserId: "me")
+
+        XCTAssertEqual(Set(mock.lastBulkUpdateDto?.ids ?? []), ["p1", "p2"])
+        XCTAssertEqual(mock.lastBulkUpdateDto?.visibility, .locked)
+        XCTAssertEqual(vm.items.map(\.id), ["p3"])
+        XCTAssertEqual(vm.loadedIds, ["p3"])
+        XCTAssertFalse(vm.selectionMode)
+    }
+
+    @MainActor
+    func test_ownerOnly_AC3_AC13_heartFavoritesOwnedIdsOnly() async {
+        let mock = MockImmichClient()
+        let vm = await makeMixedVM(mock)
+
+        await vm.favoriteSelected(currentUserId: "me")
+
+        XCTAssertEqual(Set(mock.updateAssetCalls.map(\.id)), ["p1", "p2"])
+        XCTAssertTrue(mock.updateAssetCalls.allSatisfy { $0.dto.isFavorite == true })
+        XCTAssertEqual(vm.items.map(\.isFavorite), [true, true, false])
+        XCTAssertFalse(vm.selectionMode)
+    }
+
+    /// The target comes from the owned photos only: the partner's non-favorite
+    /// must not turn "all my photos are favorites" into "favorite everything".
+    @MainActor
+    func test_ownerOnly_AC14_heartUnfavoritesWhenOwnedAllFavorite() async {
+        let mock = MockImmichClient()
+        let vm = await makeMixedVM(mock, favorites: [true, true, false])
+
+        await vm.favoriteSelected(currentUserId: "me")
+
+        XCTAssertEqual(Set(mock.updateAssetCalls.map(\.id)), ["p1", "p2"])
+        XCTAssertTrue(mock.updateAssetCalls.allSatisfy { $0.dto.isFavorite == false })
+        XCTAssertEqual(vm.items.map(\.isFavorite), [false, false, false])
+        XCTAssertFalse(vm.selectionMode)
+    }
+
+    @MainActor
+    func test_ownerOnly_AC4_stackSendsOwnedIdsInGridOrder() async {
+        let mock = MockImmichClient()
+        let vm = await makePartnerVM(mock, owners: ["me", "partner", "me"])
+        select(vm, ["p3", "p2", "p1"])
+
+        await vm.stackSelected(currentUserId: "me")
+
+        XCTAssertEqual(mock.lastCreateStackIds, ["p1", "p3"], "grid order, partner photo left out")
+        XCTAssertFalse(vm.selectionMode)
+        XCTAssertEqual(vm.skippedPartnerCount, 1)
+    }
+
+    @MainActor
+    func test_ownerOnly_AC5_stackWithOneOwnedSendsNothingAndReportsSkipped() async {
         let mock = MockImmichClient()
         let vm = await makePartnerVM(mock, owners: ["me", "partner"])
-        vm.enterSelectionMode()
-        vm.toggleSelection(id: "p1")
-        vm.toggleSelection(id: "p2")
-        mock.deleteError = APIError.serverError(400, "Not found or no asset.delete access")
+        select(vm, ["p1", "p2"])
 
-        await vm.deleteSelected()
+        await vm.stackSelected(currentUserId: "me")
 
-        XCTAssertEqual(Set(mock.lastDeleteBody?.ids ?? []), ["p1", "p2"], "one call for the whole selection")
-        XCTAssertNotNil(vm.actionErrorMessage)
-        XCTAssertEqual(vm.items.map(\.id), ["p1", "p2"])
-        XCTAssertEqual(vm.loadedIds, ["p1", "p2"])
+        XCTAssertNil(mock.lastCreateStackIds)
+        XCTAssertEqual(vm.skippedPartnerCount, 1)
         XCTAssertTrue(vm.selectionMode)
         XCTAssertEqual(vm.selectedIds, ["p1", "p2"])
     }
 
+    /// Four actions publish the notice on success; delete announced it in its confirmation.
     @MainActor
-    func test_partnerTimeline_AC10_mixedSelectionArchiveAndLockRefusedKeepGridAndSelection() async {
-        let mock = MockImmichClient()
-        let vm = await makePartnerVM(mock, owners: ["me", "partner"])
-        vm.enterSelectionMode()
-        vm.toggleSelection(id: "p1")
-        vm.toggleSelection(id: "p2")
-        mock.globalError = APIError.serverError(400, "Not found or no asset.update access")
+    func test_ownerOnly_AC6_partialSuccessReportsSkippedNotError() async {
+        let actions: [(String, (TimelineViewModel) async -> Void)] = [
+            ("archive", { await $0.archiveSelected(currentUserId: "me") }),
+            ("lock", { await $0.moveSelectedToLockedFolder(currentUserId: "me") }),
+            ("heart", { await $0.favoriteSelected(currentUserId: "me") }),
+            ("stack", { await $0.stackSelected(currentUserId: "me") }),
+        ]
+        for (name, act) in actions {
+            let vm = await makeMixedVM(MockImmichClient())
+            await act(vm)
+            XCTAssertEqual(vm.skippedPartnerCount, 1, name)
+            XCTAssertNil(vm.actionErrorMessage, name)
+        }
 
-        await vm.archiveSelected()
-
-        XCTAssertEqual(Set(mock.lastBulkUpdateDto?.ids ?? []), ["p1", "p2"])
-        XCTAssertNotNil(vm.actionErrorMessage)
-        XCTAssertEqual(vm.items.map(\.id), ["p1", "p2"])
-        XCTAssertTrue(vm.selectionMode)
-        XCTAssertEqual(vm.selectedIds, ["p1", "p2"])
-
-        vm.actionErrorMessage = nil
-        mock.lastBulkUpdateDto = nil
-        await vm.moveSelectedToLockedFolder()
-
-        XCTAssertEqual(Set(mock.lastBulkUpdateDto?.ids ?? []), ["p1", "p2"])
-        XCTAssertNotNil(vm.actionErrorMessage)
-        XCTAssertEqual(vm.items.map(\.id), ["p1", "p2"])
-        XCTAssertEqual(vm.loadedIds, ["p1", "p2"])
-        XCTAssertTrue(vm.selectionMode)
-        XCTAssertEqual(vm.selectedIds, ["p1", "p2"])
+        let vm = await makeMixedVM(MockImmichClient())
+        await vm.deleteSelected(currentUserId: "me")
+        XCTAssertNil(vm.skippedPartnerCount)
+        XCTAssertNil(vm.actionErrorMessage)
     }
 
     @MainActor
-    func test_partnerTimeline_AC10_mixedSelectionFavoriteRefusedMatchesServerState() async {
+    func test_ownerOnly_AC7_partnerOnlySelectionSendsNothing() async {
+        let actions: [(String, (TimelineViewModel) async -> Void)] = [
+            ("delete", { await $0.deleteSelected(currentUserId: "me") }),
+            ("archive", { await $0.archiveSelected(currentUserId: "me") }),
+            ("lock", { await $0.moveSelectedToLockedFolder(currentUserId: "me") }),
+            ("heart", { await $0.favoriteSelected(currentUserId: "me") }),
+        ]
+        for (name, act) in actions {
+            let mock = MockImmichClient()
+            let vm = await makePartnerVM(mock, owners: ["partner", "partner", "partner"])
+            select(vm, ["p1", "p2", "p3"])
+            let before = mock.requestCount
+
+            await act(vm)
+
+            XCTAssertEqual(mock.requestCount, before, "\(name) sent a request")
+            XCTAssertEqual(vm.skippedPartnerCount, 3, name)
+            XCTAssertTrue(vm.selectionMode, name)
+            XCTAssertEqual(vm.selectedIds, ["p1", "p2", "p3"], name)
+            XCTAssertEqual(vm.items.count, 3, name)
+        }
+    }
+
+    @MainActor
+    func test_ownerOnly_AC8_ownedOnlySelectionUnchanged() async {
+        let mock = MockImmichClient()
+        let vm = await makePartnerVM(mock, owners: ["me", "me"])
+
+        select(vm, ["p1", "p2"])
+        await vm.archiveSelected(currentUserId: "me")
+        XCTAssertEqual(Set(mock.lastBulkUpdateDto?.ids ?? []), ["p1", "p2"])
+        XCTAssertNil(vm.skippedPartnerCount)
+        XCTAssertTrue(vm.items.isEmpty)
+
+        let vm2 = await makePartnerVM(mock, owners: ["me", "me"])
+        select(vm2, ["p1", "p2"])
+        await vm2.deleteSelected(currentUserId: "me")
+        XCTAssertEqual(Set(mock.lastDeleteBody?.ids ?? []), ["p1", "p2"])
+        XCTAssertNil(vm2.skippedPartnerCount)
+
+        let vm3 = await makePartnerVM(mock, owners: ["me", "me"])
+        select(vm3, ["p1", "p2"])
+        await vm3.stackSelected(currentUserId: "me")
+        XCTAssertEqual(mock.lastCreateStackIds, ["p1", "p2"])
+        XCTAssertNil(vm3.skippedPartnerCount)
+    }
+
+    @MainActor
+    func test_ownerOnly_AC9_unknownOwnerIsSent() async {
+        let mock = MockImmichClient()
+        let vm = await makePartnerVM(mock, owners: ["", "partner"])
+        select(vm, ["p1", "p2"])
+        await vm.archiveSelected(currentUserId: "me")
+        XCTAssertEqual(mock.lastBulkUpdateDto?.ids, ["p1"], "empty ownerId is sent")
+        XCTAssertEqual(vm.skippedPartnerCount, 1)
+
+        let vm2 = await makePartnerVM(mock, owners: ["me", "partner"])
+        select(vm2, ["p1", "p2"])
+        await vm2.archiveSelected(currentUserId: nil)
+        XCTAssertEqual(Set(mock.lastBulkUpdateDto?.ids ?? []), ["p1", "p2"], "no session user id: everything is sent")
+        XCTAssertNil(vm2.skippedPartnerCount)
+    }
+
+    @MainActor
+    func test_ownerOnly_AC15_ownedRefusalKeepsStateAndNoSkippedNotice() async {
+        let refusal = APIError.serverError(400, "Not found or no asset.update access")
+        let actions: [(String, (MockImmichClient) -> Void, (TimelineViewModel) async -> Void)] = [
+            ("delete", { $0.deleteError = refusal }, { await $0.deleteSelected(currentUserId: "me") }),
+            ("archive", { $0.globalError = refusal }, { await $0.archiveSelected(currentUserId: "me") }),
+            ("lock", { $0.globalError = refusal }, { await $0.moveSelectedToLockedFolder(currentUserId: "me") }),
+            ("heart", { $0.updateAssetErrorsById["p1"] = refusal }, { await $0.favoriteSelected(currentUserId: "me") }),
+            ("stack", { $0.globalError = refusal }, { await $0.stackSelected(currentUserId: "me") }),
+        ]
+        for (name, fail, act) in actions {
+            let mock = MockImmichClient()
+            let vm = await makeMixedVM(mock)
+            fail(mock)
+
+            await act(vm)
+
+            XCTAssertNotNil(vm.actionErrorMessage, name)
+            XCTAssertNil(vm.skippedPartnerCount, name)
+            XCTAssertEqual(vm.items.map(\.id), ["p1", "p2", "p3"], name)
+            XCTAssertEqual(vm.loadedIds, ["p1", "p2", "p3"], name)
+            XCTAssertTrue(vm.selectionMode, name)
+            XCTAssertEqual(vm.selectedIds, ["p1", "p2", "p3"], name)
+        }
+    }
+
+    @MainActor
+    func test_ownerOnly_AC17_deleteConfirmationCountsOwnedIds() async {
+        let mock = MockImmichClient()
+        let vm = await makeMixedVM(mock)
+        let mixed = vm.ownerScopedSelection(currentUserId: "me")
+        XCTAssertEqual(Set(mixed.ids), ["p1", "p2"])
+        XCTAssertEqual(mixed.skipped, 1)
+
+        let owned = await makePartnerVM(mock, owners: ["me", "me"])
+        select(owned, ["p1", "p2"])
+        XCTAssertEqual(owned.ownerScopedSelection(currentUserId: "me").skipped, 0)
+
+        let partnerOnly = await makePartnerVM(mock, owners: ["partner", "partner", "partner"])
+        select(partnerOnly, ["p1", "p2", "p3"])
+        let none = partnerOnly.ownerScopedSelection(currentUserId: "me")
+        XCTAssertTrue(none.ids.isEmpty)
+        XCTAssertEqual(none.skipped, 3)
+
+        let unknown = vm.ownerScopedSelection(currentUserId: nil)
+        XCTAssertEqual(Set(unknown.ids), ["p1", "p2", "p3"])
+        XCTAssertEqual(unknown.skipped, 0)
+    }
+
+    /// `batchSetFavorite` stops at the first refusal; the hearts match what the server took.
+    @MainActor
+    func test_partnerTimeline_batchFavoriteRefusedMatchesServerState() async {
         let mock = MockImmichClient()
         let vm = await makePartnerVM(mock, owners: ["me", "partner", "me"])
         vm.enterSelectionMode()
@@ -918,7 +1123,7 @@ final class TimelineViewModelTests: XCTestCase {
         vm.toggleSelection(id: "a3")
         vm.toggleSelection(id: "a2")
 
-        await vm.stackSelected()
+        await vm.stackSelected(currentUserId: nil)
 
         XCTAssertEqual(mock.lastCreateStackIds, ["a2", "a3"], "grid order, not Set order")
         XCTAssertFalse(vm.selectionMode)

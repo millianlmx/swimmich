@@ -314,16 +314,21 @@ struct TimelineView: View {
             columnCount = newValue
             gridScale = TimelineGridZoom.scale(forColumnCount: newValue, defaultColumns: newValue)
         }
-        .alert("Delete \(vm.selectedIds.count) asset(s)?", isPresented: $pendingDeleteSelected) {
+        .alert("Delete \(vm.ownerScopedSelection(currentUserId: auth.userId).ids.count) asset(s)?", isPresented: $pendingDeleteSelected) {
             Button("Delete", role: .destructive) {
                 Task {
-                    await vm.deleteSelected()
+                    await vm.deleteSelected(currentUserId: auth.userId)
                     lastDeleteTick &+= 1
                 }
             }
             Button("Cancel", role: .cancel) {}
         } message: {
-            Text("This removes them from your library. Action cannot be undone.")
+            let skipped = vm.ownerScopedSelection(currentUserId: auth.userId).skipped
+            if skipped > 0 {
+                Text("\(skipped) photo(s) belong to a partner and will not be deleted. The others are removed from your library. Action cannot be undone.")
+            } else {
+                Text("This removes them from your library. Action cannot be undone.")
+            }
         }
         // D3: surface VM errors (favorite/delete/load failures) — never swallow silently.
         .alert("Something went wrong", isPresented: Binding(
@@ -333,6 +338,16 @@ struct TimelineView: View {
             Button("OK", role: .cancel) {}
         } message: {
             Text(verbatim: vm.actionErrorMessage ?? "")
+        }
+        // Partner photos left out of a selection action (owner-only rights) — an
+        // outcome, not a failure, hence its own title. Same viewer rule as above.
+        .alert("Partner photos skipped", isPresented: Binding(
+            get: { vm.skippedPartnerCount != nil && !viewerOnScreen },
+            set: { if !$0 { vm.skippedPartnerCount = nil } }
+        )) {
+            Button("OK", role: .cancel) {}
+        } message: {
+            Text("\(vm.skippedPartnerCount ?? 0) photo(s) belong to a partner and were not changed.")
         }
         // D5: single-asset context-menu delete confirmation.
         .alert("Delete this asset?", isPresented: Binding(
@@ -668,15 +683,7 @@ struct TimelineView: View {
             if vm.selectionMode {
                 Button {
                     Task {
-                        let target = !vm.selectedIds.allSatisfy { id in
-                            vm.items.first { $0.id == id }?.isFavorite ?? false
-                        }
-                        // Exit only on success so a failed batch keeps the
-                        // selection intact for retry (audit fix — mirrors
-                        // deleteSelected's try-then-mutate discipline).
-                        if await vm.batchSetFavorite(vm.selectedIds, favorite: target) {
-                            vm.exitSelectionMode()
-                        }
+                        await vm.favoriteSelected(currentUserId: auth.userId)
                         lastFavoriteTick &+= 1
                     }
                 } label: {
@@ -686,7 +693,16 @@ struct TimelineView: View {
                 .disabled(vm.selectedIds.isEmpty)
 
                 Button(role: .destructive) {
-                    pendingDeleteSelected = true
+                    // Nothing sendable: no confirmation (nothing would be
+                    // deleted); the "Partner photos skipped" notice shows alone.
+                    if vm.ownerScopedSelection(currentUserId: auth.userId).ids.isEmpty {
+                        Task {
+                            await vm.deleteSelected(currentUserId: auth.userId)
+                            lastDeleteTick &+= 1
+                        }
+                    } else {
+                        pendingDeleteSelected = true
+                    }
                 } label: {
                     Label("Delete", systemImage: "trash")
                         .labelStyle(.iconOnly)
@@ -722,7 +738,7 @@ struct TimelineView: View {
                 } else {
                     Button {
                         Task {
-                            await vm.archiveSelected()
+                            await vm.archiveSelected(currentUserId: auth.userId)
                         }
                     } label: {
                         Label("Archive", systemImage: "archivebox")
@@ -738,7 +754,7 @@ struct TimelineView: View {
                 // "locked" entry (the folder is not a timeline view).
                 Button {
                     Task {
-                        await vm.moveSelectedToLockedFolder()
+                        await vm.moveSelectedToLockedFolder(currentUserId: auth.userId)
                     }
                 } label: {
                     Label("Move to Locked Folder", systemImage: "lock")
@@ -750,7 +766,7 @@ struct TimelineView: View {
                 // Stack selected assets (gap #1) — 2+ required.
                 Button {
                     Task {
-                        await vm.stackSelected()
+                        await vm.stackSelected(currentUserId: auth.userId)
                     }
                 } label: {
                     Label("Stack", systemImage: "square.stack.3d.up")

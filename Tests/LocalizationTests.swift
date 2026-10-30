@@ -93,6 +93,22 @@ final class LocalizationTests: XCTestCase {
         }
     }
 
+    /// AC-6 / AC-17: the owner-only notices are translated in each shipped language.
+    func test_ownerOnly_AC6_skippedNoticeIsTranslated() throws {
+        let keys = [
+            "Partner photos skipped",
+            "%lld photo(s) belong to a partner and were not changed.",
+            "%lld photo(s) belong to a partner and will not be deleted. The others are removed from your library. Action cannot be undone.",
+        ]
+        for key in keys {
+            for code in ["fr", "de", "es", "it"] {
+                let value = try localized(key, language: code)
+                XCTAssertFalse(value.isEmpty, "\(key) is empty in \(code)")
+                XCTAssertNotEqual(value, key, "\(key) is untranslated in \(code)")
+            }
+        }
+    }
+
     func test_languageNamesAreLocalizedAndNative() {
         let french = AppLanguage.language(for: "fr")
         XCTAssertEqual(french?.nativeName, "Français")

@@ -12159,6 +12159,62 @@
         }
       }
     },
+    "%lld photo(s) belong to a partner and were not changed." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%lld Foto(s) gehören einem Partner und wurden nicht geändert."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%lld foto(s) pertenecen a un socio y no se han modificado."
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%lld photo(s) appartenant à un partenaire n'ont pas été modifiée(s)."
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%lld foto appartengono a un partner e non sono state modificate."
+          }
+        }
+      }
+    },
+    "%lld photo(s) belong to a partner and will not be deleted. The others are removed from your library. Action cannot be undone." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%lld Foto(s) gehören einem Partner und werden nicht gelöscht. Die anderen werden aus deiner Mediathek entfernt. Die Aktion kann nicht rückgängig gemacht werden."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%lld foto(s) pertenecen a un socio y no se eliminarán. Las demás se eliminan de tu biblioteca. Esta acción no se puede deshacer."
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%lld photo(s) appartenant à un partenaire ne seront pas supprimée(s). Les autres sont retirées de votre photothèque. Action irréversible."
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%lld foto appartengono a un partner e non verranno eliminate. Le altre vengono rimosse dalla tua libreria. L'azione non può essere annullata."
+          }
+        }
+      }
+    },
     "%lld photo%@" : {
       "extractionState" : "stale",
       "localizations" : {
@@ -22575,6 +22631,34 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Sposta la mappa per trovare le foto qui."
+          }
+        }
+      }
+    },
+    "Partner photos skipped" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Partnerfotos übersprungen"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Fotos de socios omitidas"
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Photos de partenaires ignorées"
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Foto dei partner ignorate"
           }
         }
       }

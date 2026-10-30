@@ -5,10 +5,10 @@ import XCTest
 /// unknown visibility (map) is resolved.
 final class PhotoViewerArchiveActionTests: XCTestCase {
 
-    private func item(id: String, visibility: String) -> AssetReactItem {
+    private func item(id: String, visibility: String, ownerId: String = "", isImage: Bool = true) -> AssetReactItem {
         AssetReactItem(
-            id: id, ownerId: "", ratio: 1, isFavorite: false, visibility: visibility,
-            isTrashed: false, isImage: true, thumbhash: nil,
+            id: id, ownerId: ownerId, ratio: 1, isFavorite: false, visibility: visibility,
+            isTrashed: false, isImage: isImage, thumbhash: nil,
             createdAt: "", fileCreatedAt: "", localOffsetHours: 0,
             duration: nil, livePhotoVideoId: nil, projectionType: nil,
             city: nil, country: nil, latitude: nil, longitude: nil, stack: []
@@ -58,5 +58,68 @@ final class PhotoViewerArchiveActionTests: XCTestCase {
             of: item(id: "A", visibility: AssetReactItem.unresolvedVisibility), client: mock
         )
         XCTAssertNil(failed)
+    }
+
+    // MARK: - Owner-only controls
+
+    func test_ownerOnly_AC10_ownerActionPredicate() {
+        let cases: [(owner: String, user: String?, allowed: Bool)] = [
+            ("me", "me", true), ("partner", "me", false), ("", "me", true),
+            ("partner", nil, true), ("partner", "", true),
+        ]
+        for c in cases {
+            let asset = item(id: "A", visibility: "timeline", ownerId: c.owner)
+            XCTAssertEqual(asset.allowsOwnerActions(currentUserId: c.user), c.allowed, "\(c.owner)/\(String(describing: c.user))")
+        }
+    }
+
+    func test_ownerOnly_AC11_bottomBarHidesOwnerControlsForPartner() {
+        let partner = ViewerActions(asset: item(id: "A", visibility: "timeline", ownerId: "partner"),
+                                    visibility: "timeline", isTrash: false, currentUserId: "me")
+        XCTAssertTrue(partner.showsShare)
+        XCTAssertFalse(partner.showsFavorite)
+        XCTAssertFalse(partner.showsEdit)
+        XCTAssertNil(partner.archive)
+        XCTAssertFalse(partner.showsDelete)
+
+        let mine = ViewerActions(asset: item(id: "A", visibility: "timeline", ownerId: "me"),
+                                 visibility: "timeline", isTrash: false, currentUserId: "me")
+        XCTAssertEqual(mine, ViewerActions(asset: item(id: "A", visibility: "timeline", ownerId: ""),
+                                           visibility: "timeline", isTrash: false, currentUserId: "me"),
+                       "unknown owner keeps today's controls")
+        XCTAssertTrue(mine.showsShare && mine.showsFavorite && mine.showsEdit && mine.showsDelete)
+        XCTAssertEqual(mine.archive, .archive)
+
+        let archived = ViewerActions(asset: item(id: "A", visibility: "archive", ownerId: "me"),
+                                     visibility: "archive", isTrash: false, currentUserId: "me")
+        XCTAssertEqual(archived.archive, .unarchive)
+
+        let video = ViewerActions(asset: item(id: "V", visibility: "timeline", ownerId: "me", isImage: false),
+                                  visibility: "timeline", isTrash: false, currentUserId: "me")
+        XCTAssertTrue(video.showsFavorite)
+        XCTAssertFalse(video.showsEdit, "videos have no editor")
+
+        let unresolved = ViewerActions(asset: item(id: "M", visibility: AssetReactItem.unresolvedVisibility, ownerId: "me"),
+                                       visibility: AssetReactItem.unresolvedVisibility, isTrash: false, currentUserId: "me")
+        XCTAssertNil(unresolved.archive)
+
+        for owner in ["me", "partner"] {
+            let trash = ViewerActions(asset: item(id: "T", visibility: "timeline", ownerId: owner),
+                                      visibility: "timeline", isTrash: true, currentUserId: "me")
+            XCTAssertFalse(trash.showsShare || trash.showsFavorite || trash.showsEdit, owner)
+            XCTAssertNil(trash.archive, owner)
+            XCTAssertTrue(trash.showsDelete, "Trash keeps Delete Permanently for \(owner)")
+        }
+    }
+
+    func test_ownerOnly_AC12_infoPanelEditsFollowOwnership() {
+        func edits(owner: String, user: String?) -> Bool {
+            ViewerActions(asset: item(id: "A", visibility: "timeline", ownerId: owner),
+                          visibility: "timeline", isTrash: false, currentUserId: user).allowsInfoEdits
+        }
+        XCTAssertFalse(edits(owner: "partner", user: "me"))
+        XCTAssertTrue(edits(owner: "me", user: "me"))
+        XCTAssertTrue(edits(owner: "", user: "me"))
+        XCTAssertTrue(edits(owner: "partner", user: nil))
     }
 }

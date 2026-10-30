@@ -110,6 +110,28 @@ enum ViewerArchiveAction: Equatable {
     }
 }
 
+/// Which bottom-bar controls and info-panel edits the viewer offers for a
+/// photo. Pure logic. A partner's photo (owner-only server rights) gets
+/// Share only; the Trash keeps its own Restore / Delete Permanently pair.
+struct ViewerActions: Equatable {
+    let showsShare: Bool
+    let showsFavorite: Bool
+    let showsEdit: Bool
+    let archive: ViewerArchiveAction?
+    let showsDelete: Bool
+    let allowsInfoEdits: Bool
+
+    init(asset: AssetReactItem, visibility: String, isTrash: Bool, currentUserId: String?) {
+        let owner = asset.allowsOwnerActions(currentUserId: currentUserId)
+        showsShare = !isTrash
+        showsFavorite = !isTrash && owner
+        showsEdit = !isTrash && owner && !asset.isVideo
+        archive = !isTrash && owner ? ViewerArchiveAction(visibility: visibility) : nil
+        showsDelete = isTrash || owner
+        allowsInfoEdits = owner
+    }
+}
+
 /// Presents the Photos-style full-screen photo viewer for `assets`, opened at
 /// `item.index`. `item` is nilled out to dismiss.
 struct PhotoViewerPresentation: ViewModifier {
@@ -292,6 +314,10 @@ struct PhotoViewer: View {
     /// Offline cache mirror (issue #18): lets every page serve its full-size
     /// image from disk when the asset has been downloaded.
     @Environment(OfflineAssetIndex.self) private var offlineIndex: OfflineAssetIndex?
+    /// Logged-in user: a partner's photo (owner-only server rights) gets no
+    /// favorite / edit / archive / delete and no info-panel edits. Injected by
+    /// every host, like `PhotoShareSheet`'s read.
+    @Environment(AuthViewModel.self) private var auth
 
     init(
         assets: [AssetReactItem],
@@ -446,6 +472,7 @@ struct PhotoViewer: View {
                         vm: infoVM,
                         baseURL: baseURL,
                         token: token,
+                        allowsOwnerEdits: viewerActions(for: asset).allowsInfoEdits,
                         onClose: { showInfo = false },
                         onOpenLocationMap: { latitude, longitude, placeName in
                             locationMap = AssetLocationMapRequest(
@@ -866,9 +893,10 @@ struct PhotoViewer: View {
     // MARK: - Bottom bar (share · favorite/edit glass · delete)
 
     private func bottomBar(_ asset: AssetReactItem) -> some View {
-        GlassEffectContainer {
+        let actions = viewerActions(for: asset)
+        return GlassEffectContainer {
             HStack(spacing: PVSpacing.s16) {
-                if !isTrash {
+                if actions.showsShare {
                     Button {
                         presentShare = true
                     } label: {
@@ -886,32 +914,37 @@ struct PhotoViewer: View {
                 Spacer()
 
                 // Center glass capsule: favorite + edit (or restore in Trash).
-                HStack(spacing: PVSpacing.s24) {
-                    if isTrash {
-                        Button {
-                            restore(asset)
-                        } label: {
-                            Image(systemName: "arrow.uturn.backward")
-                                .font(.pvHeadline)
-                                .foregroundStyle(Color.white)
-                                .frame(width: 44, height: 44)
+                // Absent on a partner's photo: no empty glass pill.
+                if isTrash || actions.showsFavorite || actions.showsEdit {
+                    HStack(spacing: PVSpacing.s24) {
+                        if isTrash {
+                            Button {
+                                restore(asset)
+                            } label: {
+                                Image(systemName: "arrow.uturn.backward")
+                                    .font(.pvHeadline)
+                                    .foregroundStyle(Color.white)
+                                    .frame(width: 44, height: 44)
+                            }
+                            .buttonStyle(.plain)
+                            .accessibilityLabel("Restore")
                         }
-                        .buttonStyle(.plain)
-                        .accessibilityLabel("Restore")
-                    } else {
-                        Button {
-                            toggleFavorite(asset)
-                        } label: {
-                            Image(systemName: favoriteIDs.contains(asset.id) ? "heart.fill" : "heart")
-                                .font(.pvTitle)
-                                .foregroundStyle(favoriteIDs.contains(asset.id) ? Color.immichError : Color.white)
-                                .frame(width: 44, height: 44)
-                        }
-                        .buttonStyle(.plain)
-                        .accessibilityLabel(favoriteIDs.contains(asset.id) ? "Unfavorite" : "Favorite")
-                        .accessibilityIdentifier("viewerFavoriteButton")
 
-                        if !asset.isVideo {
+                        if actions.showsFavorite {
+                            Button {
+                                toggleFavorite(asset)
+                            } label: {
+                                Image(systemName: favoriteIDs.contains(asset.id) ? "heart.fill" : "heart")
+                                    .font(.pvTitle)
+                                    .foregroundStyle(favoriteIDs.contains(asset.id) ? Color.immichError : Color.white)
+                                    .frame(width: 44, height: 44)
+                            }
+                            .buttonStyle(.plain)
+                            .accessibilityLabel(favoriteIDs.contains(asset.id) ? "Unfavorite" : "Favorite")
+                            .accessibilityIdentifier("viewerFavoriteButton")
+                        }
+
+                        if actions.showsEdit {
                             Button {
                                 presentEdit = true
                             } label: {
@@ -924,14 +957,14 @@ struct PhotoViewer: View {
                             .accessibilityLabel("Edit")
                         }
                     }
+                    .padding(.horizontal, PVSpacing.s8)
+                    .padding(.vertical, PVSpacing.s4)
+                    .glassEffect(.regular.tint(.black.opacity(0.6)), in: Capsule())
                 }
-                .padding(.horizontal, PVSpacing.s8)
-                .padding(.vertical, PVSpacing.s4)
-                .glassEffect(.regular.tint(.black.opacity(0.6)), in: Capsule())
 
                 Spacer()
 
-                if !isTrash, let action = ViewerArchiveAction(visibility: visibility(of: asset)) {
+                if let action = actions.archive {
                     let archived = action == .unarchive
                     Button {
                         archive(asset)
@@ -947,22 +980,24 @@ struct PhotoViewer: View {
                     .accessibilityIdentifier(archived ? "viewerUnarchiveButton" : "viewerArchiveButton")
                 }
 
-                Button(role: .destructive) {
-                    if isTrash {
-                        deleteIsPermanent = true
-                    } else {
-                        deleteIsPermanent = false
+                if actions.showsDelete {
+                    Button(role: .destructive) {
+                        if isTrash {
+                            deleteIsPermanent = true
+                        } else {
+                            deleteIsPermanent = false
+                        }
+                        pendingDeleteIndex = selectedIndex
+                    } label: {
+                        Image(systemName: isTrash ? "trash.slash" : "trash")
+                            .font(.pvHeadline)
+                            .foregroundStyle(Color.white)
+                            .frame(width: 40, height: 40)
+                            .glassEffect(.regular.tint(.black.opacity(0.6)), in: Circle())
                     }
-                    pendingDeleteIndex = selectedIndex
-                } label: {
-                    Image(systemName: isTrash ? "trash.slash" : "trash")
-                        .font(.pvHeadline)
-                        .foregroundStyle(Color.white)
-                        .frame(width: 40, height: 40)
-                        .glassEffect(.regular.tint(.black.opacity(0.6)), in: Circle())
+                    .buttonStyle(.plain)
+                    .accessibilityLabel(isTrash ? "Delete Permanently" : "Delete")
                 }
-                .buttonStyle(.plain)
-                .accessibilityLabel(isTrash ? "Delete Permanently" : "Delete")
             }
         }
         .padding(.horizontal, PVSpacing.s16)
@@ -974,6 +1009,10 @@ struct PhotoViewer: View {
     /// that surface swaps favorite/edit for restore and soft-delete for
     /// delete-permanently (no share).
     private var isTrash: Bool { onRestore != nil }
+
+    private func viewerActions(for asset: AssetReactItem) -> ViewerActions {
+        ViewerActions(asset: asset, visibility: visibility(of: asset), isTrash: isTrash, currentUserId: auth.userId)
+    }
 
     /// The refusal of the last mutation shown in the banner: the one a
     /// presenting surface's callback handed back (`surfaceActionError`), then

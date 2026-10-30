@@ -16,6 +16,10 @@ final class TimelineViewModel {
     var isLoading: Bool = false
     var loadErrorMessage: String?
     var actionErrorMessage: String?
+    /// Partner photos left out of the last selection action (owner-only server
+    /// rights). `nil` = nothing to report. Distinct from `actionErrorMessage`:
+    /// the action itself succeeded or sent nothing.
+    var skippedPartnerCount: Int?
 
     /// Loaded item IDs for O(1) dedup (FM-1 / AC-006).
     private(set) var loadedIds: Set<String> = []
@@ -87,10 +91,19 @@ final class TimelineViewModel {
     /// stack route.
     static func tapRoute(for item: AssetReactItem, currentUserId: String?) -> TimelineTapRoute {
         guard let stackId = item.stackId else { return .viewer }
-        guard let currentUserId, !currentUserId.isEmpty, !item.ownerId.isEmpty else {
-            return .stack(id: stackId)
-        }
-        return item.ownerId == currentUserId ? .stack(id: stackId) : .viewer
+        return item.allowsOwnerActions(currentUserId: currentUserId) ? .stack(id: stackId) : .viewer
+    }
+
+    /// Splits the selection for an owner-only batch action: `ids` are sent,
+    /// `skipped` counts partner photos the server would refuse (and fail the
+    /// whole request for). Unknown owner is sent (see `allowsOwnerActions`),
+    /// as is an id the grid no longer holds. Pure; order of `ids` is
+    /// unspecified.
+    func ownerScopedSelection(currentUserId: String?) -> (ids: [String], skipped: Int) {
+        let foreign = Set(items.lazy.filter {
+            selectedIds.contains($0.id) && !$0.allowsOwnerActions(currentUserId: currentUserId)
+        }.map(\.id))
+        return (Array(selectedIds).filter { !foreign.contains($0) }, foreign.count)
     }
 
     // MARK: - Favorite toggle (AC-202)
@@ -146,20 +159,45 @@ final class TimelineViewModel {
 
     // MARK: - Batch delete (AC-203 / AC-203b)
 
-    /// Deletes all selected assets. On success removes them from `items` +
-    /// `loadedIds` and exits selection mode. On throw, state is preserved so
-    /// the user can retry (actionErrorMessage set, selectedIds kept, selectionMode
-    /// stays true). Empty selection is a no-op.
+    /// Deletes the selected assets the user owns (a partner's photo is refused
+    /// by the server, and `requireAccess` fails the whole request). On success
+    /// removes them from `items` + `loadedIds` and exits selection mode. On
+    /// throw, state is preserved so the user can retry (actionErrorMessage set,
+    /// selectedIds kept, selectionMode stays true). Empty selection is a no-op.
+    /// Skipped partner photos are announced by the confirmation beforehand, so
+    /// a success does not publish `skippedPartnerCount`; with nothing
+    /// sendable, no request is made and the notice is published.
     @MainActor
-    func deleteSelected() async {
+    func deleteSelected(currentUserId: String?) async {
+        await removeOwnedSelection(currentUserId: currentUserId, reportsSkipped: false) { ids in
+            try await client.deleteAssets(ids: ids, force: false)
+        }
+    }
+
+    /// Shared shape of delete / archive / locked folder: send only the ids the
+    /// user owns, then drop them from the grid and close the selection.
+    /// Try-then-mutate: a throw publishes `actionErrorMessage` and leaves
+    /// `items`, `loadedIds` and the selection untouched.
+    @MainActor
+    private func removeOwnedSelection(
+        currentUserId: String?,
+        reportsSkipped: Bool,
+        send: ([String]) async throws -> Void
+    ) async {
         guard !selectedIds.isEmpty else { return }
-        let ids = Array(selectedIds)
+        let (ids, skipped) = ownerScopedSelection(currentUserId: currentUserId)
+        guard !ids.isEmpty else {
+            skippedPartnerCount = skipped
+            return
+        }
         do {
             // MUST throw-or-succeed before mutating anything.
-            try await client.deleteAssets(ids: ids, force: false)
-            items.removeAll { selectedIds.contains($0.id) }
-            loadedIds.subtract(selectedIds)
+            try await send(ids)
+            let sent = Set(ids)
+            items.removeAll { sent.contains($0.id) }
+            loadedIds.subtract(sent)
             exitSelectionMode()
+            if reportsSkipped && skipped > 0 { skippedPartnerCount = skipped }
         } catch let e {
             actionErrorMessage = e.userFacingMessage
         }
@@ -170,16 +208,9 @@ final class TimelineViewModel {
     /// Pull-to-refresh: exits selection, re-fetches buckets, reloads only the
     /// first bucket. Subsequent buckets come back on scroll (`loadMore`).
     @MainActor
-    func archiveSelected() async {
-        guard !selectedIds.isEmpty else { return }
-        let ids = Array(selectedIds)
-        do {
+    func archiveSelected(currentUserId: String?) async {
+        await removeOwnedSelection(currentUserId: currentUserId, reportsSkipped: true) { ids in
             try await client.bulkUpdateAssets(dto: AssetBulkUpdateDto(ids: ids, visibility: .archive))
-            items.removeAll { selectedIds.contains($0.id) }
-            loadedIds.subtract(selectedIds)
-            exitSelectionMode()
-        } catch let e {
-            actionErrorMessage = e.userFacingMessage
         }
     }
 
@@ -290,16 +321,9 @@ final class TimelineViewModel {
     /// immediately (the server stops returning them under the default
     /// visibility), and the folder is the only screen that reads them back.
     @MainActor
-    func moveSelectedToLockedFolder() async {
-        guard !selectedIds.isEmpty else { return }
-        let ids = Array(selectedIds)
-        do {
+    func moveSelectedToLockedFolder(currentUserId: String?) async {
+        await removeOwnedSelection(currentUserId: currentUserId, reportsSkipped: true) { ids in
             try await client.bulkUpdateAssets(dto: AssetBulkUpdateDto(ids: ids, visibility: .locked))
-            items.removeAll { selectedIds.contains($0.id) }
-            loadedIds.subtract(selectedIds)
-            exitSelectionMode()
-        } catch let e {
-            actionErrorMessage = e.userFacingMessage
         }
     }
 
@@ -524,6 +548,26 @@ final class TimelineViewModel {
         return true
     }
 
+    /// The whole heart gesture of the selection bar: target computed on the
+    /// ids the user may change only (a partner's photo never decides it), send,
+    /// partner notice, selection closed. Nothing sendable: no request, notice
+    /// only, selection kept. A refusal keeps the selection and publishes
+    /// `actionErrorMessage` (published by `batchSetFavorite`).
+    @MainActor
+    func favoriteSelected(currentUserId: String?) async {
+        guard !selectedIds.isEmpty else { return }
+        let (ids, skipped) = ownerScopedSelection(currentUserId: currentUserId)
+        guard !ids.isEmpty else {
+            skippedPartnerCount = skipped
+            return
+        }
+        let target = !ids.allSatisfy { id in items.first { $0.id == id }?.isFavorite ?? false }
+        if await batchSetFavorite(Set(ids), favorite: target) {
+            exitSelectionMode()
+            if skipped > 0 { skippedPartnerCount = skipped }
+        }
+    }
+
     // MARK: - Single-asset delete (V9 context menu)
 
     /// Deletes a single asset by id (used by the cell context menu). Does NOT
@@ -557,12 +601,18 @@ final class TimelineViewModel {
     /// the cover" predictable, and the cover stays changeable from the stack
     /// detail.
     @MainActor
-    func stackSelected() async {
-        let ids = items.map(\.id).filter { selectedIds.contains($0) }
-        guard ids.count >= 2 else { return }
+    func stackSelected(currentUserId: String?) async {
+        let selected = items.filter { selectedIds.contains($0.id) }
+        let owned = selected.filter { $0.allowsOwnerActions(currentUserId: currentUserId) }.map(\.id)
+        let skipped = selected.count - owned.count
+        guard owned.count >= 2 else {
+            if skipped > 0 { skippedPartnerCount = skipped }
+            return
+        }
         do {
-            _ = try await client.createStack(assetIds: ids)
+            _ = try await client.createStack(assetIds: owned)
             exitSelectionMode()
+            if skipped > 0 { skippedPartnerCount = skipped }
             await refresh()
         } catch let e {
             actionErrorMessage = e.userFacingMessage

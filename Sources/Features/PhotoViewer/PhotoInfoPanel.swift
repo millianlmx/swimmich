@@ -11,6 +11,9 @@ struct PhotoInfoPanel: View {
     /// Base server URL + token for face/person thumbnails (gap #5).
     let baseURL: URL
     let token: String?
+    /// False on a partner's photo: rating, date, location and tag edits are
+    /// owner-only on the server.
+    let allowsOwnerEdits: Bool
     var onClose: () -> Void = {}
     /// Open the photo's place on a full-screen, interactive map (the mini-map
     /// in the info card is a snapshot).
@@ -141,8 +144,8 @@ struct PhotoInfoPanel: View {
                     fallbackLongitude: asset.longitude,
                     onOpenInMaps: onOpenInMaps,
                     onOpenLocationMap: onOpenLocationMap,
-                    onAdjustLocation: { presentAdjustLocation = true },
-                    onAdjustDate: { presentAdjustDate = true }
+                    onAdjustLocation: allowsOwnerEdits ? { presentAdjustLocation = true } : nil,
+                    onAdjustDate: allowsOwnerEdits ? { presentAdjustDate = true } : nil
                 )
                 .padding(.horizontal, PVSpacing.s16)
                 .padding(.bottom, PVSpacing.s24)
@@ -165,7 +168,7 @@ struct PhotoInfoPanel: View {
     /// when unrated). Hidden without a ViewModel, like the other action cards.
     @ViewBuilder
     private var ratingCard: some View {
-        if let vm {
+        if let vm, allowsOwnerEdits {
             InfoCard {
                 VStack(alignment: .leading, spacing: PVSpacing.s8) {
                     Label("Rating", systemImage: "star.fill")
@@ -255,17 +258,19 @@ struct PhotoInfoPanel: View {
                         .font(.pvCaption)
                         .foregroundStyle(Color.textSecondaryPV)
                 }
-                Divider()
-                Button {
-                    presentTags = true
-                } label: {
-                    Label("Edit Tags", systemImage: "tag")
-                        .frame(maxWidth: .infinity)
+                if allowsOwnerEdits {
+                    Divider()
+                    Button {
+                        presentTags = true
+                    } label: {
+                        Label("Edit Tags", systemImage: "tag")
+                            .frame(maxWidth: .infinity)
+                    }
+                    .font(.pvBody.weight(.medium))
+                    .foregroundStyle(Color.textPrimaryPV)
+                    .buttonStyle(.plain)
+                    .padding(.vertical, PVSpacing.s4)
                 }
-                .font(.pvBody.weight(.medium))
-                .foregroundStyle(Color.textPrimaryPV)
-                .buttonStyle(.plain)
-                .padding(.vertical, PVSpacing.s4)
             }
             .padding(PVSpacing.s16)
         }

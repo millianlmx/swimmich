@@ -60,6 +60,15 @@ struct AssetReactItem: Identifiable, Equatable, Hashable, Sendable {
     /// This is the number the timeline badge shows.
     var stackedExtraCount: Int? { stackCount.map { max(0, $0 - 1) } }
 
+    /// True when the logged-in user may run owner-only actions on this asset
+    /// (favorite, edit, archive, locked folder, delete, stack — the server
+    /// refuses them to a partner). Unknown owner keeps today's behavior: an
+    /// empty `ownerId` (offline items, map) or no / empty `currentUserId` → true.
+    func allowsOwnerActions(currentUserId: String?) -> Bool {
+        guard let currentUserId, !currentUserId.isEmpty, !ownerId.isEmpty else { return true }
+        return ownerId == currentUserId
+    }
+
     /// True when the slide plays inline motion in the slideshow: a real video,
     /// or a Live Photo whose video pair is present and playable (a nil or empty
     /// `livePhotoVideoId` renders as a still).
