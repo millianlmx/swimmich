@@ -969,6 +969,90 @@ final class ImmichAPIClientTests: XCTestCase {
         XCTAssertTrue(body.contains(#""visibility":"archive""#))
     }
 
+    // MARK: - Asset update verb (PUT /api/assets/{id}; PATCH 404s on v2.x servers)
+
+    private static let updatedAssetJSON = """
+    {"id":"a1","type":"IMAGE","thumbhash":null,"localDateTime":"2024-07-01T00:00:00.000Z","duration":null,"hasMetadata":true,"width":1024,"height":768,"createdAt":"2024-07-02T00:00:00.000Z","ownerId":"owner-1","originalPath":"/upload/x.jpg","originalFileName":"x.jpg","fileCreatedAt":"2024-07-01T00:00:00.000Z","fileModifiedAt":"2024-07-01T00:00:00.000Z","updatedAt":"2024-07-03T00:00:00.000Z","isFavorite":true,"isArchived":false,"isTrashed":false,"isOffline":false,"visibility":"timeline","checksum":"Y2hlY2tzdW0=","isEdited":false}
+    """.data(using: .utf8)!
+
+    private func makeAssetUpdateClient() -> ImmichAPIClient {
+        let client = ImmichAPIClient(session: makeMockedSession())
+        client.configure(baseURL: URL(string: "https://example.com")!, token: "tok")
+        CapturingURLProtocol.nextData = Self.updatedAssetJSON
+        return client
+    }
+
+    func test_AC1_updateAsset_putsFavoriteWithoutNulls() async throws {
+        let client = makeAssetUpdateClient()
+
+        _ = try await client.updateAsset(id: "a1", dto: UpdateAssetDto(isFavorite: true))
+
+        let captured = try XCTUnwrap(CapturingURLProtocol.lastRequest)
+        XCTAssertEqual(captured.httpMethod, "PUT")
+        XCTAssertEqual(captured.url?.path, "/api/assets/a1")
+        let body = try decodedBody()
+        XCTAssertEqual(Set(body.keys), ["isFavorite"])
+        XCTAssertEqual(body["isFavorite"] as? Bool, true)
+        XCTAssertFalse(body.values.contains { $0 is NSNull }, "a nil field must be omitted, never null")
+    }
+
+    func test_AC2_updateAsset_putsDateLocationDescription() async throws {
+        let client = makeAssetUpdateClient()
+
+        _ = try await client.updateAsset(id: "a1", dto: UpdateAssetDto(
+            dateTimeOriginal: "2024-07-01T10:00:00.000Z", latitude: 45.5, longitude: 6.8, description: "Lac"
+        ))
+
+        let captured = try XCTUnwrap(CapturingURLProtocol.lastRequest)
+        XCTAssertEqual(captured.httpMethod, "PUT")
+        XCTAssertEqual(captured.url?.path, "/api/assets/a1")
+        let body = try decodedBody()
+        XCTAssertEqual(Set(body.keys), ["dateTimeOriginal", "latitude", "longitude", "description"])
+        XCTAssertEqual(body["dateTimeOriginal"] as? String, "2024-07-01T10:00:00.000Z")
+        XCTAssertEqual(body["latitude"] as? Double, 45.5)
+        XCTAssertEqual(body["longitude"] as? Double, 6.8)
+        XCTAssertEqual(body["description"] as? String, "Lac")
+    }
+
+    func test_AC3_updateAsset_putsLivePhotoVideoId() async throws {
+        let client = makeAssetUpdateClient()
+
+        _ = try await client.updateAsset(id: "a1", dto: UpdateAssetDto(livePhotoVideoId: "video-9"))
+
+        let captured = try XCTUnwrap(CapturingURLProtocol.lastRequest)
+        XCTAssertEqual(captured.httpMethod, "PUT")
+        XCTAssertEqual(captured.url?.path, "/api/assets/a1")
+        let body = try decodedBody()
+        XCTAssertEqual(Set(body.keys), ["livePhotoVideoId"])
+        XCTAssertEqual(body["livePhotoVideoId"] as? String, "video-9")
+    }
+
+    func test_AC4_setAssetRating_putsRatingValue() async throws {
+        let client = makeAssetUpdateClient()
+
+        _ = try await client.setAssetRating(id: "a1", rating: 3)
+
+        let captured = try XCTUnwrap(CapturingURLProtocol.lastRequest)
+        XCTAssertEqual(captured.httpMethod, "PUT")
+        XCTAssertEqual(captured.url?.path, "/api/assets/a1")
+        let body = try decodedBody()
+        XCTAssertEqual(Set(body.keys), ["rating"])
+        XCTAssertEqual(body["rating"] as? Int, 3)
+    }
+
+    func test_AC5_setAssetRating_putsExplicitNull() async throws {
+        let client = makeAssetUpdateClient()
+
+        _ = try await client.setAssetRating(id: "a1", rating: nil)
+
+        let captured = try XCTUnwrap(CapturingURLProtocol.lastRequest)
+        XCTAssertEqual(captured.httpMethod, "PUT")
+        XCTAssertEqual(captured.url?.path, "/api/assets/a1")
+        let body = try decodedBody()
+        XCTAssertEqual(Set(body.keys), ["rating"])
+        XCTAssertTrue(body["rating"] is NSNull, "clearing a rating needs the key present with a JSON null")
+    }
+
     func test_P0_timelineFilterExpansion_encodesNewParams() async throws {
         let session = makeMockedSession()
         let client = ImmichAPIClient(session: session)

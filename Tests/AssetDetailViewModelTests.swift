@@ -3,9 +3,9 @@ import XCTest
 
 final class AssetDetailViewModelTests: XCTestCase {
 
-    // AC-010: toggleFavorite issues PATCH /api/assets/:id {isFavorite: true}.
+    // AC-010: toggleFavorite writes {isFavorite: true} through `updateAsset`.
     @MainActor
-    func test_AC_010_toggleFavoriteUsesPATCH() async {
+    func test_AC_010_toggleFavoriteSendsIsFavorite() async {
         let mock = MockImmichClient()
         let asset = AssetReactItem(
             id: "asset-1", ownerId: "owner", ratio: 1.0,
@@ -20,7 +20,6 @@ final class AssetDetailViewModelTests: XCTestCase {
 
         XCTAssertEqual(mock.lastUpdateAssetId, "asset-1")
         XCTAssertEqual(mock.lastUpdateAssetBody?.isFavorite, true)
-        XCTAssertEqual(mock.lastUpdateMethod, .PATCH)
         XCTAssertTrue(vm.isFavorite)
     }
 
@@ -39,7 +38,7 @@ final class AssetDetailViewModelTests: XCTestCase {
     }
 
     @MainActor
-    func test_setLocation_sendsPATCHWithCoords() async {
+    func test_setLocation_sendsCoords() async {
         let mock = MockImmichClient()
         let vm = AssetDetailViewModel(asset: makeAssetWithLocation(), client: mock)
         await vm.setLocation(latitude: 45.5, longitude: 6.8)
@@ -47,7 +46,6 @@ final class AssetDetailViewModelTests: XCTestCase {
         XCTAssertEqual(mock.lastUpdateAssetId, "asset-1")
         XCTAssertEqual(mock.lastUpdateAssetBody?.latitude, 45.5)
         XCTAssertEqual(mock.lastUpdateAssetBody?.longitude, 6.8)
-        XCTAssertEqual(mock.lastUpdateMethod, .PATCH)
         XCTAssertNil(vm.errorMessage)
     }
 
@@ -127,7 +125,7 @@ final class AssetDetailViewModelTests: XCTestCase {
         XCTAssertEqual(mock.ratingUpdates.map(\.rating), [3])
         XCTAssertEqual(mock.ratingUpdates.first?.id, "asset-1")
         XCTAssertEqual(vm.rating, 3)
-        XCTAssertEqual(vm.detail?.exifInfo?.rating, 3, "the PATCH response is the new local truth")
+        XCTAssertEqual(vm.detail?.exifInfo?.rating, 3, "the write response is the new local truth")
         XCTAssertEqual(vm.lastRatingSent, 3)
         XCTAssertEqual(vm.lastRatingAssetId, "asset-1")
         XCTAssertNil(vm.errorMessage)

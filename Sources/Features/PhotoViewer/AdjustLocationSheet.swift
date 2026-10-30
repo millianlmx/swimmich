@@ -67,7 +67,7 @@ struct DraggablePinMapView: UIViewRepresentable {
 }
 
 /// Adjust-location sheet: drag the pin to the right spot, Save issues the
-/// PATCH (via `AssetDetailViewModel.setLocation`) and re-geocodes. Error and
+/// write (via `AssetDetailViewModel.setLocation`) and re-geocodes. Error and
 /// in-flight states surface inline; `onDone` reports whether the change
 /// persisted (controller dismisses only then).
 struct AdjustLocationSheet: View {

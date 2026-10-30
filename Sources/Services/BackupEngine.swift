@@ -917,7 +917,7 @@ final class BackupEngine {
     /// without this path those Live Photos stay broken forever — the server
     /// keeps rejecting the still by checksum and "Reset backup tracking" does
     /// not help. The repair is idempotent (a duplicate video upload returns the
-    /// existing id, and the PATCH is absolute).
+    /// existing id, and the PUT is absolute).
     ///
     /// Returns whether the ledger may now be written for this asset: only after
     /// the video is uploaded and linked (or there is nothing to link). A failed

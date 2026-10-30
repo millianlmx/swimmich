@@ -269,7 +269,7 @@ struct UpdateAssetDto: Codable, Equatable {
     var livePhotoVideoId: String?
 }
 
-/// Body for `PATCH /api/assets/:id` when the only field written is the rating.
+/// Body for `PUT /api/assets/:id` when the only field written is the rating.
 ///
 /// The server has three valid rating states — `1…5` (starred), `-1` (rejected)
 /// and `null` (unrated) — and rejects `0` since v3, so « not rated » is the

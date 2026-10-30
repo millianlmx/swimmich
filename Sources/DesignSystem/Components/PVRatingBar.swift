@@ -50,7 +50,7 @@ struct PVRatingBar: View {
 }
 
 private extension View {
-    /// While the rating PATCH is in flight the bar is dimmed to half and stops
+    /// While the rating write is in flight the bar is dimmed to half and stops
     /// accepting taps. The `@ViewBuilder` branch keeps the fade off the enabled
     /// path instead of layering a full-opacity modifier on every render.
     @ViewBuilder

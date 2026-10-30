@@ -14,7 +14,7 @@ import XCTest
 /// the viewer's Details button → the info panel's rating bar. And it asserts on
 /// the WIRE, because two of the three claims are invisible on screen:
 ///
-/// 1. `PATCH /api/assets/:id` (not the bulk `PUT`, not a `POST`) carries
+/// 1. `PUT /api/assets/:id` (not the bulk `PUT /api/assets`, not a `POST`) carries
 ///    `rating: 4` — the screen looks identical for any verb.
 /// 2. Clearing sends the `rating` KEY with a null value. An omitted key is the
 ///    failure this card exists for: the server has no `0` since v3, so `{}`
@@ -325,11 +325,11 @@ final class StarRatingsUITests: XCTestCase {
         return (try? JSONDecoder().decode([StubRequest].self, from: Data(body.utf8))) ?? []
     }
 
-    /// Every write this feature makes: `PATCH /api/assets/<the photo>`. The
+    /// Every write this feature makes: `PUT /api/assets/<the photo>`. The
     /// panel's other traffic is reads (`/api/assets/<id>`, thumbnails), which is
     /// why the filter pins the verb as well as the path.
     private func ratingWrites() -> [StubRequest] {
-        stubRequests().filter { $0.method == "PATCH" && $0.path == "/api/assets/\(rated)" }
+        stubRequests().filter { $0.method == "PUT" && $0.path == "/api/assets/\(rated)" }
     }
 
     /// The rating writes the stub has logged so far, re-read until there are
@@ -451,8 +451,8 @@ final class StarRatingsUITests: XCTestCase {
             return XCTFail("expected exactly 1 rating write on the wire, saw \(writes.count):\n"
                            + describe(stubRequests()))
         }
-        XCTAssertEqual(writes[0].method, "PATCH",
-                       "the rating is written by PATCH /api/assets/:id — got:\n\(describe(writes))")
+        XCTAssertEqual(writes[0].method, "PUT",
+                       "the rating is written by PUT /api/assets/:id — got:\n\(describe(writes))")
         XCTAssertEqual(writes[0].path, "/api/assets/\(rated)", "wrong asset targeted")
         XCTAssertEqual(writes[0].ratingKeyPresent, true,
                        "the write's body must carry the `rating` key — got:\n\(describe(writes))")

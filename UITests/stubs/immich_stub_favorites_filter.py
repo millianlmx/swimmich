@@ -21,7 +21,7 @@ WHAT THE WIRE HAS TO SHOW
        does. A stub that answered `/bucket` with the same favorites whatever the
        query could not tell the two apart: this one answers the whole timeline
        (favorites and non-favorites) when the filter is missing.
-    2. The viewer's two heart taps write `PATCH /api/assets/:id` with
+    2. The viewer's two heart taps write `PUT /api/assets/:id` with
        `isFavorite` false, then true. The value sent is recorded by `req.note`
        (`isFavoriteSent`), and the favorites set follows it, so a refresh of the
        filtered grid shows the re-favorited asset again — the proof the second
@@ -60,9 +60,9 @@ def bucket(req):
     return Response(payload)
 
 
-@router.prefix("PATCH", "/api/assets/")
+@router.prefix("PUT", "/api/assets/")
 def write_favorite(req):
-    """`PATCH /api/assets/:id` — the favorite write of the viewer's heart."""
+    """`PUT /api/assets/:id` — the favorite write of the viewer's heart."""
     aid = req.rest
     if "/" in aid:
         # A sub-resource of an asset (`/thumbnail`, `/original`): not ours.

@@ -1,7 +1,7 @@
 import SwiftUI
 
 /// Adjust date/time sheet (gap #3): pick a new timestamp for the asset, Save
-/// issues the PATCH via `AssetDetailViewModel.setDateTime`. Error and in-flight
+/// issues the write via `AssetDetailViewModel.setDateTime`. Error and in-flight
 /// states surface inline; `onDone` reports whether the change persisted.
 struct AdjustDateSheet: View {
     let asset: AssetReactItem

@@ -75,7 +75,7 @@ protocol ImmichClient: AnyObject, Sendable {
 
     func getAsset(id: String) async throws -> AssetResponseDto
     func updateAsset(id: String, dto: UpdateAssetDto) async throws -> AssetResponseDto
-    /// `PATCH /api/assets/:id` with an explicit `rating` — `nil` must reach the
+    /// `PUT /api/assets/:id` with an explicit `rating` — `nil` must reach the
     /// wire as JSON `null` (the synthesized encoder of `UpdateAssetDto` would
     /// drop the key), and the response is the updated asset, so the caller
     /// never needs a follow-up `getAsset`.

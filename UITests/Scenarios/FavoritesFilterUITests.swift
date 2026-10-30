@@ -7,7 +7,7 @@ import XCTest
 ///
 /// 1. With the filter on, `GET /api/timeline/bucket` carries `isFavorite=true`
 ///    like `/buckets` does (the stub answers the whole timeline otherwise).
-/// 2. The viewer's heart writes `PATCH /api/assets/:id` with `isFavorite`
+/// 2. The viewer's heart writes `PUT /api/assets/:id` with `isFavorite`
 ///    false, then true — the second tap is a write even though the first one
 ///    already took the photo out of the grid (`TimelineView` calls
 ///    `vm.setFavorite(id:isFavorite:)` with the viewer's target value, not a
@@ -281,7 +281,7 @@ final class FavoritesFilterUITests: XCTestCase {
     }
 
     private func favoriteWrites() -> [StubRequest] {
-        stubRequests().filter { $0.method == "PATCH" && $0.path == "/api/assets/\(photo)" }
+        stubRequests().filter { $0.method == "PUT" && $0.path == "/api/assets/\(photo)" }
     }
 
     /// The favorite writes logged so far, re-read until there are `count` of
@@ -341,7 +341,7 @@ final class FavoritesFilterUITests: XCTestCase {
         let heart = app.buttons.matching(identifier: "viewerFavoriteButton").firstMatch
         XCTAssertTrue(heart.waitForExistence(timeout: 20), "the viewer has no favorite button")
 
-        // 5. Un-favorite: PATCH isFavorite=false.
+        // 5. Un-favorite: PUT isFavorite=false.
         heart.tap()
         let first = waitForFavoriteWrites(1)
         guard first.count >= 1 else {

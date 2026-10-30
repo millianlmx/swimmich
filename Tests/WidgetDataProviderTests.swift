@@ -674,3 +674,160 @@ final class WidgetSessionPublishingTests: XCTestCase {
         XCTAssertGreaterThanOrEqual(spy.clearCount, 1)
     }
 }
+
+/// `ToggleFavoriteIntent.write` is the whole behaviour of the Favorites widget
+/// heart: the server only accepts `PUT /api/assets/{id}` on v2.x, and a failed
+/// write must neither reload the timelines nor vanish without a trace.
+final class ToggleFavoriteIntentWriteTests: XCTestCase {
+
+    private final class Recorder: @unchecked Sendable {
+        private let lock = NSLock()
+        private var items: [String] = []
+
+        var values: [String] {
+            lock.lock()
+            defer { lock.unlock() }
+            return items
+        }
+
+        func append(_ value: String) {
+            lock.lock()
+            items.append(value)
+            lock.unlock()
+        }
+    }
+
+    private final class TransportSpy: WidgetDataTransport, @unchecked Sendable {
+        private let lock = NSLock()
+        private var recorded: [URLRequest] = []
+        private let outcome: Result<Int, Error>
+
+        init(status: Int) { outcome = .success(status) }
+        init(error: Error) { outcome = .failure(error) }
+
+        var requests: [URLRequest] {
+            lock.lock()
+            defer { lock.unlock() }
+            return recorded
+        }
+
+        func send(_ request: URLRequest) async throws -> (Data, HTTPURLResponse) {
+            lock.lock()
+            recorded.append(request)
+            lock.unlock()
+            switch outcome {
+            case .failure(let error):
+                throw error
+            case .success(let status):
+                let response = HTTPURLResponse(
+                    url: request.url!, statusCode: status, httpVersion: nil, headerFields: nil
+                )!
+                return (Data(), response)
+            }
+        }
+    }
+
+    private struct StubSessionStore: WidgetSessionStoring {
+        let session: WidgetSession?
+        func save(_ session: WidgetSession) {}
+        func load() -> WidgetSession? { session }
+        func clear() {}
+    }
+
+    private static let session = WidgetSession(baseURL: "https://photos.example.com", token: "widget-jwt")
+
+    private struct Outcome {
+        let transport: TransportSpy
+        let reloads: [String]
+        let logs: [String]
+    }
+
+    private func run(
+        favorite: Bool = true,
+        session: WidgetSession? = ToggleFavoriteIntentWriteTests.session,
+        transport: TransportSpy
+    ) async -> Outcome {
+        let reloads = Recorder()
+        let logs = Recorder()
+        await ToggleFavoriteIntent.write(
+            assetId: "a1",
+            favorite: favorite,
+            sessionStore: StubSessionStore(session: session),
+            transport: transport,
+            reloadTimelines: { reloads.append($0) },
+            log: { logs.append($0) }
+        )
+        return Outcome(transport: transport, reloads: reloads.values, logs: logs.values)
+    }
+
+    private func isFavoriteBody(_ request: URLRequest) throws -> Any {
+        let object = try JSONSerialization.jsonObject(with: XCTUnwrap(request.httpBody)) as? [String: Any]
+        let dict = try XCTUnwrap(object)
+        XCTAssertEqual(Set(dict.keys), ["isFavorite"])
+        return try XCTUnwrap(dict["isFavorite"])
+    }
+
+    func test_AC7_write_sendsSinglePutWithBearerAndBody() async throws {
+        let outcome = await run(favorite: true, transport: TransportSpy(status: 200))
+
+        XCTAssertEqual(outcome.transport.requests.count, 1)
+        let request = try XCTUnwrap(outcome.transport.requests.first)
+        XCTAssertEqual(request.httpMethod, "PUT")
+        XCTAssertEqual(request.url?.absoluteString, "https://photos.example.com/api/assets/a1")
+        XCTAssertEqual(request.value(forHTTPHeaderField: "Authorization"), "Bearer widget-jwt")
+        XCTAssertEqual(request.value(forHTTPHeaderField: "Content-Type"), "application/json")
+        let value = try isFavoriteBody(request)
+        XCTAssertEqual(value as? Bool, true)
+        XCTAssertEqual(CFGetTypeID(value as CFTypeRef), CFBooleanGetTypeID(), "a JSON boolean, not 1/0")
+    }
+
+    func test_AC8_write_unfavoriteReloadsFavoritesThenPhotos() async throws {
+        let outcome = await run(favorite: false, transport: TransportSpy(status: 200))
+
+        let value = try isFavoriteBody(try XCTUnwrap(outcome.transport.requests.first))
+        XCTAssertEqual(value as? Bool, false)
+        XCTAssertEqual(CFGetTypeID(value as CFTypeRef), CFBooleanGetTypeID(), "a JSON boolean, not 1/0")
+        XCTAssertEqual(outcome.reloads, [ImmichWidgetKind.favorites, ImmichWidgetKind.photos])
+        XCTAssertEqual(outcome.logs, [])
+    }
+
+    func test_AC9_write_http404_logsStatusWithoutTokenAndSkipsReload() async {
+        let outcome = await run(transport: TransportSpy(status: 404))
+
+        XCTAssertEqual(outcome.transport.requests.count, 1)
+        XCTAssertEqual(outcome.reloads, [])
+        XCTAssertEqual(outcome.logs.count, 1)
+        XCTAssertTrue(outcome.logs.first?.contains("404") == true)
+        XCTAssertFalse(outcome.logs.joined().contains("widget-jwt"), "the token must never be logged")
+    }
+
+    func test_AC10_write_transportError_logsAndSkipsReload() async {
+        let outcome = await run(transport: TransportSpy(error: URLError(.notConnectedToInternet)))
+
+        XCTAssertEqual(outcome.reloads, [])
+        XCTAssertEqual(outcome.logs.count, 1)
+        XCTAssertFalse(outcome.logs.joined().contains("widget-jwt"), "the token must never be logged")
+    }
+
+    func test_AC11_write_noSession_sendsNothingAndLogs() async {
+        let outcome = await run(session: nil, transport: TransportSpy(status: 200))
+
+        XCTAssertEqual(outcome.transport.requests.count, 0)
+        XCTAssertEqual(outcome.reloads, [])
+        XCTAssertEqual(outcome.logs.count, 1)
+        XCTAssertTrue(outcome.logs.first?.contains("no widget session") == true)
+    }
+
+    /// `baseURL: ""` gives the relative URL `/api/assets/a1`: no scheme, no host.
+    func test_S4_write_invalidBaseURL_sendsNothingAndLogs() async {
+        let outcome = await run(
+            session: WidgetSession(baseURL: "", token: "widget-jwt"),
+            transport: TransportSpy(status: 200)
+        )
+
+        XCTAssertEqual(outcome.transport.requests.count, 0)
+        XCTAssertEqual(outcome.reloads, [])
+        XCTAssertEqual(outcome.logs.count, 1)
+        XCTAssertTrue(outcome.logs.first?.contains("invalid server URL") == true)
+    }
+}

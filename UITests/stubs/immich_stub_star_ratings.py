@@ -13,7 +13,7 @@ observable:
         UITests/stubs/immich_stub_star_ratings.py StarRatingsUITests/test_starRatings
 
 WHAT THE WIRE HAS TO SHOW, AND WHY EACH PART IS HERE
-    `PATCH /api/assets/:id` is the whole feature. Three things are asserted on
+    `PUT /api/assets/:id` is the whole feature. Three things are asserted on
     its body and on its answer, and each one needs this stub to be able to fail:
 
     1. `rating` is the only field written. The DTO the panel sends is
@@ -53,9 +53,9 @@ def answered_asset(aid, rating):
     return dto
 
 
-@router.prefix("PATCH", "/api/assets/")
+@router.prefix("PUT", "/api/assets/")
 def write_rating(req):
-    """`PATCH /api/assets/:id` — the only mutation this feature makes."""
+    """`PUT /api/assets/:id` — the only mutation this feature makes."""
     aid = req.rest
     if "/" in aid:
         # A sub-resource of an asset (`/thumbnail`, `/original`): not ours.

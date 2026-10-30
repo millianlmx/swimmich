@@ -1,7 +1,7 @@
 import Foundation
 import SwiftUI
 
-/// Asset detail state. AC-010: PATCH /api/assets/:id on toggleFavorite.
+/// Asset detail state. AC-010: PUT /api/assets/:id on toggleFavorite.
 @Observable
 final class AssetDetailViewModel {
     let asset: AssetReactItem
@@ -31,7 +31,7 @@ final class AssetDetailViewModel {
     /// Reset only when a NEW asset is loaded (not in MVP).
     @ObservationIgnored private var geocoded = false
 
-    /// Test-visible: last PATCH body sent + asset id targeted (AC-010).
+    /// Test-visible: last write body sent + asset id targeted (AC-010).
     private(set) var lastUpdateBody: UpdateAssetDto?
     private(set) var lastUpdateAssetId: String?
 
@@ -39,7 +39,7 @@ final class AssetDetailViewModel {
     /// `nil` = not rated: the server has no `0` (invalid since v3), so clearing
     /// a rating is expressed by `null`, never by a sentinel number.
     var rating: Int?
-    /// True while the rating PATCH is in flight; the bar reads it to stop
+    /// True while the rating write is in flight; the bar reads it to stop
     /// accepting taps rather than queueing them.
     private(set) var isSavingRating = false
     /// Test-visible: rating sent + asset id targeted by the last `setRating`.
@@ -140,7 +140,7 @@ final class AssetDetailViewModel {
         }
     }
 
-    /// Star rating (star-ratings): `PATCH /api/assets/:id` with an explicit
+    /// Star rating (star-ratings): `PUT /api/assets/:id` with an explicit
     /// `rating` — optimistic (the bar writes first, the server confirms after),
     /// and reverted on failure so the UI never claims a rating the server
     /// refused. `nil` = not rated, which must reach the wire as JSON `null`
@@ -167,7 +167,7 @@ final class AssetDetailViewModel {
         }
     }
 
-    /// Adjust date/time (gap #3): PATCH /api/assets/:id {dateTimeOriginal}.
+    /// Adjust date/time (gap #3): PUT /api/assets/:id {dateTimeOriginal}.
     /// The date is encoded as Immich's UTC ISO-8601 (`yyyy-MM-dd'T'HH:mm:ss.SSS'Z'`).
     @MainActor
     func setDateTime(_ date: Date) async {
@@ -182,7 +182,7 @@ final class AssetDetailViewModel {
         }
     }
 
-    /// Adjust-location (map-extras): PATCH /api/assets/:id {latitude, longitude},
+    /// Adjust-location (map-extras): PUT /api/assets/:id {latitude, longitude},
     /// then re-run reverse geocoding so the panel label reflects the new spot.
     /// Out-of-bounds coordinates are rejected without touching the network.
     @MainActor

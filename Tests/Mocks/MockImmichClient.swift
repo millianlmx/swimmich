@@ -143,7 +143,6 @@ final class MockImmichClient: ImmichClient, @unchecked Sendable {
     var getAssetResponse: [String: AssetResponseDto] = [:]
     var lastUpdateAssetId: String?
     var lastUpdateAssetBody: UpdateAssetDto?
-    var lastUpdateMethod: HTTPMethod?
     var updateAssetResponse: AssetResponseDto?
     var lastDeleteBody: AssetBulkDeleteDto?
     var deleteError: Error?
@@ -517,7 +516,6 @@ final class MockImmichClient: ImmichClient, @unchecked Sendable {
         if let e = updateAssetErrorsById[id] { throw e }
         lastUpdateAssetId = id
         lastUpdateAssetBody = dto
-        lastUpdateMethod = .PATCH
         updateAssetCalls.append((id: id, dto: dto))
         if let r = updateAssetResponse { return r }
         // Echo back with isFavorite toggled.
@@ -538,7 +536,7 @@ final class MockImmichClient: ImmichClient, @unchecked Sendable {
             return try ratingUpdateResults.removeFirst().get()
         }
         if let e = globalError { throw e }
-        // Echo the rating back the way the server would: the PATCH response is
+        // Echo the rating back the way the server would: the write response is
         // the updated asset, so `exifInfo.rating` follows without a re-fetch.
         var base = try await getAsset(id: id)
         base.exifInfo = ExifResponseDto(rating: rating)
