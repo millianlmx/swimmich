@@ -11,6 +11,9 @@ final class CapturingURLProtocol: URLProtocol {
     nonisolated(unsafe) static var nextData: Data = Data()
     nonisolated(unsafe) static var nextStatus: Int = 200
     nonisolated(unsafe) static var nextHeaders: [String: String] = ["Content-Type": "application/json"]
+    /// Response body per URL path; falls back to `nextData`. Lets a flow that
+    /// chains two routes get a different payload for each.
+    nonisolated(unsafe) static var dataByPath: [String: Data] = [:]
 
     /// Snapshot of the captured body bytes (URLSession may move httpBody → httpBodyStream).
     nonisolated(unsafe) private static var _lastBody: Data = Data()
@@ -21,6 +24,7 @@ final class CapturingURLProtocol: URLProtocol {
         nextData = Data()
         nextStatus = 200
         nextHeaders = ["Content-Type": "application/json"]
+        dataByPath = [:]
     }
 
     override class func canInit(with request: URLRequest) -> Bool { true }
@@ -37,7 +41,7 @@ final class CapturingURLProtocol: URLProtocol {
             headerFields: Self.nextHeaders
         )!
         client?.urlProtocol(self, didReceive: response, cacheStoragePolicy: .notAllowed)
-        client?.urlProtocol(self, didLoad: Self.nextData)
+        client?.urlProtocol(self, didLoad: Self.dataByPath[request.url?.path ?? ""] ?? Self.nextData)
         client?.urlProtocolDidFinishLoading(self)
     }
 
@@ -612,14 +616,14 @@ final class ImmichAPIClientTests: XCTestCase {
         let client = ImmichAPIClient(session: session)
         client.configure(baseURL: URL(string: "https://example.com")!, token: "tok")
         CapturingURLProtocol.nextData = """
-        [{"id": "a1", "success": true}, {"id": "a2", "success": false, "error": "NO_PERMISSION"}]
+        [{"id": "a1", "success": true}, {"id": "a2", "success": false, "error": "no_permission"}]
         """.data(using: .utf8)!
 
         let results = try await client.addAssetsToMemory(id: "m1", assetIds: ["a1", "a2"])
 
         XCTAssertEqual(results.map(\.id), ["a1", "a2"])
         XCTAssertEqual(results[1].success, false)
-        XCTAssertEqual(results[1].error, .noPermission, "memories answer BulkIdErrorReason, which is uppercase")
+        XCTAssertEqual(results[1].error, .noPermission, "memories answer BulkIdErrorReason, which the server emits in lowercase")
         guard let captured = CapturingURLProtocol.lastRequest else {
             return XCTFail("no request captured")
         }
@@ -628,6 +632,52 @@ final class ImmichAPIClientTests: XCTestCase {
         let body = try decodedBody()
         XCTAssertEqual(body["ids"] as? [String], ["a1", "a2"])
         XCTAssertNil(body["assetIds"], "this route takes ids, unlike the shared-link one")
+    }
+
+    private static let partialFailureJSON = """
+    [{"id": "a1", "success": true}, {"id": "a2", "success": false, "error": "not_found"},
+     {"id": "a3", "success": false, "error": "no_permission"}]
+    """
+
+    private func assertPartialFailure(_ results: [BulkIdResponseDto], file: StaticString = #filePath, line: UInt = #line) {
+        XCTAssertEqual(results.map(\.id), ["a1", "a2", "a3"], file: file, line: line)
+        XCTAssertEqual(results.map(\.success), [true, false, false], file: file, line: line)
+        XCTAssertEqual(results.map(\.error), [nil, .notFound, .noPermission], file: file, line: line)
+    }
+
+    func test_AC_7_removeAssetsFromAlbum_decodesPartialFailure() async throws {
+        let client = ImmichAPIClient(session: makeMockedSession())
+        client.configure(baseURL: URL(string: "https://example.com")!, token: "tok")
+        CapturingURLProtocol.nextData = Data(Self.partialFailureJSON.utf8)
+
+        let results = try await client.removeAssetsFromAlbum(albumId: "alb1", dto: BulkIdsDto(ids: ["a1", "a2", "a3"]))
+
+        assertPartialFailure(results)
+        XCTAssertEqual(CapturingURLProtocol.lastRequest?.httpMethod, "DELETE")
+        XCTAssertEqual(CapturingURLProtocol.lastRequest?.url?.path, "/api/albums/alb1/assets")
+    }
+
+    func test_AC_7_mergePeople_decodesPartialFailure() async throws {
+        let client = ImmichAPIClient(session: makeMockedSession())
+        client.configure(baseURL: URL(string: "https://example.com")!, token: "tok")
+        CapturingURLProtocol.nextData = Data(Self.partialFailureJSON.utf8)
+
+        let results = try await client.mergePeople(ids: ["a1", "a2", "a3"], into: "p1")
+
+        assertPartialFailure(results)
+        XCTAssertEqual(CapturingURLProtocol.lastRequest?.url?.path, "/api/people/p1/merge")
+    }
+
+    func test_AC_7_removeAssetsFromMemory_decodesPartialFailure() async throws {
+        let client = ImmichAPIClient(session: makeMockedSession())
+        client.configure(baseURL: URL(string: "https://example.com")!, token: "tok")
+        CapturingURLProtocol.nextData = Data(Self.partialFailureJSON.utf8)
+
+        let results = try await client.removeAssetsFromMemory(id: "m1", assetIds: ["a1", "a2", "a3"])
+
+        assertPartialFailure(results)
+        XCTAssertEqual(CapturingURLProtocol.lastRequest?.httpMethod, "DELETE")
+        XCTAssertEqual(CapturingURLProtocol.lastRequest?.url?.path, "/api/memories/m1/assets")
     }
 
     func test_mem_removeAssetsFromMemory_deletesBulkIds() async throws {

@@ -251,7 +251,7 @@ final class DTOEncodingTests: XCTestCase {
         let json = """
         [
           {"id": "x", "success": true},
-          {"id": "y", "success": false, "error": "DUPLICATE", "errorMessage": "Already in album"}
+          {"id": "y", "success": false, "error": "duplicate", "errorMessage": "Already in album"}
         ]
         """.data(using: .utf8)!
         let decoded = try JSONDecoder.immich.decode([BulkIdResponseDto].self, from: json)
@@ -261,6 +261,51 @@ final class DTOEncodingTests: XCTestCase {
         XCTAssertFalse(decoded[1].success)
         XCTAssertEqual(decoded[1].error, .duplicate)
         XCTAssertEqual(decoded[1].errorMessage, "Already in album")
+    }
+
+    func test_AC_2_bulkIdErrorReason_decodesEveryServerValue() throws {
+        let json = """
+        [
+          {"id": "1", "success": false, "error": "duplicate"},
+          {"id": "2", "success": false, "error": "no_permission"},
+          {"id": "3", "success": false, "error": "not_found"},
+          {"id": "4", "success": false, "error": "unknown"},
+          {"id": "5", "success": false, "error": "validation"}
+        ]
+        """.data(using: .utf8)!
+        let decoded = try JSONDecoder.immich.decode([BulkIdResponseDto].self, from: json)
+        XCTAssertEqual(decoded.map(\.error), [.duplicate, .noPermission, .notFound, .unknown, .validation])
+    }
+
+    func test_AC_3_bulkIdErrorReason_unknownValueFallsBackToUnknown() throws {
+        let json = """
+        [
+          {"id": "a", "success": true},
+          {"id": "b", "success": false, "error": "rate_limited", "errorMessage": "slow down"},
+          {"id": "c", "success": false, "error": ""},
+          {"id": "d", "success": false, "error": "duplicate"}
+        ]
+        """.data(using: .utf8)!
+        let decoded = try JSONDecoder.immich.decode([BulkIdResponseDto].self, from: json)
+        XCTAssertEqual(decoded.count, 4)
+        XCTAssertTrue(decoded[0].success)
+        XCTAssertNil(decoded[0].error)
+        XCTAssertEqual(decoded[1].error, .unknown)
+        XCTAssertEqual(decoded[1].errorMessage, "slow down")
+        XCTAssertEqual(decoded[2].error, .unknown)
+        XCTAssertEqual(decoded[3].error, .duplicate)
+    }
+
+    func test_AC_4_bulkIdErrorReason_isCaseInsensitive() throws {
+        let json = #"[{"id": "a", "success": false, "error": "DUPLICATE"}]"#.data(using: .utf8)!
+        let decoded = try JSONDecoder.immich.decode([BulkIdResponseDto].self, from: json)
+        XCTAssertEqual(decoded[0].error, .duplicate)
+    }
+
+    func test_AC_5_bulkIdErrorReason_encodesLowercase() throws {
+        let data = try JSONEncoder.immich.encode([BulkIdErrorReason.noPermission, .validation])
+        let object = try JSONSerialization.jsonObject(with: data) as? [String]
+        XCTAssertEqual(object, ["no_permission", "validation"])
     }
 
     // AC-519: MetadataSearchDto.albumIds encodes correctly (present/absent).
@@ -396,6 +441,49 @@ final class DTOEncodingTests: XCTestCase {
         let like = try JSONDecoder.immich.decode(ActivityResponseDto.self, from: likeJSON)
         XCTAssertEqual(like.type, .like)
         XCTAssertNil(like.comment)
+    }
+
+    func test_AC_9_activityResponseDto_albumLevelHasNilAssetId() throws {
+        let user = ##"{"id": "u1", "name": "U", "email": "u@t", "profileImagePath": "", "avatarColor": "#000000", "profileChangedAt": "2024-01-01T00:00:00.000Z"}"##
+        let json = """
+        [
+          {"id": "c1", "createdAt": "2024-01-02T00:00:00.000Z", "type": "comment", "user": \(user), "assetId": null, "comment": "Hello"},
+          {"id": "l1", "createdAt": "2024-01-01T00:00:00.000Z", "type": "like", "user": \(user), "assetId": "ph1"}
+        ]
+        """.data(using: .utf8)!
+        let decoded = try JSONDecoder.immich.decode([ActivityResponseDto].self, from: json)
+        XCTAssertEqual(decoded.count, 2)
+        XCTAssertNil(decoded[0].assetId)
+        XCTAssertEqual(decoded[0].comment, "Hello")
+        XCTAssertEqual(decoded[1].assetId, "ph1")
+    }
+
+    func test_AC_16_assetResponseDto_isEditedOptional() throws {
+        func payload(isEdited: String) -> Data {
+            """
+            {
+              "id": "asset-1", "type": "IMAGE", "thumbhash": null,
+              "localDateTime": "2024-07-01T00:00:00.000Z", "duration": null, "hasMetadata": true,
+              "width": 1024, "height": 768, "createdAt": "2024-07-02T00:00:00.000Z",
+              "ownerId": "owner-1", "originalPath": "/upload/2024/x.jpg", "originalFileName": "x.jpg",
+              "fileCreatedAt": "2024-07-01T00:00:00.000Z", "fileModifiedAt": "2024-07-01T00:00:00.000Z",
+              "updatedAt": "2024-07-03T00:00:00.000Z", "isFavorite": false, "isArchived": false,
+              "isTrashed": false, "isOffline": false, "visibility": "timeline",
+              "checksum": "Y2hlY2tzdW0="\(isEdited)
+            }
+            """.data(using: .utf8)!
+        }
+        let legacy = try JSONDecoder.immich.decode(AssetResponseDto.self, from: payload(isEdited: ""))
+        XCTAssertNil(legacy.isEdited, "servers before v2.5.0 omit the key")
+        let edited = try JSONDecoder.immich.decode(AssetResponseDto.self, from: payload(isEdited: #", "isEdited": true"#))
+        XCTAssertEqual(edited.isEdited, true)
+    }
+
+    @MainActor
+    func test_AC_17_troubleshootFlag_unknownIsEmpty() {
+        XCTAssertEqual(AssetTroubleshootViewModel.flag(nil), "")
+        XCTAssertEqual(AssetTroubleshootViewModel.flag(true), String(localized: "Yes"))
+        XCTAssertEqual(AssetTroubleshootViewModel.flag(false), String(localized: "No"))
     }
 
     func test_P0_memoryResponseDto() throws {

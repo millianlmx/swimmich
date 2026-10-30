@@ -986,7 +986,7 @@ final class MockImmichClient: ImmichClient, @unchecked Sendable {
         if let r = createActivityResponse { return r }
         return ActivityResponseDto(
             id: "act-new", createdAt: "2024-01-01T00:00:00.000Z", type: dto.type,
-            user: cannedUser(id: "me"), assetId: dto.assetId ?? "", comment: dto.comment
+            user: cannedUser(id: "me"), assetId: dto.assetId, comment: dto.comment
         )
     }
 

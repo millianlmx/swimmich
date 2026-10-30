@@ -56,11 +56,11 @@ struct AssetTroubleshootView: View {
                 row("Live Photo ID", detail.livePhotoVideoId ?? "")
                 row("Duplicate ID", detail.duplicateId ?? "")
                 row("Visibility", detail.visibility)
-                row("Favorite", flag(detail.isFavorite))
-                row("Archived", flag(detail.isArchived))
-                row("Trashed", flag(detail.isTrashed))
-                row("Offline", flag(detail.isOffline))
-                row("Edited", flag(detail.isEdited))
+                row("Favorite", AssetTroubleshootViewModel.flag(detail.isFavorite))
+                row("Archived", AssetTroubleshootViewModel.flag(detail.isArchived))
+                row("Trashed", AssetTroubleshootViewModel.flag(detail.isTrashed))
+                row("Offline", AssetTroubleshootViewModel.flag(detail.isOffline))
+                row("Edited", AssetTroubleshootViewModel.flag(detail.isEdited))
             } else if vm.isLoading {
                 ProgressView()
             }
@@ -140,9 +140,5 @@ struct AssetTroubleshootView: View {
             .compactMap { $0 }
             .map(String.init)
             .joined(separator: " × ")
-    }
-
-    private func flag(_ value: Bool) -> String {
-        value ? String(localized: "Yes") : String(localized: "No")
     }
 }

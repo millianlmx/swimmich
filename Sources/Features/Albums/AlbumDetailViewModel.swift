@@ -64,8 +64,8 @@ final class AlbumDetailViewModel {
         guard !selectedIds.isEmpty else { return }
         let ids = Array(selectedIds)
         do {
-            _ = try await client.removeAssetsFromAlbum(albumId: albumId, dto: BulkIdsDto(ids: ids))
-            let removeSet = Set(ids)
+            let results = try await client.removeAssetsFromAlbum(albumId: albumId, dto: BulkIdsDto(ids: ids))
+            let removeSet = removedIds(results)
             assets.removeAll { removeSet.contains($0.id) }
             loadedIds.subtract(removeSet)
             exitSelectionMode()
@@ -184,9 +184,9 @@ final class AlbumDetailViewModel {
     func removeAssets(ids: [String]) async {
         guard !ids.isEmpty else { return }
         do {
-            _ = try await client.removeAssetsFromAlbum(albumId: albumId, dto: BulkIdsDto(ids: ids))
+            let results = try await client.removeAssetsFromAlbum(albumId: albumId, dto: BulkIdsDto(ids: ids))
             // try-then-mutate: update local list only on success.
-            let removeSet = Set(ids)
+            let removeSet = removedIds(results)
             assets.removeAll { removeSet.contains($0.id) }
             loadedIds.subtract(removeSet)
             // Keep the selection set consistent when a selected asset is
@@ -196,6 +196,13 @@ final class AlbumDetailViewModel {
         } catch {
             actionErrorMessage = error.userFacingMessage
         }
+    }
+
+    /// Ids the server took out of the album: a success, or `not_found` (already
+    /// absent). A refused entry (`no_permission`, …) stays on screen, as does an
+    /// id missing from the response.
+    private func removedIds(_ results: [BulkIdResponseDto]) -> Set<String> {
+        Set(results.filter { $0.success || $0.error == .notFound }.map(\.id))
     }
 
     // MARK: - Delete album (AC-511)

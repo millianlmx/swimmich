@@ -60,18 +60,26 @@ final class ActivityFeedViewModel {
         }
     }
 
-    /// Likes or unlikes the asset behind `activity` (comments and likes carry
-    /// an `assetId`). try-then-mutate: state list untouched on throw.
+    /// Likes the photo behind `activity`, or retracts the current user's own
+    /// like. Activities posted on the album itself (`assetId == nil`) carry no
+    /// photo to like: no request unless it is the user's own like.
+    /// try-then-mutate: state list untouched on throw.
     func toggleLike(activity: ActivityResponseDto) async {
         if hasMyLike(activity) {
             await unlike(activityId: activity.id)
         } else {
-            await like(assetId: activity.assetId)
+            guard let assetId = activity.assetId else { return }
+            await like(assetId: assetId)
         }
     }
 
+    /// Whether the row shows a heart: any photo activity, or the current
+    /// user's own album-level like (which keeps its "Unlike").
+    func canToggleLike(_ activity: ActivityResponseDto) -> Bool {
+        activity.assetId != nil || hasMyLike(activity)
+    }
+
     private func like(assetId: String) async {
-        guard !assetId.isEmpty else { return }
         let dto = ActivityCreateDto(albumId: albumId, type: .like, assetId: assetId, comment: nil)
         do {
             _ = try await client.createActivity(dto: dto)

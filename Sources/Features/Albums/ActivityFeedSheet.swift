@@ -30,6 +30,7 @@ struct ActivityFeedSheet: View {
                                     activity: activity,
                                     canDelete: activity.user.id == auth.userId,
                                     hasMyLike: vm.hasMyLike(activity),
+                                    canToggleLike: vm.canToggleLike(activity),
                                     onToggleLike: { Task { await vm.toggleLike(activity: activity) } },
                                     onDelete: { Task { await vm.deleteActivity(id: activity.id) } }
                                 )
@@ -104,6 +105,7 @@ private struct ActivityRow: View {
     let activity: ActivityResponseDto
     let canDelete: Bool
     let hasMyLike: Bool
+    let canToggleLike: Bool
     let onToggleLike: () -> Void
     let onDelete: () -> Void
 
@@ -132,10 +134,10 @@ private struct ActivityRow: View {
 
             Spacer()
 
-            if activity.assetId.isEmpty == false {
+            if let assetId = activity.assetId {
                 AuthenticatedAsyncImage(
                     url: ImmichAssetURL.thumbnail(
-                        assetId: activity.assetId,
+                        assetId: assetId,
                         thumbhash: "",
                         baseURL: authBaseURL
                     ),
@@ -145,14 +147,16 @@ private struct ActivityRow: View {
                 .clipShape(RoundedRectangle(cornerRadius: PVRadius.sm, style: .continuous))
             }
 
-            Button(action: onToggleLike) {
-                Image(systemName: hasMyLike ? "heart.fill" : "heart")
-                    .font(.pvBody)
-                    .foregroundStyle(hasMyLike ? Color.immichPrimary : Color.textSecondaryPV)
+            if canToggleLike {
+                Button(action: onToggleLike) {
+                    Image(systemName: hasMyLike ? "heart.fill" : "heart")
+                        .font(.pvBody)
+                        .foregroundStyle(hasMyLike ? Color.immichPrimary : Color.textSecondaryPV)
+                }
+                .accessibilityLabel(hasMyLike ? "Unlike" : "Like")
+                .accessibilityIdentifier("activityLikeToggle-\(activity.id)")
+                .buttonStyle(.plain)
             }
-            .accessibilityLabel(hasMyLike ? "Unlike" : "Like")
-            .accessibilityIdentifier("activityLikeToggle-\(activity.id)")
-            .buttonStyle(.plain)
 
             if canDelete {
                 Button(role: .destructive, action: onDelete) {

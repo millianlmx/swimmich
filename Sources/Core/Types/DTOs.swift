@@ -126,7 +126,8 @@ struct AssetResponseDto: Codable, Equatable {
     var isOffline: Bool
     var visibility: String
     var checksum: String
-    var isEdited: Bool
+    /// Absent before server v2.5.0.
+    var isEdited: Bool?
     // optional
     var originalMimeType: String?
     var livePhotoVideoId: String?

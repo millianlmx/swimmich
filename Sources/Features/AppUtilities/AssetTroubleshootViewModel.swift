@@ -91,4 +91,14 @@ final class AssetTroubleshootViewModel {
     func formattedCachedSize() -> String {
         cached.map { StorageStatsViewModel.format($0.size) } ?? ""
     }
+
+    /// Yes / No label for a flag; `""` (rendered « — » by the view) when the
+    /// server did not send it (e.g. `isEdited` before v2.5.0).
+    static func flag(_ value: Bool?) -> String {
+        switch value {
+        case .some(true): String(localized: "Yes")
+        case .some(false): String(localized: "No")
+        case .none: ""
+        }
+    }
 }

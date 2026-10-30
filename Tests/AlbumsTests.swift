@@ -662,4 +662,85 @@ final class AlbumsTests: XCTestCase {
         XCTAssertNil(vm.loadErrorMessage)
         XCTAssertNil(vm.actionErrorMessage)
     }
+
+    // MARK: - Real client: duplicate add and partial removal (BulkIdResponseDto)
+
+    override func tearDown() {
+        CapturingURLProtocol.reset()
+    }
+
+    private func makeRealClient() -> ImmichAPIClient {
+        let config = URLSessionConfiguration.ephemeral
+        config.protocolClasses = [CapturingURLProtocol.self]
+        let client = ImmichAPIClient(session: URLSession(configuration: config))
+        client.configure(baseURL: URL(string: "https://example.com")!, token: "tok")
+        return client
+    }
+
+    private static let duplicateJSON = #"[{"id":"p1","success":false,"error":"duplicate"}]"#
+
+    func test_AC_6_albumsVM_addDuplicate_realClient_noError() async {
+        let vm = AlbumsViewModel(client: makeRealClient())
+        CapturingURLProtocol.nextData = Data(Self.duplicateJSON.utf8)
+
+        await vm.addAssets(ids: ["p1"], toAlbumId: "alb-1")
+
+        XCTAssertNil(vm.actionErrorMessage)
+        XCTAssertEqual(CapturingURLProtocol.lastRequest?.httpMethod, "PUT")
+        XCTAssertEqual(CapturingURLProtocol.lastRequest?.url?.path, "/api/albums/alb-1/assets")
+    }
+
+    func test_AC_6_albumDetailVM_addDuplicate_realClient_refreshes() async {
+        let vm = AlbumDetailViewModel(client: makeRealClient(), albumId: "alb-1")
+        CapturingURLProtocol.nextData = Data(Self.duplicateJSON.utf8)
+        CapturingURLProtocol.dataByPath["/api/search/metadata"] = Data(
+            #"{"assets":{"count":0,"items":[],"nextPage":null}}"#.utf8
+        )
+
+        await vm.addAssets(ids: ["p1"])
+
+        XCTAssertNil(vm.actionErrorMessage)
+        XCTAssertNil(vm.loadErrorMessage)
+        XCTAssertEqual(CapturingURLProtocol.lastRequest?.httpMethod, "POST")
+        XCTAssertEqual(CapturingURLProtocol.lastRequest?.url?.path, "/api/search/metadata")
+    }
+
+    private static let partialRemovalJSON = """
+    [{"id":"p1","success":true},
+     {"id":"p2","success":false,"error":"no_permission"},
+     {"id":"p3","success":false,"error":"not_found"}]
+    """
+
+    private func loadedDetailVM(removeResponse: [BulkIdResponseDto]) async -> (AlbumDetailViewModel, MockImmichClient) {
+        let mock = MockImmichClient()
+        mock.getAlbumResponse = ["alb": makeAlbum(id: "alb", count: 3)]
+        mock.searchMetadataResponse = makeSearchResponse(ids: ["p1", "p2", "p3"])
+        mock.removeAssetsResponse = removeResponse
+        let vm = AlbumDetailViewModel(client: mock, albumId: "alb")
+        await vm.load()
+        return (vm, mock)
+    }
+
+    func test_AC_19_removeAssets_keepsRefusedIds() async throws {
+        let results = try JSONDecoder.immich.decode([BulkIdResponseDto].self, from: Data(Self.partialRemovalJSON.utf8))
+        let (vm, _) = await loadedDetailVM(removeResponse: results)
+
+        await vm.removeAssets(ids: ["p1", "p2", "p3"])
+
+        XCTAssertEqual(vm.assets.map(\.id), ["p2"])
+        XCTAssertNil(vm.actionErrorMessage)
+    }
+
+    func test_AC_19_removeSelected_keepsRefusedIds() async throws {
+        let results = try JSONDecoder.immich.decode([BulkIdResponseDto].self, from: Data(Self.partialRemovalJSON.utf8))
+        let (vm, _) = await loadedDetailVM(removeResponse: results)
+
+        vm.enterSelectionMode()
+        for id in ["p1", "p2", "p3"] { vm.toggleSelection(id: id) }
+        await vm.removeSelected()
+
+        XCTAssertEqual(vm.assets.map(\.id), ["p2"])
+        XCTAssertFalse(vm.selectionMode)
+        XCTAssertNil(vm.actionErrorMessage)
+    }
 }

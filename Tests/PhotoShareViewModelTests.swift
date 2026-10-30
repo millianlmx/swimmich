@@ -144,6 +144,21 @@ final class PhotoShareViewModelTests: XCTestCase {
         XCTAssertNotNil(vm.errorMessage)
     }
 
+    func test_AC_6_addToAlbum_duplicate_realClient_setsLastAdded() async {
+        let config = URLSessionConfiguration.ephemeral
+        config.protocolClasses = [CapturingURLProtocol.self]
+        let client = ImmichAPIClient(session: URLSession(configuration: config))
+        client.configure(baseURL: baseURL, token: "tok")
+        CapturingURLProtocol.nextData = Data(#"[{"id":"a1","success":false,"error":"duplicate"}]"#.utf8)
+        defer { CapturingURLProtocol.reset() }
+        let vm = PhotoShareViewModel(asset: makeAsset(), client: client, baseURL: baseURL)
+
+        await vm.addToAlbum(id: "al-shared")
+
+        XCTAssertNil(vm.errorMessage)
+        XCTAssertEqual(vm.lastAddedAlbumId, "al-shared")
+    }
+
     // MARK: - Public link
 
     func test_createPublicLink_buildsShareURLWithToggles() async {

@@ -3,6 +3,30 @@ import XCTest
 
 final class ActivityFeedViewModelTests: XCTestCase {
 
+    override func tearDown() {
+        CapturingURLProtocol.reset()
+    }
+
+    private static let userJSON = ##"{"id": "u1", "name": "U", "email": "u@t", "profileImagePath": "", "avatarColor": "#000000", "profileChangedAt": "2024-01-01T00:00:00.000Z"}"##
+
+    /// Real HTTP client behind the `CapturingURLProtocol` stub: exercises the
+    /// actual JSON decoding of the server payload.
+    @MainActor
+    private func makeRealClientVM() -> ActivityFeedViewModel {
+        let config = URLSessionConfiguration.ephemeral
+        config.protocolClasses = [CapturingURLProtocol.self]
+        let client = ImmichAPIClient(session: URLSession(configuration: config))
+        client.configure(baseURL: URL(string: "https://example.com")!, token: "tok")
+        return ActivityFeedViewModel(client: client, albumId: "alb-1", currentUserId: "me")
+    }
+
+    private static let feedJSON = """
+    [
+      {"id": "l1", "createdAt": "2024-01-01T00:00:00.000Z", "type": "like", "user": \(userJSON), "assetId": "ph1"},
+      {"id": "c1", "createdAt": "2024-01-02T00:00:00.000Z", "type": "comment", "user": \(userJSON), "assetId": null, "comment": "Hello"}
+    ]
+    """
+
     private func makeUser(id: String) -> UserResponseDto {
         UserResponseDto(
             id: id, name: "User \(id)", email: "\(id)@example.com",
@@ -12,7 +36,7 @@ final class ActivityFeedViewModelTests: XCTestCase {
 
     private func makeActivity(
         id: String, createdAt: String, type: ReactionType,
-        comment: String? = nil, assetId: String = "", userId: String = "u1"
+        comment: String? = nil, assetId: String? = nil, userId: String = "u1"
     ) -> ActivityResponseDto {
         ActivityResponseDto(
             id: id, createdAt: createdAt, type: type,
@@ -113,6 +137,85 @@ final class ActivityFeedViewModelTests: XCTestCase {
         XCTAssertEqual(mock.lastCreateActivityDto?.type, .like)
         XCTAssertEqual(mock.lastCreateActivityDto?.assetId, "ph1")
         XCTAssertNil(mock.lastCreateActivityDto?.comment)
+    }
+
+    @MainActor
+    func test_AC_10_load_realClient_albumLevelActivities() async {
+        let vm = makeRealClientVM()
+        CapturingURLProtocol.nextData = Data(Self.feedJSON.utf8)
+
+        await vm.load()
+
+        XCTAssertNil(vm.errorMessage)
+        XCTAssertEqual(vm.activities.map(\.id), ["c1", "l1"], "newest first")
+        XCTAssertNil(vm.activities[0].assetId)
+        XCTAssertEqual(vm.activities[1].assetId, "ph1")
+    }
+
+    @MainActor
+    func test_AC_11_addComment_realClient_nullAssetId() async {
+        let vm = makeRealClientVM()
+        CapturingURLProtocol.nextStatus = 201
+        CapturingURLProtocol.nextData = Data(
+            """
+            {"id": "c1", "createdAt": "2024-01-02T00:00:00.000Z", "type": "comment", "user": \(Self.userJSON), "assetId": null, "comment": "Hello"}
+            """.utf8
+        )
+
+        let posted = await vm.addComment("Hello")
+
+        XCTAssertTrue(posted)
+        XCTAssertNil(vm.errorMessage)
+        XCTAssertEqual(vm.activities.map(\.id), ["c1"])
+        XCTAssertNil(vm.activities.first?.assetId)
+
+        CapturingURLProtocol.nextStatus = 200
+        CapturingURLProtocol.nextData = Data(Self.feedJSON.utf8)
+        await vm.load()
+        XCTAssertNil(vm.errorMessage)
+        XCTAssertEqual(vm.activities.map(\.id), ["c1", "l1"])
+    }
+
+    @MainActor
+    func test_AC_12_toggleLike_albumLevelOfOther_isNoOp() async {
+        let mock = MockImmichClient()
+        let vm = makeVM(mock: mock)
+        let albumComment = makeActivity(id: "c1", createdAt: "2024-01-01T00:00:00.000Z", type: .comment, comment: "Hi", userId: "u1")
+        let albumLike = makeActivity(id: "l1", createdAt: "2024-01-02T00:00:00.000Z", type: .like, userId: "u1")
+        vm.activities = [albumComment, albumLike]
+
+        await vm.toggleLike(activity: albumComment)
+        await vm.toggleLike(activity: albumLike)
+
+        XCTAssertNil(mock.lastCreateActivityDto)
+        XCTAssertNil(mock.lastDeleteActivityId)
+        XCTAssertEqual(mock.requestCount, 0)
+        XCTAssertEqual(vm.activities, [albumComment, albumLike])
+        XCTAssertNil(vm.errorMessage)
+    }
+
+    @MainActor
+    func test_AC_13_toggleLike_ownAlbumLike_deletes() async {
+        let mock = MockImmichClient()
+        let vm = makeVM(mock: mock)
+        let mine = makeActivity(id: "l1", createdAt: "2024-01-01T00:00:00.000Z", type: .like, userId: "me")
+        vm.activities = [mine]
+
+        await vm.toggleLike(activity: mine)
+
+        XCTAssertEqual(mock.lastDeleteActivityId, "l1")
+        XCTAssertNil(mock.lastCreateActivityDto)
+    }
+
+    @MainActor
+    func test_AC_18_canToggleLike() {
+        let vm = makeVM(mock: MockImmichClient())
+        let at = "2024-01-01T00:00:00.000Z"
+        XCTAssertTrue(vm.canToggleLike(makeActivity(id: "1", createdAt: at, type: .comment, assetId: "ph1", userId: "u1")))
+        XCTAssertTrue(vm.canToggleLike(makeActivity(id: "2", createdAt: at, type: .like, assetId: "ph1", userId: "me")))
+        XCTAssertTrue(vm.canToggleLike(makeActivity(id: "3", createdAt: at, type: .like, userId: "me")))
+        XCTAssertFalse(vm.canToggleLike(makeActivity(id: "4", createdAt: at, type: .comment, comment: "x", userId: "me")))
+        XCTAssertFalse(vm.canToggleLike(makeActivity(id: "5", createdAt: at, type: .like, userId: "u1")))
     }
 
     @MainActor

@@ -84,11 +84,22 @@ struct UpdateAlbumUserDto: Codable, Equatable {
 
 /// `BulkIdResponseDto` — per-asset result for bulk add/remove album assets.
 /// `error` and `errorMessage` are present only on failure.
-enum BulkIdErrorReason: String, Codable {
-    case duplicate = "DUPLICATE"
-    case noPermission = "NO_PERMISSION"
-    case notFound = "NOT_FOUND"
-    case unknown = "UNKNOWN"
+///
+/// The server emits lowercase values (`duplicate`, `no_permission`,
+/// `not_found`, `unknown`, plus `validation` since v3). Decoding is
+/// case-insensitive and any unrecognised value becomes `.unknown`, so one
+/// failed entry never fails the whole `[BulkIdResponseDto]` array.
+enum BulkIdErrorReason: String, Codable, Equatable {
+    case duplicate = "duplicate"
+    case noPermission = "no_permission"
+    case notFound = "not_found"
+    case unknown = "unknown"
+    case validation = "validation"
+
+    init(from decoder: Decoder) throws {
+        let raw = try decoder.singleValueContainer().decode(String.self)
+        self = BulkIdErrorReason(rawValue: raw.lowercased()) ?? .unknown
+    }
 }
 
 struct BulkIdResponseDto: Codable, Equatable {

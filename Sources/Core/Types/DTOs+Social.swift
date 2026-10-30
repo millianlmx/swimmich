@@ -21,7 +21,8 @@ struct ActivityResponseDto: Codable, Equatable {
     let createdAt: String
     let type: ReactionType
     let user: UserResponseDto
-    let assetId: String
+    /// nil for an activity posted on the album itself.
+    let assetId: String?
     var comment: String?
 }
 

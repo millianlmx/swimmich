@@ -91,9 +91,9 @@ struct AssetIdsDto: Codable, Equatable {
 }
 
 /// Error reason of `AssetIdsResponseDto`. The server enum is `@deprecated` in
-/// favour of `BulkIdErrorReason`, but this route still serialises the
-/// **lowercase** values, so the raw strings are not the `BulkIdResponseDto`
-/// ones.
+/// favour of `BulkIdErrorReason`, but this route serialises the same lowercase
+/// strings; only the field name (`assetId` here, `id` there) and the absence
+/// of `validation` tell the two apart.
 enum AssetIdErrorReason: String, Codable, Equatable {
     case duplicate
     case noPermission = "no_permission"

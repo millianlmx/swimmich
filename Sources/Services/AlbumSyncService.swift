@@ -6,11 +6,11 @@ import Foundation
 struct AlbumSyncOutcome: Sendable, Equatable {
     /// Assets the server put in the album.
     var added = 0
-    /// The asset was already in the album (`DUPLICATE`) — a re-run, not an
+    /// The asset was already in the album (`duplicate`) — a re-run, not an
     /// error. A second run over the same photos must report this, not a
     /// failure, or every run after the first looks broken.
     var alreadyInAlbum = 0
-    /// `NO_PERMISSION` / `NOT_FOUND` / `UNKNOWN`, plus the album calls that
+    /// `no_permission` / `not_found` / `unknown`, plus the album calls that
     /// threw outright.
     var failed = 0
     /// First failure message of the window, so the settings screen can say what
@@ -42,7 +42,7 @@ actor AlbumSyncService: AlbumSyncServicing {
     private var buffered: [String: Set<String>] = [:]
     /// The account `deviceToServer` was resolved for. The service lives as long
     /// as the process, so a mapping resolved for account A must never receive
-    /// writes under account B's token — the server would answer `NOT_FOUND` per
+    /// writes under account B's token — the server would answer `not_found` per
     /// asset, and worse, a shared album id could match.
     private var resolvedForUserID: String?
     private var outcome = AlbumSyncOutcome()
@@ -119,7 +119,7 @@ actor AlbumSyncService: AlbumSyncServicing {
     /// is the album this mirror created; then an album merely shared with the
     /// user. An album owned by somebody else and not shared is not a match —
     /// merging into it would write into a stranger's album and come back
-    /// `NO_PERMISSION` per asset.
+    /// `no_permission` per asset.
     private static func nameMatch(of name: String, in albums: [AlbumResponseDto], userID: String) -> String? {
         let sameName = albums.filter { $0.albumName == name }
         if let owned = sameName.first(where: { $0.albumUsers.first?.user.id == userID }) {
@@ -169,7 +169,7 @@ actor AlbumSyncService: AlbumSyncServicing {
         return window
     }
 
-    /// `success` is an add; `DUPLICATE` means the asset was already there (a
+    /// `success` is an add; `duplicate` means the asset was already there (a
     /// re-run, not a failure); anything else is a failure and keeps the first
     /// message, which is what the settings screen shows.
     private func record(_ result: BulkIdResponseDto) {

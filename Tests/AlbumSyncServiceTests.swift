@@ -251,7 +251,7 @@ final class AlbumSyncServiceTests: XCTestCase {
         XCTAssertEqual(outcome.added, 3)
     }
 
-    /// A second run over the same photos answers `DUPLICATE` per asset. That is
+    /// A second run over the same photos answers `duplicate` per asset. That is
     /// "already there", never a failure — otherwise every run after the first
     /// reads as broken.
     @MainActor
@@ -263,9 +263,11 @@ final class AlbumSyncServiceTests: XCTestCase {
             syncedDeviceAlbumIDs: ["dev-vac"],
             albumMembership: ["a1": ["dev-vac"]], userID: "me", client: mock
         )
-        mock.addAssetsResponse = [
-            BulkIdResponseDto(id: "srv-a1", success: false, error: .duplicate, errorMessage: "duplicate")
-        ]
+        // Decoded from the server's real (lowercase) payload, not built in Swift.
+        mock.addAssetsResponse = try JSONDecoder.immich.decode(
+            [BulkIdResponseDto].self,
+            from: Data(#"[{"id":"srv-a1","success":false,"error":"duplicate"}]"#.utf8)
+        )
         await service.stage(assetID: "srv-a1", deviceAssetID: "a1")
 
         let outcome = await service.flush(client: mock)
@@ -276,7 +278,7 @@ final class AlbumSyncServiceTests: XCTestCase {
         XCTAssertNil(outcome.lastError)
     }
 
-    /// A read-only shared album answers `NO_PERMISSION` per asset. The other
+    /// A read-only shared album answers `no_permission` per asset. The other
     /// albums of the same flush must still be sent, and the message must be
     /// kept for the settings screen.
     @MainActor
