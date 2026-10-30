@@ -2215,3 +2215,177 @@ final class TestBox<Value>: @unchecked Sendable {
     var value: Value
     init(_ value: Value) { self.value = value }
 }
+
+// MARK: - Arrêt pendant l'export iCloud (suite de « export PhotoKit annulable »)
+
+/// Un Stop, une expiration BG ou une déconnexion pendant l'export de l'original
+/// d'un asset rend la main en moins d'1 s, sans échec ni report, et laisse le
+/// moteur réarmé. L'export est simulé par `MockBackupAssetSource.exportGate` ;
+/// le raccord PhotoKit est prouvé par `ResourceExportHelpersTests`.
+final class BackupExportStopTests: XCTestCase {
+
+    private struct Rig {
+        let client: MockImmichClient
+        let source: MockBackupAssetSource
+        let ledger: BackupLedger
+        let engine: BackupEngine
+        let vm: UploadViewModel
+        let detail: UploadDetailViewModel
+        /// Erreur avec laquelle l'export suspendu est sorti.
+        let exportError: TestBox<Error?>
+    }
+
+    private func candidate(_ id: String) -> BackupCandidate {
+        BackupCandidate(
+            id: id, kind: .image, fileName: "\(id).jpg",
+            fileCreatedAt: "2024-07-01T00:00:00.000Z",
+            fileModifiedAt: "2024-07-01T00:00:00.000Z",
+            duration: nil, isFavorite: false
+        )
+    }
+
+    /// Un asset « c1 » dont l'export remonte 40 % de téléchargement iCloud puis
+    /// reste suspendu jusqu'à l'annulation.
+    @MainActor
+    private func makeRig() -> Rig {
+        let client = MockImmichClient()
+        client.bulkUploadCheckResponse = AssetBulkUploadCheckResponse(
+            results: [.init(id: "c1", action: "accept")]
+        )
+        let source = MockBackupAssetSource()
+        source.candidates = [candidate("c1")]
+        source.iCloudFractions = ["c1": 0.4]
+        let exportError = TestBox<Error?>(nil)
+        source.exportGate = { _ in
+            do { try await suspendUntilCancelled() } catch {
+                exportError.value = error
+                throw error
+            }
+        }
+        let ledger = BackupLedger.inMemory()
+        let engine = BackupEngine(
+            client: client, source: source, environment: MockBackupEnvironment(), ledger: ledger
+        )
+        let store = BackupSettingsStore(suiteName: "backup-export-stop-\(UUID().uuidString)")
+        store.isEnabled = true
+        let vm = UploadViewModel(
+            client: client, photos: MockPhotoLibraryService(),
+            engine: engine, settings: store,
+            scheduler: MockBackupScheduler(), activityService: MockBackupLiveActivityService(),
+            readOnly: .ephemeral()
+        )
+        return Rig(
+            client: client, source: source, ledger: ledger, engine: engine, vm: vm,
+            detail: UploadDetailViewModel(upload: vm), exportError: exportError
+        )
+    }
+
+    /// L'export de c1 est en vol et son état « Downloading from iCloud » est en place.
+    @MainActor
+    private func waitForSuspendedExport(_ rig: Rig) async {
+        await pollUntil("export de c1 en vol") { rig.source.exportedIDs == ["c1"] }
+        await pollUntil("progression iCloud de c1") { rig.engine.iCloudProgress["c1"] == 0.4 }
+    }
+
+    /// Assertions communes à AC-40 et AC-41 (le moteur est réarmé, rien n'est compté).
+    @MainActor
+    private func assertStoppedCleanly(_ rig: Rig, elapsed: Duration, file: StaticString = #filePath, line: UInt = #line) {
+        XCTAssertLessThan(elapsed, .seconds(1), "l'arrêt n'attend pas la fin du téléchargement", file: file, line: line)
+        XCTAssertTrue(rig.exportError.value is CancellationError, "l'export reçoit l'annulation", file: file, line: line)
+        XCTAssertEqual(rig.engine.phase, .cancelled, file: file, line: line)
+        XCTAssertEqual(rig.engine.failedCount, 0, file: file, line: line)
+        XCTAssertEqual(rig.engine.deferredCount, 0, file: file, line: line)
+        XCTAssertTrue(rig.client.uploads.isEmpty, file: file, line: line)
+        XCTAssertEqual(rig.ledger.trackedCount(), 0, file: file, line: line)
+        XCTAssertFalse(rig.engine.isCancelling, file: file, line: line)
+        XCTAssertNil(rig.engine.currentAssetID, file: file, line: line)
+        XCTAssertNil(rig.engine.currentFileName, file: file, line: line)
+        XCTAssertEqual(rig.detail.currentState, .idle, "Upload detail ne montre plus d'asset en cours", file: file, line: line)
+        XCTAssertNil(rig.detail.currentICloudFraction, file: file, line: line)
+    }
+
+    /// AC-40 (B-40) : Stop pendant l'export iCloud.
+    @MainActor
+    func test_ExportStop_AC40_stopDuringICloudExportEndsRunUnderOneSecond() async {
+        let rig = makeRig()
+        let run = Task { @MainActor in await rig.vm.runBackup(manual: true) }
+        await waitForSuspendedExport(rig)
+        XCTAssertEqual(rig.detail.currentState, .downloading(0.4))
+
+        let elapsed = await ContinuousClock().measure {
+            rig.vm.cancelBackup()
+            _ = await run.value
+        }
+
+        assertStoppedCleanly(rig, elapsed: elapsed)
+    }
+
+    /// AC-41 (B-41) : expiration de la tâche de fond pendant l'export iCloud.
+    @MainActor
+    func test_ExportStop_AC41_bgExpirationDuringICloudExportEndsRunUnderOneSecond() async {
+        let rig = makeRig()
+        let run = Task { @MainActor in await rig.vm.runBackup() }
+        await waitForSuspendedExport(rig)
+        XCTAssertEqual(rig.detail.currentState, .downloading(0.4))
+
+        // Ce que fait `expirationHandler` : appel depuis une file de fond.
+        let engine = rig.engine
+        let elapsed = await ContinuousClock().measure {
+            await Task.detached { await MainActor.run { engine.cancel() } }.value
+            _ = await run.value
+        }
+
+        assertStoppedCleanly(rig, elapsed: elapsed)
+    }
+
+    /// AC-42 (B-41) : déconnexion (`stopAndWait`) pendant l'export iCloud.
+    @MainActor
+    func test_ExportStop_AC42_stopAndWaitDuringICloudExportReturnsUnderOneSecond() async {
+        let rig = makeRig()
+        let engine = rig.engine
+        let run = Task { @MainActor in
+            await engine.run(settings: BackupSettings(isEnabled: true), manual: true)
+        }
+        await waitForSuspendedExport(rig)
+
+        let elapsed = await ContinuousClock().measure { await engine.stopAndWait() }
+        let isRunActive = engine.isRunActive
+        _ = await run.value
+
+        XCTAssertLessThan(elapsed, .seconds(1))
+        XCTAssertTrue(rig.exportError.value is CancellationError)
+        XCTAssertEqual(engine.phase, .cancelled)
+        XCTAssertEqual(engine.failedCount, 0)
+        XCTAssertEqual(engine.deferredCount, 0)
+        XCTAssertTrue(rig.client.uploads.isEmpty)
+        XCTAssertEqual(rig.ledger.trackedCount(), 0)
+        XCTAssertFalse(isRunActive, "la déconnexion vide les stores après stopAndWait()")
+        XCTAssertNil(engine.currentAssetID)
+        XCTAssertNil(engine.currentFileName)
+    }
+
+    /// AC-43 (B-42) : après un Stop pendant l'export, le run suivant réexporte l'asset.
+    @MainActor
+    func test_ExportStop_AC43_runAfterExportStopReexportsAndBacksUpInterruptedAsset() async {
+        let rig = makeRig()
+        let first = Task { @MainActor in await rig.vm.runBackup(manual: true) }
+        await waitForSuspendedExport(rig)
+        rig.vm.cancelBackup()
+        _ = await first.value
+        XCTAssertEqual(rig.engine.phase, .cancelled)
+
+        rig.source.exportGate = nil
+        let result = await rig.vm.runBackup(manual: true)
+
+        XCTAssertEqual(
+            result,
+            .completed(BackupRunOutcome(backedUpIDs: ["c1"], failures: [], deferrals: [], wasCancelled: false))
+        )
+        XCTAssertEqual(rig.source.exportedIDs, ["c1", "c1"], "l'asset interrompu est réexporté")
+        XCTAssertEqual(rig.client.uploads.map(\.deviceAssetId), ["c1"])
+        XCTAssertTrue(rig.ledger.isBackedUp(id: "c1", signature: "2024-07-01T00:00:00.000Z"))
+        XCTAssertEqual(rig.engine.phase, .done)
+        XCTAssertEqual(rig.engine.failedCount, 0)
+        XCTAssertEqual(rig.engine.deferredCount, 0)
+    }
+}

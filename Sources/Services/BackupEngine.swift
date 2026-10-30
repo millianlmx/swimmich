@@ -610,6 +610,11 @@ final class BackupEngine {
         Self.removeStaged(batch)
         stagedCount = max(0, stagedCount - batch.count)
         batch.removeAll()
+        // Same reset as a normal end: the Upload detail screen reads
+        // `currentAssetID`, and a Stop must not leave it on the interrupted asset.
+        currentFileName = nil
+        currentAssetID = nil
+        statusMessage = nil
         phase = .cancelled
         notifyProgress()
         // A cancelled run still mounted assets: without this flush they would
