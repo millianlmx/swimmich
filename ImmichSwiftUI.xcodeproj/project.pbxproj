@@ -391,6 +391,8 @@
 		B78816EE563074FA18F13893 /* AppStringsTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A9D158726EA9BD49E050D1B7 /* AppStringsTests.swift */; };
 		B7A50ED30BC62BFADAD60901 /* ThumbHashDecoder.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2733888CA0E8AA03F0B57E68 /* ThumbHashDecoder.swift */; };
 		B7B70726564F75456E444885 /* ImmichSharedKit.framework in Embed Frameworks */ = {isa = PBXBuildFile; fileRef = 43EFADF0DFF6B6F100CC9AED /* ImmichSharedKit.framework */; settings = {ATTRIBUTES = (CodeSignOnCopy, RemoveHeadersOnCopy, ); }; };
+		B7C3A9E1D2F4051627384901 /* PeopleSearchUITests.swift in Sources */ = {isa = PBXBuildFile; fileRef = B7C3A9E1D2F4051627384902 /* PeopleSearchUITests.swift */; };
+		B7C3A9E1D2F4051627384903 /* immich_stub_people_search.py in Resources */ = {isa = PBXBuildFile; fileRef = B7C3A9E1D2F4051627384904 /* immich_stub_people_search.py */; };
 		B86BB79B8BCDAFAE36E6BEA0 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 8E81A210D26A501C1F68C961 /* Assets.xcassets */; };
 		B8E2CF77B7B4F4C1A114001B /* PrivacyInfo.xcprivacy in Resources */ = {isa = PBXBuildFile; fileRef = 2A58444351443E75BCBD91E2 /* PrivacyInfo.xcprivacy */; };
 		B8F78C22B7C03ECEB11539D3 /* DTOs+People.swift in Sources */ = {isa = PBXBuildFile; fileRef = B86EB1582D824259861FF777 /* DTOs+People.swift */; };
@@ -1003,6 +1005,8 @@
 		B6A5DD4030705D4121BD6F6D /* ImmichMark.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ImmichMark.swift; sourceTree = "<group>"; };
 		B726B8CC425D31E1837E7C1A /* AssetTroubleshootView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AssetTroubleshootView.swift; sourceTree = "<group>"; };
 		B74E7C08F4EE298959335CB6 /* PinnedHeaderResolver.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PinnedHeaderResolver.swift; sourceTree = "<group>"; };
+		B7C3A9E1D2F4051627384902 /* PeopleSearchUITests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PeopleSearchUITests.swift; sourceTree = "<group>"; };
+		B7C3A9E1D2F4051627384904 /* immich_stub_people_search.py */ = {isa = PBXFileReference; lastKnownFileType = text.script.python; path = immich_stub_people_search.py; sourceTree = "<group>"; };
 		B86EB1582D824259861FF777 /* DTOs+People.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "DTOs+People.swift"; sourceTree = "<group>"; };
 		B88083F402E303B4A12A87EB /* AppLanguage.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppLanguage.swift; sourceTree = "<group>"; };
 		B8B8F992F536E50B945F00D7 /* CastService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CastService.swift; sourceTree = "<group>"; };
@@ -1899,6 +1903,7 @@
 				E1208877397F4626C85572F2 /* immich_stub_ocr_text.py */,
 				C2298E0389CE0826F8764FCE /* immich_stub_offline.py */,
 				FDA5FDA4F292DCC9D90AC9CA /* immich_stub_partners.py */,
+				B7C3A9E1D2F4051627384904 /* immich_stub_people_search.py */,
 				1BBFFBCA7F1A04CEFC4D00A9 /* immich_stub_person_birthday.py */,
 				17A7602FF3060BF40F59B02F /* immich_stub_profile_picture.py */,
 				B20912A95415B9069E1F5A36 /* immich_stub_read_only_mode.py */,
@@ -2004,6 +2009,7 @@
 				86533554A77DF5D2D61EA1FF /* LockedFolderUITests.swift */,
 				2FB9BAD82791075DF5D3C684 /* MapSettingsUITests.swift */,
 				A50A0311861667157DDF8D9F /* OcrTextUITests.swift */,
+				B7C3A9E1D2F4051627384902 /* PeopleSearchUITests.swift */,
 				9D055C9014100C28323874C7 /* PersonBirthdayUITests.swift */,
 				A1DA2B469A3C18CC76B13595 /* ProfilePictureUITests.swift */,
 				6285A49819D612AD79FE73BB /* ReadOnlyModeUITests.swift */,
@@ -2401,6 +2407,7 @@
 				59D319B0F93796330C3C8291 /* immich_stub_ocr_text.py in Resources */,
 				F45D52140BD74B3E459888A1 /* immich_stub_offline.py in Resources */,
 				A8E6691882D082D9A5F3E53F /* immich_stub_partners.py in Resources */,
+				B7C3A9E1D2F4051627384903 /* immich_stub_people_search.py in Resources */,
 				77C911D66481ADAC278B8B2F /* immich_stub_person_birthday.py in Resources */,
 				1187E9FCD768EF8A04CCAABE /* immich_stub_profile_picture.py in Resources */,
 				D51CD30CCCE3A039EB7B52F1 /* immich_stub_read_only_mode.py in Resources */,
@@ -2614,6 +2621,7 @@
 				DF56AF55F4C25922114C4396 /* LockedFolderUITests.swift in Sources */,
 				9D9DBEB55D87F92C8EAE8184 /* MapSettingsUITests.swift in Sources */,
 				E540263F8E2067910F19C3FE /* OcrTextUITests.swift in Sources */,
+				B7C3A9E1D2F4051627384901 /* PeopleSearchUITests.swift in Sources */,
 				DA5E697C110B675058301506 /* PersonBirthdayUITests.swift in Sources */,
 				2525166B05B745B24DFDAF1F /* ProfilePictureUITests.swift in Sources */,
 				74D985B24A966DC7EDF6DACD /* ReadOnlyModeUITests.swift in Sources */,
