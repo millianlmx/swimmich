@@ -233,7 +233,7 @@ Vocabulaire. Statut d'une fonction : `présent`, `partiel`, `absent` ou `hors p�
 | R-LocalTimelineRoute | Timeline locale | présent | `mobile/lib/routing/router.dart@v3.4.0` | Sources/Features/LocalLibrary/LocalAssetGrid.swift:15 | — |
 | R-LockedFolderRoute | Dossier verrouillé | présent | `mobile/lib/routing/router.dart@v3.4.0` | Sources/Features/LockedFolder/LockedFolderView.swift:13 | — |
 | R-LoginRoute | Connexion | partiel | `mobile/lib/routing/router.dart@v3.4.0` ; `mobile/lib/widgets/forms/login/login_form.dart@v3.4.0` ; PR #32288, #32181, #32652 (v3.4.0) | Sources/Features/Auth/Onboarding/LoginScreen.swift:12 (SSO : Sources/Features/Auth/Onboarding/LoginScreen.swift:53-63 ; ni en-têtes ni certificat client sur l'écran serveur : Sources/Features/Auth/Onboarding/ServerURLScreen.swift:36-60) | B-13, B-14, B-32 |
-| R-MainTimelineRoute | Timeline principale (déclarée deux fois) | partiel | `mobile/lib/routing/router.dart@v3.4.0` ; PR #32552 (v3.4.0) | Sources/Features/Timeline/TimelineView.swift:14 (pas de curseur de défilement par date) | B-8 |
+| R-MainTimelineRoute | Timeline principale (déclarée deux fois) | présent | `mobile/lib/routing/router.dart@v3.4.0` ; PR #32552 (v3.4.0) | Sources/Features/Timeline/TimelineView.swift:206 (overlay du curseur de date) | — |
 | R-MapLocationPickerRoute | Sélecteur de localisation | présent | `mobile/lib/routing/router.dart@v3.4.0` | Sources/Features/PhotoViewer/AdjustLocationSheet.swift:6-10 (épingle ; saisie des coordonnées : voir V-#32460) | — |
 | R-MapRoute | Carte | présent | `mobile/lib/routing/router.dart@v3.4.0` | Sources/Features/Search/MapView.swift:78-82 | — |
 | R-MemoryListRoute | Liste des souvenirs | partiel | `mobile/lib/routing/router.dart@v3.4.0` ; PR #30831 et #31798 (v3.3.0) | Sources/Features/Memories/MemoriesView.swift:13 (seul le type `on_this_day` est servi : Sources/Core/Types/DTOs+Social.swift:31-42) | B-11 |
@@ -301,7 +301,7 @@ Vocabulaire. Statut d'une fonction : `présent`, `partiel`, `absent` ou `hors p�
 | V-#32200 | Éviter le re-rendu rapide des cellules | hors périmètre | PR #32200 (v3.3.1) | — | Exclu : non applicable — détail interne Flutter |
 | V-#32259 | Date des souvenirs dans la langue de l'app (sans « Invalid locale ») | hors périmètre | PR #32259 (v3.3.3–v3.3.6) | — | Exclu : non applicable — plantage de `intl` sur six langues absentes, propre à Flutter ; Swimmich n'expose que cinq langues : Sources/Features/Settings/AppLanguage.swift:28-34 |
 | V-#32485 | Traduction manquante « Manage access » | hors périmètre | PR #32485 (v3.3.3–v3.3.6) | — | Exclu : non applicable — web seulement : un seul fichier, web/src/lib/services/person.service.ts, aucun fichier mobile/ |
-| V-#32552 | Option de défilement fluide par curseur sur la timeline | absent | PR #32552 (v3.4.0) | Sources/Features/PhotoViewer/VideoPlayerView.swift:204 (seul scrubber du dépôt : la vidéo), Recherche locale : `scrubber\|Scrubber\|fastScroll\|dateScrub` sur Sources/Features/Timeline → 0 | B-8 |
+| V-#32552 | Option de défilement fluide par curseur sur la timeline | présent | PR #32552 (v3.4.0) | Sources/Features/Timeline/TimelineScrubber.swift:98, Sources/Features/Settings/AppSettingsStore.swift:135 | — |
 | V-#32592 | Décodeur JPEG XL (cible JXL du serveur : PR #32732) | absent | PR #32592 (v3.4.0) | Sources/Services/ImageDownsampler.swift:16-30 (décodage ImageIO seul), Recherche locale : `jxl\|JXL\|JpegXL\|JPEG XL\|jpeg-xl` sur Sources ImmichWidgets ImmichShareExtension → 0 | B-9 |
 | V-#30753 | Tags sur mobile | présent | PR #30753 (v3.4.0) | Sources/Features/Tags/TagsView.swift:8-13, Sources/Features/Tags/TagsViewModel.swift:51-65, Sources/Features/PhotoViewer/AssetTagsSheet.swift:5-9 (hiérarchie parent / enfant, création sous un parent, photos d'un tag) | — |
 | V-#32423 | Zoom maximal borné par la taille de l'image en pixels | partiel | PR #32423 (v3.4.0) | Sources/Features/PhotoViewer/ZoomableImageView.swift:50-51 (4× fixe) | B-10 |
@@ -378,7 +378,7 @@ Chaque écran principal a une ligne par aspect. « États » regroupe le chargem
 | Connexion | Haptique | écart : aucun retour haptique sur la validation du serveur (l'erreur de connexion en a un : Sources/Features/Auth/Onboarding/LoginScreen.swift:94) | Sources/Features/Auth/Onboarding/ServerURLScreen.swift:90, Sources/Features/Auth/Onboarding/LoginScreen.swift:94 | HIG : Playing haptics ; `Sources/Features/Settings/HapticsEnvironment.swift:29-49` | B-32 |
 | Connexion | Matériau | écart : barre d'action en .regularMaterial, étrangère au verre des autres écrans | Sources/Features/Auth/Onboarding/OnboardingFlowView.swift:70 | HIG : Materials (Liquid Glass) ; `Sources/DesignSystem/Components/ImmichAppBar.swift` | B-19 |
 | Connexion | Accessibilité | écart : polices à taille fixe, libellé SSO tronqué (lineLimit 1), champs lus par leur seul placeholder, animation non gardée ; bouton QR étiqueté (Sources/Features/Auth/Onboarding/ServerURLScreen.swift:55) | Sources/DesignSystem/Tokens/Font+PhotoVault.swift:13-30, Sources/Features/Auth/Onboarding/LoginScreen.swift:64, Sources/Features/Auth/Onboarding/LoginScreen.swift:28, Sources/Features/Auth/Onboarding/LoginScreen.swift:41, Sources/Features/Auth/Onboarding/ServerURLScreen.swift:36, Sources/Features/Auth/Onboarding/LoginScreen.swift:87 | HIG : Typography (Dynamic Type), Accessibility ; `Sources/DesignSystem/Tokens/Font+PhotoVault.swift` | B-17, B-22, B-32 |
-| Timeline | Parcours | conforme | Sources/Features/Timeline/TimelineView.swift:217-240 (pincement 2–7 colonnes), Sources/Features/Timeline/TimelineView.swift:172-176 (Select), Sources/Features/Timeline/TimelineView.swift:257-269 (retour en haut), Sources/Features/Timeline/TimelineView.swift:376-379 (visionneuse) | mobile/lib/presentation/widgets/timeline/timeline.widget.dart@v3.4.0 | — |
+| Timeline | Parcours | conforme | Sources/Features/Timeline/TimelineView.swift:255-282 (pincement 2–7 colonnes), Sources/Features/Timeline/TimelineView.swift:176-189 (Select), Sources/Features/Timeline/TimelineView.swift:290-321 (retour en haut, y compris après un saut), Sources/Features/Timeline/TimelineView.swift:206-227 (curseur de date), Sources/Features/Timeline/TimelineView.swift:423 (visionneuse) | mobile/lib/presentation/widgets/timeline/timeline.widget.dart@v3.4.0 | — |
 | Timeline | États | conforme | Sources/Features/Timeline/TimelineView.swift:445-448 (skeleton), Sources/Features/Timeline/TimelineView.swift:449-458 (erreur + Try Again), Sources/Features/Timeline/TimelineView.swift:459-467 (vide + Refresh), Sources/Features/Timeline/TimelineView.swift:196 (tirer pour rafraîchir) | HIG : Loading, Empty states ; `Sources/DesignSystem/Components/InlineErrorBadge.swift` | — |
 | Timeline | Gestes et transitions | écart : ouverture de la visionneuse en plein écran sans zoom depuis la vignette ; ressort de sélection non gardé par Réduire les animations | Sources/Features/PhotoViewer/PhotoViewer.swift:159, Sources/Features/Timeline/TimelineView.swift:292 | HIG : Motion ; `Sources/DesignSystem/Tokens/Motion+PhotoVault.swift` | B-18, B-22 |
 | Timeline | Haptique | conforme | Sources/Features/Timeline/TimelineView.swift:287-290 (selection, success, warning) | HIG : Playing haptics ; `Sources/Features/Settings/HapticsEnvironment.swift:29-49` | — |
@@ -464,7 +464,7 @@ Chaque écran principal a une ligne par aspect. « États » regroupe le chargem
 | L-01 | Stockage du compte : chiffres propres à chaque utilisateur | B-3 | livré | 1b6a1767b38b | AC-5, AC-6, AC-67, AC-68, AC-69, AC-70, AC-71, AC-72, AC-73, AC-74, AC-75 |
 | L-02 | Albums : vrai propriétaire, édition par les éditeurs et ordre de tri | B-4, B-5, B-6 | planifié | — | — |
 | L-03 | Tags hiérarchiques | B-7 | livré | 9d9a7d4f015d | AC-12, AC-13, AC-76, AC-77, AC-78, AC-79, AC-80, AC-81 |
-| L-04 | Timeline : curseur de défilement par date | B-8 | planifié | — | — |
+| L-04 | Timeline : curseur de défilement par date | B-8 | livré | 71b04a120142 | AC-14, AC-86, AC-87, AC-88, AC-89, AC-90, AC-91, AC-92, AC-93, AC-95, AC-96 |
 | L-05 | Affichage des photos JPEG XL | B-9 | planifié | — | — |
 | L-06 | Visionneuse : zoom maximal selon la résolution de la photo | B-10 | planifié | — | — |
 | L-07 | Souvenirs : tous les types v3.3+, enchaînement et écran de fin | B-11, B-34 | planifié | — | — |
@@ -500,7 +500,7 @@ Chaque écran principal a une ligne par aspect. « États » regroupe le chargem
 - L-01 : AC-5, AC-6, AC-67, AC-68, AC-69, AC-70, AC-71, AC-72, AC-73, AC-74, AC-75
 - L-02 : AC-7, AC-8, AC-9, AC-10, AC-11
 - L-03 : AC-12, AC-13, AC-76, AC-77, AC-78, AC-79, AC-80, AC-81
-- L-04 : AC-14
+- L-04 : AC-14, AC-86, AC-87, AC-88, AC-89, AC-90, AC-91, AC-92, AC-93, AC-95, AC-96
 - L-05 : AC-15
 - L-06 : AC-16
 - L-07 : AC-17, AC-60
@@ -530,6 +530,8 @@ Chaque écran principal a une ligne par aspect. « États » regroupe le chargem
 - L-31 : AC-62, AC-63, AC-64
 - L-32 : AC-65
 - L-33 : AC-66
+
+Vérification manuelle hors AC prouvés : AC-94 (L-04, mesure d'à-coups Instruments sur iPhone réel, preuve `.harness/evidence/AC-94/verdict.txt` ; non réalisée à la livraison : aucun iPhone sur le poste harnais, décision #7 du lot).
 
 Ce run (B-1, B-2) : registre, corrections de documentation, script de contrôle et table des lots, livrés par la fonctionnalité « Parité Immich et interface SwiftUI premium ». AC prouvés : AC-1, AC-2, AC-3, AC-4, AC-38 (`Scripts/check-parity-registry.sh all`). Aucun comportement de l'app ne change : seuls des commentaires de trois fichiers Swift et de la documentation sont touchés.
 
