@@ -218,6 +218,28 @@ def load_catalog() -> dict[str, object]:
     return strings
 
 
+def has_text(unit: object) -> bool:
+    """True when `unit` is a `stringUnit` holder with a non-empty value."""
+    if not isinstance(unit, dict):
+        return False
+    string_unit = unit.get("stringUnit")
+    if not isinstance(string_unit, dict):
+        return False
+    value = string_unit.get("value")
+    return isinstance(value, str) and bool(value.strip())
+
+
+def is_translated(localization: object) -> bool:
+    """A plain `stringUnit`, or a plural whose every form has a non-empty text."""
+    if has_text(localization):
+        return True
+    if not isinstance(localization, dict):
+        return False
+    variations = localization.get("variations")
+    plural = variations.get("plural") if isinstance(variations, dict) else None
+    return isinstance(plural, dict) and bool(plural) and all(has_text(form) for form in plural.values())
+
+
 def untranslated_languages(entry: object) -> list[str]:
     """Shipped languages with no non-empty translation for this key."""
     if not isinstance(entry, dict):
@@ -225,17 +247,7 @@ def untranslated_languages(entry: object) -> list[str]:
     localizations = entry.get("localizations")
     if not isinstance(localizations, dict):
         return list(SHIPPED_LANGUAGES)
-    missing: list[str] = []
-    for language in SHIPPED_LANGUAGES:
-        unit = localizations.get(language)
-        value = None
-        if isinstance(unit, dict):
-            string_unit = unit.get("stringUnit")
-            if isinstance(string_unit, dict):
-                value = string_unit.get("value")
-        if not isinstance(value, str) or not value.strip():
-            missing.append(language)
-    return missing
+    return [language for language in SHIPPED_LANGUAGES if not is_translated(localizations.get(language))]
 
 
 def main() -> int:

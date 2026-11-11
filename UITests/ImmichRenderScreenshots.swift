@@ -704,9 +704,10 @@ final class ImmichRenderScreenshots: XCTestCase {
     /// 3. `PUT`/`DELETE /api/memories/{id}/assets` — the routes are `put|delete`
     ///    on `{id}/assets`, and a `POST` (the shape the backlog card originally
     ///    specified) is a 404;
-    /// 4. dropping the **last** photo closes the moment view, because
-    ///    `GET /api/memories` filters empty memories out — the card would
-    ///    otherwise stay on screen for a memory the server no longer returns.
+    /// 4. dropping the **last** photo moves the full-screen playback on to the
+    ///    next memory (`GET /api/memories` filters empty memories out, so the
+    ///    emptied one is gone from the list) — the card would otherwise stay on
+    ///    screen for a memory the server no longer returns;
     ///
     /// Needs the memories stub (committed, unlike the stacks one):
     ///
@@ -723,6 +724,10 @@ final class ImmichRenderScreenshots: XCTestCase {
 
         setProvider("auto")
         resetStacks() // same `/__reset` route: restores the stub's initial state
+        // Without the auto-play the playback only moves on this test's own
+        // gestures: left running, it would leave the created memory (first in the
+        // list, dated today) for the 2022 one during the `sleep`s below.
+        app.launchArguments += ["-uiTestMemoryAutoplayOff", "YES"]
         app.launch()
         if waitForStaticText(["Your photo library", "Votre photothèque"], timeout: 30) {
             walkOnboardingToLogin()
@@ -797,11 +802,12 @@ final class ImmichRenderScreenshots: XCTestCase {
         assertStubWrote(method: "PUT", path: "/api/memories/\(createdMemory)/assets", ids: [thirdPhoto])
         shot("36-memory-photo-added")
 
-        // MARK: Drop every photo — the last one closes the screen
+        // MARK: Drop every photo — the last one moves on to the next memory
 
         // The stub creation ran with 2 photos and one was just added, so three
-        // removals empty it. The third closes the moment view: the memory no
-        // longer exists once `GET /api/memories` filters it out.
+        // removals empty it. The third shows the next memory of the list (the
+        // initial one): the emptied memory no longer exists once
+        // `GET /api/memories` filters it out.
         for index in 0..<3 {
             let remove = app.buttons["memoryMomentRemovePhoto"]
             XCTAssertTrue(remove.waitForExistence(timeout: 10), "remove action missing (pass \(index))")
@@ -809,8 +815,13 @@ final class ImmichRenderScreenshots: XCTestCase {
             sleep(3)
         }
 
+        let nextTitle = app.descendants(matching: .any)
+            .matching(identifier: "memoryTitle_\(initialMemory)").firstMatch
+        XCTAssertTrue(nextTitle.waitForExistence(timeout: 20) && nextTitle.isHittable,
+                      "the playback did not move on to the next memory when this one lost its last photo")
+        app.buttons["memoryMomentClose"].tap()
         XCTAssertTrue(app.tabBars.buttons["Photos"].waitForExistence(timeout: 20),
-                      "the moment view did not close when the memory lost its last photo")
+                      "closing the playback did not come back to the list")
         XCTAssertFalse(app.descendants(matching: .any).matching(identifier: "memoryCard_\(createdMemory)")
             .firstMatch.waitForExistence(timeout: 5), "the emptied memory is still listed")
         shot("37-memory-emptied")

@@ -198,7 +198,8 @@ final class ImmichAPIClient: ImmichClient, @unchecked Sendable {
         visibility: String?,
         withStacked: Bool?,
         orderBy: AssetOrderBy?,
-        tagId: String?
+        tagId: String?,
+        userId: String?
     ) async throws -> [TimeBucketsResponseDto] {
         var query: [URLQueryItem] = []
         if let isFavorite { query.append(URLQueryItem(name: "isFavorite", value: String(isFavorite))) }
@@ -209,6 +210,7 @@ final class ImmichAPIClient: ImmichClient, @unchecked Sendable {
         if let withStacked { query.append(URLQueryItem(name: "withStacked", value: String(withStacked))) }
         if let orderBy { query.append(URLQueryItem(name: "orderBy", value: orderBy.rawValue)) }
         if let tagId { query.append(URLQueryItem(name: "tagId", value: tagId)) }
+        if let userId { query.append(URLQueryItem(name: "userId", value: userId)) }
         return try await sendAuthed(.GET, path: ImmichAPI.timeline.path("/buckets"), query: query)
     }
 
@@ -221,7 +223,8 @@ final class ImmichAPIClient: ImmichClient, @unchecked Sendable {
         visibility: String?,
         withStacked: Bool?,
         orderBy: AssetOrderBy?,
-        tagId: String?
+        tagId: String?,
+        userId: String?
     ) async throws -> TimeBucketAssetResponseDto {
         var query: [URLQueryItem] = [URLQueryItem(name: "timeBucket", value: timeBucket)]
         if let isFavorite { query.append(URLQueryItem(name: "isFavorite", value: String(isFavorite))) }
@@ -232,6 +235,7 @@ final class ImmichAPIClient: ImmichClient, @unchecked Sendable {
         if let withStacked { query.append(URLQueryItem(name: "withStacked", value: String(withStacked))) }
         if let orderBy { query.append(URLQueryItem(name: "orderBy", value: orderBy.rawValue)) }
         if let tagId { query.append(URLQueryItem(name: "tagId", value: tagId)) }
+        if let userId { query.append(URLQueryItem(name: "userId", value: userId)) }
         return try await sendAuthed(.GET, path: ImmichAPI.timeline.path("/bucket"), query: query)
     }
 
@@ -417,15 +421,16 @@ final class ImmichAPIClient: ImmichClient, @unchecked Sendable {
         albumId: String,
         page: Int,
         size: Int
-    ) async throws -> SearchResponseDto {
-        let dto = MetadataSearchDto(albumIds: [albumId], page: page, size: size)
+    ) async throws -> SharedLinkAlbumAssetsResponseDto {
+        // `withExif`: the viewer bounds its zoom by the photo's EXIF pixel size.
+        let dto = MetadataSearchDto(albumIds: [albumId], page: page, size: size, withExif: true)
         let response = try await sendSharedLinkRaw(
             .POST,
             path: ImmichAPI.search.path("/metadata"),
             credential: credential,
             body: AnyEncodable(dto)
         )
-        return try Self.decode(SearchResponseDto.self, from: response.data)
+        return try Self.decode(SharedLinkAlbumAssetsResponseDto.self, from: response.data)
     }
 
     func uploadAssetToSharedLink(

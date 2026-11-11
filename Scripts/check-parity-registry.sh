@@ -39,6 +39,7 @@ F-20.6|écart|B-3
 F-20.11|écart|B-13
 F-20.13|écart|B-13 B-14
 F-20.14|écart|B-31
+F-21.2|écart|B-41
 F-21.4|écart|B-29
 F-22.3|écart|B-28
 F-24.2|écart|B-27

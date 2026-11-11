@@ -643,13 +643,7 @@ final class TimelineViewModel {
            let cached = _groupedByDay {
             return cached
         }
-        let groups = Dictionary(grouping: items) { item -> String in
-            // ISO8601 YYYY-MM-DD prefix
-            String(item.fileCreatedAt.prefix(10))
-        }
-        let computed = groups
-            .map { (day: $0.key, items: $0.value.sorted { $0.fileCreatedAt > $1.fileCreatedAt }) }
-            .sorted { $0.day > $1.day }
+        let computed = TimelineSectionBuilder.groupedByDay(items)
         _groupedByDay = computed
         _groupedByDayKey = key
         return computed

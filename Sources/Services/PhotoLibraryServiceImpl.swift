@@ -136,12 +136,17 @@ final class PhotoLibraryServiceImpl: PhotoLibraryService, @unchecked Sendable {
         return identifier
     }
 
-    /// Sniffs the leading bytes for a HEIC/HEIF brand; anything else gets the
-    /// safe `jpg` extension (Photos re-detects the actual content type).
-    private static func imageExtension(for data: Data) -> String {
+    /// Sniffs the leading bytes: a HEIC/HEIF brand, then a JPEG XL signature (bare
+    /// codestream `FF 0A`, or the ISOBMFF `JXL ` box); anything else gets the safe
+    /// `jpg` extension (Photos re-detects the actual content type).
+    static func imageExtension(for data: Data) -> String {
         let head = String(data: data.prefix(16), encoding: .ascii) ?? ""
         if head.contains("ftypheic") || head.contains("ftypheix") || head.contains("ftypmif1") {
             return "heic"
+        }
+        if data.starts(with: [0xFF, 0x0A]) { return "jxl" }
+        if data.starts(with: [0x00, 0x00, 0x00, 0x0C, 0x4A, 0x58, 0x4C, 0x20, 0x0D, 0x0A, 0x87, 0x0A]) {
+            return "jxl"
         }
         return "jpg"
     }

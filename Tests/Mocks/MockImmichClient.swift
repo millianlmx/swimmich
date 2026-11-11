@@ -12,6 +12,7 @@ struct TimelineFilterCapture: Equatable {
     let withStacked: Bool?
     let orderBy: AssetOrderBy?
     var tagId: String? = nil
+    var userId: String? = nil
 }
 
 /// One `getPeople` request, comparable in tests.
@@ -187,6 +188,7 @@ final class MockImmichClient: ImmichClient, @unchecked Sendable {
     /// Every `getTimeBucket` call in order: the month and the filters sent.
     var timeBucketCalls: [(timeBucket: String, filters: TimelineFilterCapture)] = []
     var lastTimeBucketsTagId: String?
+    var lastTimeBucketsUserId: String?
     /// Errors thrown, one per call and in order, by the matching route — before `globalError`.
     var timeBucketsErrorQueue: [Error] = []
     var timeBucketErrorQueue: [Error] = []
@@ -502,7 +504,8 @@ final class MockImmichClient: ImmichClient, @unchecked Sendable {
         visibility: String?,
         withStacked: Bool?,
         orderBy: AssetOrderBy?,
-        tagId: String?
+        tagId: String?,
+        userId: String?
     ) async throws -> [TimeBucketsResponseDto] {
         bump()
         lastTimeBucketsIsTrashed = isTrashed
@@ -512,10 +515,11 @@ final class MockImmichClient: ImmichClient, @unchecked Sendable {
         lastTimeBucketsWithStacked = withStacked
         lastTimeBucketsOrderBy = orderBy
         lastTimeBucketsTagId = tagId
+        lastTimeBucketsUserId = userId
         lastTimeBucketsFilters = TimelineFilterCapture(
             isFavorite: isFavorite, isTrashed: isTrashed, personId: personId,
             withPartners: withPartners, visibility: visibility,
-            withStacked: withStacked, orderBy: orderBy, tagId: tagId
+            withStacked: withStacked, orderBy: orderBy, tagId: tagId, userId: userId
         )
         if !timeBucketsErrorQueue.isEmpty { throw timeBucketsErrorQueue.removeFirst() }
         if let e = globalError { throw e }
@@ -531,7 +535,8 @@ final class MockImmichClient: ImmichClient, @unchecked Sendable {
         visibility: String?,
         withStacked: Bool?,
         orderBy: AssetOrderBy?,
-        tagId: String?
+        tagId: String?,
+        userId: String?
     ) async throws -> TimeBucketAssetResponseDto {
         bump()
         lastTimeBucketIsFavorite = isFavorite
@@ -543,7 +548,7 @@ final class MockImmichClient: ImmichClient, @unchecked Sendable {
         timeBucketCalls.append((timeBucket: timeBucket, filters: TimelineFilterCapture(
             isFavorite: isFavorite, isTrashed: isTrashed, personId: personId,
             withPartners: withPartners, visibility: visibility,
-            withStacked: withStacked, orderBy: orderBy, tagId: tagId
+            withStacked: withStacked, orderBy: orderBy, tagId: tagId, userId: userId
         )))
         if let gate = timeBucketGate { try await gate(timeBucket) }
         if !timeBucketErrorQueue.isEmpty { throw timeBucketErrorQueue.removeFirst() }
@@ -885,7 +890,7 @@ final class MockImmichClient: ImmichClient, @unchecked Sendable {
     var sharedLinkMineError: Error?
     var sharedLinkLoginResponse: SharedLinkResponseDto?
     var sharedLinkLoginError: Error?
-    var sharedLinkAlbumAssetsResponse: SearchResponseDto?
+    var sharedLinkAlbumAssetsResponse: SharedLinkAlbumAssetsResponseDto?
     var sharedLinkAlbumAssetsError: Error?
     /// Result of a guest upload: the id the server assigned (or an error).
     var sharedLinkUploadResponse: AssetMediaResponseDto?
@@ -921,14 +926,14 @@ final class MockImmichClient: ImmichClient, @unchecked Sendable {
         albumId: String,
         page: Int,
         size: Int
-    ) async throws -> SearchResponseDto {
+    ) async throws -> SharedLinkAlbumAssetsResponseDto {
         bump()
         _ = credential
         sharedLinkAlbumIds.append(albumId)
         sharedLinkAlbumPages.append(page)
         if let e = globalError ?? sharedLinkAlbumAssetsError { throw e }
         return sharedLinkAlbumAssetsResponse
-            ?? SearchResponseDto(assets: SearchAssetResponseDto(count: 0, items: [], nextPage: nil))
+            ?? SharedLinkAlbumAssetsResponseDto(assets: .init(items: [], nextPage: nil))
     }
 
     func uploadAssetToSharedLink(
@@ -1100,7 +1105,7 @@ final class MockImmichClient: ImmichClient, @unchecked Sendable {
         return memoryDetailResponses[id] ?? MemoryResponseDto(
             id: id, createdAt: "2024-01-01T00:00:00.000Z", updatedAt: "2024-01-01T00:00:00.000Z",
             memoryAt: "2023-06-15T00:00:00.000Z", ownerId: "owner", type: .on_this_day,
-            data: OnThisDayDto(year: 2023), assets: [], isSaved: false
+            data: MemoryDataDto(year: 2023), assets: [], isSaved: false
         )
     }
 
@@ -1113,7 +1118,7 @@ final class MockImmichClient: ImmichClient, @unchecked Sendable {
         return MemoryResponseDto(
             id: id, createdAt: "2024-01-01T00:00:00.000Z", updatedAt: "2024-01-01T00:00:00.000Z",
             memoryAt: dto.memoryAt ?? "2023-06-15T00:00:00.000Z", ownerId: "owner",
-            type: .on_this_day, data: OnThisDayDto(year: 2023), assets: [],
+            type: .on_this_day, data: MemoryDataDto(year: 2023), assets: [],
             isSaved: dto.isSaved ?? false
         )
     }

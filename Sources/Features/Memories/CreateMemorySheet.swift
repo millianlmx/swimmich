@@ -8,8 +8,8 @@ import SwiftUI
 /// this sheet collects a date and a selection, nothing else; the picker itself
 /// is the shared `AssetMultiSelectGrid`.
 ///
-/// `type` is sent as `on_this_day`, the only value the server's `MemoryType`
-/// enum accepts.
+/// `type` is sent as `on_this_day`: the server knows `on_this_day` and
+/// `birthday` (v3.3+), and this app only ever creates `on_this_day`.
 struct CreateMemorySheet: View {
     @Bindable var vm: MemoriesViewModel
     @Environment(AuthViewModel.self) private var auth

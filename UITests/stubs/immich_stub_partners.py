@@ -1,42 +1,76 @@
-"""Immich API stub for the partner end-to-end scenario (UITests).
-
-Committed on purpose: the stacks stub lives in /tmp, so a `rm -rf /tmp/*` (or a
-reboot) silently destroys the harness and only the test comments remember it
-existed. This one is self-contained — no sibling module to import — and is run
-by hand before the XCUITest:
+"""Immich API stub for the partner scenarios (`test_06_partners` and, since lot
+L-08, `PartnerLibraryUITests`).
 
     python3 UITests/stubs/immich_stub_partners.py 8421
-    xcodebuild test -project ImmichSwiftUI.xcodeproj -scheme ImmichSwiftUI \\
-        -destination 'platform=iOS Simulator,name=iPhone 17' \\
-        -only-testing:ImmichSwiftUIUITests/ImmichRenderScreenshots/test_06_partners
 
-It serves the OAuth handshake the app needs to reach the authenticated shell
-(same shape as the throwaway base stub) plus the partner routes. Two behaviours
-matter beyond "returns data":
+    .omp/orchestration/uitest.sh <worktree> /tmp/partners.uitest.log \\
+        UITests/stubs/immich_stub_partners.py PartnerLibraryUITests --erase
 
+Built on `immich_stub_base` (OAuth shell, request journal `/__requests`, asset
+thumbnails). What it adds:
+
+PARTNERS
 * `GET /api/partners` **requires** `direction` and answers **400** without it.
-  The app shipped a direction-less call for months (`getPartners()`), which this
-  stub reproduces as a hard failure rather than a silently empty list — a grep
-  on the source could never catch that.
-* the response of a direction is the *other* user of the pair, and `PUT`
+  The app once shipped a direction-less call (`getPartners()`); a hard failure
+  here beats a silently empty list.
+* the rows of a direction are the *other* user of the pair, and `PUT`
   (`sharedById = id, sharedWithId = me`) and `DELETE` (`sharedById = me,
-  sharedWithId = id`) each only match one direction. The stub enforces it, so a
-  mutation sent on the wrong collection is a 400 here, not a silent no-op.
+  sharedWithId = id`) each only match one direction: a mutation sent on the
+  wrong collection is a 400, not a silent no-op.
+* "Incoming Ivan" (A) and "Second Sam" (B) share with me; I share with "Outgoing
+  Olive". "Invitable Iris" is only in the directory.
+
+THE TIMELINE, replaying `timeline.service.ts` of Immich v3.4.0
+* `GET /api/timeline/buckets` and `/bucket` serve the photos below. Other
+  accounts' photos need the right to read them: a `userId` that is not a
+  `shared_with` partner is a 400 (`Not found or no timeline.read access`).
+* "other accounts" = `withPartners=true` or a `userId` that is not me. There
+  `visibility` defaults to `timeline`, and any other visibility, `isTrashed=true`
+  or any `isFavorite` is a 400.
+* owners: `[userId]` when `userId` is another account, else `[me]`; with
+  `withPartners=true` the `shared_with` partners whose `inTimeline` is true at
+  THAT instant are added (so a `PUT /api/partners/<id>` is followed at once).
+* no `visibility` and not "other": timeline and archive of `[me]`.
+* every month is `YYYY-MM-01`, newest first; `/bucket` returns the month of
+  `timeBucket[:7]`, newest photo first, with the real `ownerId`.
+
+THE PHOTOS (all UTC, hours decreasing: the smallest index is the newest)
+* me: the six `TIMELINE_ASSETS`, 2026-09-01.
+* A: 30 `A_SEPT` photos on 2026-09-12 (10:00 minus NN minutes), one archived
+  photo that day, two on 2026-07-04, two on 2026-05-20.
+* B: one photo on 2026-09-12.
+Each photo of A or B has a unique `city` (`A-sept-01`, …, `B-1`): the viewer
+shows it in `viewerBadgePlace`, which identifies the photo without localized text.
+`GET /api/assets/<id>` for those photos carries the real owner and visibility.
+
+CONTROL ROUTES (under `/api/`: the base answers every `/__…` path itself)
+* `GET /api/__partners/in-timeline?id=<id>&value=true|false` — sets `inTimeline`
+  of a `shared_with` row (400 for an unknown id).
+* `GET /api/__partners/script?steps=500,empty,ok&delay=<seconds>` — arms a queue
+  consumed by the `GET /api/timeline/buckets` requests whose `userId` is another
+  account, one step per request: `500` answers 500, `empty` answers `[]`, `ok`
+  the normal answer; each step waits `delay` seconds first. An empty queue
+  answers normally, with no delay.
 """
-import json
-import sys
-from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+import time
 
-PORT = int(sys.argv[1]) if len(sys.argv) > 1 else 8421
-BASE = f"http://127.0.0.1:{PORT}"
+from immich_stub_base import (
+    CONFIG, ME, STATE, TIMELINE_ASSETS, TIMELINE_DAY, Response, asset, bucket_payload, main, router,
+)
 
-ME = "11111111-1111-4111-8111-111111111111"
-# Shares their library with me → appears under "Shared with me".
+# Shares their library with me → "Shared with me", `inTimeline` true at the start.
 INCOMING = "aaaaaaaa-1111-4111-8111-111111111111"
-# I share my library with them → appears under "Sharing".
+# I share my library with them → "Sharing".
 OUTGOING = "bbbbbbbb-2222-4222-8222-000000000002"
 # Nobody has invited them yet → offered by the invite sheet.
 INVITABLE = "cccccccc-3333-4333-8333-000000000003"
+# Shares with me, hidden from my timeline at the start.
+SECOND = "dddddddd-4444-4444-8444-000000000004"
+
+FORBIDDEN_COMBINATION = (
+    "Only non-archived, non-trashed, non-favorited, non-locked assets "
+    "can be requested for other users"
+)
 
 
 def user(uid, name, email):
@@ -46,232 +80,237 @@ def user(uid, name, email):
     }
 
 
-ME_USER = {
-    **user(ME, "Stub User", "stub@example.com"),
-    "isAdmin": False, "shouldChangePassword": False,
-    "createdAt": "2026-01-01T00:00:00.000Z", "updatedAt": "2026-01-01T00:00:00.000Z",
-    "deletedAt": None, "status": "active",
-    "quotaSizeInBytes": 107374182400, "quotaUsageInBytes": 21474836480,
-    "storageLabel": None, "oauthId": "",
-}
-
-CONFIG = {
-    "oauthButtonText": "Continue with Immich SSO",
-    "loginPageMessage": "Stub server for UI verification",
-    "trashDays": 30, "userDeleteDelay": 7,
-    "isInitialized": True, "isOnboarded": True,
-    "externalDomain": "", "publicUsers": True,
-    "mapDarkStyleUrl": "", "mapLightStyleUrl": "",
-    "maintenanceMode": False, "minFaces": 0,
-}
-
-PROVIDER_HTML = """<!doctype html>
-<html><head><meta name="viewport" content="width=device-width,initial-scale=1">
-<title>Stub Identity Provider</title>
-<style>
- body{font:16px -apple-system,sans-serif;margin:0;display:flex;align-items:center;
-      justify-content:center;height:100vh;background:#f2f2f7;}
- .card{background:#fff;border-radius:18px;padding:28px;text-align:center;
-       box-shadow:0 10px 40px rgba(0,0,0,.12);max-width:320px;}
- h1{font-size:20px;margin:0 0 6px;}p{color:#6b7280;margin:0 0 20px;font-size:14px;}
- a{display:block;background:#4250af;color:#fff;text-decoration:none;
-   padding:14px;border-radius:12px;font-weight:600;}
-</style></head>
-<body><div class="card">
-  <h1>Stub Identity Provider</h1>
-  <p>Signing in as stub@example.com</p>
-  <a id="authorize" href="app.immich:///oauth-callback?code=stub-code&amp;state=stub-state">Authorize</a>
-</div></body></html>
-"""
-
-AUTO_HTML = """<!doctype html>
-<html><head><meta name="viewport" content="width=device-width,initial-scale=1">
-<title>Stub Identity Provider</title></head>
-<body style="font:16px -apple-system,sans-serif;text-align:center;padding-top:120px">
-<p>Signing in as stub@example.com…</p>
-<script>window.location = "app.immich:///oauth-callback?code=stub-code&state=stub-state";</script>
-</body></html>
-"""
-
-
 def partner(uid, name, email, in_timeline):
     return {**user(uid, name, email), "inTimeline": in_timeline}
 
 
-def initial_state():
-    return {
-        # direction=shared-by rows: people I added.
-        "shared_by": [partner(OUTGOING, "Outgoing Olive", "olive@example.com", False)],
-        # direction=shared-with rows: people who share with me.
-        "shared_with": [partner(INCOMING, "Incoming Ivan", "ivan@example.com", True)],
-        "provider": "manual",
-        "requests": [],
-    }
+# MARK: - Photos
 
 
-STATE = initial_state()
-DIRECTIONS = {
-    "shared-by": "shared_by",
-    "shared-with": "shared_with",
-}
+def stamp(day, minute_of_day):
+    return f"{day}T{minute_of_day // 60:02d}:{minute_of_day % 60:02d}:00.000Z"
 
 
-class Handler(BaseHTTPRequestHandler):
-    protocol_version = "HTTP/1.1"
+def photo(pid, owner, day, minute_of_day, visibility="timeline", city=None):
+    return {"id": pid, "owner": owner, "day": day, "stamp": stamp(day, minute_of_day),
+            "visibility": visibility, "city": city}
 
-    def log_message(self, fmt, *args):
-        sys.stderr.write("stub %s\n" % (fmt % args))
 
-    def _send(self, payload, status=200, ctype="application/json"):
-        body = payload if isinstance(payload, bytes) else (
-            payload.encode() if ctype.startswith("text/") else json.dumps(payload).encode()
+A_SEPT = [photo(f"a5a5a5a5-1111-4111-8111-{n:012d}", INCOMING, "2026-09-12", 600 - n,
+                city=f"A-sept-{n:02d}") for n in range(1, 31)]
+A_ARCHIVED = photo("a5a5a5a5-9999-4999-8999-000000000001", INCOMING, "2026-09-12", 720,
+                   visibility="archive", city="A-archived")
+A_JULY = [photo(f"a5a5a5a5-2222-4222-8222-{n:012d}", INCOMING, "2026-07-04", 600 - n,
+                city=f"A-july-{n}") for n in (1, 2)]
+A_MAY = [photo(f"a5a5a5a5-3333-4333-8333-{n:012d}", INCOMING, "2026-05-20", 600 - n,
+               city=f"A-may-{n}") for n in (1, 2)]
+B_PHOTOS = [photo("d4d4d4d4-1111-4111-8111-000000000001", SECOND, "2026-09-12", 600, city="B-1")]
+MINE = [photo(pid, ME, TIMELINE_DAY, 600) for pid in TIMELINE_ASSETS]
+
+PHOTOS = MINE + A_SEPT + [A_ARCHIVED] + A_JULY + A_MAY + B_PHOTOS
+BY_ID = {p["id"]: p for p in PHOTOS}
+
+
+# MARK: - State
+
+
+@router.reset
+def fresh():
+    # direction=shared-by rows: people I added.
+    STATE["shared_by"] = [partner(OUTGOING, "Outgoing Olive", "olive@example.com", False)]
+    # direction=shared-with rows: people who share with me.
+    STATE["shared_with"] = [
+        partner(INCOMING, "Incoming Ivan", "ivan@example.com", True),
+        partner(SECOND, "Second Sam", "sam@example.com", False),
+    ]
+    # The queue armed by `/api/__partners/script`.
+    STATE["script"] = {"steps": [], "delay": 0.0}
+
+
+fresh()  # a request before the first `/__reset` must not find an empty STATE
+
+DIRECTIONS = {"shared-by": "shared_by", "shared-with": "shared_with"}
+
+
+# MARK: - Partners
+
+
+@router.get("/api/partners")
+def list_partners(req):
+    direction = req.params.get("direction")
+    req.note(direction=direction)
+    if direction not in DIRECTIONS:
+        # Exactly what the real server does (ZodValidationPipe on a required
+        # enum). No silent empty list.
+        return Response(
+            {"error": "Bad Request", "message": ["direction must be one of: shared-by, shared-with"]},
+            status=400,
         )
-        self.send_response(status)
-        self.send_header("Content-Type", ctype)
-        self.send_header("Content-Length", str(len(body)))
-        self.send_header("Connection", "close")
-        self.end_headers()
-        self.wfile.write(body)
+    return Response(STATE[DIRECTIONS[direction]])
 
-    def _body(self):
-        length = int(self.headers.get("Content-Length") or 0)
-        return json.loads(self.rfile.read(length) or b"{}") if length else {}
 
-    def _log(self, entry):
-        STATE["requests"].append(entry)
+@router.get("/api/users")
+def list_users(req):
+    return Response([
+        user(ME, "Stub User", "stub@example.com"),
+        user(INCOMING, "Incoming Ivan", "ivan@example.com"),
+        user(OUTGOING, "Outgoing Olive", "olive@example.com"),
+        user(INVITABLE, "Invitable Iris", "iris@example.com"),
+        user(SECOND, "Second Sam", "sam@example.com"),
+    ])
 
-    # MARK: - GET
 
-    def do_GET(self):
-        path = self.path.split("?")[0]
-        query = self.path.split("?")[1] if "?" in self.path else ""
+@router.get("/api/server/config")
+def server_config(req):
+    return Response({**CONFIG, "publicUsers": True})
 
-        if path == "/__reset":
-            STATE.update(initial_state())
-            return self._send({"reset": True})
-        if path == "/__provider":
-            STATE["provider"] = "auto" if "auto" in query else "manual"
-            return self._send({"provider": STATE["provider"]})
-        if path == "/__requests":
-            return self._send(STATE["requests"])
-        if path == "/provider-manual":
-            return self._send(PROVIDER_HTML, ctype="text/html; charset=utf-8")
-        if path == "/provider-auto":
-            return self._send(AUTO_HTML, ctype="text/html; charset=utf-8")
 
-        if path == "/api/partners":
-            params = dict(
-                pair.split("=", 1) for pair in query.split("&") if "=" in pair
-            )
-            direction = params.get("direction")
-            self._log({"method": "GET", "path": path, "direction": direction})
-            if direction not in DIRECTIONS:
-                # Exactly what the real server does (ZodValidationPipe on a
-                # required enum). No silent empty list.
-                return self._send(
-                    {"error": "Bad Request", "message": ["direction must be one of: shared-by, shared-with"]},
-                    status=400,
-                )
-            return self._send(STATE[DIRECTIONS[direction]])
+@router.post("/api/partners")
+def create_partner(req):
+    shared_with_id = (req.body or {}).get("sharedWithId")
+    req.note(sharedWithId=shared_with_id)
+    if not shared_with_id:
+        return Response({"error": "Bad Request", "message": ["sharedWithId must be a uuid"]}, status=400)
+    if any(p["id"] == shared_with_id for p in STATE["shared_by"]):
+        return Response({"error": "Bad Request", "message": "Partner already exists"}, status=400)
+    created = partner(shared_with_id, f"User {shared_with_id[:4]}", f"{shared_with_id[:4]}@example.com", False)
+    STATE["shared_by"].append(created)
+    return Response(created, status=201)
 
-        if path == "/api/users":
-            return self._send([
-                user(ME, "Stub User", "stub@example.com"),
-                user(INCOMING, "Incoming Ivan", "ivan@example.com"),
-                user(OUTGOING, "Outgoing Olive", "olive@example.com"),
-                user(INVITABLE, "Invitable Iris", "iris@example.com"),
-            ])
 
-        routes = {
-            "/api/server/ping": {"res": "pong"},
-            "/api/server/version": {"major": 1, "minor": 119, "patch": 0, "prerelease": None},
-            "/api/server/config": CONFIG,
-            "/api/users/me": ME_USER,
-            "/api/timeline/buckets": [],
-            "/api/memories": [],
-            "/api/albums": [],
-            "/api/activities": [],
-            "/api/notifications": [],
-            "/api/stacks": [],
-        }
-        if path in routes:
-            return self._send(routes[path])
-        if path.startswith("/api/"):
-            return self._send([])
-        self._send({"error": "not found", "path": path}, status=404)
+@router.prefix("PUT", "/api/partners/")
+def update_partner(req):
+    body = req.body or {}
+    req.note(inTimeline=body.get("inTimeline"))
+    # The server pairs {sharedById: id, sharedWithId: me}: only a row from
+    # `direction=shared-with` can be updated.
+    for row in STATE["shared_with"]:
+        if row["id"] == req.rest:
+            row["inTimeline"] = bool(body.get("inTimeline"))
+            return Response(row)
+    return Response({"error": "Bad Request", "message": "Partner not found"}, status=400)
 
-    # MARK: - POST
 
-    def do_POST(self):
-        path = self.path.split("?")[0]
-        body = self._body()
+@router.prefix("DELETE", "/api/partners/")
+def delete_partner(req):
+    # The server pairs {sharedById: me, sharedWithId: id}: only a row from
+    # `direction=shared-by` can be removed.
+    before = len(STATE["shared_by"])
+    STATE["shared_by"] = [p for p in STATE["shared_by"] if p["id"] != req.rest]
+    if len(STATE["shared_by"]) == before:
+        return Response({"error": "Bad Request", "message": "Partner not found"}, status=400)
+    return Response(b"", status=204, ctype="application/octet-stream")
 
-        if path == "/api/oauth/authorize":
-            return self._send({"url": f"{BASE}/provider-manual" if STATE["provider"] == "manual"
-                               else f"{BASE}/provider-auto"})
-        if path == "/api/oauth/callback":
-            return self._send({
-                "accessToken": "stub-access-token", "userId": ME, "userEmail": ME_USER["email"],
-                "name": ME_USER["name"], "isAdmin": False, "profileImagePath": "",
-                "shouldChangePassword": False, "isOnboarded": True,
-            })
-        if path == "/api/auth/logout":
-            return self._send({"successful": True})
-        if path == "/api/partners":
-            shared_with_id = body.get("sharedWithId")
-            self._log({"method": "POST", "path": path, "sharedWithId": shared_with_id})
-            if not shared_with_id:
-                return self._send({"error": "Bad Request", "message": ["sharedWithId must be a uuid"]}, status=400)
-            if any(p["id"] == shared_with_id for p in STATE["shared_by"]):
-                return self._send({"error": "Bad Request", "message": "Partner already exists"}, status=400)
-            created = partner(shared_with_id, f"User {shared_with_id[:4]}", f"{shared_with_id[:4]}@example.com", False)
-            STATE["shared_by"].append(created)
-            return self._send(created, status=201)
-        if path.startswith("/api/"):
-            return self._send({"successful": True})
-        self._send({"error": "not found", "path": path}, status=404)
 
-    # MARK: - PUT
+# MARK: - Timeline
 
-    def do_PUT(self):
-        path = self.path.split("?")[0]
-        body = self._body()
-        if path.startswith("/api/partners/"):
-            partner_id = path.rsplit("/", 1)[-1]
-            self._log({"method": "PUT", "path": path, "inTimeline": body.get("inTimeline")})
-            # The server pairs {sharedById: id, sharedWithId: me}: only a row
-            # from `direction=shared-with` can be updated.
-            for row in STATE["shared_with"]:
-                if row["id"] == partner_id:
-                    row["inTimeline"] = bool(body.get("inTimeline"))
-                    return self._send(row)
-            return self._send({"error": "Bad Request", "message": "Partner not found"}, status=400)
-        self._send({"error": "not found", "path": path}, status=404)
 
-    # MARK: - DELETE
+def in_timeline_partners():
+    return [row["id"] for row in STATE["shared_with"] if row["inTimeline"]]
 
-    def do_DELETE(self):
-        path = self.path.split("?")[0]
-        if path.startswith("/api/partners/"):
-            partner_id = path.rsplit("/", 1)[-1]
-            self._log({"method": "DELETE", "path": path})
-            # The server pairs {sharedById: me, sharedWithId: id}: only a row
-            # from `direction=shared-by` can be removed.
-            before = len(STATE["shared_by"])
-            STATE["shared_by"] = [p for p in STATE["shared_by"] if p["id"] != partner_id]
-            if len(STATE["shared_by"]) == before:
-                return self._send({"error": "Bad Request", "message": "Partner not found"}, status=400)
-            self.send_response(204)
-            self.send_header("Content-Length", "0")
-            self.send_header("Connection", "close")
-            self.end_headers()
-            return
-        self._send({"error": "not found", "path": path}, status=404)
+
+def timeline_photos(params):
+    """The photos the server would serve for these query parameters, or a
+    `Response` carrying the 400 it would answer."""
+    user_id = params.get("userId")
+    with_partners = params.get("withPartners") == "true"
+    other_account = user_id not in (None, ME)
+
+    if other_account and not any(row["id"] == user_id for row in STATE["shared_with"]):
+        return Response({"message": "Not found or no timeline.read access"}, status=400)
+
+    others = with_partners or other_account
+    visibility = params.get("visibility")
+    if others:
+        visibility = visibility or "timeline"
+        if visibility != "timeline" or params.get("isTrashed") == "true" or "isFavorite" in params:
+            return Response({"message": FORBIDDEN_COMBINATION}, status=400)
+
+    owners = [user_id] if other_account else [ME]
+    if with_partners:
+        owners += in_timeline_partners()
+
+    if params.get("isFavorite") == "true" or params.get("isTrashed") == "true":
+        return []  # no photo is favorite or trashed
+    allowed = {visibility} if visibility else {"timeline", "archive"}
+    return [p for p in PHOTOS if p["owner"] in owners and p["visibility"] in allowed]
+
+
+def newest_first(photos):
+    # `sorted` is stable and `reverse=True` keeps ties in order: my six photos
+    # share one stamp and stay in `TIMELINE_ASSETS` order.
+    return sorted(photos, key=lambda p: p["stamp"], reverse=True)
+
+
+@router.get("/api/timeline/buckets")
+def timeline_buckets(req):
+    user_id = req.params.get("userId")
+    script = STATE["script"]
+    if user_id not in (None, ME) and script["steps"]:
+        step = script["steps"].pop(0)
+        if script["delay"]:
+            time.sleep(script["delay"])
+        if step == "500":
+            return Response({"message": "stub failure"}, status=500)
+        if step == "empty":
+            return Response([])
+    photos = timeline_photos(req.params)
+    if isinstance(photos, Response):
+        return photos
+    counts = {}
+    for p in photos:
+        counts[p["stamp"][:7]] = counts.get(p["stamp"][:7], 0) + 1
+    return Response([{"timeBucket": f"{month}-01", "count": counts[month]}
+                     for month in sorted(counts, reverse=True)])
+
+
+@router.get("/api/timeline/bucket")
+def timeline_bucket(req):
+    photos = timeline_photos(req.params)
+    if isinstance(photos, Response):
+        return photos
+    month = (req.params.get("timeBucket") or "")[:7]
+    rows = newest_first([p for p in photos if p["stamp"][:7] == month])
+    payload = bucket_payload([p["id"] for p in rows])
+    payload["ownerId"] = [p["owner"] for p in rows]
+    payload["createdAt"] = [p["stamp"] for p in rows]
+    payload["fileCreatedAt"] = [p["stamp"] for p in rows]
+    payload["visibility"] = [p["visibility"] for p in rows]
+    payload["city"] = [p["city"] for p in rows]
+    return Response(payload)
+
+
+@router.prefix("GET", "/api/assets/")
+def partner_asset(req):
+    """The detail of a photo of A or B, with its real owner. Anything else
+    (my photos, `/thumbnail`, `/original`) falls through to the shell."""
+    p = BY_ID.get(req.rest)
+    if p is None or p["owner"] == ME:
+        return None
+    return Response({**asset(p["id"], p["day"]), "ownerId": p["owner"], "visibility": p["visibility"],
+                     "isArchived": p["visibility"] == "archive"})
+
+
+# MARK: - Control routes
+
+
+@router.get("/api/__partners/in-timeline")
+def set_in_timeline(req):
+    partner_id = req.params.get("id")
+    value = req.params.get("value") == "true"
+    for row in STATE["shared_with"]:
+        if row["id"] == partner_id:
+            row["inTimeline"] = value
+            return Response({"id": partner_id, "inTimeline": value})
+    return Response({"message": "unknown partner"}, status=400)
+
+
+@router.get("/api/__partners/script")
+def arm_script(req):
+    steps = [s for s in (req.params.get("steps") or "").split(",") if s]
+    STATE["script"] = {"steps": steps, "delay": float(req.params.get("delay") or 0)}
+    return Response({"steps": steps, "delay": STATE["script"]["delay"]})
 
 
 if __name__ == "__main__":
-    print(json.dumps({
-        "port": PORT,
-        "endpoints": ["/api/partners?direction=", "/api/partners", "/api/users", "/__reset", "/__requests"],
-    }))
-    ThreadingHTTPServer(("127.0.0.1", PORT), Handler).serve_forever()
+    main(label="partners")

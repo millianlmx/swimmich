@@ -20,7 +20,8 @@ final class SharedLinkViewerViewModelTests: XCTestCase {
     /// INDIVIDUAL link carries its assets inline, an ALBUM link only an album.
     private func link(
         type: SharedLinkType = .individual,
-        assets: [AssetResponseDto] = [],
+        assets: [SharedLinkAssetDto] = [],
+        showMetadata: Bool = true,
         albumId: String? = nil,
         allowUpload: Bool = true,
         slug: String? = nil,
@@ -46,27 +47,21 @@ final class SharedLinkViewerViewModelTests: XCTestCase {
             },
             allowUpload: allowUpload,
             allowDownload: true,
-            showMetadata: true,
+            showMetadata: showMetadata,
             slug: slug
         )
     }
 
-    private func asset(_ id: String) -> AssetResponseDto {
-        AssetResponseDto(
-            id: id, type: "IMAGE", thumbhash: nil, localDateTime: "2024-01-01T00:00:00.000Z",
-            duration: nil, hasMetadata: true, width: 100, height: 100,
-            createdAt: "2024-01-01T00:00:00.000Z", ownerId: "owner", originalPath: "",
-            originalFileName: "\(id).jpg", fileCreatedAt: "2024-01-01T00:00:00.000Z",
-            fileModifiedAt: "2024-01-01T00:00:00.000Z", updatedAt: "2024-01-01T00:00:00.000Z",
-            isFavorite: false, isArchived: false, isTrashed: false, isOffline: false,
-            visibility: "timeline", checksum: "", isEdited: false
+    private func asset(_ id: String) -> SharedLinkAssetDto {
+        SharedLinkAssetDto(
+            id: id, type: "IMAGE", hasMetadata: true, ownerId: "owner",
+            createdAt: "2024-01-01T00:00:00.000Z", fileCreatedAt: "2024-01-01T00:00:00.000Z",
+            isFavorite: false, isTrashed: false, visibility: "timeline"
         )
     }
 
-    private func searchPage(ids: [String], nextPage: String?) -> SearchResponseDto {
-        SearchResponseDto(
-            assets: SearchAssetResponseDto(count: ids.count, items: ids.map(asset), nextPage: nextPage)
-        )
+    private func searchPage(ids: [String], nextPage: String?) -> SharedLinkAlbumAssetsResponseDto {
+        SharedLinkAlbumAssetsResponseDto(assets: .init(items: ids.map(asset), nextPage: nextPage))
     }
 
     /// The server's 401 body, verbatim in shape: `APIError.serverError` carries

@@ -96,8 +96,37 @@ if ! xcodebuild build-for-testing "${common[@]}" -quiet 2>&1 | tee "$build_log";
   fi
 fi
 
+# A test failure leaves nothing readable in the public log either (the log is
+# admin-only), so the failed tests are read back from the result bundle and
+# reported like compiler errors: one `::error` annotation per failed test.
+report_failed_tests() {
+  local summary
+  summary="$(xcrun xcresulttool get test-results summary --path "$RESULT" 2>/dev/null)" || summary=""
+  [[ -n "$summary" ]] || { echo "ci.sh: no test summary in $RESULT" >&2; return 0; }
+  printf '%s' "$summary" | python3 -c '
+import json, sys
+try:
+    failures = json.load(sys.stdin).get("testFailures") or []
+except Exception as error:
+    print("::error::ci.sh: unreadable test summary: %s" % error)
+    raise SystemExit
+print("ci.sh: %d failed test(s)" % len(failures), file=sys.stderr)
+if not failures:
+    print("::error::the test run failed without a failed test (crash of the test host?)")
+for failure in failures[:10]:
+    name = failure.get("testIdentifierString") or failure.get("testName") or "?"
+    text = " ".join(str(failure.get("failureText", "")).split())
+    message = ("%s: %s" % (name, text)).replace("%", "%25")
+    print("::error::" + message)
+    print("ci.sh: FAILED " + name + ": " + text, file=sys.stderr)
+'
+}
+
 rm -rf "$RESULT"
 mkdir -p "$(dirname "$RESULT")"
-xcodebuild test-without-building "${common[@]}" -quiet \
+if ! xcodebuild test-without-building "${common[@]}" -quiet \
   -only-testing:ImmichSwiftUITests \
-  -resultBundlePath "$RESULT"
+  -resultBundlePath "$RESULT"; then
+  report_failed_tests
+  exit 65
+fi

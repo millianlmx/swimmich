@@ -12,8 +12,11 @@ to import — and is run by hand before the XCUITest:
 
 It serves the OAuth handshake the app needs to reach the authenticated shell
 (same shape as the shared-links stub) plus the memory routes, and enough of the
-timeline to multi-select photos on the Photos tab. Five behaviours matter
-beyond "returns data":
+timeline to multi-select photos on the Photos tab. `GET /__reset` restores the
+single initial memory; `GET /__reset?fixture=chain` (a birthday and two
+"on this day" memories, served out of order) and `?fixture=types` (an unnamed
+birthday and a memory of a type the app does not know) load the sets the
+MemoriesChainUITests scenarios need. Five behaviours matter beyond "returns data":
 
 * `GET /api/memories` drops memories that lost their last asset, which is what
   the real server's search does. The scenario deletes a memory's last asset and
@@ -81,17 +84,20 @@ def thumb(aid):
             + chunk(b"IEND", b""))
 
 
-def asset(aid):
+DEFAULT_TAKEN = "2024-07-01T10:00:00.000Z"
+
+
+def asset(aid, taken=DEFAULT_TAKEN):
     """A library asset. Names are derived from the id so every photo is
     identifiable in a screenshot ('aaaa-01.jpg', 'aaaa-08.jpg', …)."""
     key = aid.replace("-", "")
     return {
         "id": aid, "type": "IMAGE", "thumbhash": THUMBHASH,
-        "localDateTime": "2024-07-01T10:00:00.000Z", "duration": None, "hasMetadata": True,
-        "width": 4000, "height": 3000, "createdAt": "2024-07-01T10:00:00.000Z",
+        "localDateTime": taken, "duration": None, "hasMetadata": True,
+        "width": 4000, "height": 3000, "createdAt": taken,
         "ownerId": ME, "originalPath": f"/x/{key}.jpg",
         "originalFileName": f"{aid[:4]}-{aid[-2:]}.jpg",
-        "fileCreatedAt": "2024-07-01T10:00:00.000Z", "fileModifiedAt": "2024-07-01T10:00:00.000Z",
+        "fileCreatedAt": taken, "fileModifiedAt": taken,
         "updatedAt": "2024-07-01T10:00:00.000Z", "isFavorite": False, "isArchived": False,
         "isTrashed": False, "isOffline": False, "visibility": "timeline", "checksum": "abc",
         "isEdited": False,
@@ -192,16 +198,66 @@ AUTO_HTML = """<!doctype html>
 TOUCHED_AT = "2026-09-13T00:00:00.000Z"
 
 
-def memory_dto(memory_id, asset_ids, year, memory_at, is_saved=False):
+def memory_dto(memory_id, asset_ids, year, memory_at, is_saved=False, type="on_this_day", data=None, taken=None):
+    """`taken` maps an asset id to the date it was taken (default: 2024-07-01)."""
+    taken = taken or {}
     return {
         "id": memory_id,
         "createdAt": memory_at, "updatedAt": memory_at,
-        "memoryAt": memory_at, "ownerId": ME, "type": "on_this_day",
-        "data": {"year": year},
-        "assets": [asset(aid) for aid in asset_ids],
+        "memoryAt": memory_at, "ownerId": ME, "type": type,
+        "data": data if data is not None else {"year": year},
+        "assets": [asset(aid, taken.get(aid, DEFAULT_TAKEN)) for aid in asset_ids],
         "isSaved": is_saved,
         "showAt": None, "hideAt": None, "seenAt": None, "deletedAt": None,
     }
+
+
+# Fixture `chain`: a birthday and two "on this day" memories. The server serves
+# them out of order on purpose: the app must sort by `memoryAt`, giving
+# BIRTHDAY, OTD_2023, OTD_2022. The birth year (1990) is not a memory year.
+BIRTHDAY = "eeeeeeee-5555-4555-8555-000000000001"
+OTD_2023 = "eeeeeeee-5555-4555-8555-000000000002"
+OTD_2022 = "eeeeeeee-5555-4555-8555-000000000003"
+
+
+def chain_asset(n):
+    return f"bbbbbbbb-2222-4222-8222-{n:012d}"
+
+
+# Fixture `types`: an "on this day", a memory of an unknown type carrying extra
+# `data` keys, and a birthday without `personName`.
+TYPES_OTD = "ffffffff-6666-4666-8666-000000000001"
+TYPES_TRIP = "ffffffff-6666-4666-8666-000000000002"
+TYPES_UNNAMED_BIRTHDAY = "ffffffff-6666-4666-8666-000000000003"
+
+
+def fixture_memories(fixture):
+    """The memory set of a named fixture, or the single initial memory."""
+    if fixture == "chain":
+        return [
+            memory_dto(OTD_2022, [chain_asset(4), chain_asset(5)], 2022, "2022-07-01T00:00:00.000Z",
+                       taken={chain_asset(4): "2022-07-01T10:00:00.000Z", chain_asset(5): "2022-07-01T11:00:00.000Z"}),
+            memory_dto(BIRTHDAY, [chain_asset(1), chain_asset(2)], 1990, "2026-07-01T00:00:00.000Z",
+                       type="birthday",
+                       data={"year": 1990, "personId": "cccccccc-7777-4777-8777-000000000001", "personName": "Alice"},
+                       taken={chain_asset(1): "2020-07-01T10:00:00.000Z", chain_asset(2): "2021-07-01T10:00:00.000Z"}),
+            memory_dto(OTD_2023, [chain_asset(3)], 2023, "2023-07-01T00:00:00.000Z",
+                       taken={chain_asset(3): "2023-07-01T10:00:00.000Z"}),
+        ]
+    if fixture == "types":
+        return [
+            memory_dto(TYPES_OTD, [chain_asset(11), chain_asset(12)], 2023, "2023-07-01T00:00:00.000Z",
+                       taken={chain_asset(11): "2023-07-01T10:00:00.000Z", chain_asset(12): "2023-07-01T11:00:00.000Z"}),
+            memory_dto(TYPES_TRIP, [chain_asset(13), chain_asset(14)], 2021, "2021-07-01T00:00:00.000Z",
+                       type="trip",
+                       data={"year": 2021, "tripName": "Lisbon", "places": ["Lisbon"]},
+                       taken={chain_asset(13): "2021-07-01T10:00:00.000Z", chain_asset(14): "2021-07-01T11:00:00.000Z"}),
+            memory_dto(TYPES_UNNAMED_BIRTHDAY, [chain_asset(15)], 1985, "2026-07-02T00:00:00.000Z",
+                       type="birthday",
+                       data={"year": 1985, "personId": "cccccccc-7777-4777-8777-000000000002"},
+                       taken={chain_asset(15): "2020-07-01T10:00:00.000Z"}),
+        ]
+    return [memory_dto(MEMORY, LIBRARY[:3], 2022, "2022-07-01T00:00:00.000Z")]
 
 
 def bulk(ids):
@@ -229,10 +285,11 @@ def new_thumbhash():
 THUMBHASH = new_thumbhash()
 
 
-def initial_state():
+def initial_state(fixture=None):
     return {
-        # One "on this day" memory over the first three library photos.
-        "memories": [memory_dto(MEMORY, LIBRARY[:3], 2022, "2022-07-01T00:00:00.000Z")],
+        # `fixture_memories(None)`: one "on this day" memory over the first three
+        # library photos.
+        "memories": fixture_memories(fixture),
         "provider": "manual",
         "requests": [],
         # Starts at 2: suffix 1 is the fixed id of the initial memory above, and
@@ -287,9 +344,12 @@ class Handler(BaseHTTPRequestHandler):
 
         if path == "/__reset":
             global THUMBHASH
+            fixture = query.split("fixture=")[1].split("&")[0] if "fixture=" in query else None
+            if fixture not in (None, "chain", "types"):
+                return self._send({"error": "unknown fixture", "fixture": fixture}, status=400)
             THUMBHASH = new_thumbhash()
-            STATE.update(initial_state())
-            return self._send({"reset": True})
+            STATE.update(initial_state(fixture))
+            return self._send({"reset": True, "fixture": fixture} if fixture else {"reset": True})
         if path == "/__provider":
             STATE["provider"] = "auto" if "auto" in query else "manual"
             return self._send({"provider": STATE["provider"]})
@@ -388,7 +448,7 @@ class Handler(BaseHTTPRequestHandler):
                     {"error": "Bad Request", "message": ["type must be on_this_day"]},
                     status=400,
                 )
-            # `OnThisDayDto.year` is a non-optional Int in the app, so a memory
+            # `MemoryDataDto.year` is a non-optional Int in the app, so a memory
             # stored without one would break the next `GET /api/memories`.
             if not isinstance(body["data"], dict) or not isinstance(body["data"].get("year"), int):
                 return self._send(
@@ -493,10 +553,11 @@ if __name__ == "__main__":
         "port": PORT,
         "memory": MEMORY,
         "library": len(LIBRARY),
+        "fixtures": ["(none: one initial memory)", "chain", "types"],
         "endpoints": [
             "/api/memories", "/api/memories/statistics", "/api/memories/{id}",
             "/api/memories/{id}/assets", "/api/timeline/buckets", "/api/timeline/bucket",
-            "/api/assets/{id}/thumbnail", "/__reset", "/__provider", "/__requests",
+            "/api/assets/{id}/thumbnail", "/__reset[?fixture=chain|types]", "/__provider", "/__requests",
         ],
     }))
     ThreadingHTTPServer(("127.0.0.1", PORT), Handler).serve_forever()

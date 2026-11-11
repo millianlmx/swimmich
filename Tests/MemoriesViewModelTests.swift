@@ -34,7 +34,7 @@ final class MemoriesViewModelTests: XCTestCase {
         return MemoryResponseDto(
             id: id, createdAt: "2024-07-01T00:00:00.000Z", updatedAt: "2024-07-01T00:00:00.000Z",
             memoryAt: "\(year)-07-01T00:00:00.000Z", ownerId: "owner", type: .on_this_day,
-            data: OnThisDayDto(year: year), assets: assets, isSaved: isSaved,
+            data: MemoryDataDto(year: year), assets: assets, isSaved: isSaved,
             showAt: nil, hideAt: nil, seenAt: nil, deletedAt: nil
         )
     }
@@ -62,7 +62,7 @@ final class MemoriesViewModelTests: XCTestCase {
         return MemoryResponseDto(
             id: id, createdAt: "2024-07-01T00:00:00.000Z", updatedAt: "2024-07-01T00:00:00.000Z",
             memoryAt: memoryAt, ownerId: "owner", type: .on_this_day,
-            data: OnThisDayDto(year: year), assets: assets, isSaved: false,
+            data: MemoryDataDto(year: year), assets: assets, isSaved: false,
             showAt: nil, hideAt: nil, seenAt: nil, deletedAt: nil
         )
     }
@@ -227,7 +227,7 @@ final class MemoriesViewModelTests: XCTestCase {
         let memory = MemoryResponseDto(
             id: "m1", createdAt: "2019-05-04T00:00:00.000Z", updatedAt: "2019-05-04T00:00:00.000Z",
             memoryAt: MemoriesViewModel.memoryAtString(for: pickedInTokyo, calendar: tokyo),
-            ownerId: "owner", type: .on_this_day, data: OnThisDayDto(year: 2019), assets: [],
+            ownerId: "owner", type: .on_this_day, data: MemoryDataDto(year: 2019), assets: [],
             isSaved: true, showAt: nil, hideAt: nil, seenAt: nil, deletedAt: nil
         )
         XCTAssertEqual(MemoryCardPresentation.dayLabel(for: memory, locale: enUS), "May 4")
@@ -511,5 +511,102 @@ final class MemoriesViewModelTests: XCTestCase {
         let memory = makeMemory(id: "m", year: 2023, memoryAt: "2023-07-01T00:00:00.000Z",
                                 assetTypes: ["IMAGE"], durations: [nil], favorites: [false], exifs: [nil])
         XCTAssertNil(MemoryCardPresentation.locationLabel(for: memory))
+    }
+
+    // MARK: - Birthday memories (L-07)
+
+    private func makeBirthday(
+        id: String = "b1", memoryAt: String = "2026-07-01T00:00:00.000Z", assetCount: Int = 2, isSaved: Bool = false
+    ) -> MemoryResponseDto {
+        let base = makeMemory(id: id, year: 1990, assetCount: assetCount)
+        return MemoryResponseDto(
+            id: id, createdAt: base.createdAt, updatedAt: base.updatedAt, memoryAt: memoryAt,
+            ownerId: "owner", type: .birthday,
+            data: MemoryDataDto(year: 1990, personId: "p1", personName: "Alice"),
+            assets: base.assets, isSaved: isSaved
+        )
+    }
+
+    @MainActor
+    func test_AC_17_7_load_ordersByMemoryAtNotByDataYear() async {
+        let mock = MockImmichClient()
+        mock.memoriesResponse = [
+            makeMemory(id: "m2022", year: 2022), makeBirthday(), makeMemory(id: "m2023", year: 2023)
+        ]
+        let vm = MemoriesViewModel(client: mock)
+
+        await vm.load()
+
+        XCTAssertEqual(vm.memories.map(\.id), ["b1", "m2023", "m2022"])
+    }
+
+    func test_AC_17_7_sort_comparesDatesAcrossFormatsAndKeepsServerOrderOnTies() {
+        func memory(_ id: String, _ memoryAt: String) -> MemoryResponseDto {
+            MemoryResponseDto(
+                id: id, createdAt: memoryAt, updatedAt: memoryAt, memoryAt: memoryAt, ownerId: "owner",
+                type: .on_this_day, data: MemoryDataDto(year: 2023), assets: [], isSaved: false
+            )
+        }
+        let sorted = MemoriesViewModel.sortedByMemoryAt([
+            memory("bad1", "garbage"),
+            memory("plain", "2023-06-30T00:00:00.000Z"),
+            memory("tie1", "2023-07-01T00:00:00Z"),
+            memory("tie2", "2023-07-01T00:00:00.000Z"),
+            memory("bad2", "")
+        ])
+        XCTAssertEqual(sorted.map(\.id), ["tie1", "tie2", "plain", "bad1", "bad2"])
+    }
+
+    @MainActor
+    func test_AC_17_6_birthdayActions_goThroughTheSameCallsAndKeepTheType() async {
+        let mock = MockImmichClient()
+        mock.memoriesResponse = [makeBirthday()]
+        let vm = MemoriesViewModel(client: mock)
+        await vm.load()
+
+        mock.updateMemoryResponse = MemoryResponseDto(
+            id: "b1", createdAt: "2026-07-01T00:00:00.000Z", updatedAt: "2026-07-01T00:00:00.000Z",
+            memoryAt: "2026-07-01T00:00:00.000Z", ownerId: "owner", type: .birthday,
+            data: MemoryDataDto(year: 1990, personId: "p1", personName: "Alice"),
+            assets: vm.memories[0].assets, isSaved: true
+        )
+        await vm.saveMemory(id: "b1")
+        XCTAssertEqual(mock.lastUpdateMemoryDto?.isSaved, true)
+        XCTAssertEqual(vm.memories.first?.isSaved, true)
+        XCTAssertEqual(vm.memories.first?.type, .birthday)
+        XCTAssertNil(vm.errorMessage)
+
+        mock.updateMemoryResponse = makeBirthday(isSaved: false)
+        await vm.unsaveMemory(id: "b1")
+        XCTAssertEqual(mock.lastUpdateMemoryDto?.isSaved, false)
+        XCTAssertEqual(vm.memories.first?.data.personName, "Alice")
+
+        mock.memoryDetailResponses["b1"] = makeBirthday(assetCount: 3)
+        let added = await vm.addAssets(toMemoryId: "b1", assetIds: ["new"])
+        XCTAssertTrue(added)
+        XCTAssertEqual(mock.lastAddAssetsMemoryIds, ["new"])
+        XCTAssertEqual(vm.memories.first?.type, .birthday)
+
+        mock.memoryDetailResponses["b1"] = makeBirthday(assetCount: 2)
+        let stillThere = await vm.removeAssets(fromMemoryId: "b1", assetIds: ["b1-a0"])
+        XCTAssertTrue(stillThere)
+        XCTAssertEqual(mock.lastRemoveAssetsMemoryIds, ["b1-a0"])
+        XCTAssertEqual(vm.memories.first?.data.personName, "Alice")
+        XCTAssertNil(vm.errorMessage)
+    }
+
+    @MainActor
+    func test_AC_17_5_createMemory_stillSendsOnThisDayWithYearOnly() async {
+        let mock = MockImmichClient()
+        mock.searchMetadataResponse = searchPage(ids: ["a1"], nextPage: nil)
+        let vm = MemoriesViewModel(client: mock)
+        await vm.beginPicking()
+        vm.toggleSelection(id: "a1")
+
+        await vm.createMemory()
+
+        XCTAssertEqual(mock.lastCreateMemoryDto?.type, .on_this_day)
+        XCTAssertNil(mock.lastCreateMemoryDto?.data.personId)
+        XCTAssertNil(mock.lastCreateMemoryDto?.data.personName)
     }
 }

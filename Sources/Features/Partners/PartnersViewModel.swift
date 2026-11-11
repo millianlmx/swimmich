@@ -1,5 +1,11 @@
 import Foundation
 
+/// Where a partner row leads: the library of a partner who shares with me.
+struct PartnerLibraryRoute: Hashable {
+    let partnerId: String
+    let name: String
+}
+
 /// Partner-sharing state (P3, issue #14): the two directions of the partner
 /// relation and the mutations the `/api/partners` routes accept.
 ///
@@ -57,6 +63,15 @@ final class PartnersViewModel {
     }
 
     // MARK: - Derived
+
+    /// The library a row opens, or `nil` when it opens nothing. Only a
+    /// partner who shares **with me** has a library to browse: the "Sharing"
+    /// row of a reciprocal partnership (same user in both lists) opens nothing,
+    /// because the server only serves the direction `shared-with`.
+    func libraryRoute(for partner: PartnerResponseDto, direction: PartnerDirection) -> PartnerLibraryRoute? {
+        guard direction == .sharedWith, sharedWithMe.contains(where: { $0.id == partner.id }) else { return nil }
+        return PartnerLibraryRoute(partnerId: partner.id, name: partner.name)
+    }
 
     var filteredCandidates: [UserResponseDto] {
         let query = searchQuery.trimmingCharacters(in: .whitespacesAndNewlines)

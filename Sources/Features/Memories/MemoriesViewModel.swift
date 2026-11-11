@@ -23,7 +23,7 @@ final class MemoriesViewModel {
     var isCreating = false
 
     /// The day the user is creating a memory for. Its year becomes the memory's
-    /// `data.year` (`OnThisDayDto`) and its timestamp the `memoryAt` anchor —
+    /// `data.year` (`MemoryDataDto`) and its timestamp the `memoryAt` anchor —
     /// those three fields plus `assetIds` are the whole `POST /api/memories`
     /// payload; there is no name to collect.
     var memoryDate = Date()
@@ -67,19 +67,24 @@ final class MemoriesViewModel {
         memories.first { $0.id == id }
     }
 
+    /// Full-screen playback starting at `memoryId`, reading this list live (the
+    /// same shape as `AlbumDetailViewModel.makeShareViewModel`).
+    func makePlayback(startingAt memoryId: String, autoPlays: Bool) -> MemoryPlaybackViewModel {
+        MemoryPlaybackViewModel(source: self, startingAt: memoryId, autoPlays: autoPlays)
+    }
+
     // MARK: - Load
 
-    /// Loads the memory list, sorted by memory date descending (freshest year
-    /// first). try-then-mutate: `memories` is replaced only on success.
+    /// Loads the memory list, sorted by `memoryAt` descending (a birthday's
+    /// `data.year` is a birth year and says nothing about its place in the list).
+    /// try-then-mutate: `memories` is replaced only on success.
     func load() async {
         isLoading = true
         defer { isLoading = false }
 
         do {
             let fetched = try await client.getMemories()
-            memories = fetched.sorted {
-                ($0.data.year, $0.memoryAt) > ($1.data.year, $1.memoryAt)
-            }
+            memories = Self.sortedByMemoryAt(fetched)
             errorMessage = nil
         } catch {
             errorMessage = error.userFacingMessage
@@ -129,7 +134,7 @@ final class MemoriesViewModel {
 
         let dto = MemoryCreateDto(
             assetIds: assetIds,
-            data: OnThisDayDto(year: Self.dayComponents(of: memoryDate).year ?? 0),
+            data: MemoryDataDto(year: Self.dayComponents(of: memoryDate).year ?? 0),
             memoryAt: Self.memoryAtString(for: memoryDate),
             type: .on_this_day,
             isSaved: true
@@ -258,6 +263,21 @@ final class MemoriesViewModel {
         } catch {
             errorMessage = error.userFacingMessage
         }
+    }
+
+    /// `memoryAt` descending, read as dates; an unreadable one goes after every
+    /// readable one, and ties keep the server's order (stable, original index).
+    nonisolated static func sortedByMemoryAt(_ memories: [MemoryResponseDto]) -> [MemoryResponseDto] {
+        memories.enumerated().sorted { lhs, rhs in
+            let l = MemoryCardPresentation.parseMemoryAt(lhs.element.memoryAt)
+            let r = MemoryCardPresentation.parseMemoryAt(rhs.element.memoryAt)
+            switch (l, r) {
+            case let (l?, r?) where l != r: return l > r
+            case (_?, nil): return true
+            case (nil, _?): return false
+            default: return lhs.offset < rhs.offset
+            }
+        }.map(\.element)
     }
 
     /// The picked day, in the user's own calendar. Both halves of the payload

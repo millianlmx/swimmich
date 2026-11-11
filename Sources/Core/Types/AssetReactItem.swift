@@ -41,6 +41,12 @@ struct AssetReactItem: Identifiable, Equatable, Hashable, Sendable {
     /// Read `stackId` / `stackCount` instead of indexing this array.
     let stack: [String]
 
+    /// Pixel size of the original as displayed (EXIF, orientation applied), when
+    /// the source carries it: a full DTO does, a timeline bucket does not. Bounds
+    /// the viewer's maximum zoom; nil keeps the 4x default. Declared last, with a
+    /// default, so every existing memberwise call site is unchanged.
+    var pixelSize: PixelSize? = nil
+
     /// True for video assets.
     var isVideo: Bool { !isImage }
 
@@ -166,7 +172,8 @@ struct AssetReactItem: Identifiable, Equatable, Hashable, Sendable {
             country: country,
             latitude: latitude,
             longitude: longitude,
-            stack: stack
+            stack: stack,
+            pixelSize: pixelSize
         )
     }
 
@@ -196,7 +203,8 @@ struct AssetReactItem: Identifiable, Equatable, Hashable, Sendable {
             country: country,
             latitude: latitude,
             longitude: longitude,
-            stack: stack
+            stack: stack,
+            pixelSize: pixelSize
         )
     }
 }
@@ -233,5 +241,65 @@ extension AssetReactItem {
         self.latitude = dto.exifInfo?.latitude
         self.longitude = dto.exifInfo?.longitude
         self.stack = []
+        // The EXIF describes the original. A surface that shows the edited
+        // version (a shared link, which the server always serves edited) draws
+        // other dimensions, so an edited asset counts as unknown size (L-06 #13).
+        self.pixelSize = dto.isEdited == true ? nil : PixelSize(exif: dto.exifInfo)
+    }
+}
+
+extension AssetReactItem {
+    /// Adapts a photo of a shared link (`SharedLinkAssetDto`, full or reduced form)
+    /// into the grid-rendering type.
+    ///
+    /// `masked` — the link hides metadata (`showMetadata == false`) or the photo
+    /// says so (`hasMetadata == false`) — holds for every photo of such a link,
+    /// whatever form an old server sent (a v2.x album search leaks the full form):
+    /// what the owner hid is dropped, not shown. The item's fields are not all
+    /// optional, so a masked photo carries neutral values (empty strings, false,
+    /// no place, unknown size → 4x zoom). They are internal and never displayed:
+    /// the grid cell reads only `isFavorite` (favourite badge) and
+    /// `projectionType` (360° pill), both neutral when masked, and a link has no
+    /// owner menu (`AssetThumbnailCell`). The neutral values are the assumed
+    /// exception to "never make up a value" and never come from `localDateTime`
+    /// or today's date.
+    init(sharedLinkAsset dto: SharedLinkAssetDto, linkShowsMetadata: Bool) {
+        let masked = !linkShowsMetadata || dto.hasMetadata == false
+        self.id = dto.id
+        self.ratio = 1.0
+        self.isImage = (dto.type == "IMAGE")
+        self.thumbhash = dto.thumbhash
+        self.localOffsetHours = 0.0
+        self.duration = dto.durationMilliseconds
+        self.livePhotoVideoId = dto.livePhotoVideoId
+        self.stack = []
+        if masked {
+            self.ownerId = ""
+            self.createdAt = ""
+            self.fileCreatedAt = ""
+            self.visibility = ""
+            self.isFavorite = false
+            self.isTrashed = false
+            self.projectionType = nil
+            self.city = nil
+            self.country = nil
+            self.latitude = nil
+            self.longitude = nil
+            self.pixelSize = nil
+        } else {
+            self.ownerId = dto.ownerId ?? ""
+            self.isFavorite = dto.isFavorite ?? false
+            self.visibility = dto.visibility ?? ""
+            self.isTrashed = dto.isTrashed ?? false
+            self.createdAt = dto.createdAt ?? ""
+            self.fileCreatedAt = dto.fileCreatedAt ?? ""
+            self.projectionType = dto.exifInfo?.projectionType
+            self.city = dto.exifInfo?.city
+            self.country = dto.exifInfo?.country
+            self.latitude = dto.exifInfo?.latitude
+            self.longitude = dto.exifInfo?.longitude
+            // Same rule as `init(from:)`: an edited photo counts as unknown size.
+            self.pixelSize = dto.isEdited == true ? nil : PixelSize(exif: dto.exifInfo)
+        }
     }
 }

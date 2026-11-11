@@ -1,8 +1,10 @@
 import SwiftUI
 
-/// Memories tab — "On this day" memories, one full-bleed hero card per memory
-/// (Liquid Glass chips over the hero photo). Tapping a card opens the full-screen
-/// `MemoryMomentView` (the nostalgia shot). Empty state when the server has no
+/// Memories tab — one full-bleed hero card per memory (Liquid Glass chips over
+/// the hero photo), each titled by its type ("On this day" date, a birthday's
+/// person, an unknown type's date). Tapping a card opens the full-screen
+/// `MemoryPlaybackView`, which chains the memories one after the other up to an
+/// end screen. Empty state when the server has no
 /// memories (e.g. a fresh library).
 ///
 /// The card carries the memory CRUD the `/api/memories` routes expose: the
@@ -16,10 +18,10 @@ struct MemoriesView: View {
     @Environment(\.openProfile) private var openProfile
     @Environment(\.openSyncStatus) private var openSyncStatus
 
-    /// Id rather than the DTO: the moment view is presented from a *copy*, and a
-    /// memory whose assets were just edited (or emptied) must not be shown stale.
-    /// The cover re-resolves `vm.memory(id:)` on every re-evaluation.
-    @State private var selectedMemoryID: String?
+    /// The full-screen playback, created by the list's view model so it reads the
+    /// live list: a memory whose assets were just edited (or emptied) is never
+    /// shown stale, and a delete moves on to the next memory.
+    @State private var playback: MemoryPlaybackViewModel?
     @State private var addingPhotosToID: String?
     @State private var pendingDelete: MemoryResponseDto?
 
@@ -58,7 +60,12 @@ struct MemoriesView: View {
                                         memory: memory,
                                         baseURL: baseURL,
                                         token: auth.accessToken,
-                                        onOpen: { selectedMemoryID = memory.id },
+                                        onOpen: {
+                                            playback = vm.makePlayback(
+                                                startingAt: memory.id,
+                                                autoPlays: !MemoryPlaybackProbe.autoplayOff
+                                            )
+                                        },
                                         onToggleSaved: {
                                             Task {
                                                 if memory.isSaved {
@@ -129,15 +136,8 @@ struct MemoriesView: View {
             } message: {
                 Text("The photos stay in your library — only this memory is removed.")
             }
-            .fullScreenCover(
-                isPresented: Binding(
-                    get: { selectedMemoryID != nil },
-                    set: { if !$0 { selectedMemoryID = nil } }
-                )
-            ) {
-                if let id = selectedMemoryID, let memory = vm.memory(id: id) {
-                    MemoryMomentView(memory: memory, vm: vm, baseURL: baseURL, token: auth.accessToken)
-                }
+            .fullScreenCover(item: $playback) { playback in
+                MemoryPlaybackView(playback: playback, vm: vm, baseURL: baseURL, token: auth.accessToken)
             }
         }
     }
@@ -165,6 +165,7 @@ struct MemoriesView: View {
         .padding(PVSpacing.s12)
         .background(Color.bgTertiary.opacity(0.5), in: RoundedRectangle(cornerRadius: PVRadius.sm, style: .continuous))
         .accessibilityElement(children: .combine)
+        .accessibilityIdentifier("memoriesRefreshErrorBanner")
     }
 }
 
@@ -172,7 +173,7 @@ struct MemoriesView: View {
 /// background with the day + year set in big poster typography over a bottom
 /// scrim ("1 juillet" / "2022"), plus "N years ago" and Liquid Glass chips
 /// (photo/video counts, location, asset count). Tapping the card opens the
-/// full-screen `MemoryMomentView`; the bookmark toggles `isSaved` and the long
+/// full-screen `MemoryPlaybackView`; the bookmark toggles `isSaved` and the long
 /// press opens the memory's mutations.
 private struct MemoryCard: View {
     let memory: MemoryResponseDto
@@ -193,12 +194,6 @@ private struct MemoryCard: View {
             baseURL: baseURL,
             size: .preview
         )
-    }
-
-    private var yearsAgoText: String? {
-        guard let count = MemoryCardPresentation.yearsAgoCount(year: memory.data.year),
-              let text = MemoryCardPresentation.yearsAgoText(count: count) else { return nil }
-        return text
     }
 
     var body: some View {
@@ -286,16 +281,16 @@ private struct MemoryCard: View {
 
     private var header: some View {
         VStack(alignment: .leading, spacing: PVSpacing.s0) {
-            if let date = MemoryMomentPresentation.fullDateLabel(for: memory) {
-                Text(date)
+            if let title = MemoryTitlePresentation.cardTitle(for: memory) {
+                Text(title)
                     .font(.pvH3)
                     .foregroundStyle(.white)
                     .shadow(color: .black.opacity(0.5), radius: 4, y: 1)
                     .lineLimit(1)
                     .minimumScaleFactor(0.7)
             }
-            if let ago = yearsAgoText {
-                Text(ago)
+            if let subtitle = MemoryTitlePresentation.cardSubtitle(for: memory) {
+                Text(subtitle)
                     .font(.pvSubhead)
                     .foregroundStyle(.white)
                     .shadow(color: .black.opacity(0.6), radius: 3, y: 1)
