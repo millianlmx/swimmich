@@ -364,6 +364,10 @@ final class DependencyContainer {
         TagsViewModel(client: libraryClient)
     }
 
+    func makeTagAssetsViewModel(tagId: String, tagName: String) -> TagAssetsViewModel {
+        TagAssetsViewModel(client: libraryClient, tagId: tagId, tagName: tagName)
+    }
+
     func makeStacksViewModel() -> StacksViewModel {
         StacksViewModel(client: libraryClient)
     }

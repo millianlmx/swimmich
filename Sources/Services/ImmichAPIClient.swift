@@ -197,7 +197,8 @@ final class ImmichAPIClient: ImmichClient, @unchecked Sendable {
         withPartners: Bool?,
         visibility: String?,
         withStacked: Bool?,
-        orderBy: AssetOrderBy?
+        orderBy: AssetOrderBy?,
+        tagId: String?
     ) async throws -> [TimeBucketsResponseDto] {
         var query: [URLQueryItem] = []
         if let isFavorite { query.append(URLQueryItem(name: "isFavorite", value: String(isFavorite))) }
@@ -207,6 +208,7 @@ final class ImmichAPIClient: ImmichClient, @unchecked Sendable {
         if let visibility { query.append(URLQueryItem(name: "visibility", value: visibility)) }
         if let withStacked { query.append(URLQueryItem(name: "withStacked", value: String(withStacked))) }
         if let orderBy { query.append(URLQueryItem(name: "orderBy", value: orderBy.rawValue)) }
+        if let tagId { query.append(URLQueryItem(name: "tagId", value: tagId)) }
         return try await sendAuthed(.GET, path: ImmichAPI.timeline.path("/buckets"), query: query)
     }
 
@@ -218,7 +220,8 @@ final class ImmichAPIClient: ImmichClient, @unchecked Sendable {
         withPartners: Bool?,
         visibility: String?,
         withStacked: Bool?,
-        orderBy: AssetOrderBy?
+        orderBy: AssetOrderBy?,
+        tagId: String?
     ) async throws -> TimeBucketAssetResponseDto {
         var query: [URLQueryItem] = [URLQueryItem(name: "timeBucket", value: timeBucket)]
         if let isFavorite { query.append(URLQueryItem(name: "isFavorite", value: String(isFavorite))) }
@@ -228,6 +231,7 @@ final class ImmichAPIClient: ImmichClient, @unchecked Sendable {
         if let visibility { query.append(URLQueryItem(name: "visibility", value: visibility)) }
         if let withStacked { query.append(URLQueryItem(name: "withStacked", value: String(withStacked))) }
         if let orderBy { query.append(URLQueryItem(name: "orderBy", value: orderBy.rawValue)) }
+        if let tagId { query.append(URLQueryItem(name: "tagId", value: tagId)) }
         return try await sendAuthed(.GET, path: ImmichAPI.timeline.path("/bucket"), query: query)
     }
 
@@ -465,8 +469,8 @@ final class ImmichAPIClient: ImmichClient, @unchecked Sendable {
         try await sendAuthed(.GET, path: ImmichAPI.tags.path(""))
     }
 
-    func createTag(name: String, color: String?) async throws -> TagResponseDto {
-        try await sendAuthed(.POST, path: ImmichAPI.tags.path(""), body: AnyEncodable(TagCreateDto(name: name, color: color)))
+    func createTag(name: String, color: String?, parentId: String?) async throws -> TagResponseDto {
+        try await sendAuthed(.POST, path: ImmichAPI.tags.path(""), body: AnyEncodable(TagCreateDto(name: name, color: color, parentId: parentId)))
     }
 
     func updateTag(id: String, color: String?) async throws -> TagResponseDto {
