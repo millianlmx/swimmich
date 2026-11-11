@@ -2,7 +2,7 @@ import XCTest
 @testable import ImmichSwiftUI
 
 /// "The same server" for a client certificate: lowercase host + effective port.
-final class ServerKeyTests: XCTestCase {
+final class ClientCertificateServerKeyTests: XCTestCase {
     func test_AC_22_5_sameServerForms() throws {
         let forms = ["https://h", "https://H/", "https://h:443/x", "wss://h"]
         let keys = forms.compactMap { URL(string: $0).flatMap(ServerKey.init(url:)) }
