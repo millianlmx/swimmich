@@ -27,7 +27,7 @@ final class MemoryMomentPresentationTests: XCTestCase {
         MemoryResponseDto(
             id: "m1", createdAt: "2023-07-01T00:00:00.000Z", updatedAt: "2023-07-01T00:00:00.000Z",
             memoryAt: memoryAt, ownerId: "owner", type: .on_this_day,
-            data: OnThisDayDto(year: year), assets: assets, isSaved: false,
+            data: MemoryDataDto(year: year), assets: assets, isSaved: false,
             showAt: nil, hideAt: nil, seenAt: nil, deletedAt: nil
         )
     }

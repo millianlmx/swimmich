@@ -633,7 +633,7 @@ final class ImmichAPIClientTests: XCTestCase {
 
         let memory = try await client.createMemory(dto: MemoryCreateDto(
             assetIds: ["a1", "a2"],
-            data: OnThisDayDto(year: 2019),
+            data: MemoryDataDto(year: 2019),
             memoryAt: "2019-05-04T00:00:00.000Z",
             type: .on_this_day,
             isSaved: true

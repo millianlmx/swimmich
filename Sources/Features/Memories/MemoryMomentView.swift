@@ -1,50 +1,61 @@
 import SwiftUI
 
-/// Full-screen memory "moment" — the nostalgia shot. A full-bleed swipeable
-/// hero pager (one centered photo per page, slow Ken Burns on the active page)
-/// with Liquid Glass chips floating over it (year, exact date, "N years ago",
-/// location, people, tags, saved state).
+/// One memory page of the full-screen playback (`MemoryPlaybackView`) — the
+/// nostalgia shot. A full-bleed swipeable hero pager (one centered photo per
+/// page, slow Ken Burns on the active photo) with Liquid Glass chips floating
+/// over it (title, date, location, people, tags, saved state).
 ///
-/// Top bar: close (left), a centered "On this day" chip, and a "view in
-/// timeline" teleport (right) that dismisses and jumps the Photos tab to this
-/// photo. Swipe to browse; tap a photo for the full Photos-style pager.
+/// Top bar: close (left, closes the whole playback), a centered type badge and
+/// a "view in timeline" teleport (right) that dismisses and jumps the Photos tab
+/// to this photo. Swipe horizontally to browse; one swipe past the last photo
+/// goes on to the next memory. Tap a photo for the full Photos-style pager.
+///
+/// The page owns no playback state: which photo is shown comes from
+/// `MemoryPlaybackViewModel` (only the *current* page follows it; any other page
+/// rests on its first photo), and the viewer / sheets / delete confirmation live
+/// on the playback container so a lazily recycled page cannot lose them.
 ///
 /// It is also the memory's editing surface: the bottom action row saves or
 /// unsaves it (`PUT /api/memories/{id}`), adds photos (`PUT
 /// /api/memories/{id}/assets`), drops the photo currently on screen (`DELETE
-/// …/assets`) and deletes the whole memory (`DELETE /api/memories/{id}`).
+/// …/assets`) and deletes the whole memory (`DELETE /api/memories/{id}`). Every
+/// action stops the auto-play.
 struct MemoryMomentView: View {
     let memory: MemoryResponseDto
-    /// The memory's owner — mutations go through it so the list behind this
-    /// screen shows the result, and so an emptied memory closes this screen.
+    let playback: MemoryPlaybackViewModel
+    /// Whether this page is the one the playback is on.
+    let isCurrent: Bool
+    /// The top and bottom bars fade in once, when the playback opens.
+    let chromeVisible: Bool
+    /// The device's safe-area insets: the page itself extends under them.
+    let safeInsets: EdgeInsets
+    /// The memory list's owner — mutations go through it so the list behind this
+    /// screen shows the result.
     let vm: MemoriesViewModel
     let baseURL: URL
     let token: String?
+    let onOpenViewer: (MemoryResponseDto, Int) -> Void
+    let onAddPhotos: () -> Void
+    let onDelete: () -> Void
 
     @Environment(\.dismiss) private var dismiss
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @Environment(\.openInTimeline) private var openInTimeline
 
-    @State private var heroIndex = 0
-    @State private var viewerItem: PhotoViewerItem?
-    @State private var appeared = false
     @State private var kenBurns = false
-    @State private var scrollPosition = ScrollPosition()
-    @State private var isAutoPlaying = true
-    @State private var isVideoActive = false
-    @State private var showingAddPhotos = false
-    @State private var confirmingDelete = false
+    /// Horizontal pager position: an asset id, or `passageID` on the page after
+    /// the last photo.
+    @State private var visibleItem: String?
 
-    /// The asset currently shown as the hero (pager-selected, falls back to the
-    /// first asset).
-    private var heroAsset: AssetResponseDto? {
-        memory.assets.indices.contains(heroIndex) ? memory.assets[heroIndex] : memory.assets.first
+    private static let passageID = "memory-passage"
+
+    private var heroIndex: Int {
+        isCurrent ? min(playback.assetIndex, max(memory.assets.count - 1, 0)) : 0
     }
 
-    private var yearsAgoText: String? {
-        guard let count = MemoryCardPresentation.yearsAgoCount(year: memory.data.year),
-              let text = MemoryCardPresentation.yearsAgoText(count: count) else { return nil }
-        return text
+    /// The asset shown as the hero (the first one on a page that is not current).
+    private var heroAsset: AssetResponseDto? {
+        memory.assets.indices.contains(heroIndex) ? memory.assets[heroIndex] : memory.assets.first
     }
 
     /// "Shot on iPhone 13" from the current hero asset's EXIF (make/model).
@@ -57,44 +68,41 @@ struct MemoryMomentView: View {
     }
 
     var body: some View {
-        GeometryReader { proxy in
-            ZStack(alignment: .bottom) {
-                Color.black.ignoresSafeArea()
-                heroPager
-                scrims
-                VStack(spacing: PVSpacing.s0) {
-                    topBar
-                        .opacity(appeared ? 1 : 0)
-                        .offset(y: appeared ? 0 : -12)
-                    Spacer()
-                    bottomPanel
-                        .opacity(appeared ? 1 : 0)
-                        .offset(y: appeared ? 24 : 0)
-                }
-                .frame(width: proxy.size.width)
+        ZStack(alignment: .bottom) {
+            Color.black
+            heroPager
+            scrims
+            VStack(spacing: PVSpacing.s0) {
+                topBar
+                    .opacity(chromeVisible ? 1 : 0)
+                    .offset(y: chromeVisible ? 0 : -12)
+                Spacer()
+                bottomPanel
+                    .opacity(chromeVisible ? 1 : 0)
+                    .offset(y: chromeVisible ? 0 : 24)
             }
-            .onAppear(perform: appear)
-            .appSensoryFeedback(.impact(flexibility: .soft), trigger: appeared)
+            .padding(.top, safeInsets.top)
+            .padding(.bottom, safeInsets.bottom)
         }
-        .statusBarHidden(true)
-        .photoViewer(item: $viewerItem, baseURL: baseURL, token: token)
-        .onChange(of: heroIndex) { _, _ in
-            isVideoActive = heroAsset?.type == "VIDEO"
-            restartKenBurns()
+        .onAppear {
+            visibleItem = heroAsset?.id
+            if isCurrent { restartKenBurns() }
         }
-        .task(id: autoAdvanceKey) {
-            guard isAutoPlaying, !isVideoActive, !reduceMotion, viewerItem == nil, memory.assets.count > 1 else { return }
-            while !Task.isCancelled {
-                try? await Task.sleep(for: .seconds(3))
-                guard isAutoPlaying, !isVideoActive, viewerItem == nil else { continue }
-                advance()
+        .onChange(of: heroAsset?.id) { _, newID in
+            if isCurrent { restartKenBurns() }
+            guard let newID, visibleItem != newID else { return }
+            withAnimation(isCurrent ? PVMotion.adaptive(.easeInOut(duration: 0.4), reduceMotion: reduceMotion) : nil) {
+                visibleItem = newID
+            }
+        }
+        .onChange(of: isCurrent) { _, nowCurrent in
+            if nowCurrent {
+                restartKenBurns()
+            } else {
+                kenBurns = false
             }
         }
     }
-
-    /// Re-arms the auto-advance ticker whenever play state or video activity
-    /// changes (same view-owned ticker pattern as `SlideshowView`).
-    private var autoAdvanceKey: String { "\(isAutoPlaying)-\(isVideoActive)" }
 
     // MARK: - Hero pager (swipe to browse)
 
@@ -107,38 +115,49 @@ struct MemoryMomentView: View {
                         .containerRelativeFrame(.horizontal)
                         .clipped()
                 }
+                passagePage
+                    .id(Self.passageID)
+                    .containerRelativeFrame(.horizontal)
+                    .clipped()
             }
             .scrollTargetLayout()
         }
         .scrollTargetBehavior(.paging)
         .scrollIndicators(.hidden)
-        .scrollPosition($scrollPosition)
-        .onScrollPhaseChange { _, newPhase in
+        .scrollPosition(id: $visibleItem)
+        .onScrollPhaseChange { oldPhase, newPhase in
+            guard isCurrent else { return }
             if newPhase == .interacting {
-                isAutoPlaying = false
+                playback.stopAutoPlay()
             }
-        }
-        .onScrollGeometryChange(for: Int.self) { geo in
-            let width = geo.containerSize.width
-            guard width > 0 else { return 0 }
-            return min(max(Int((geo.contentOffset.x / width).rounded()), 0), memory.assets.count - 1)
-        } action: { _, newIndex in
-            heroIndex = newIndex
+            if newPhase == .idle, oldPhase == .interacting || oldPhase == .decelerating {
+                commitVisibleItem()
+            }
         }
         .ignoresSafeArea()
     }
 
+    /// The user's horizontal swipe came to rest: report where.
+    private func commitVisibleItem() {
+        if visibleItem == Self.passageID {
+            playback.userAdvancedPastLastPhoto()
+        } else if let index = memory.assets.firstIndex(where: { $0.id == visibleItem }) {
+            playback.userShowedPhoto(at: index)
+        }
+    }
+
     @ViewBuilder
     private func heroPage(_ dto: AssetResponseDto, index: Int) -> some View {
+        let isHero = isCurrent && index == heroIndex
         Group {
-            if dto.type == "VIDEO" && index == heroIndex {
+            if dto.type == "VIDEO" && isHero {
                 VideoPlayerView(
                     asset: AssetReactItem(from: dto),
                     baseURL: baseURL,
                     token: token,
                     controlsVisible: false,
                     videoGravity: .resizeAspectFill,
-                    onPlaybackEnded: { videoEnded() }
+                    onPlaybackEnded: { playback.videoDidEnd() }
                 )
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
                 .scaleEffect(kenBurns ? 1.08 : 1.0)
@@ -152,13 +171,48 @@ struct MemoryMomentView: View {
                 )
                 AuthenticatedAsyncImage(url: url, token: token, contentMode: .fill)
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
-                    .scaleEffect(kenBurns && index == heroIndex ? 1.08 : 1.0)
+                    .scaleEffect(kenBurns && isHero ? 1.08 : 1.0)
                     .clipped()
                     .id(url.absoluteString)
             }
         }
-        .simultaneousGesture(TapGesture().onEnded { openViewer(at: index) })
+        .simultaneousGesture(TapGesture().onEnded { onOpenViewer(memory, index) })
         .accessibilityLabel(String(localized: "Open this memory's photos"))
+    }
+
+    /// The page after the last photo: a darkened preview of the next memory's
+    /// first photo, or a check mark after the last memory. Swiping onto it moves
+    /// on; it is not a photo, so VoiceOver and the page dots ignore it.
+    private var passagePage: some View {
+        ZStack {
+            Color.black
+            if let next = nextMemory, let first = next.assets.first {
+                AuthenticatedAsyncImage(
+                    url: ImmichAssetURL.thumbnail(
+                        assetId: first.id,
+                        thumbhash: first.thumbhash ?? "",
+                        baseURL: baseURL,
+                        size: .preview
+                    ),
+                    token: token,
+                    contentMode: .fill
+                )
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+                .clipped()
+                Color.black.opacity(0.6)
+            } else {
+                Image(systemName: "checkmark.circle")
+                    .font(.system(size: 48))
+                    .foregroundStyle(.white.opacity(0.8))
+            }
+        }
+        .accessibilityHidden(true)
+    }
+
+    private var nextMemory: MemoryResponseDto? {
+        guard let index = vm.memories.firstIndex(where: { $0.id == memory.id }),
+              index + 1 < vm.memories.count else { return nil }
+        return vm.memories[index + 1]
     }
 
     private var scrims: some View {
@@ -193,19 +247,18 @@ struct MemoryMomentView: View {
                 }
                 .buttonStyle(.plain)
                 .accessibilityLabel(String(localized: "Close memory"))
+                .accessibilityIdentifier("memoryMomentClose")
 
                 Spacer(minLength: PVSpacing.s8)
 
-                Label(
-                    memory.type == .on_this_day ? String(localized: "On this day") : String(localized: "Memory"),
-                    systemImage: "sparkles"
-                )
-                .font(.pvCaption.weight(.semibold))
-                .foregroundStyle(.white)
-                .lineLimit(1)
-                .padding(.horizontal, PVSpacing.s12)
-                .padding(.vertical, 6)
-                .glassEffect(.regular.tint(.black.opacity(0.6)), in: Capsule())
+                let badge = MemoryTitlePresentation.badge(for: memory)
+                Label(badge.label, systemImage: badge.symbol)
+                    .font(.pvCaption.weight(.semibold))
+                    .foregroundStyle(.white)
+                    .lineLimit(1)
+                    .padding(.horizontal, PVSpacing.s12)
+                    .padding(.vertical, 6)
+                    .glassEffect(.regular.tint(.black.opacity(0.6)), in: Capsule())
 
                 Spacer(minLength: PVSpacing.s8)
 
@@ -230,6 +283,7 @@ struct MemoryMomentView: View {
         .contentShape(Rectangle())
         .padding(.horizontal, PVSpacing.s16)
         .padding(.top, PVSpacing.s8)
+        .accessibilityHidden(!isCurrent)
     }
 
     // MARK: - Bottom panel
@@ -240,6 +294,8 @@ struct MemoryMomentView: View {
             pageDots
             chips
             actionRow
+                .allowsHitTesting(isCurrent)
+                .accessibilityHidden(!isCurrent)
         }
         .frame(maxWidth: .infinity)
         .padding(.horizontal, PVSpacing.s16)
@@ -248,6 +304,7 @@ struct MemoryMomentView: View {
 
     /// The memory's mutations, over the hero. Each is a glass circle sized for
     /// the 44 pt minimum tap target; icons carry the meaning, VoiceOver the words.
+    /// Any of them stops the auto-play for good (no restart but "Start Over").
     private var actionRow: some View {
         GlassEffectContainer {
             HStack(spacing: PVSpacing.s16) {
@@ -256,6 +313,7 @@ struct MemoryMomentView: View {
                     label: memory.isSaved ? "Unsave memory" : "Save memory",
                     identifier: "memoryMomentSave"
                 ) {
+                    playback.stopAutoPlay()
                     Task {
                         if memory.isSaved {
                             await vm.unsaveMemory(id: memory.id)
@@ -270,7 +328,8 @@ struct MemoryMomentView: View {
                     label: "Add photos",
                     identifier: "memoryMomentAddPhotos"
                 ) {
-                    showingAddPhotos = true
+                    playback.stopAutoPlay()
+                    onAddPhotos()
                 }
 
                 actionButton(
@@ -278,8 +337,7 @@ struct MemoryMomentView: View {
                     label: "Remove this photo from the memory",
                     identifier: "memoryMomentRemovePhoto"
                 ) {
-                    guard let asset = heroAsset else { return }
-                    Task { await removePhoto(asset.id) }
+                    Task { await playback.removeCurrentPhoto() }
                 }
                 .disabled(heroAsset == nil)
 
@@ -288,31 +346,10 @@ struct MemoryMomentView: View {
                     label: "Delete memory",
                     identifier: "memoryMomentDelete"
                 ) {
-                    confirmingDelete = true
+                    playback.stopAutoPlay()
+                    onDelete()
                 }
             }
-        }
-        .sheet(isPresented: $showingAddPhotos) {
-            AddPhotosToMemorySheet(
-                memoryId: memory.id,
-                existingAssetIds: Set(memory.assets.map(\.id)),
-                vm: vm
-            )
-        }
-        .confirmationDialog(
-            "Delete this memory?",
-            isPresented: $confirmingDelete,
-            titleVisibility: .visible
-        ) {
-            Button("Delete Memory", role: .destructive) {
-                Task {
-                    await vm.deleteMemory(id: memory.id)
-                    dismiss()
-                }
-            }
-            Button("Cancel", role: .cancel) {}
-        } message: {
-            Text("The photos stay in your library — only this memory is removed.")
         }
     }
 
@@ -335,35 +372,34 @@ struct MemoryMomentView: View {
         .accessibilityLabel(label)
     }
 
-    /// Drops one photo from the memory. The server filters empty memories out of
-    /// `GET /api/memories`, so when this was the last one the memory no longer
-    /// exists to show — `removeAssets` reports that and this screen closes.
-    private func removePhoto(_ assetId: String) async {
-        let stillExists = await vm.removeAssets(fromMemoryId: memory.id, assetIds: [assetId])
-        if !stillExists { dismiss() }
-    }
-
+    /// The type-aware title: the year for an on-this-day memory, the person (and
+    /// their age at the photo on screen) for a birthday, the date otherwise.
     private var titleBlock: some View {
         VStack(spacing: PVSpacing.s4) {
-            Text(String(memory.data.year))
-                .font(.pvTitleXL)
-                .foregroundStyle(.white)
-                .monospacedDigit()
-                .frame(maxWidth: .infinity)
-            if let subtitle = subtitleText {
+            let title = MemoryTitlePresentation.momentTitle(for: memory, asset: heroAsset)
+            if memory.type == .on_this_day {
+                Text(title)
+                    .font(.pvTitleXL)
+                    .foregroundStyle(.white)
+                    .monospacedDigit()
+                    .frame(maxWidth: .infinity)
+                    .accessibilityIdentifier("memoryTitle_\(memory.id)")
+            } else {
+                Text(title)
+                    .font(.pvH3)
+                    .foregroundStyle(.white)
+                    .lineLimit(2)
+                    .multilineTextAlignment(.center)
+                    .frame(maxWidth: .infinity)
+                    .accessibilityIdentifier("memoryTitle_\(memory.id)")
+            }
+            if let subtitle = MemoryTitlePresentation.momentSubtitle(for: memory) {
                 Text(subtitle)
                     .font(.pvSubhead)
                     .foregroundStyle(.white.opacity(0.9))
                     .frame(maxWidth: .infinity)
             }
         }
-    }
-
-    /// "1 juillet · il y a 3 ans" — fused day + elapsed line (the year is
-    /// already the big numeral above, so the full date is redundant here).
-    private var subtitleText: String? {
-        let parts = [MemoryCardPresentation.dayLabel(for: memory), yearsAgoText].compactMap { $0 }
-        return parts.isEmpty ? nil : parts.joined(separator: " · ")
     }
 
     @ViewBuilder
@@ -430,42 +466,9 @@ struct MemoryMomentView: View {
         }
     }
 
-    // MARK: - Actions
+    // MARK: - Ken Burns
 
-    private func openViewer(at index: Int) {
-        let items = memory.assets.map { AssetReactItem(from: $0) }
-        guard !items.isEmpty else { return }
-        let clamped = min(max(index, 0), items.count - 1)
-        viewerItem = PhotoViewerItem(assets: items, index: clamped)
-    }
-
-    private func appear() {
-        withAnimation(PVMotion.adaptive(.easeOut(duration: 0.4), reduceMotion: reduceMotion)) {
-            appeared = true
-        }
-        isVideoActive = heroAsset?.type == "VIDEO"
-        restartKenBurns()
-    }
-
-    /// Advances the hero pager to the next asset (wrapping), re-armed by the
-    /// auto-advance ticker or a finished video.
-    private func advance() {
-        guard memory.assets.count > 1 else { return }
-        let next = (heroIndex + 1) % memory.assets.count
-        withAnimation(PVMotion.adaptive(.easeInOut(duration: 0.4), reduceMotion: reduceMotion)) {
-            scrollPosition.scrollTo(id: memory.assets[next].id)
-        }
-    }
-
-    /// The current hero video finished playing — resume the slideshow and
-    /// advance immediately (Photos behavior).
-    private func videoEnded() {
-        isVideoActive = false
-        advance()
-    }
-
-    /// Slow 10 s zoom-in per slide (Ken Burns), restarted on each page change
-    /// so every slide runs its own zoom before the ticker advances.
+    /// Slow 10 s zoom-in per photo (Ken Burns), restarted on each photo change.
     private func restartKenBurns() {
         guard !reduceMotion else { return }
         kenBurns = false

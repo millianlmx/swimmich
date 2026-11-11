@@ -31,10 +31,15 @@ private struct AppSensoryFeedbackModifier<T: Equatable>: ViewModifier {
 
     let feedback: SensoryFeedback
     let trigger: T
+    /// Reports the feedback actually handed to SwiftUI (`nil` when haptics are
+    /// off). Only UI-test probes pass one; the gate itself stays this closure.
+    let onEmit: ((SensoryFeedback?) -> Void)?
 
     func body(content: Content) -> some View {
         content.sensoryFeedback(trigger: trigger) { _, _ in
-            hapticsEnabled ? feedback : nil
+            let played = hapticsEnabled ? feedback : nil
+            onEmit?(played)
+            return played
         }
     }
 }
@@ -46,6 +51,16 @@ extension View {
     /// Same call shape as the SDK's `sensoryFeedback(_:trigger:)`, so a call
     /// site only changes the method name.
     func appSensoryFeedback<T: Equatable>(_ feedback: SensoryFeedback, trigger: T) -> some View {
-        modifier(AppSensoryFeedbackModifier(feedback: feedback, trigger: trigger))
+        appSensoryFeedback(feedback, trigger: trigger, onEmit: nil)
+    }
+
+    /// Same gate, plus `onEmit` reporting what the gate returned (see
+    /// `MemoryPlaybackView`'s test probe).
+    func appSensoryFeedback<T: Equatable>(
+        _ feedback: SensoryFeedback,
+        trigger: T,
+        onEmit: ((SensoryFeedback?) -> Void)?
+    ) -> some View {
+        modifier(AppSensoryFeedbackModifier(feedback: feedback, trigger: trigger, onEmit: onEmit))
     }
 }

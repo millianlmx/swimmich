@@ -1091,7 +1091,7 @@ final class MockImmichClient: ImmichClient, @unchecked Sendable {
         return memoryDetailResponses[id] ?? MemoryResponseDto(
             id: id, createdAt: "2024-01-01T00:00:00.000Z", updatedAt: "2024-01-01T00:00:00.000Z",
             memoryAt: "2023-06-15T00:00:00.000Z", ownerId: "owner", type: .on_this_day,
-            data: OnThisDayDto(year: 2023), assets: [], isSaved: false
+            data: MemoryDataDto(year: 2023), assets: [], isSaved: false
         )
     }
 
@@ -1104,7 +1104,7 @@ final class MockImmichClient: ImmichClient, @unchecked Sendable {
         return MemoryResponseDto(
             id: id, createdAt: "2024-01-01T00:00:00.000Z", updatedAt: "2024-01-01T00:00:00.000Z",
             memoryAt: dto.memoryAt ?? "2023-06-15T00:00:00.000Z", ownerId: "owner",
-            type: .on_this_day, data: OnThisDayDto(year: 2023), assets: [],
+            type: .on_this_day, data: MemoryDataDto(year: 2023), assets: [],
             isSaved: dto.isSaved ?? false
         )
     }
