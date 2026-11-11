@@ -11,7 +11,7 @@ final class MissingClientCertificateTests: XCTestCase {
 
     override func setUp() {
         super.setUp()
-        let clock = clock
+        let clock = self.clock
         log = TLSChallengeLog(now: { clock.now })
     }
 

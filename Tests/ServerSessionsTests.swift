@@ -137,12 +137,12 @@ final class ServerSessionsTests: XCTestCase {
 
     func test_AC3_downloadTransport_trustsASelfSignedHostInTheStore() throws {
         let (made, _) = makeSessions(trusting: [Self.host])
-        try assertTrusted(made.makeDownloadTransport().session)
+        try assertTrusted(made.makeDownloadTransport().session())
     }
 
     func test_AC4_downloadTransport_refusesASelfSignedHostOutsideTheStore() throws {
         let (made, _) = makeSessions(trusting: [])
-        try assertRefused(made.makeDownloadTransport().session)
+        try assertRefused(made.makeDownloadTransport().session())
     }
 
     func test_AC14_roadTripSession_appliesTheTrustStore() throws {

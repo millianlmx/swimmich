@@ -30,7 +30,7 @@ final class DependencyContainer {
     /// One per process: the trust-aware sessions for images, transfers and road
     /// trip. Built on the API client's own trust store and reset by the
     /// logout purge (`LocalDataPurger`).
-    let serverSessions: ServerSessions
+    nonisolated let serverSessions: ServerSessions
     let realtime: RealtimeService
     /// The TLS client certificate of each server (L-10): the keychain-backed
     /// store the TLS delegates, the widgets and the share extension all read,
@@ -290,7 +290,9 @@ final class DependencyContainer {
 
     /// How the video player reaches a server that has a client certificate:
     /// the app's `video` session (read per request) and the identity store.
-    var videoTransport: VideoAppTransport {
+    /// `nonisolated` on purpose: `VideoPlaybackViewModel` takes it as a default
+    /// argument, which is evaluated in the caller's (nonisolated) context.
+    nonisolated var videoTransport: VideoAppTransport {
         VideoAppTransport(session: { [serverSessions] in serverSessions.video }, identities: clientIdentities)
     }
 
