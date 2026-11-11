@@ -5,8 +5,8 @@ import SwiftUI
 ///
 /// The two sections are the two halves of the question. `Local` reads only the
 /// device (the ledger and the cache) and is therefore always available, even
-/// with no connection; `Server` is the one call, and shows the retry when it
-/// fails.
+/// with no connection; `Server` is the account's own storage (two reads, each
+/// with its own "Unavailable" and Try Again).
 ///
 /// Pushed from `ProfileView`'s Advanced section, which owns the hub's navigation
 /// container — no `NavigationStack` here.
@@ -25,21 +25,15 @@ struct MediaStatsView: View {
             }
 
             Section {
-                if vm.isLoading {
+                if vm.storage.isLoading {
                     ProgressView()
+                        .accessibilityIdentifier("mediaStatsServerLoading")
                 }
-                if let error = vm.errorMessage {
-                    InlineErrorBadge(message: error) { Task { await vm.load() } }
-                }
-                LabeledContent("Photos", value: "\(vm.photos)")
-                    .accessibilityIdentifier("mediaStatsServerPhotos")
-                LabeledContent("Videos", value: "\(vm.videos)")
-                LabeledContent("Usage", value: vm.formattedUsage(vm.usage))
-                // No quota defined → no row at all, rather than a zero that
-                // would read as "no space".
-                if let quota = vm.quotaSizeInBytes {
-                    LabeledContent("Quota", value: vm.formattedUsage(quota))
-                }
+                AccountStorageRows(
+                    storage: vm.storage,
+                    idPrefix: "mediaStatsServer",
+                    showsQuotaBar: false
+                ) { Task { await vm.load() } }
             } header: {
                 Text("Server")
             }

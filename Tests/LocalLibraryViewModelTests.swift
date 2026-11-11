@@ -181,7 +181,7 @@ final class LocalLibraryViewModelTests: XCTestCase {
         XCTAssertEqual(vm.assets.map(\.localIdentifier), ["L1", "L2", "L3"])
         // Photos/videos/summary come from the media type alone; the device column
         // never carries bytes (counting them means reading every resource).
-        XCTAssertEqual(vm.localSummary, LocalLibraryViewModel.MediaSummary(photos: 2, videos: 1, bytes: 0))
+        XCTAssertEqual(vm.localSummary, LocalLibraryViewModel.MediaSummary(photos: 2, videos: 1))
         XCTAssertEqual(vm.localSummary.total, 3)
         XCTAssertNil(vm.selectedAlbumID)
         XCTAssertNil(vm.selectedAlbumName)
@@ -787,26 +787,72 @@ final class LocalLibraryViewModelTests: XCTestCase {
 
     // MARK: - Failure and selection state
 
-    func test_loadRemoteSummary_failure_leavesRemoteNil() async {
-        client.globalError = APIError.decoding("server unreachable")
+    func test_AC_72_serverDown_keepsDeviceColumn_andSurvivesCheckAndUpload() async {
+        await arrange([candidate("A"), candidate("B"), candidate("C")])
+        client.getMyUserError = APIError.serverError(500, "x")
+        client.assetStatisticsError = APIError.serverError(500, "x")
 
         await vm.loadRemoteSummary()
 
-        // An unreachable server is not an empty server: the column shows nothing
-        // rather than a zero it cannot vouch for.
-        XCTAssertNil(vm.remoteSummary)
-        XCTAssertNotNil(vm.errorMessage)
-
-        client.globalError = nil
-        client.serverStatisticsResponse = ServerStatsResponseDto(
-            photos: 12, videos: 3, usage: 2048, usagePhotos: 0, usageVideos: 0, usageByUser: []
-        )
-
-        await vm.loadRemoteSummary()
-
-        XCTAssertEqual(vm.remoteSummary, LocalLibraryViewModel.MediaSummary(photos: 12, videos: 3, bytes: 2048))
-        XCTAssertEqual(vm.remoteSummary?.total, 15)
+        // An unreachable server is not an empty one: both halves say so, the
+        // device column stays true, and the check/upload message stays free.
+        let unavailable = UserFacingError.serverErrorMessage
+        XCTAssertEqual(vm.storage.usage, .unavailable(message: unavailable))
+        XCTAssertEqual(vm.storage.counts, .unavailable(message: unavailable))
+        XCTAssertEqual(vm.localSummary, LocalLibraryViewModel.MediaSummary(photos: 3, videos: 0))
         XCTAssertNil(vm.errorMessage)
+
+        answer(accept: ["A", "B", "C"])
+        await vm.checkSelection()
+        readOnly.setEnabled(true)
+        await vm.uploadSelection()
+
+        XCTAssertEqual(vm.storage.usage, .unavailable(message: unavailable))
+        XCTAssertEqual(vm.storage.counts, .unavailable(message: unavailable))
+        XCTAssertEqual(vm.errorMessage, UserFacingError.readOnlyModeMessage)
+
+        client.getMyUserError = nil
+        client.assetStatisticsError = nil
+        client.assetStatisticsResponse = AssetStatsResponseDto(images: 12, videos: 3, total: 15)
+        await vm.loadRemoteSummary()
+
+        guard case .loaded = vm.storage.usage else { return XCTFail("usage must be read again") }
+        XCTAssertEqual(vm.storage.counts, .loaded(.init(photos: 12, videos: 3)))
+        XCTAssertEqual(client.serverStatisticsCallCount, 0)
+    }
+
+    func test_AC_75_successfulUpload_rereadsAccountStorage() async {
+        await arrange([candidate("A")])
+        answer(accept: ["A"])
+        await vm.checkSelection()
+        let usageReads = client.getMyUserCallCount
+        let countReads = client.assetStatisticsCallCount
+
+        await vm.uploadSelection()
+
+        XCTAssertEqual(client.getMyUserCallCount, usageReads + 1)
+        XCTAssertEqual(client.assetStatisticsCallCount, countReads + 1)
+        XCTAssertEqual(vm.phase, .idle)
+        XCTAssertNil(vm.uploadProgress)
+
+        // Refused (read-only): nothing sent, nothing read.
+        build()
+        await arrange([candidate("A")])
+        answer(accept: ["A"])
+        await vm.checkSelection()
+        readOnly.setEnabled(true)
+        await vm.uploadSelection()
+        XCTAssertEqual(client.getMyUserCallCount, 0)
+        XCTAssertEqual(client.assetStatisticsCallCount, 0)
+
+        // Nothing local-only: no run, nothing read.
+        build()
+        await arrange([candidate("A")])
+        answer(reject: ["A"])
+        await vm.checkSelection()
+        await vm.uploadSelection()
+        XCTAssertEqual(client.getMyUserCallCount, 0)
+        XCTAssertEqual(client.assetStatisticsCallCount, 0)
     }
 
     func test_selectionState_togglesAndClears() async {

@@ -335,8 +335,13 @@ protocol ImmichClient: AnyObject, Sendable {
     /// everywhere".
     func deleteAllSessions() async throws
 
-    // MARK: - Server statistics (P0 api-surface-expansion)
+    // MARK: - Statistics
+    /// `GET /api/server/statistics` — instance-wide totals. Administrators only
+    /// (permission `server.statistics`); only the Administration screen reads it.
     func getServerStatistics() async throws -> ServerStatsResponseDto
+    /// `GET /api/assets/statistics` — photo/video counts of the token's own
+    /// account (non-admin route; no partners, trash, hidden or locked assets).
+    func getAssetStatistics() async throws -> AssetStatsResponseDto
 
     // MARK: - Locked folder (gap G12)
 

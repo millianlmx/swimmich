@@ -746,6 +746,10 @@ final class ImmichAPIClient: ImmichClient, @unchecked Sendable {
         try await sendAuthed(.GET, path: ImmichAPI.server.path("/statistics"))
     }
 
+    func getAssetStatistics() async throws -> AssetStatsResponseDto {
+        try await sendAuthed(.GET, path: ImmichAPI.assets.path("/statistics"))
+    }
+
     // MARK: - Bulk asset update (P0: archive via visibility)
 
     func bulkUpdateAssets(dto: AssetBulkUpdateDto) async throws {

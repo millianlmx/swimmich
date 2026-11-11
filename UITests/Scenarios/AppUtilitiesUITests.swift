@@ -16,7 +16,7 @@ import XCTest
 ///   handed the app. The stub notes that the token really was presented as an
 ///   `Authorization: Bearer …` header, so the scan cannot pass by the credential
 ///   being absent from the session.
-/// * Media Stats shows the counters `GET /api/server/statistics` served (values
+/// * Media Stats shows the counters `GET /api/assets/statistics` served (values
 ///   that exist nowhere else) plus the ledger's local half, and its `severe`
 ///   line reaches the log only after the stub is armed to fail that route (a 5xx
 ///   is the one outcome the transport maps to `severe`).
@@ -101,7 +101,7 @@ final class AppUtilitiesUITests: XCTestCase {
         _ = done.wait(timeout: .now() + 6)
     }
 
-    /// Arms or disarms the stub's 500 on `GET /api/server/statistics`. A plain
+    /// Arms or disarms the stub's 500 on `GET /api/assets/statistics`. A plain
     /// request to the stub, not a UI action: the failure has to be in place
     /// before a screen asks, and only the stub can answer it.
     private func setStatisticsFailing(_ failing: Bool) {
@@ -611,11 +611,11 @@ final class AppUtilitiesUITests: XCTestCase {
                       + "screen reads: \(screenStrings())")
         shot("au06-media-stats")
 
-        // ON THE WIRE: the screen's numbers came from `GET /api/server/statistics`
+        // ON THE WIRE: the screen's numbers came from `GET /api/assets/statistics`
         // (the 500 first, the counters after), and the credential the scan above
         // looks for really was presented — in the Authorization HEADER, which is
         // exactly what an entry must not record.
-        let stats = stubRequests().filter { $0.path == "/api/server/statistics" }
+        let stats = stubRequests().filter { $0.path == "/api/assets/statistics" }
         XCTAssertGreaterThanOrEqual(stats.count, 2,
                                     "the armed failure and the retry must be two calls — got:\n"
                                     + describe(stubRequests()))
@@ -634,7 +634,7 @@ final class AppUtilitiesUITests: XCTestCase {
         XCTAssertTrue(failingRow.hasPrefix("severe"),
                       "the log did not follow the traffic: no severe line for the 5xx — rows:\n"
                       + logRows().joined(separator: "\n"))
-        XCTAssertTrue(failingRow.contains("/api/server/statistics"),
+        XCTAssertTrue(failingRow.contains("/api/assets/statistics"),
                       "the severe line is not the failed statistics call: \(failingRow)")
         XCTAssertTrue(logRows().contains { $0.lowercased().hasPrefix("info") },
                       "an unarmed call is missing from the log — rows:\n"
@@ -644,10 +644,10 @@ final class AppUtilitiesUITests: XCTestCase {
         // The picker PARTITIONS the list: the same screen, filtered, keeps the
         // severe line and drops the info ones, then the other way round.
         assertLevelFilter(["Severe", "Grave", "Kritisch"], level: "severe",
-                          shows: "/api/server/statistics", otherLevel: "info",
+                          shows: "/api/assets/statistics", otherLevel: "info",
                           hides: "/api/users/me", context: "App Logs, level filter")
         assertLevelFilter(["Info"], level: "info",
-                          shows: "/api/server/statistics", otherLevel: "severe",
+                          shows: "/api/assets/statistics", otherLevel: "severe",
                           hides: "500", context: "App Logs, level filter")
         XCTAssertTrue(tapLogLevel(["All", "Tout", "Alle"]), "the level picker lost its All segment")
         rows = logRows()

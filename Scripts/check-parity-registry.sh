@@ -149,7 +149,6 @@ Partage (liens et partenaires)|Haptique|B-36
 Partage (liens et partenaires)|Matériau|B-19
 Partage (liens et partenaires)|Accessibilité|B-17 B-22
 Hub « Me »|Parcours|B-16
-Hub « Me »|États|B-20
 Hub « Me »|Accessibilité|B-17
 Réglages|Gestes et transitions|B-36
 Réglages|Accessibilité|B-17

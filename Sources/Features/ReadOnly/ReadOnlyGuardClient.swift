@@ -621,6 +621,10 @@ final class ReadOnlyGuardClient: ImmichClient {
         try await inner.getServerStatistics()
     }
 
+    func getAssetStatistics() async throws -> AssetStatsResponseDto {
+        try await inner.getAssetStatistics()
+    }
+
     // MARK: - Locked folder (session mechanics: never refused)
 
     func getAuthStatus() async throws -> AuthStatusResponseDto {
