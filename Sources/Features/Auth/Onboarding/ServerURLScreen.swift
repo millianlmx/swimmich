@@ -66,8 +66,9 @@ struct ServerURLScreen: View {
                     }
                 }
 
-                // TODO: $PHASE_QR — scan a server QR code (AVFoundation/VisionKit)
-                // and pre-fill `auth.serverURLString` from the decoded payload.
+                // QR discovery: the `qrcode.viewfinder` button opens `QRScannerView`,
+                // whose decoded payload goes through `handleScannedPayload`; it
+                // pre-fills `auth.serverURLString` and starts the server check.
                 // Certificates: HTTPS servers go through the standard trust
                 // evaluation (TrustEvaluatingURLSessionDelegate). A self-signed
                 // server is accepted only after the "Trust this server?" alert

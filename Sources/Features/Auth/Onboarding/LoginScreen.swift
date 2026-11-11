@@ -72,7 +72,6 @@ struct LoginScreen: View {
                         .disabled(auth.isLoading)
                     }
 
-                    // TODO: $PHASE_QR — QR scan from the login screen.
                     // Auth errors render inline under the field card (PRD §5.10 Écran 4),
                     // never as a popup.
                     if let err = auth.errorMessage {

@@ -8,6 +8,7 @@ Le point d'entrée est le [README](../README.md) à la racine : présentation du
 | --- | --- |
 | [`../README.md`](../README.md) | Entrée canonique : projet, architecture, build, tests, contribution |
 | [`mobile-features-vs-flutter.md`](mobile-features-vs-flutter.md) | Référence du client Flutter upstream — objectif de parité |
+| [`parity-registry-v3.4.0.md`](parity-registry-v3.4.0.md) | Registre des écarts vs client mobile Immich v3.4.0 et suivi des lots |
 | [`feature-parity-plan.md`](feature-parity-plan.md) | Plan de parité Flutter |
 | [`app-review-ats.txt`](app-review-ats.txt) | Justification App Review (anglais, à coller dans App Store Connect) de `NSAllowsArbitraryLoads` dans l'app, le widget et la Share Extension |
 | [`../.omp/backlog/ImmichSwiftUI-backlog.md`](../.omp/backlog/ImmichSwiftUI-backlog.md) | Backlog : phases P0–P5, cartes AC, endpoints manquants |

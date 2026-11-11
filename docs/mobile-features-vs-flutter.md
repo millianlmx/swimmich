@@ -5,7 +5,8 @@ Date de référence : 2026-09-08
 Révisé le 2026-09-15 contre `main` @ `e55ac299` (release v3.2.1) : cinq erreurs factuelles
 corrigées (§3 ordonnanceur Android, §4 casting + OCR, §6 filtre OCR, §13 note par
 étoiles, §20 réglages proxy/SSL/préférences, §23 feature fantôme « Cluster Groups »).
-Registre des écarts restants : `.omp/backlog/ImmichSwiftUI-backlog.md` §2.17.
+Revérifié le 2026-11-11 contre v3.4.0 (cible de parité). Registre courant des écarts :
+`docs/parity-registry-v3.4.0.md` (il remplace `.omp/backlog/ImmichSwiftUI-backlog.md` §2.17, v3.2.1).
 
 ---
 
@@ -282,9 +283,9 @@ reconnaissance faciale, pas une fonctionnalité de groupes d'utilisateurs.
 ## 26. Fonctions Communes Web & Mobile
 
 - Stacking de photos similaires
-- Duplicates utility (résolution via checksum ML) — **web uniquement** : 0 occurrence `duplicate` dans `mobile/lib` hors `duplicate_guard.dart` (garde de navigation)
+- Duplicates utility (résolution via checksum ML) — **web uniquement** : aucun chemin `mobile/lib/**` ne touche aux doublons en v3.4.0. Swimmich offre les doublons au-delà de la parité (`Sources/Features/Duplicates/DuplicatesView.swift`)
 - Workflow automations (tags trigger, actions) — **web uniquement** : 0 occurrence `workflow` dans `mobile/lib`
-- Tag renaming (renommer les tags, v3.2.0+)
+- Tag renaming (renommer les tags, v3.2.0+) — **web uniquement** (PR #27909) : `mobile/lib/data/server/tag.dart@v3.4.0` n'a que `bulkTagAssets`, `untagAssets`, `getAll` et `upsert`
 - XMP sidecar (lecture + écriture metadata) — **serveur uniquement** : 0 occurrence `xmp` dans `mobile/lib`, aucune UI mobile
 - External library support (scan, exclusion patterns)
 - Reverse geocoding GeoNames
@@ -312,4 +313,4 @@ Les endpoints listés comme "gap" dans le code :
 | gap #1 | Stacks | ✅ couvert — `searchStacks/createStack/getStack/updateStack/deleteStack/removeAssetFromStack` (`ImmichClient.swift`), UI Stacks livrée 2026-09-13 |
 | gap #2 | Tags (admin) | ✅ couvert — `getAllTags/createTag/updateTag/deleteTag/tagAssets/untagAssets`, UI Tags |
 | gap #5 | Faces API | ✅ couvert — `getFaces/reassignFace/mergePeople/updatePerson/getPersonStatistics`, UI People |
-| gap #12 | Admin API | ✅ couvert — `getAdminUsers/createAdminUser/updateAdminUser/deleteAdminUser/restoreAdminUser/getJobsStatus/sendJobCommand/getLibraries/scanLibrary/deleteLibrary` + `getAPIKeys/createAPIKey/deleteAPIKey`, UI Admin |
+| gap #12 | Admin API | ✅ couvert — `getAdminUsers/createAdminUser/updateAdminUser/deleteAdminUser/restoreAdminUser/getJobsStatus/sendJobCommand/getLibraries/scanLibrary/deleteLibrary`, UI Admin (`Sources/Features/Admin/AdminView.swift`) ; `getAPIKeys/createAPIKey/deleteAPIKey`, UI Clés API (`Sources/Features/UserApiKeys/UserApiKeysView.swift`, ouverte à tout compte depuis le hub « Me ») |
