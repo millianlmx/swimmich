@@ -150,15 +150,17 @@ xcodebuild test -destination 'platform=iOS Simulator,name=iPhone 17'
 - 886 unit tests in `Tests/` (dernier relevé : 2026-09-14, `-only-testing:ImmichSwiftUITests`) (plus committed end-to-end UI scenarios in `UITests/`, each with its Python stub under `UITests/stubs/`); every view model is tested with a `MockImmichClient` injected via `init(client:)`.
 - **Trap:** the test target sources the entire `Tests/` folder — a new `Tests/*.swift` file is only compiled after `xcodegen generate`. Without regeneration, tests pass "green" by omission.
 
-### CI and TestFlight
+### CI and signed IPA
 
 ```bash
-Scripts/ci.sh   # what CI runs: xcodegen generate, build both test bundles, unit tests
+Scripts/ci.sh            # what CI runs: xcodegen generate, build both test bundles, unit tests
+Scripts/ipa.sh [version] # Release archive + IPA signed Apple Distribution in build/ipa/Swimmich.ipa
 ```
 
 - **CI** (`.github/workflows/ci.yml`) runs `Scripts/ci.sh` on every push, any branch, on a self-hosted Mac runner (labels `self-hosted, macOS, ARM64, xcode`). It uses a dedicated simulator, `swimmich-ci`, and keeps DerivedData in `~/Library/Caches/swimmich-ci`, so a run only rebuilds what changed. The job `Unit tests (iOS simulator)` is the check `main` requires. There is no `pull_request` trigger: a fork's pull request never runs code on that Mac.
 - **UI scenarios** are compiled by CI, not run: each needs its own stub from `UITests/stubs/`.
-- **TestFlight** (`.github/workflows/release.yml`): pushing a `v<version>` tag (for example `v0.2.0`) runs the unit tests, then `Scripts/release.sh` archives in Release and uploads that version. A manual run ships `main` with the project's version. The build number is the UTC time (`YYYYMMDD.HHMM`). Signing is automatic. It uses an App Store Connect API key (App Manager role) when the repository has the secrets `ASC_KEY_ID`, `ASC_ISSUER_ID`, and `ASC_KEY_P8` (the `.p8` content). Without them, it uses the Apple ID signed in to Xcode on the runner's Mac, so the release breaks if that account signs out or its session expires.
+- **Signed IPA**: on `main` and on `v<version>` tags, once the tests pass, the `Signed IPA` job runs `Scripts/ipa.sh` and keeps `Swimmich.ipa` as a workflow artifact for 14 days. A tag sets the marketing version, and the build number is the UTC time (`YYYYMMDD.HHMM`). Signing is automatic, through the Apple ID signed in to Xcode on the runner's Mac: if that account signs out or its session expires, the job fails. An App Store Connect API key (`ASC_KEY_ID`, `ASC_ISSUER_ID`, `ASC_KEY_PATH`) replaces it when set. Nothing is uploaded. `Scripts/ipa.sh --upload` sends the build to TestFlight, once the app has its record on App Store Connect.
+- **Runner trap:** the runner's LaunchAgent must not set `SessionCreate`. `svc.sh install` sets it, and then codesign cannot reach the login keychain (`errSecInternalComponent`).
 
 ### String catalog audit
 

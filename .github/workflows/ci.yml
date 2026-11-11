@@ -4,6 +4,10 @@ name: CI
 # branch and judges the checks of that exact SHA. No `pull_request` trigger on
 # purpose: the runner is a self-hosted Mac, and a fork's pull request must never
 # run code on it.
+#
+# On `main` and on `v*` tags, once the unit tests pass, a second job archives
+# in Release and keeps the IPA signed for the App Store as an artifact. Nothing
+# is uploaded to App Store Connect.
 on:
   push:
   workflow_dispatch:
@@ -39,3 +43,29 @@ jobs:
           name: unit-tests-xcresult
           path: build/ci/unit-tests.xcresult
           retention-days: 7
+
+  ipa:
+    name: Signed IPA
+    needs: unit-tests
+    if: github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/tags/v')
+    runs-on: [self-hosted, macOS, ARM64, xcode]
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+
+      # Signed with the Apple ID signed in to Xcode on the runner's Mac (see
+      # Scripts/ipa.sh). The runner's LaunchAgent must not set SessionCreate:
+      # in a new security session codesign cannot reach the login keychain
+      # (errSecInternalComponent).
+      - name: Archive and export
+        run: |
+          version=""
+          [[ "$GITHUB_REF_TYPE" == "tag" ]] && version="${GITHUB_REF_NAME#v}"
+          Scripts/ipa.sh "$version"
+
+      - name: Keep the IPA
+        uses: actions/upload-artifact@v4
+        with:
+          name: swimmich-ipa
+          path: build/ipa/Swimmich.ipa
+          retention-days: 14
