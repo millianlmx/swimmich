@@ -186,6 +186,9 @@ final class AlbumRolesAndOrderTests: XCTestCase {
         XCTAssertTrue(mock.createdAlbumNames.isEmpty)
 
         // (b) a stranger's album listed first, where I am the first (editor) member.
+        // A blank mapping store: case (a) persisted dev-vac → srv-own, which the
+        // service would recycle without ever listing the server albums.
+        UserDefaults.standard.removePersistentDomain(forName: suiteName)
         let mock2 = MockImmichClient()
         mock2.albumsResponse = [
             album(id: "srv-theirs", name: "Vacances", ownerId: "tom", owner: user("tom"), users: [entry(me, .editor)]),
