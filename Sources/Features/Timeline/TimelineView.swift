@@ -106,7 +106,7 @@ struct TimelineView: View {
 
                     content
                 }
-                .scrollIndicators(TimelineScrubber.isShown(for: vm) ? .hidden : .automatic)
+                .scrollIndicators(scrollIndicatorVisibility)
                 // Feeds the scrubber's resting position: the ids the scroll
                 // view reports on screen. Fires on threshold crossings only.
                 .onScrollTargetVisibilityChange(idType: String.self) { ids in
@@ -204,26 +204,7 @@ struct TimelineView: View {
                 // Date scrubber: fast-scroll handle on the trailing edge. It
                 // reads `vm.scrubPosition` itself — never read it in this body.
                 .overlay(alignment: .trailing) {
-                    TimelineScrubber(
-                        vm: vm,
-                        onRelease: { month, fraction in
-                            Task {
-                                // Read at release, so a change in Preferences
-                                // applies without a relaunch.
-                                let anchorFraction = appSettings.smoothScrubbing ? fraction : 0
-                                if let id = await vm.jumpToMonth(at: month, fraction: anchorFraction) {
-                                    requestScroll(to: id)
-                                }
-                            }
-                        },
-                        onAdjust: { month in
-                            Task {
-                                if let id = await vm.jumpToMonth(at: month, fraction: 0) {
-                                    requestScroll(to: id)
-                                }
-                            }
-                        }
-                    )
+                    dateScrubber
                 }
                 .refreshable { await vm.refresh() }
                 .safeAreaInset(edge: .top, spacing: 0) {
@@ -290,19 +271,7 @@ struct TimelineView: View {
                 .overlay(alignment: .bottomTrailing) {
                     if (showScrollToTop || !vm.windowStartsAtNewest) && !vm.selectionMode {
                         Button {
-                            if vm.windowStartsAtNewest {
-                                withAnimation(PVMotion.adaptive(PVMotion.gentle, reduceMotion: reduceMotion)) {
-                                    proxy.scrollTo("top", anchor: .top)
-                                }
-                            } else {
-                                // After a jump the newest month is not loaded:
-                                // reload it, then start over at the top.
-                                Task {
-                                    if await vm.jumpToMonth(at: 0, fraction: 0) != nil {
-                                        requestScroll(to: "top")
-                                    }
-                                }
-                            }
+                            scrollToTopTapped(proxy: proxy)
                         } label: {
                             Image(systemName: "arrow.up")
                                 .font(.pvHeadline)
@@ -723,6 +692,52 @@ struct TimelineView: View {
     /// been drawn; see `scrollRequest`.
     private func requestScroll(to id: String) {
         scrollRequest = TimelineScrollRequest(id: id, serial: (scrollRequest?.serial ?? 0) &+ 1)
+    }
+
+    /// The system indicator would sit under the scrubber handle.
+    private var scrollIndicatorVisibility: ScrollIndicatorVisibility {
+        let shown: Bool = TimelineScrubber.isShown(for: vm)
+        return shown ? ScrollIndicatorVisibility.hidden : ScrollIndicatorVisibility.automatic
+    }
+
+    /// Date scrubber: fast-scroll handle on the trailing edge. It reads
+    /// `vm.scrubPosition` itself — never read it in this body.
+    private var dateScrubber: some View {
+        TimelineScrubber(vm: vm, onRelease: scrubberReleased, onAdjust: scrubberAdjusted)
+    }
+
+    private func scrubberReleased(month: Int, fraction: Double) {
+        Task {
+            // Read at release, so a change in Preferences applies without a
+            // relaunch.
+            let anchorFraction: Double = appSettings.smoothScrubbing ? fraction : 0
+            if let id = await vm.jumpToMonth(at: month, fraction: anchorFraction) {
+                requestScroll(to: id)
+            }
+        }
+    }
+
+    private func scrubberAdjusted(month: Int) {
+        Task {
+            if let id = await vm.jumpToMonth(at: month, fraction: 0) {
+                requestScroll(to: id)
+            }
+        }
+    }
+
+    private func scrollToTopTapped(proxy: ScrollViewProxy) {
+        if vm.windowStartsAtNewest {
+            withAnimation(PVMotion.adaptive(PVMotion.gentle, reduceMotion: reduceMotion)) {
+                proxy.scrollTo("top", anchor: .top)
+            }
+        } else {
+            // After a jump the newest month is not loaded: reload it, then
+            // start over at the top.
+            Task {
+                let jumped: String? = await vm.jumpToMonth(at: 0, fraction: 0)
+                if jumped != nil { requestScroll(to: "top") }
+            }
+        }
     }
 
     // MARK: - Toolbar — swaps between normal + selection modes (SF Symbols, V03)

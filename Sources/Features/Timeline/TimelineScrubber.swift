@@ -170,7 +170,7 @@ struct TimelineScrubber: View {
             handle(height: height, monthCount: n, rest: rest)
         }
         .frame(maxWidth: .infinity, minHeight: Self.handleHeight, maxHeight: Self.handleHeight, alignment: .trailing)
-        .offset(y: fraction * height - Self.handleHeight / 2)
+        .offset(y: CGFloat(fraction) * height - Self.handleHeight / 2)
         .onChange(of: gesture.labelMonthIndex, initial: true) { _, month in
             if let month { labelText = monthLabel(month) }
         }
@@ -190,7 +190,8 @@ struct TimelineScrubber: View {
                     .onChanged { value in
                         guard height > 0 else { return }
                         lingerTask?.cancel()
-                        gesture.changed(trackFraction: value.location.y / height, monthCount: n)
+                        let fraction: Double = Double(value.location.y / height)
+                        gesture.changed(trackFraction: fraction, monthCount: n)
                     }
                     .onEnded { _ in
                         if let target = gesture.ended(monthCount: n) {

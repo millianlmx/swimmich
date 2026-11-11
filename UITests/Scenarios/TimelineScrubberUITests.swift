@@ -292,8 +292,9 @@ final class TimelineScrubberUITests: XCTestCase {
         XCTAssertTrue(scrubber.waitForExistence(timeout: 30), "no date scrubber to drag", file: file, line: line)
         XCTAssertTrue(track.exists, "the scrubber has no track", file: file, line: line)
         let trackFrame = track.frame
+        let targetY: CGFloat = trackFrame.minY + CGFloat(p) * trackFrame.height
         let target = app.coordinate(withNormalizedOffset: .zero)
-            .withOffset(CGVector(dx: scrubber.frame.midX, dy: trackFrame.minY + p * trackFrame.height))
+            .withOffset(CGVector(dx: scrubber.frame.midX, dy: targetY))
         scrubber.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5))
             .press(forDuration: 0.2, thenDragTo: target)
     }
@@ -377,10 +378,12 @@ final class TimelineScrubberUITests: XCTestCase {
             guard let top = self.firstVisibleMonthAndRank() else { return false }
             return top.yyyy == yyyy && top.mm == mm && (rank == nil || top.rank == rank)
         }
-        XCTAssertTrue(reached,
-                      "the grid never started on \(monthKey(yyyy, mm)) rank \(rank.map(String.init) ?? "any") — "
-                      + "first visible tile: \(firstVisibleTile() ?? "none"), scrubber reads '\(scrubberValue)'",
-                      file: file, line: line)
+        guard !reached else { return }
+        let wantedRank: String = rank.map { String($0) } ?? "any"
+        let seenTile: String = firstVisibleTile() ?? "none"
+        let message: String = "the grid never started on \(monthKey(yyyy, mm)) rank \(wantedRank) — "
+            + "first visible tile: \(seenTile), scrubber reads '\(scrubberValue)'"
+        XCTFail(message, file: file, line: line)
     }
 
     private func waitForScrubberValue(_ expected: String, timeout: TimeInterval = 30,
@@ -499,6 +502,14 @@ final class TimelineScrubberUITests: XCTestCase {
     /// arrival order (the stub journals on arrival, before it answers).
     private func bucketMonths(after mark: Int) -> [String] {
         bucketRequests(after: mark).compactMap(\.month)
+    }
+
+    /// The months of the `GET /api/timeline/bucket` that ARRIVED after `mark`:
+    /// read from the query (`params`), journaled on arrival — unlike `month`,
+    /// which `req.note` only merges once the handler has answered (so, for the
+    /// slow month, 3 s late).
+    private func bucketArrivals(after mark: Int) -> [String] {
+        bucketRequests(after: mark).compactMap { $0.params["timeBucket"] }
     }
 
     // MARK: - Preferences (copied from SettingsParityUITests)
@@ -916,9 +927,9 @@ final class TimelineScrubberUITests: XCTestCase {
         }, "the grid never reached 2024-06 — first visible tile: \(firstVisibleTile() ?? "none")")
         let top = firstVisibleMonthAndRank()
         XCTAssertNotEqual(top?.rank, 1, "with Smooth Scrubbing on the grid must not start on the first photo")
+        let seenRank: String = top.map { String($0.rank) } ?? "none"
         XCTAssertTrue((7...13).contains(top?.rank ?? 0),
-                      "the first visible cell must be around the middle of the month (rank 7 to 13), "
-                      + "got \(top.map { String($0.rank) } ?? "none")")
+                      "the first visible cell must be around the middle of the month (rank 7 to 13), got \(seenRank)")
         XCTAssertEqual(bucketMonths(after: mark).first, "2024-06-01",
                        "the gesture must send one request, for the targeted month — got:\n"
                        + "\(describe(bucketRequests(after: mark)))")
@@ -957,7 +968,7 @@ final class TimelineScrubberUITests: XCTestCase {
 
         // A = 2023-09 (index 27, answers after 3 s), B = 2023-05 (index 31).
         dragScrubber(toTrackFraction: fraction(ofMonthIndex: 27, of: 36))
-        XCTAssertTrue(waitUntil(15) { self.bucketMonths(after: mark).contains("2023-09-01") },
+        XCTAssertTrue(waitUntil(15) { self.bucketArrivals(after: mark).contains("2023-09-01") },
                       "the release on A never reached the server")
         dragScrubber(toTrackFraction: fraction(ofMonthIndex: 31, of: 36))
         waitForTop(2023, 5, rank: 1)

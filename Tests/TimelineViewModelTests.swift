@@ -1,4 +1,5 @@
 import XCTest
+import SwiftUI
 @testable import ImmichSwiftUI
 
 final class TimelineViewModelTests: XCTestCase {
@@ -1751,31 +1752,41 @@ final class TimelineViewModelTests: XCTestCase {
 
     /// Id of the photo of rank `rank` (grid order, newest first) of month `k`.
     private func scrubId(_ k: Int, rank: Int) -> String {
-        "s-\(scrubKey(k).prefix(7))-\(String(format: "%03d", rank))"
+        let month: String = String(scrubKey(k).prefix(7))
+        let padded: String = String(format: "%03d", rank)
+        return "s-\(month)-\(padded)"
     }
 
     /// A month of `count` photos with distinct, strictly decreasing capture
     /// times by rank — served in the REVERSE order, so that the server order
     /// is never the grid order.
     private func scrubColumnar(month k: Int, count: Int) -> TimeBucketAssetResponseDto {
-        let ids = (0..<count).map { scrubId(k, rank: $0) }.reversed() as [String]
-        let stamps = (0..<count).map { "\(scrubKey(k).prefix(7))-15T12:\(String(format: "%02d", 59 - $0)):00.000Z" }
-            .reversed() as [String]
+        let month: String = String(scrubKey(k).prefix(7))
+        var ids: [String] = []
+        var stamps: [String] = []
+        for rank in (0..<count).reversed() {
+            ids.append(scrubId(k, rank: rank))
+            let minute: String = String(format: "%02d", 59 - rank)
+            stamps.append("\(month)-15T12:\(minute):00.000Z")
+        }
+        let n: Int = ids.count
+        let noStrings: [String?] = Array(repeating: nil, count: n)
+        let noInts: [Int?] = Array(repeating: nil, count: n)
         return TimeBucketAssetResponseDto(
             id: ids,
-            ownerId: ids.map { _ in "owner" },
-            ratio: ids.map { _ in 1.0 },
-            isFavorite: ids.map { _ in false },
-            visibility: ids.map { _ in "timeline" },
-            isTrashed: ids.map { _ in false },
-            isImage: ids.map { _ in true },
-            thumbhash: ids.map { _ in nil },
+            ownerId: Array(repeating: "owner", count: n),
+            ratio: Array(repeating: 1.0, count: n),
+            isFavorite: Array(repeating: false, count: n),
+            visibility: Array(repeating: "timeline", count: n),
+            isTrashed: Array(repeating: false, count: n),
+            isImage: Array(repeating: true, count: n),
+            thumbhash: noStrings,
             createdAt: stamps,
             fileCreatedAt: stamps,
-            localOffsetHours: ids.map { _ in 0.0 },
-            duration: ids.map { _ in nil },
-            livePhotoVideoId: ids.map { _ in nil },
-            projectionType: ids.map { _ in nil },
+            localOffsetHours: Array(repeating: 0.0, count: n),
+            duration: noInts,
+            livePhotoVideoId: noStrings,
+            projectionType: noStrings,
             stack: nil, city: nil, country: nil, latitude: nil, longitude: nil
         )
     }
