@@ -12,8 +12,16 @@ protocol AuthSessionDelegate: AnyObject, Sendable {
 /// - Holds the bearer token + base URL set by the AuthViewModel.
 /// - On 401 anywhere → throws `.unauthorized` AND notifies `authDelegate` (FM-4).
 /// - `requestCount` increments on every network dispatch (AC-009).
-final class ImmichAPIClient: ImmichClient, @unchecked Sendable {
-    private let session: URLSession
+final class ImmichAPIClient: ImmichClient, SessionRenewing, @unchecked Sendable {
+    /// Current session, replaced by `renewSessions()` after a certificate
+    /// change. Always read through `currentSession` (under `lock`).
+    private var _session: URLSession
+
+    /// What it takes to rebuild the session: only a client built with a trust
+    /// store owns its session; one built over an injected session (`.shared`,
+    /// a test double) never renews it.
+    private let sessionRecipe: SessionRecipe?
+    private let challengeLog: TLSChallengeLog
     private let lock = NSLock()
 
     private var _token: String?
@@ -34,7 +42,31 @@ final class ImmichAPIClient: ImmichClient, @unchecked Sendable {
     /// attached: tests, previews, and any extension that builds a client.
     private let log: any AppLogSink
 
+    /// Where the server's custom headers come from (L-09): asked for the URL of
+    /// every request, so a change takes effect on the next one.
+    private let customHeaders: any CustomHeadersProviding
+
     var requestCount: Int { lock.lock(); defer { lock.unlock() }; return _requestCount }
+
+    /// The session new requests go through.
+    var currentSession: URLSession { lock.lock(); defer { lock.unlock() }; return _session }
+
+    private struct SessionRecipe {
+        let configuration: URLSessionConfiguration
+        let trustStore: TrustedServerStore
+        let clientCertificates: ClientCertificateResponder
+        let log: TLSChallengeLog
+
+        func makeSession() -> URLSession {
+            URLSession(
+                configuration: configuration,
+                delegate: TrustEvaluatingURLSessionDelegate(
+                    trustStore: trustStore, clientCertificates: clientCertificates, log: log
+                ),
+                delegateQueue: nil
+            )
+        }
+    }
 
     weak var authDelegate: AuthSessionDelegate?
 
@@ -42,15 +74,39 @@ final class ImmichAPIClient: ImmichClient, @unchecked Sendable {
         session: URLSession = .shared,
         trustStore: TrustedServerStore? = nil,
         sessionConfiguration: URLSessionConfiguration = .ephemeral,
-        log: any AppLogSink = NoopAppLogSink()
+        log: any AppLogSink = NoopAppLogSink(),
+        customHeaders: any CustomHeadersProviding = NoCustomHeaders(),
+        clientCertificates: ClientCertificateResponder = .live,
+        challengeLog: TLSChallengeLog = .shared
     ) {
         self.log = log
+        self.customHeaders = customHeaders
+        self.challengeLog = challengeLog
         if let trustStore {
-            let delegate = TrustEvaluatingURLSessionDelegate(trustStore: trustStore)
-            self.session = URLSession(configuration: sessionConfiguration, delegate: delegate, delegateQueue: nil)
+            let recipe = SessionRecipe(
+                configuration: sessionConfiguration, trustStore: trustStore,
+                clientCertificates: clientCertificates, log: challengeLog
+            )
+            self.sessionRecipe = recipe
+            self._session = recipe.makeSession()
         } else {
-            self.session = session
+            self.sessionRecipe = nil
+            self._session = session
         }
+    }
+
+    /// Certificate change: a fresh session (and delegate), then the old one is
+    /// invalidated. A client over an injected session does nothing — the shared
+    /// session is never invalidated. The shared-link cookie is replayed from
+    /// `_sharedLinkCookie`, so a fresh cookie storage loses nothing.
+    func renewSessions() {
+        guard let sessionRecipe else { return }
+        let fresh = sessionRecipe.makeSession()
+        lock.lock()
+        let old = _session
+        _session = fresh
+        lock.unlock()
+        old.invalidateAndCancel()
     }
 
     // MARK: - Configuration
@@ -72,7 +128,7 @@ final class ImmichAPIClient: ImmichClient, @unchecked Sendable {
     }
 
     /// Cookie storage of the client's session; the one `configure` purges.
-    var sessionCookieStorage: HTTPCookieStorage? { session.configuration.httpCookieStorage }
+    var sessionCookieStorage: HTTPCookieStorage? { currentSession.configuration.httpCookieStorage }
 
     /// Drops every open connection, cache and credential of this client's own
     /// session, so the next request opens a fresh socket and a fresh TLS
@@ -80,6 +136,7 @@ final class ImmichAPIClient: ImmichClient, @unchecked Sendable {
     /// purge: a previously trusted self-signed host must be asked about again.
     /// `URLSession.shared` belongs to the whole process and is never reset.
     func resetConnections() async {
+        let session = currentSession
         guard session !== URLSession.shared else { return }
         await session.reset()
     }
@@ -315,8 +372,10 @@ final class ImmichAPIClient: ImmichClient, @unchecked Sendable {
 
     // MARK: - Albums (AC-500..AC-518)
 
-    func getAlbums() async throws -> [AlbumResponseDto] {
-        try await sendAuthed(.GET, path: ImmichAPI.albums.path(""))
+    func getAlbums(shared: Bool?) async throws -> [AlbumResponseDto] {
+        var query: [URLQueryItem] = []
+        if let shared { query.append(URLQueryItem(name: "shared", value: String(shared))) }
+        return try await sendAuthed(.GET, path: ImmichAPI.albums.path(""), query: query)
     }
 
     func createAlbum(dto: CreateAlbumDto) async throws -> AlbumResponseDto {
@@ -806,11 +865,8 @@ final class ImmichAPIClient: ImmichClient, @unchecked Sendable {
         )
         defer { try? FileManager.default.removeItem(at: multipart.file) }
 
-        var request = try baseRequest(HTTPMethod.POST, path: ImmichAPI.users.path("/profile-image"), query: [], auth: false)
+        var request = try baseRequest(HTTPMethod.POST, path: ImmichAPI.users.path("/profile-image"), query: [], auth: true, token: token)
         request.setValue(multipart.contentType, forHTTPHeaderField: ImmichHeader.contentType)
-        if let token = token {
-            request.setValue("Bearer \(token)", forHTTPHeaderField: ImmichHeader.authorization)
-        }
 
         let (responseData, response) = try await dispatchUpload(request, fromFile: multipart.file)
         try validate(response: response, data: responseData)
@@ -887,12 +943,9 @@ final class ImmichAPIClient: ImmichClient, @unchecked Sendable {
         )
         defer { try? FileManager.default.removeItem(at: multipart.file) }
 
-        var request = try baseRequest(HTTPMethod.POST, path: ImmichAPI.assets.path(""), query: [], auth: false)
+        var request = try baseRequest(HTTPMethod.POST, path: ImmichAPI.assets.path(""), query: [], auth: true, token: token)
         request.setValue(multipart.contentType, forHTTPHeaderField: ImmichHeader.contentType)
         request.setValue(checksum, forHTTPHeaderField: ImmichHeader.checksum)
-        if let token = token {
-            request.setValue("Bearer \(token)", forHTTPHeaderField: ImmichHeader.authorization)
-        }
 
         let (responseData, response) = try await dispatchUpload(request, fromFile: multipart.file)
         try validate(response: response, data: responseData)
@@ -1091,16 +1144,19 @@ final class ImmichAPIClient: ImmichClient, @unchecked Sendable {
         }
     }
 
-    /// Method + URL + `Accept` (+ `Bearer` when `auth`), with no body: the JSON
-    /// callers and the multipart upload both start from here.
+    /// Method + URL + `Accept`, then the server's custom headers and — when
+    /// `auth` — the session token (`ServerRequestAuthorization`), with no body:
+    /// the JSON callers and the multipart upload both start from here. The
+    /// custom headers are the ones of THIS request's URL, so a request never
+    /// carries another server's list.
     private func baseRequest(_ method: HTTPMethod, path: String, query: [URLQueryItem], auth: Bool, token: String? = nil) throws -> URLRequest {
         guard let url = resolvedURL(path: path, query: query) else { throw APIError.invalidURL }
         var request = URLRequest(url: url)
         request.httpMethod = method.rawValue
         request.setValue(ImmichAPI.acceptJSON, forHTTPHeaderField: ImmichHeader.accept)
-        if auth, let token {
-            request.setValue("Bearer \(token)", forHTTPHeaderField: ImmichHeader.authorization)
-        }
+        ServerRequestAuthorization.apply(
+            token: auth ? token : nil, custom: customHeaders.headers(for: url), to: &request
+        )
         return request
     }
 
@@ -1108,16 +1164,33 @@ final class ImmichAPIClient: ImmichClient, @unchecked Sendable {
         let start = Date()
         bumpRequestCount()
         do {
-            let result = try await session.data(for: request)
+            let result = try await ServerRedirectTaskDelegate.data(for: request, on: currentSession)
+            noteAnswer(of: request, response: result.1)
             log.record(entry(for: request, category: "HTTP", status: (result.1 as? HTTPURLResponse)?.statusCode, since: start))
             return result
         } catch let urlError as URLError {
             log.record(entry(for: request, category: "HTTP", since: start, error: urlError))
-            throw APIError.network(urlError)
+            throw networkError(urlError, for: request)
         } catch {
             log.record(entry(for: request, category: "HTTP", since: start, error: error))
             throw APIError.from(error)
         }
+    }
+
+    /// A response, whatever its status, proves the server answered: if it had
+    /// just been refused a client certificate, it does not require one.
+    private func noteAnswer(of request: URLRequest, response: URLResponse) {
+        guard response is HTTPURLResponse, let url = request.url, let key = ServerKey(url: url) else { return }
+        challengeLog.noteServerAnswered(key)
+    }
+
+    /// A transport failure is "client certificate required" when the TLS
+    /// delegates saw the server ask for one and nobody could present it
+    /// (`MissingClientCertificate`), a plain network error otherwise.
+    private func networkError(_ urlError: URLError, for request: URLRequest) -> APIError {
+        MissingClientCertificate.matches(urlError, url: request.url, log: challengeLog)
+            ? .clientCertificateRequired
+            : .network(urlError)
     }
 
     /// Like `dispatch`, but streams the request body from a file on disk
@@ -1127,12 +1200,13 @@ final class ImmichAPIClient: ImmichClient, @unchecked Sendable {
         let start = Date()
         bumpRequestCount()
         do {
-            let result = try await session.upload(for: request, fromFile: fileURL)
+            let result = try await ServerRedirectTaskDelegate.upload(for: request, fromFile: fileURL, on: currentSession)
+            noteAnswer(of: request, response: result.1)
             log.record(entry(for: request, category: "Upload", status: (result.1 as? HTTPURLResponse)?.statusCode, since: start))
             return result
         } catch let urlError as URLError {
             log.record(entry(for: request, category: "Upload", since: start, error: urlError))
-            throw APIError.network(urlError)
+            throw networkError(urlError, for: request)
         } catch {
             log.record(entry(for: request, category: "Upload", since: start, error: error))
             throw APIError.from(error)
@@ -1175,6 +1249,12 @@ final class ImmichAPIClient: ImmichClient, @unchecked Sendable {
     private func validate(response: URLResponse, data: Data) throws {
         guard let http = response as? HTTPURLResponse else { return }
         if http.statusCode == 401 {
+            // A 401 that carries `WWW-Authenticate` comes from a proxy in front
+            // of the server (Immich never sets that header): the session is
+            // fine, the proxy refused. It must not sign the user out.
+            if let challenge = http.value(forHTTPHeaderField: "WWW-Authenticate"), !challenge.isEmpty {
+                throw APIError.proxyRejected
+            }
             authDelegate?.didReceiveUnauthorized()
             throw APIError.unauthorized
         }

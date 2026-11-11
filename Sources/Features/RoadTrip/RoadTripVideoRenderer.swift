@@ -32,9 +32,9 @@ final class RoadTripVideoRenderer: @unchecked Sendable {
 
     /// The process-wide road-trip session (`ServerSessions.roadTrip`): trust
     /// store aware, never built per call.
-    private let session: URLSession
+    private let session: @Sendable () -> URLSession
 
-    init(session: URLSession) {
+    init(session: @escaping @Sendable () -> URLSession) {
         self.session = session
     }
 
@@ -130,14 +130,14 @@ final class RoadTripVideoRenderer: @unchecked Sendable {
         id: String,
         asset: AssetReactItem?,
         config: RoadTripRenderConfig,
-        session: URLSession
+        session: @Sendable () -> URLSession
     ) async -> (String, CGImage?) {
         guard let asset else { return (id, nil) }
         let url = ImmichAssetURL.thumbnail(
             assetId: id, thumbhash: asset.thumbhash ?? "", baseURL: config.baseURL, size: .preview
         )
         do {
-            let (data, _) = try await AssetFileTransfer.fetchData(from: url, token: config.token, session: session)
+            let (data, _) = try await AssetFileTransfer.fetchData(from: url, token: config.token, session: session())
             return (id, Self.decode(data))
         } catch {
             return (id, nil)

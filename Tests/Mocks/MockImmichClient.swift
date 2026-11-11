@@ -156,6 +156,10 @@ final class MockImmichClient: ImmichClient, @unchecked Sendable {
 
     var bucketsResponse: [TimeBucketsResponseDto] = []
     var bucketResponses: [String: TimeBucketAssetResponseDto] = [:]
+    /// Suspends a timeline call after its request is recorded and before the
+    /// response is read (`"buckets"` for the list, the month key otherwise): a
+    /// test can hold a pass, change the responses or `globalError`, then release.
+    var timelineGate: ((String) async -> Void)?
 
     var getAssetResponse: [String: AssetResponseDto] = [:]
     /// Ids passed to `getAsset`, recorded before the gate.
@@ -249,6 +253,10 @@ final class MockImmichClient: ImmichClient, @unchecked Sendable {
     // Albums capture (AC-500..AC-518)
     var albumsResponse: [AlbumResponseDto]?
     var albumsError: Error?
+    /// Answer to `getAlbums(shared: true)` (albums shared with the user, v2.x).
+    var sharedAlbumsResponse: [AlbumResponseDto]?
+    /// The `shared` argument of every `getAlbums` call, in order.
+    var getAlbumsSharedArgs: [Bool?] = []
     var lastCreateAlbumDto: CreateAlbumDto?
     /// Every album name passed to `createAlbum`, in order — the album mirror
     /// asserts *what* it created, not just how many times.
@@ -517,6 +525,7 @@ final class MockImmichClient: ImmichClient, @unchecked Sendable {
             withPartners: withPartners, visibility: visibility,
             withStacked: withStacked, orderBy: orderBy, tagId: tagId, userId: userId
         )
+        await timelineGate?("buckets")
         if !timeBucketsErrorQueue.isEmpty { throw timeBucketsErrorQueue.removeFirst() }
         if let e = globalError { throw e }
         return bucketsResponse
@@ -546,6 +555,7 @@ final class MockImmichClient: ImmichClient, @unchecked Sendable {
             withPartners: withPartners, visibility: visibility,
             withStacked: withStacked, orderBy: orderBy, tagId: tagId, userId: userId
         )))
+        await timelineGate?(timeBucket)
         if let gate = timeBucketGate { try await gate(timeBucket) }
         if !timeBucketErrorQueue.isEmpty { throw timeBucketErrorQueue.removeFirst() }
         if let e = globalError { throw e }
@@ -732,9 +742,13 @@ final class MockImmichClient: ImmichClient, @unchecked Sendable {
         )
     }
 
-    func getAlbums() async throws -> [AlbumResponseDto] {
+    private func recordSharedArg(_ shared: Bool?) { lock.lock(); getAlbumsSharedArgs.append(shared); lock.unlock() }
+
+    func getAlbums(shared: Bool?) async throws -> [AlbumResponseDto] {
         bump()
+        recordSharedArg(shared)
         if let e = globalError ?? albumsError { throw e }
+        if shared == true { return sharedAlbumsResponse ?? [] }
         return albumsResponse ?? []
     }
 
@@ -763,6 +777,7 @@ final class MockImmichClient: ImmichClient, @unchecked Sendable {
         if let desc = dto.description { base.description = desc }
         if let activity = dto.isActivityEnabled { base.isActivityEnabled = activity }
         if let cover = dto.albumThumbnailAssetId { base.albumThumbnailAssetId = cover }
+        if let order = dto.order { base.order = order }
         return base
     }
 

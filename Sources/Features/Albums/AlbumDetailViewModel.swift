@@ -202,7 +202,29 @@ final class AlbumDetailViewModel {
 
     /// Role-derived permissions; before `load()` the role comes from `fallback`.
     func permissions(currentUserId: String?, fallback: AlbumResponseDto) -> AlbumDetailPermissions {
-        AlbumDetailPermissions(album: album ?? fallback, userId: currentUserId)
+        AlbumDetailPermissions(
+            album: album ?? fallback, userId: currentUserId,
+            editorCanUpdate: editorCanUpdateAlbum
+        )
+    }
+
+    // MARK: - Server version (editor updates)
+
+    /// The server version, read once and only for an editor (the one role
+    /// whose menu depends on it). Nil = unknown.
+    private(set) var serverVersion: ServerVersionResponseDto?
+
+    /// Editors may update an album from server 2.6.2 (`AlbumUpdate` access).
+    var editorCanUpdateAlbum: Bool {
+        serverVersion?.isAtLeast(major: 2, minor: 6, patch: 2) ?? false
+    }
+
+    /// Reads `GET /api/server/version` when the user is an editor of this
+    /// album and the version is not known yet. A failure leaves it unknown
+    /// (action hidden); the next time the album opens retries.
+    func probeServerVersionIfEditor(currentUserId: String?) async {
+        guard let album, album.role(of: currentUserId) == .editor, serverVersion == nil else { return }
+        serverVersion = try? await client.serverVersion()
     }
 
     /// Actions rendered on `surface`. The owned-selection count is computed
@@ -481,17 +503,27 @@ final class AlbumDetailViewModel {
         }
     }
 
-    /// Updates the album's name, description and/or activity toggle
-    /// (AC-1100). Try-then-mutate: `album` is replaced only after the PATCH
-    /// succeeds. Returns success so the sheet can dismiss.
+    /// Whether the activity toggle is the signed-in user's to change. False
+    /// before the album is known.
+    func canToggleActivity(currentUserId: String?) -> Bool {
+        guard let album else { return false }
+        return AlbumDetailPermissions(album: album, userId: currentUserId).canToggleActivity
+    }
+
+    /// Updates the album's name and description (and, for the owner, the
+    /// activity toggle — an editor's `isActivityEnabled` is dropped so the
+    /// key never reaches the server) (AC-1100). Try-then-mutate: `album` is
+    /// replaced only after the PATCH succeeds. Returns success so the sheet
+    /// can dismiss.
     @discardableResult
-    func updateAlbumDetails(name: String?, description: String?, isActivityEnabled: Bool?) async -> Bool {
+    func updateAlbumDetails(name: String?, description: String?, isActivityEnabled: Bool?, currentUserId: String?) async -> Bool {
+        let activity = canToggleActivity(currentUserId: currentUserId) ? isActivityEnabled : nil
         do {
             let updated = try await client.updateAlbum(
                 id: albumId,
                 dto: UpdateAlbumDto(
                     albumName: name, description: description,
-                    albumThumbnailAssetId: nil, isActivityEnabled: isActivityEnabled, order: nil
+                    albumThumbnailAssetId: nil, isActivityEnabled: activity, order: nil
                 )
             )
             album = updated
@@ -501,6 +533,38 @@ final class AlbumDetailViewModel {
             actionErrorMessage = error.userFacingMessage
             return false
         }
+    }
+
+    // MARK: - Sort order (owner only)
+
+    /// The album's order; a server that sends none reads as newest first.
+    var albumOrder: AssetOrder { album?.order ?? .desc }
+
+    /// Saves the order on the server, then reloads the grid from page 1 with
+    /// it. Try-then-mutate: on failure `album`, the grid and the pagination
+    /// stay as they were.
+    @discardableResult
+    func setAlbumOrder(_ order: AssetOrder) async -> Bool {
+        guard order != albumOrder else { return true }
+        do {
+            var updated = try await client.updateAlbum(
+                id: albumId,
+                dto: UpdateAlbumDto(
+                    albumName: nil, description: nil, albumThumbnailAssetId: nil,
+                    isActivityEnabled: nil, order: order
+                )
+            )
+            if updated.order == nil { updated.order = order }
+            album = updated
+            actionErrorMessage = nil
+        } catch {
+            actionErrorMessage = error.userFacingMessage
+            return false
+        }
+        loadGeneration += 1
+        isLoadingMore = false
+        await fetchFirstPage(generation: loadGeneration)
+        return true
     }
 
     /// Refetches album metadata only (no spinner): used after the share sheet
@@ -523,7 +587,8 @@ final class AlbumDetailViewModel {
             albumId: albumId,
             currentUserId: currentUserId,
             isAdmin: isAdmin,
-            albumUsers: album?.albumUsers ?? []
+            albumUsers: album?.albumUsers ?? [],
+            owner: album?.owner
         )
     }
 
@@ -597,7 +662,7 @@ final class AlbumDetailViewModel {
 /// Actions whose availability depends on the user's album role (or, for
 /// `deleteAssets`, on the photos selected). Other actions are always rendered.
 enum AlbumDetailAction: Hashable {
-    case editAlbum, setCover, deleteAlbum, sharedWith, removeFromAlbum, deleteAssets
+    case editAlbum, setCover, deleteAlbum, sharedWith, removeFromAlbum, deleteAssets, changeOrder
 }
 
 /// Places in the album detail screen where gated actions can appear.
@@ -608,27 +673,28 @@ enum AlbumDetailSurface {
 /// The signed-in user's role in an album and what it allows.
 struct AlbumDetailPermissions: Equatable {
     let role: AlbumUserRole
+    /// The server lets editors update the album (`PATCH /api/albums/{id}`)
+    /// from 2.6.2; an unknown server version counts as "no".
+    let editorCanUpdate: Bool
 
-    init(album: AlbumResponseDto, userId: String?) {
-        role = Self.role(of: userId, in: album)
-    }
-
-    /// v2.x: owner = `ownerId` (absent from `albumUsers`). v3+: owner is an
-    /// `albumUsers` entry. Unknown or id-less users are viewers.
-    static func role(of userId: String?, in album: AlbumResponseDto) -> AlbumUserRole {
-        guard let userId, !userId.isEmpty else { return .viewer }
-        if let ownerId = album.ownerId, !ownerId.isEmpty, ownerId == userId { return .owner }
-        return album.albumUsers.first { $0.user.id == userId }?.role ?? .viewer
+    init(album: AlbumResponseDto, userId: String?, editorCanUpdate: Bool = false) {
+        role = album.role(of: userId)
+        self.editorCanUpdate = editorCanUpdate
     }
 
     var canAddAssets: Bool { role == .owner || role == .editor }
     var canRemoveAssets: Bool { role == .owner || role == .editor }
+    /// Title and description: the owner, or an editor on a server that accepts it.
+    var canEditDetails: Bool { role == .owner || (role == .editor && editorCanUpdate) }
+    /// The activity feed toggle stays with the owner.
+    var canToggleActivity: Bool { role == .owner }
 
     func allowedActions(on surface: AlbumDetailSurface, ownedSelectionCount: Int = 0) -> Set<AlbumDetailAction> {
         var result: Set<AlbumDetailAction> = []
         switch surface {
         case .albumMenu:
-            if role == .owner { result = [.editAlbum, .sharedWith, .deleteAlbum] }
+            if role == .owner { result = [.editAlbum, .sharedWith, .deleteAlbum, .changeOrder] }
+            else if canEditDetails { result = [.editAlbum] }
         case .selectionBar:
             if role == .owner { result = [.setCover] }
         case .selectionMenu:

@@ -40,7 +40,7 @@ final class SaveToLibraryViewModelTests: XCTestCase {
         let session = makeMockedSession()
         let vm = SaveToLibraryViewModel(
             asset: asset, client: client, baseURL: URL(string: "https://example.com")!,
-            token: token, photoLibrary: photoLibrary, session: session, presentShare: onPresent
+            token: token, photoLibrary: photoLibrary, session: { session }, presentShare: onPresent
         )
         return (vm, client, photoLibrary, session)
     }
@@ -220,5 +220,50 @@ final class SaveToLibraryViewModelTests: XCTestCase {
                 return XCTFail("expected decoding, got \(e)")
             }
         }
+    }
+
+    // MARK: - Custom HTTP headers (L-09)
+    //
+    // The view model downloads through `AssetFileTransfer.fetchData`; these call
+    // it with a fixed provider so the shared keychain-backed registry is never read.
+
+    func test_AC_118_fetchCarriesHeaders() async throws {
+        CapturingURLProtocol.nextData = Data("payload".utf8)
+        CapturingURLProtocol.nextHeaders = ["Content-Type": "image/jpeg"]
+        let url = URL(string: "https://example.com/api/assets/p1/original")!
+
+        _ = try await AssetFileTransfer.fetchData(
+            from: url, token: "tok", session: makeMockedSession(),
+            customHeaders: StaticCustomHeaders([StaticCustomHeaders.xAccess], for: "https://example.com")
+        )
+        XCTAssertEqual(CapturingURLProtocol.lastRequest?.value(forHTTPHeaderField: "X-Access"), "secret")
+        XCTAssertEqual(CapturingURLProtocol.lastRequest?.value(forHTTPHeaderField: "Authorization"), "Bearer tok")
+
+        _ = try await AssetFileTransfer.fetchData(
+            from: url, token: "tok", session: makeMockedSession(),
+            customHeaders: StaticCustomHeaders([StaticCustomHeaders.xAccess], for: "https://elsewhere.example.org")
+        )
+        XCTAssertNil(CapturingURLProtocol.lastRequest?.value(forHTTPHeaderField: "X-Access"))
+    }
+
+    func test_AC_120_fetchDropsHeadersOnCrossHostRedirect() async throws {
+        RedirectingURLProtocol.reset()
+        let headers = StaticCustomHeaders([StaticCustomHeaders.xAccess], for: "https://a.proxy.test")
+        let session = RedirectingURLProtocol.makeSession()
+
+        _ = try await AssetFileTransfer.fetchData(
+            from: URL(string: "https://a.proxy.test/api/assets/p1/original")!,
+            token: "tok", session: session, customHeaders: headers
+        )
+        let crossed = try XCTUnwrap(RedirectingURLProtocol.requests(toHost: "b.other.test").first)
+        crossed.assertNoSecrets()
+
+        RedirectingURLProtocol.reset()
+        _ = try await AssetFileTransfer.fetchData(
+            from: URL(string: "https://a.proxy.test/same/original")!,
+            token: "tok", session: session, customHeaders: headers
+        )
+        let same = try XCTUnwrap(RedirectingURLProtocol.requests(toHost: "a.proxy.test").first)
+        same.assertSecretsKept()
     }
 }

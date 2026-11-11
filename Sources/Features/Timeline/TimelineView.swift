@@ -454,6 +454,7 @@ struct TimelineView: View {
                     if let id = await vm.retryLoad() { requestScroll(to: id) }
                 }
             })
+                .accessibilityIdentifier("timelineLoadErrorBanner")
                 .padding(PVSpacing.s16)
                 .transition(.opacity)
         }

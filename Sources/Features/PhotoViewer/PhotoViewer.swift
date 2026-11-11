@@ -493,7 +493,11 @@ struct PhotoViewer: View {
             // presented outside it would be swallowed by the cover.
             .sheet(isPresented: $showCastSheet) {
                 if let asset = currentAsset {
-                    CastSheet(asset: asset, service: castService)
+                    CastSheet(
+                        asset: asset,
+                        service: castService,
+                        clientCertificateActive: DependencyContainer.shared.clientCertificates.hasCertificate(for: baseURL)
+                    )
                         .presentationDragIndicator(.visible)
                 }
             }
@@ -1445,11 +1449,16 @@ private struct PhotoShareSheet: View {
                 asset: asset,
                 client: client,
                 baseURL: baseURL,
-                externalDomain: auth.serverConfig?.externalDomain ?? ""
+                externalDomain: auth.serverConfig?.externalDomain ?? "",
+                currentUserId: auth.userId
             )
             vm = new
             await new.load()
-            let saver = SaveToLibraryViewModel(asset: asset, client: client, baseURL: baseURL, token: token)
+            let sessions = DependencyContainer.shared.serverSessions
+            let saver = SaveToLibraryViewModel(
+                asset: asset, client: client, baseURL: baseURL, token: token,
+                session: { sessions.transfers }
+            )
             saveVM = saver
         }
         .appSensoryFeedback(.success, trigger: vm?.lastCreatedAlbumId)
@@ -1643,7 +1652,7 @@ private struct PhotoShareSheet: View {
 
         let url = asset.thumbnailURL(base: baseURL, size: .preview)
         do {
-            let (data, contentType) = try await AssetFileTransfer.fetchData(from: url, token: token, session: .shared)
+            let (data, contentType) = try await AssetFileTransfer.fetchData(from: url, token: token, session: DependencyContainer.shared.serverSessions.transfers)
 
             // The bytes actually being shared win for the extension (preview
             // accuracy); fall back to the original mime, then jpg.

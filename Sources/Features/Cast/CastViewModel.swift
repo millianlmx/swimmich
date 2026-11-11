@@ -33,6 +33,12 @@ import Observation
         asset.isVideo || service.supportsStillImages
     }
 
+    /// Whether the sheet warns that AirPlay cannot play this video (L-10): only
+    /// a video, and only when a client certificate is installed for the server.
+    func showsClientCertificateHint(for asset: AssetReactItem, clientCertificateActive: Bool) -> Bool {
+        asset.isVideo && clientCertificateActive
+    }
+
     /// Idempotent refresh hooks: the service is already observing process-wide,
     /// these keep the sheet's state current across its lifetime.
     func onAppear() { service.startObserving() }

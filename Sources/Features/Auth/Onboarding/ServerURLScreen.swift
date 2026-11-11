@@ -17,6 +17,12 @@ struct ServerURLScreen: View {
     @FocusState private var isFocused: Bool
     @State private var presentingQRScanner = false
     @State private var scanError: String?
+    /// The server the open headers sheet edits (fixed when it opens).
+    @State private var headersKey: HeadersSheetItem?
+    /// Bumped when a list was saved, so the count beside the button re-reads.
+    @State private var headersRevision = 0
+    /// The client certificate sheet (import, replace, remove) for the typed server.
+    @State private var presentingCertificate = false
 
     var body: some View {
         @Bindable var auth = auth
@@ -56,6 +62,9 @@ struct ServerURLScreen: View {
                         }
                     }
 
+                    serverHeadersButton
+                    serverClientCertificateButton
+
                     statusSection
                         .transition(.opacity)
 
@@ -89,6 +98,18 @@ struct ServerURLScreen: View {
             auth.serverStatus = .idle
         }
         .animation(PVMotion.gentle, value: auth.serverStatus)
+        .sheet(item: $headersKey) { item in
+            ServerHeadersSheet(serverKey: item.key, onSaved: { auth.customHeadersDidChange(for: $0) })
+        }
+        .onReceive(NotificationCenter.default.publisher(for: .immichCustomHeadersChanged)) { _ in
+            headersRevision &+= 1
+        }
+        .sheet(isPresented: $presentingCertificate) {
+            ClientCertificateSheet(
+                serverURL: auth.baseURL,
+                onChange: { await auth.clientCertificateDidChange() }
+            )
+        }
         .sheet(isPresented: $presentingQRScanner) {
             NavigationStack {
                 QRScannerView { payload in
@@ -127,6 +148,8 @@ struct ServerURLScreen: View {
                     Text("Continue")
                 case .unreachable:
                     Text("Try Again")
+                case .clientCertificateRequired:
+                    Text("Try Again")
                 case .idle:
                     Text("Check connection")
                 }
@@ -134,6 +157,69 @@ struct ServerURLScreen: View {
             .buttonStyle(PVPrimaryButtonStyle())
             .disabled(auth.serverURLString.isEmpty || auth.isLoading || auth.serverStatus == .checking)
         }
+    }
+
+    /// The server the field currently names, as its headers know it. `nil` while
+    /// the address is not a usable URL.
+    private var enteredServerKey: ServerKey? {
+        auth.normalizedBaseURL(from: auth.serverURLString).flatMap { ServerKey(url: $0) }
+    }
+
+    /// "HTTP Headers" (B-1): before the address is checked, because a proxy that
+    /// refuses the app makes the check itself fail.
+    private var serverHeadersButton: some View {
+        let key = enteredServerKey
+        // Read for its side effect: a save bumps it, which re-reads the count.
+        _ = headersRevision
+        let count = key.map { DependencyContainer.shared.customHeaders.headers(for: $0).count } ?? 0
+        return Button {
+            if let key { headersKey = HeadersSheetItem(key: key) }
+        } label: {
+            HStack(spacing: PVSpacing.s8) {
+                Label("HTTP Headers", systemImage: "list.bullet.rectangle")
+                if count > 0 {
+                    Text(verbatim: "\(count)")
+                        .accessibilityIdentifier("serverHeadersCount")
+                }
+            }
+            .font(.pvBody)
+            .foregroundStyle(Color.immichPrimary)
+        }
+        .buttonStyle(.plain)
+        .disabled(key == nil || auth.serverStatus == .checking)
+        .accessibilityIdentifier("serverHeadersButton")
+    }
+
+    /// "Client Certificate" (L-10): the TLS client certificate of the typed
+    /// server. Disabled until the address is a usable URL, since the
+    /// certificate belongs to one server (host + port).
+    private var serverClientCertificateButton: some View {
+        Button {
+            presentingCertificate = true
+        } label: {
+            HStack(spacing: PVSpacing.s8) {
+                Label("Client Certificate", systemImage: "lock.shield")
+                Spacer(minLength: PVSpacing.s8)
+                Group {
+                    if auth.serverHasClientCertificate {
+                        Text("Installed")
+                    } else {
+                        Text("Not Installed")
+                    }
+                }
+                .font(.pvSubhead)
+                .foregroundStyle(Color.textSecondaryPV)
+                Image(systemName: "chevron.right")
+                    .font(.pvCaption)
+                    .foregroundStyle(Color.textSecondaryPV)
+            }
+            .font(.pvBody)
+            .foregroundStyle(Color.immichPrimary)
+            .frame(maxWidth: .infinity)
+        }
+        .buttonStyle(.plain)
+        .disabled(auth.baseURL == nil)
+        .accessibilityIdentifier("serverClientCertificateButton")
     }
 
     @ViewBuilder
@@ -170,6 +256,18 @@ struct ServerURLScreen: View {
                 message: auth.errorMessage ?? String(localized: "Server unreachable"),
                 retry: { connect() }
             )
+
+        case .clientCertificateRequired:
+            VStack(alignment: .leading, spacing: PVSpacing.s8) {
+                InlineErrorBadge(
+                    message: auth.errorMessage ?? UserFacingError.clientCertificateRequiredMessage,
+                    retry: { connect() }
+                )
+                Button("Import Certificate") { presentingCertificate = true }
+                    .buttonStyle(PVSubtleButtonStyle())
+                    .accessibilityIdentifier("serverStatusImportCertificateButton")
+            }
+            .accessibilityIdentifier("serverStatusClientCertificateRequired")
         }
     }
 
@@ -209,6 +307,67 @@ struct ServerURLScreen: View {
         scanError = nil
         auth.serverURLString = url.absoluteString
         connect()
+    }
+}
+
+/// Identifies the server a headers sheet was opened for (`ServerKey` itself is
+/// the kit's, and a sheet item must be `Identifiable`).
+private struct HeadersSheetItem: Identifiable {
+    let key: ServerKey
+    var id: String { key.rawValue }
+}
+
+/// The server step's headers editor in its own navigation stack (a sheet
+/// inherits no bar): "Cancel" closes without saving, a successful "Save" closes
+/// it. The view model is built once, with the key the sheet opened for.
+private struct ServerHeadersSheet: View {
+    @Environment(\.dismiss) private var dismiss
+    @State private var vm: CustomHeadersViewModel
+
+    init(serverKey: ServerKey, onSaved: @escaping @MainActor (ServerKey) -> Void) {
+        _vm = State(initialValue: DependencyContainer.shared.makeCustomHeadersViewModel(
+            serverKey: serverKey, onSaved: onSaved
+        ))
+    }
+
+    var body: some View {
+        NavigationStack {
+            CustomHeadersView(vm: vm, onFinish: { dismiss() })
+                .toolbar {
+                    ToolbarItem(placement: .cancellationAction) {
+                        Button("Cancel") { dismiss() }
+                            .accessibilityIdentifier("customHeadersCancelButton")
+                    }
+                }
+        }
+    }
+}
+
+/// The certificate screen of the server step, in its own navigation stack (a
+/// sheet inherits no bar): "Done" closes it. The view model is built when the
+/// sheet opens, for the server typed at that moment; any import or removal
+/// re-checks the server (`onChange`).
+private struct ClientCertificateSheet: View {
+    @Environment(\.dismiss) private var dismiss
+    @State private var vm: ClientCertificateViewModel
+
+    init(serverURL: URL?, onChange: @escaping @MainActor () async -> Void) {
+        _vm = State(initialValue: DependencyContainer.shared.makeClientCertificateViewModel(
+            serverURL: serverURL, onChange: onChange
+        ))
+    }
+
+    var body: some View {
+        NavigationStack {
+            ClientCertificateView(vm: vm)
+                .toolbar {
+                    ToolbarItem(placement: .confirmationAction) {
+                        Button("Done") { dismiss() }
+                            .accessibilityIdentifier("clientCertificateDoneButton")
+                    }
+                }
+        }
+        .presentationDetents([.medium, .large])
     }
 }
 

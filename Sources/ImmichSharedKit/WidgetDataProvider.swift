@@ -132,11 +132,21 @@ public enum WidgetMediaSize: String, Sendable {
 /// query items, bearer header, decoded shape) without a server.
 public protocol WidgetDataTransport: Sendable {
     func send(_ request: URLRequest) async throws -> (Data, HTTPURLResponse)
+    /// Called once a fetch is over (deadline included): a transport that owns
+    /// a session releases it, so nothing outlives a refresh — and a client
+    /// certificate removed or replaced in the app is never answered by a
+    /// session that kept the old one.
+    func finish()
+}
+
+extension WidgetDataTransport {
+    public func finish() {}
 }
 
 public struct URLSessionWidgetTransport: WidgetDataTransport {
     /// Internal (not private) so a test can assert the delegate is attached.
     let session: URLSession
+    private let ownsSession: Bool
 
     /// Defaults to a session carrying `WidgetTrustDelegate`: a self-signed
     /// Immich (accepted by the user in the app) is unreachable from a widget
@@ -144,17 +154,31 @@ public struct URLSessionWidgetTransport: WidgetDataTransport {
     public init(
         session: URLSession? = nil,
         sessionStore: any WidgetSessionStoring = WidgetSessionStore(),
-        timeout: TimeInterval = 12
+        timeout: TimeInterval = 12,
+        clientCertificates: ClientCertificateResponder = .live
     ) {
-        self.session = session ?? Self.makeSession(sessionStore: sessionStore, timeout: timeout)
+        self.ownsSession = session == nil
+        self.session = session ?? Self.makeSession(
+            sessionStore: sessionStore, timeout: timeout, clientCertificates: clientCertificates
+        )
     }
 
-    static func makeSession(sessionStore: any WidgetSessionStoring, timeout: TimeInterval) -> URLSession {
-        let configuration = URLSessionConfiguration.ephemeral
+    /// Lets the running tasks end, then invalidates the session this transport
+    /// created (an injected session belongs to its caller).
+    public func finish() {
+        if ownsSession { session.finishTasksAndInvalidate() }
+    }
+
+    static func makeSession(
+        sessionStore: any WidgetSessionStoring,
+        timeout: TimeInterval,
+        configuration: URLSessionConfiguration = .ephemeral,
+        clientCertificates: ClientCertificateResponder = .live
+    ) -> URLSession {
         configuration.timeoutIntervalForRequest = timeout
         configuration.timeoutIntervalForResource = timeout * 2
         configuration.waitsForConnectivity = false
-        let delegate = WidgetTrustDelegate(sessionStore: sessionStore)
+        let delegate = WidgetTrustDelegate(sessionStore: sessionStore, clientCertificates: clientCertificates)
         return URLSession(configuration: configuration, delegate: delegate, delegateQueue: nil)
     }
 
@@ -167,8 +191,11 @@ public struct URLSessionWidgetTransport: WidgetDataTransport {
     /// Short-timeout session for the interactive intents: a widget button must
     /// answer fast, and a hung request would leave the user staring at a Home
     /// Screen that never updates. Same trust policy as the read path.
-    public static func interactive(sessionStore: any WidgetSessionStoring = WidgetSessionStore()) -> URLSession {
-        makeSession(sessionStore: sessionStore, timeout: 15)
+    public static func interactive(
+        sessionStore: any WidgetSessionStoring = WidgetSessionStore(),
+        clientCertificates: ClientCertificateResponder = .live
+    ) -> URLSession {
+        makeSession(sessionStore: sessionStore, timeout: 15, clientCertificates: clientCertificates)
     }
 }
 
@@ -198,18 +225,34 @@ public struct WidgetDataProvider: Sendable {
     public static let defaultDeadline: Duration = .seconds(10)
 
     private let sessionStore: any WidgetSessionStoring
-    private let transport: any WidgetDataTransport
+    /// Builds the transport of ONE refresh: each public surface makes its own,
+    /// uses it for every request of the fetch and finishes it at the end, so
+    /// the provider a `TimelineProvider` keeps for the life of the process
+    /// holds no session from one refresh to the next.
+    private let makeTransport: @Sendable () -> any WidgetDataTransport
+    /// The transport of the refresh in progress (set on the per-refresh copy).
+    private let activeTransport: (any WidgetDataTransport)?
     private let deadline: Duration
     private let logger = Logger(subsystem: "app.immich.swiftui", category: "widget-data")
 
+    private var transport: any WidgetDataTransport { activeTransport ?? makeTransport() }
+
     public init(
         sessionStore: any WidgetSessionStoring = WidgetSessionStore(),
-        transport: any WidgetDataTransport = URLSessionWidgetTransport(),
+        transport: @escaping @Sendable () -> any WidgetDataTransport = { URLSessionWidgetTransport() },
         deadline: Duration = WidgetDataProvider.defaultDeadline
     ) {
         self.sessionStore = sessionStore
-        self.transport = transport
+        self.makeTransport = transport
+        self.activeTransport = nil
         self.deadline = deadline
+    }
+
+    private init(running base: WidgetDataProvider, with transport: any WidgetDataTransport) {
+        self.sessionStore = base.sessionStore
+        self.makeTransport = base.makeTransport
+        self.activeTransport = transport
+        self.deadline = base.deadline
     }
 
     // MARK: Public surfaces
@@ -217,18 +260,27 @@ public struct WidgetDataProvider: Sendable {
     /// Newest photos of the library, hero first, with the library total and the
     /// newest day's count.
     public func recentPhotos(limit: Int) async -> PhotoWall {
-        await bounded { await wall(isFavorite: nil, limit: limit) }
+        let transport = makeTransport()
+        defer { transport.finish() }
+        let run = WidgetDataProvider(running: self, with: transport)
+        return await run.bounded { await run.wall(isFavorite: nil, limit: limit) }
     }
 
     /// Newest favorites, same shape.
     public func favoritePhotos(limit: Int) async -> PhotoWall {
-        await bounded { await wall(isFavorite: true, limit: limit) }
+        let transport = makeTransport()
+        defer { transport.finish() }
+        let run = WidgetDataProvider(running: self, with: transport)
+        return await run.bounded { await run.wall(isFavorite: true, limit: limit) }
     }
 
     /// Today's memories, rotated by `offset` so the shuffle intent shows a
     /// different one on every tap.
     public func memories(limit: Int, offset: Int) async -> WidgetMemoryFeed {
-        await bounded { await loadMemories(limit: limit, offset: offset) }
+        let transport = makeTransport()
+        defer { transport.finish() }
+        let run = WidgetDataProvider(running: self, with: transport)
+        return await run.bounded { await run.loadMemories(limit: limit, offset: offset) }
     }
 
     private func loadMemories(limit: Int, offset: Int) async -> WidgetMemoryFeed {
@@ -239,8 +291,7 @@ public struct WidgetDataProvider: Sendable {
         do {
             let payload: [MemoryPayload] = try await get(
                 path: "/api/memories",
-                token: session.token,
-                baseURL: session.baseURL
+                session: session
             )
             let currentYear = Calendar.current.component(.year, from: Date())
             let cards = payload
@@ -274,8 +325,7 @@ public struct WidgetDataProvider: Sendable {
             let buckets: [BucketPayload] = try await get(
                 path: "/api/timeline/buckets",
                 query: filters,
-                token: session.token,
-                baseURL: session.baseURL
+                session: session
             )
             // Bucket 0 is the newest day (the app indexes the same way: it
             // starts at 0 and walks towards older buckets).
@@ -283,8 +333,7 @@ public struct WidgetDataProvider: Sendable {
             let columnar: ColumnarAssets = try await get(
                 path: "/api/timeline/bucket",
                 query: [URLQueryItem(name: "timeBucket", value: newest.timeBucket)] + filters,
-                token: session.token,
-                baseURL: session.baseURL
+                session: session
             )
             let photos = await hydrate(columnar.photos(day: newest.timeBucket, limit: limit), session: session)
             return PhotoWall(
@@ -418,7 +467,7 @@ public struct WidgetDataProvider: Sendable {
         components.queryItems = [URLQueryItem(name: "size", value: size.rawValue)]
         guard let url = components.url else { return nil }
         var request = URLRequest(url: url)
-        request.setValue("Bearer \(session.token)", forHTTPHeaderField: "Authorization")
+        ServerRequestAuthorization.apply(token: session.token, custom: session.customHeaders ?? [], to: &request)
         do {
             let (data, http) = try await transport.send(request)
             guard http.statusCode == 200, !data.isEmpty else { return nil }
@@ -431,14 +480,13 @@ public struct WidgetDataProvider: Sendable {
     private func get<T: Decodable>(
         path: String,
         query: [URLQueryItem] = [],
-        token: String,
-        baseURL: String
+        session: WidgetSession
     ) async throws -> T {
-        guard var components = URLComponents(string: baseURL + path) else { throw WidgetDataError.transport }
+        guard var components = URLComponents(string: session.baseURL + path) else { throw WidgetDataError.transport }
         if !query.isEmpty { components.queryItems = query }
         guard let url = components.url else { throw WidgetDataError.transport }
         var request = URLRequest(url: url)
-        request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
+        ServerRequestAuthorization.apply(token: session.token, custom: session.customHeaders ?? [], to: &request)
         request.setValue("application/json", forHTTPHeaderField: "Accept")
         let (data, http) = try await transport.send(request)
         guard http.statusCode != 401 else { throw WidgetDataError.unauthorized }

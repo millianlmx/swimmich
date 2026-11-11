@@ -12,9 +12,17 @@ import Security
 /// 3. Anything else → cancel the challenge.
 final class TrustEvaluatingURLSessionDelegate: NSObject, URLSessionDelegate, @unchecked Sendable {
     private let trustStore: TrustedServerStore
+    private let clientCertificates: ClientCertificateResponder
+    private let log: TLSChallengeLog
 
-    init(trustStore: TrustedServerStore) {
+    init(
+        trustStore: TrustedServerStore,
+        clientCertificates: ClientCertificateResponder = .live,
+        log: TLSChallengeLog = .shared
+    ) {
         self.trustStore = trustStore
+        self.clientCertificates = clientCertificates
+        self.log = log
     }
 
     func urlSession(
@@ -22,6 +30,13 @@ final class TrustEvaluatingURLSessionDelegate: NSObject, URLSessionDelegate, @un
         didReceive challenge: URLAuthenticationChallenge,
         completionHandler: @escaping (URLSession.AuthChallengeDisposition, URLCredential?) -> Void
     ) {
+        // A TLS client certificate request (L-10) comes before the server-trust
+        // rule; the trust rule itself is unchanged.
+        if let (disposition, credential) = clientCertificates.answer(challenge) {
+            completionHandler(disposition, credential)
+            return
+        }
+
         guard challenge.protectionSpace.authenticationMethod == NSURLAuthenticationMethodServerTrust,
               let serverTrust = challenge.protectionSpace.serverTrust else {
             completionHandler(.performDefaultHandling, nil)
@@ -38,6 +53,7 @@ final class TrustEvaluatingURLSessionDelegate: NSObject, URLSessionDelegate, @un
         // Step 2: explicit user trust — anchor the server's own chain.
         let host = challenge.protectionSpace.host
         guard trustStore.contains(host) else {
+            log.noteTrustRefused(host: host)
             completionHandler(.cancelAuthenticationChallenge, nil)
             return
         }
@@ -51,6 +67,7 @@ final class TrustEvaluatingURLSessionDelegate: NSObject, URLSessionDelegate, @un
         if SecTrustEvaluateWithError(serverTrust, &error) {
             completionHandler(.useCredential, URLCredential(trust: serverTrust))
         } else {
+            log.noteTrustRefused(host: host)
             completionHandler(.cancelAuthenticationChallenge, nil)
         }
     }

@@ -35,8 +35,9 @@ final class PhotoEditorViewModel {
     private let photos: any PhotoLibraryService
     private let exportDirectory: URL
 
-    /// Injectable for tests (CapturingURLProtocol pattern). AC-604 / AC-617.
-    var urlSession: URLSession = .shared
+    /// Provider of the session to fetch through, read at each fetch (a certificate change replaces the app's sessions). Injectable for tests (CapturingURLProtocol pattern). AC-604 / AC-617.
+    var urlSession: @Sendable () -> URLSession
+    private let customHeaders: any CustomHeadersProviding
 
     // MARK: Observable state
 
@@ -104,7 +105,8 @@ final class PhotoEditorViewModel {
          appLog: any AppLogSink = NoopAppLogSink(),
          photos: any PhotoLibraryService = PhotoLibraryServiceImpl(),
          store: EditStateStore = EditStateStore(),
-         urlSession: URLSession = .shared,
+         urlSession: @escaping @Sendable () -> URLSession,
+         customHeaders: any CustomHeadersProviding = CustomHeadersRegistry.shared,
          exportDirectory: URL = FileManager.default.temporaryDirectory.appendingPathComponent("immich-editor", isDirectory: true)) {
         self.assetId = assetId
         self.client = client
@@ -112,12 +114,14 @@ final class PhotoEditorViewModel {
         self.photos = photos
         self.store = store
         self.urlSession = urlSession
+        self.customHeaders = customHeaders
         self.exportDirectory = exportDirectory
     }
 
     // MARK: Loading (AC-604, AC-617)
 
-    /// Fetches the original asset bytes via Bearer-authenticated `URLSession`.
+    /// Fetches the original asset bytes with the session token and the server's
+    /// custom headers.
     /// Sets `errorMessage` on 401, invalid image data, or transport errors.
     func loadOriginal(url: URL, token: String?) async {
         isLoading = true
@@ -125,14 +129,12 @@ final class PhotoEditorViewModel {
         errorMessage = nil
 
         var request = URLRequest(url: url)
-        if let token, !token.isEmpty {
-            request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
-        }
+        ServerRequestAuthorization.apply(token: token, custom: customHeaders.headers(for: url), to: &request)
 
         let data: Data
         let response: URLResponse
         do {
-            (data, response) = try await urlSession.data(for: request)
+            (data, response) = try await ServerRedirectTaskDelegate.data(for: request, on: urlSession())
         } catch {
             errorMessage = error.userFacingMessage
             return

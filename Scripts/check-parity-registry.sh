@@ -47,7 +47,7 @@ R-LoginRoute|écart|B-13 B-14 B-32
 R-TabShellRoute|écart|B-16
 R-MainTimelineRoute|écart|B-8
 R-LibraryRoute|écart|B-16
-R-AlbumsRoute|écart|B-6
+R-AlbumsRoute|écart|B-6 B-39
 R-SettingsRoute|écart|B-16
 R-SettingsSubRoute|écart|B-13 B-30 B-31
 R-AppLogRoute|écart|B-15
@@ -62,7 +62,7 @@ R-MemoryRoute|écart|B-11 B-34
 R-MemoryListRoute|écart|B-11
 R-PartnerRoute|écart|B-12
 R-PartnerDetailRoute|écart|B-12
-R-AlbumOptionsRoute|écart|B-5
+R-AlbumOptionsRoute|écart|B-5 B-40
 R-BackupAssetDetailRoute|écart|B-37
 V-#31082|écart|B-26
 V-#30831|écart|B-11
@@ -435,6 +435,11 @@ ac4() {
   for n in $(seq 5 37) $(seq 39 66); do
     cnt=$(printf '%s\n' "$crit" | grep -cE "(^|[^0-9])AC-$n([^0-9]|\$)" || true)
     [ "$cnt" = 1 ] || fail $ac "AC-$n $([ "$cnt" = 0 ] && echo absent || echo 'en double')"
+  done
+  # criteria numbered from AC-67 (added by later lots): each one cited exactly once
+  for n in $(printf '%s\n' "$crit" | grep -oE 'AC-[0-9]+' | sed 's/^AC-//' | awk '$1 >= 67' | sort -un); do
+    cnt=$(printf '%s\n' "$crit" | grep -cE "(^|[^0-9])AC-$n([^0-9]|\$)" || true)
+    [ "$cnt" = 1 ] || fail $ac "AC-$n en double"
   done
   for n in 1 2 3 4 38; do
     printf '%s\n' "$crit" | grep -qE "(^|[^0-9])AC-$n([^0-9]|\$)" && fail $ac "AC-$n appartient à ce run"

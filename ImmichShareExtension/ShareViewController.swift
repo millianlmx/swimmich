@@ -13,6 +13,9 @@ import UniformTypeIdentifiers
 /// every path either shows the sheet or ends the request.
 final class ShareViewController: UIViewController {
     private var model: ShareExtensionViewModel?
+    /// Kept so `cancel()` / `finish()` can end its session: one client (one
+    /// session, one TLS handshake) per share.
+    private var uploadClient: SharedUploadClient?
 
     override func viewDidLoad() {
         super.viewDidLoad()
@@ -45,8 +48,10 @@ final class ShareViewController: UIViewController {
         let client = SharedUploadClient(
             baseURL: session.baseURL,
             token: session.token,
-            deviceId: session.deviceId ?? Self.fallbackDeviceId()
+            deviceId: session.deviceId ?? Self.fallbackDeviceId(),
+            customHeaders: session.customHeaders ?? []
         )
+        self.uploadClient = client
         let model = ShareExtensionViewModel(
             uploader: client,
             stage: FileManager.default.temporaryDirectory,
@@ -184,11 +189,13 @@ final class ShareViewController: UIViewController {
     /// otherwise.
     private func cancel() {
         model?.discardStagedFiles()
+        uploadClient?.invalidate()
         extensionContext?.cancelRequest(withError: NSError(domain: NSCocoaErrorDomain, code: NSUserCancelledError))
     }
 
     private func finish() {
         model?.discardStagedFiles()
+        uploadClient?.invalidate()
         extensionContext?.completeRequest(returningItems: nil)
     }
 }

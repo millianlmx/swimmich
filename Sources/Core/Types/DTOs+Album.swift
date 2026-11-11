@@ -22,14 +22,29 @@ struct AlbumResponseDto: Codable, Equatable {
     let hasSharedLink: Bool
     let assetCount: Int
     var isActivityEnabled: Bool
-    let order: AssetOrder?
+    var order: AssetOrder?
     var albumUsers: [AlbumUserResponseDto] = []
     var ownerId: String? = nil
+    /// v2.x sends the owner as a full user (v3+ omits it: the owner is an
+    /// `albumUsers` entry with role `owner`).
+    var owner: UserResponseDto? = nil
 
     enum CodingKeys: String, CodingKey {
         case id, albumName, description, createdAt, updatedAt
         case albumThumbnailAssetId, shared, hasSharedLink, assetCount
-        case isActivityEnabled, order, albumUsers, ownerId
+        case isActivityEnabled, order, albumUsers, ownerId, owner
+    }
+}
+
+extension AlbumResponseDto {
+    /// The only valid album-role rule. `ownerId` (v2.x) designates the owner;
+    /// otherwise the user's own `albumUsers` entry decides, at any position
+    /// (never `albumUsers.first`: v2 sorts editors first, v3 lists the owner
+    /// first). Unknown or id-less users are viewers.
+    func role(of userId: String?) -> AlbumUserRole {
+        guard let userId, !userId.isEmpty else { return .viewer }
+        if let ownerId, !ownerId.isEmpty, ownerId == userId { return .owner }
+        return albumUsers.first { $0.user.id == userId }?.role ?? .viewer
     }
 }
 

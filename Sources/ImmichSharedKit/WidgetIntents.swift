@@ -71,14 +71,19 @@ public struct ToggleFavoriteIntent: AppIntent {
 
     public func perform() async throws -> some IntentResult {
         let logger = Logger(subsystem: "app.immich.swiftui", category: "widget-intent")
+        // A transport per intent (a fresh session with its own TLS handshake),
+        // finished after the action: nothing outlives it, so a client
+        // certificate changed in the app is the one the next tap presents.
+        let session = URLSessionWidgetTransport.interactive()
         await Self.write(
             assetId: assetId,
             favorite: favorite,
             sessionStore: WidgetSessionStore(),
-            transport: URLSessionWidgetTransport(session: URLSessionWidgetTransport.interactive()),
+            transport: URLSessionWidgetTransport(session: session),
             reloadTimelines: { WidgetCenter.shared.reloadTimelines(ofKind: $0) },
             log: { logger.error("\($0, privacy: .public)") }
         )
+        session.finishTasksAndInvalidate()
         return .result()
     }
 
@@ -109,7 +114,7 @@ public struct ToggleFavoriteIntent: AppIntent {
         do {
             var request = URLRequest(url: url)
             request.httpMethod = "PUT"
-            request.setValue("Bearer \(session.token)", forHTTPHeaderField: "Authorization")
+            ServerRequestAuthorization.apply(token: session.token, custom: session.customHeaders ?? [], to: &request)
             request.setValue("application/json", forHTTPHeaderField: "Content-Type")
             request.httpBody = try JSONSerialization.data(withJSONObject: ["isFavorite": favorite])
 

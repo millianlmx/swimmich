@@ -59,6 +59,8 @@ struct ProfileView: View {
     @State var appLog: AppLogViewModel
     @State var mediaStats: MediaStatsViewModel
     @State var downloadInfo: DownloadInfoViewModel
+    /// The client certificate of the active server (L-10), pushed from Advanced.
+    @State var clientCertificate: ClientCertificateViewModel
     /// Drives the logout confirmation dialog (SP-4).
     @State private var showLogoutConfirm = false
     /// An activation prompt is on screen: the toggle shows "on" and ignores taps.
@@ -286,12 +288,24 @@ struct ProfileView: View {
                     Text("About")
                 }
 
-                // Instruments, not settings: these three screens only report
-                // what the app believes. One header keeps them apart from the
-                // preferences above, and the fourth diagnostic — the asset
-                // troubleshoot — lives on the photo it describes, never here:
-                // its page is parameterized by an asset.
+                // Diagnostics and the network settings the official client keeps
+                // under Advanced (custom headers). The three diagnostic screens
+                // only report what the app believes; the fourth diagnostic — the
+                // asset troubleshoot — lives on the photo it describes, never
+                // here: its page is parameterized by an asset.
                 Section {
+                    if let serverKey = auth.baseURL.flatMap({ ServerKey(url: $0) }) {
+                        NavigationLink {
+                            CustomHeadersScreen(
+                                serverKey: serverKey,
+                                onSaved: { auth.customHeadersDidChange(for: $0) }
+                            )
+                        } label: {
+                            Label("Custom HTTP Headers", systemImage: "list.bullet.rectangle")
+                        }
+                        .accessibilityIdentifier("customHeadersRow")
+                    }
+
                     NavigationLink {
                         AppLogView(vm: appLog)
                     } label: {
@@ -312,6 +326,13 @@ struct ProfileView: View {
                         Label("Download Info", systemImage: "arrow.down.doc")
                     }
                     .accessibilityIdentifier("downloadInfoRow")
+
+                    NavigationLink {
+                        ClientCertificateView(vm: clientCertificate)
+                    } label: {
+                        Label("Client Certificate", systemImage: "lock.shield")
+                    }
+                    .accessibilityIdentifier("clientCertificateRow")
                 } header: {
                     Text("Advanced")
                 }
