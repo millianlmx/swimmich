@@ -104,6 +104,22 @@ final class SaveToLibraryViewModelTests: XCTestCase {
         XCTAssertEqual(vm.lastDownloadFileName, "vacation.jpg")
     }
 
+    func test_AC_102_downloadOriginalOfJpegXLIsNamedJxl() async throws {
+        let client = MockImmichClient()
+        var dto = try await client.getAsset(id: "p1")
+        dto.originalFileName = "vacation"
+        client.getAssetResponse["p1"] = dto
+        let (vm, _, _, _) = makeVM(
+            asset: makeAsset(),
+            client: client,
+            nextHeaders: ["Content-Type": "image/jxl"]
+        )
+
+        await vm.downloadOriginal()
+
+        XCTAssertEqual(vm.lastDownloadFileName, "vacation.jxl")
+    }
+
     func test_saveError_surfacesMessage() async {
         let photoLibrary = MockPhotoLibraryService()
         photoLibrary.saveError = APIError.serverError(500, "boom")

@@ -1643,7 +1643,7 @@ private struct PhotoShareSheet: View {
 
             // The bytes actually being shared win for the extension (preview
             // accuracy); fall back to the original mime, then jpg.
-            let ext = AssetFileTransfer.fileExtension(forMime: contentType ?? originalMime)
+            let ext = AssetFileTransfer.sharedFileExtension(sharedContentType: contentType, originalMime: originalMime)
             let base = AssetFileTransfer.baseName(
                 originalName: originalName,
                 datePrefix: String(asset.fileCreatedAt.prefix(10))
@@ -1683,6 +1683,10 @@ private struct SaveSection: View {
                 }
             }
             .disabled(saveVM.isSaving)
+            .accessibilityIdentifier("saveToPhotosButton")
+            .modifier(SaveProbeValue(
+                value: saveVM.isSaving ? "saving" : (saveVM.lastSavedIdentifier != nil ? "saved" : "idle")
+            ))
 
             Button {
                 Task { await saveVM.downloadOriginal() }
@@ -1719,6 +1723,7 @@ private struct SaveSection: View {
                 Text(message)
                     .font(.pvCaption)
                     .foregroundStyle(Color.immichError)
+                    .accessibilityIdentifier("saveSectionError")
             }
         } header: {
             Text("Save")
@@ -1732,6 +1737,23 @@ private struct SaveSection: View {
         } else if done {
             Image(systemName: "checkmark.circle.fill")
                 .foregroundStyle(Color.immichSuccess)
+        }
+    }
+}
+
+/// Test-only state of the "Save to Photos" button (decision #8): its checkmark
+/// lives inside the button's label, which SwiftUI merges into one element, so
+/// the end of a save is exposed as the button's value — and only under the
+/// `-uiTestImageProbe` launch argument. Production adds nothing.
+private struct SaveProbeValue: ViewModifier {
+    let value: String
+
+    @ViewBuilder
+    func body(content: Content) -> some View {
+        if ImageLoadProbe.isEnabled {
+            content.accessibilityValue(Text(verbatim: value))
+        } else {
+            content
         }
     }
 }

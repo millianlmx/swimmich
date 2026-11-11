@@ -18,8 +18,16 @@ enum AssetFileTransfer {
         case let m where m.contains("mp4"): return "mp4"
         case let m where m.contains("quicktime"): return "mov"
         case let m where m.contains("mpeg"): return "mpg"
+        case let m where m.contains("jxl"): return "jxl"
         default: return "jpg"
         }
+    }
+
+    /// Extension of the file the native share sheet hands over. It follows the
+    /// bytes actually shared (the preview's `Content-Type`), and only falls back
+    /// to the original's MIME when the response carried none.
+    static func sharedFileExtension(sharedContentType: String?, originalMime: String?) -> String {
+        fileExtension(forMime: sharedContentType ?? originalMime)
     }
 
     /// The transfer file's base name (no extension): the server's original

@@ -220,6 +220,7 @@
 		5D4E5A919E2B67A7ED62AAF5 /* MapMarkerFilterTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2970A4FF95065888177A239C /* MapMarkerFilterTests.swift */; };
 		5DD2BA9714C4ECF473B4525A /* immich_stub_recent.py in Resources */ = {isa = PBXBuildFile; fileRef = DF5A1A6BBB06B8A5ACB84EA2 /* immich_stub_recent.py */; };
 		8BCB1EB0FD75B0663FB20EC9 /* immich_stub_tags.py in Resources */ = {isa = PBXBuildFile; fileRef = 49F7DE298F938AB088649B2F /* immich_stub_tags.py */; };
+		8973F18C5E6902775393DF0A /* immich_stub_jpeg_xl.py in Resources */ = {isa = PBXBuildFile; fileRef = C6EF3FBADADD912F4D40D221 /* immich_stub_jpeg_xl.py */; };
 		5E4689D6F2D16D97A3851F71 /* BackupActivityAttributes.swift in Sources */ = {isa = PBXBuildFile; fileRef = CE912093BAAB79EC778D1B0B /* BackupActivityAttributes.swift */; };
 		5EA3F72E1EB77933DFCA8921 /* CastViewModelTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6D4FDE48AB8B4456F638D773 /* CastViewModelTests.swift */; };
 		5F24D1856415AA5733E6C53E /* CleanupReviewView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 87364FB9CFE43BCB1B23E505 /* CleanupReviewView.swift */; };
@@ -376,6 +377,7 @@
 		ACB18E43BEBA52E006F65E98 /* ShareExtensionViewModelTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0570FBC4C4353CF141FDC8A2 /* ShareExtensionViewModelTests.swift */; };
 		ACC4925270474CFBF825B5B7 /* RecentlyTakenUITests.swift in Sources */ = {isa = PBXBuildFile; fileRef = C1A46A619229399D94C47078 /* RecentlyTakenUITests.swift */; };
 		D124F55E9FE29D78431BECBC /* TagsHierarchyUITests.swift in Sources */ = {isa = PBXBuildFile; fileRef = E1D3189DCD6E30251963AB73 /* TagsHierarchyUITests.swift */; };
+		E116BC561A9B12C075EE3FC4 /* JpegXLUITests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 015AFA9B8FB29B9D22E154E5 /* JpegXLUITests.swift */; };
 		ACCF382D86C6CBA5831FF9C0 /* PhotoLibraryChangeMonitor.swift in Sources */ = {isa = PBXBuildFile; fileRef = E312F86B9F5AF422DB743B1B /* PhotoLibraryChangeMonitor.swift */; };
 		AD37DE25A2020AF9419421E9 /* SharedLinkSheet.swift in Sources */ = {isa = PBXBuildFile; fileRef = CAC538A722DBF17EF78BA473 /* SharedLinkSheet.swift */; };
 		AD3A4903F3E63C47324D282B /* UserApiKeysUITests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6FA470C3C036E0918556DE7F /* UserApiKeysUITests.swift */; };
@@ -440,6 +442,7 @@
 		3F4590980AE7C4949A484A21 /* AssetTagsSheetTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1B3FC0424388EFA344B22AF1 /* AssetTagsSheetTests.swift */; };
 		B18EF6903B034ACF55584723 /* TagAssetsViewModelTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6A67D559B27FA5DB718C6BFA /* TagAssetsViewModelTests.swift */; };
 		4D9A3C0FD09B51281BA93841 /* TagsViewModelTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = AC1ACD083A42B6200CAC85B4 /* TagsViewModelTests.swift */; };
+		2C19328ED6B29224FB54EF43 /* JpegXLTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = E73626FA483B27D842EEFDC2 /* JpegXLTests.swift */; };
 		73D25E54F87DC27BCFEA37BB /* TagTreeTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3825A922987D53417DE73172 /* TagTreeTests.swift */; };
 		C37D3B12C1AC67864F38A88E /* AppLockCoverView.swift in Sources */ = {isa = PBXBuildFile; fileRef = AC0AB056159A5C7F0A650166 /* AppLockCoverView.swift */; };
 		C4F4E7E92336EDDD6CFCBA99 /* AppLockWindowControllerTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 35F48C2A64EA884F478D3811 /* AppLockWindowControllerTests.swift */; };
@@ -1001,6 +1004,7 @@
 		1B3FC0424388EFA344B22AF1 /* AssetTagsSheetTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AssetTagsSheetTests.swift; sourceTree = "<group>"; };
 		6A67D559B27FA5DB718C6BFA /* TagAssetsViewModelTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TagAssetsViewModelTests.swift; sourceTree = "<group>"; };
 		AC1ACD083A42B6200CAC85B4 /* TagsViewModelTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TagsViewModelTests.swift; sourceTree = "<group>"; };
+		E73626FA483B27D842EEFDC2 /* JpegXLTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = JpegXLTests.swift; sourceTree = "<group>"; };
 		3825A922987D53417DE73172 /* TagTreeTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TagTreeTests.swift; sourceTree = "<group>"; };
 		AB22775352AF339062CDD7A3 /* MockFileDownloadTransport.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MockFileDownloadTransport.swift; sourceTree = "<group>"; };
 		AC0AB056159A5C7F0A650166 /* AppLockCoverView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppLockCoverView.swift; sourceTree = "<group>"; };
@@ -1055,6 +1059,7 @@
 		C1069B6F6E707F25B43595C7 /* SearchView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SearchView.swift; sourceTree = "<group>"; };
 		C1A46A619229399D94C47078 /* RecentlyTakenUITests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RecentlyTakenUITests.swift; sourceTree = "<group>"; };
 		E1D3189DCD6E30251963AB73 /* TagsHierarchyUITests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TagsHierarchyUITests.swift; sourceTree = "<group>"; };
+		015AFA9B8FB29B9D22E154E5 /* JpegXLUITests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = JpegXLUITests.swift; sourceTree = "<group>"; };
 		C201244125639A1389AA8C38 /* QRScannerView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = QRScannerView.swift; sourceTree = "<group>"; };
 		C2298E0389CE0826F8764FCE /* immich_stub_offline.py */ = {isa = PBXFileReference; lastKnownFileType = text.script.python; path = immich_stub_offline.py; sourceTree = "<group>"; };
 		C2B18628F4D6A34775AFD449 /* AboutLinksTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AboutLinksTests.swift; sourceTree = "<group>"; };
@@ -1116,6 +1121,7 @@
 		DEB7A16A6CFE4BBCC62958B7 /* SyncStatusView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SyncStatusView.swift; sourceTree = "<group>"; };
 		DF5A1A6BBB06B8A5ACB84EA2 /* immich_stub_recent.py */ = {isa = PBXFileReference; lastKnownFileType = text.script.python; path = immich_stub_recent.py; sourceTree = "<group>"; };
 		49F7DE298F938AB088649B2F /* immich_stub_tags.py */ = {isa = PBXFileReference; lastKnownFileType = text.script.python; path = immich_stub_tags.py; sourceTree = "<group>"; };
+		C6EF3FBADADD912F4D40D221 /* immich_stub_jpeg_xl.py */ = {isa = PBXFileReference; lastKnownFileType = text.script.python; path = immich_stub_jpeg_xl.py; sourceTree = "<group>"; };
 		E02D88A25EDFEF470DE465AB /* PhotoViewer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PhotoViewer.swift; sourceTree = "<group>"; };
 		E0C5622078B43FA6711CE218 /* PeopleViewModelTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PeopleViewModelTests.swift; sourceTree = "<group>"; };
 		E1208877397F4626C85572F2 /* immich_stub_ocr_text.py */ = {isa = PBXFileReference; lastKnownFileType = text.script.python; path = immich_stub_ocr_text.py; sourceTree = "<group>"; };
@@ -1645,6 +1651,7 @@
 				1B3FC0424388EFA344B22AF1 /* AssetTagsSheetTests.swift */,
 				6A67D559B27FA5DB718C6BFA /* TagAssetsViewModelTests.swift */,
 				AC1ACD083A42B6200CAC85B4 /* TagsViewModelTests.swift */,
+				E73626FA483B27D842EEFDC2 /* JpegXLTests.swift */,
 				3825A922987D53417DE73172 /* TagTreeTests.swift */,
 				9C897C83B34BE9893378A750 /* RoadTripCameraTests.swift */,
 				3EC78285FAB5C905FDF433E4 /* RoadTripClustererTests.swift */,
@@ -1952,6 +1959,7 @@
 				B20912A95415B9069E1F5A36 /* immich_stub_read_only_mode.py */,
 				DF5A1A6BBB06B8A5ACB84EA2 /* immich_stub_recent.py */,
 				49F7DE298F938AB088649B2F /* immich_stub_tags.py */,
+				C6EF3FBADADD912F4D40D221 /* immich_stub_jpeg_xl.py */,
 				28FA8E2BDDFA7D112FF30F16 /* immich_stub_search_filters.py */,
 				C785B9212763FE139F871AFF /* immich_stub_selfsigned.py */,
 				0E20A4FDA552E6EEA34A5570 /* immich_stub_settings.py */,
@@ -2060,6 +2068,7 @@
 				6285A49819D612AD79FE73BB /* ReadOnlyModeUITests.swift */,
 				C1A46A619229399D94C47078 /* RecentlyTakenUITests.swift */,
 				E1D3189DCD6E30251963AB73 /* TagsHierarchyUITests.swift */,
+				015AFA9B8FB29B9D22E154E5 /* JpegXLUITests.swift */,
 				0E1157A1B2E58119402D0017 /* SearchFiltersUITests.swift */,
 				800794CDFBCC9FA9194D2933 /* SelfSignedTrustUITests.swift */,
 				25D6809BF3157BB947463A50 /* SettingsParityUITests.swift */,
@@ -2468,6 +2477,7 @@
 				D51CD30CCCE3A039EB7B52F1 /* immich_stub_read_only_mode.py in Resources */,
 				5DD2BA9714C4ECF473B4525A /* immich_stub_recent.py in Resources */,
 				8BCB1EB0FD75B0663FB20EC9 /* immich_stub_tags.py in Resources */,
+				8973F18C5E6902775393DF0A /* immich_stub_jpeg_xl.py in Resources */,
 				A645FEF10A5E130DD4D31B4B /* immich_stub_search_filters.py in Resources */,
 				1BEEF9D3B3431932AF2C92B3 /* immich_stub_selfsigned.py in Resources */,
 				1404E6E42AD9BF0F5D6160DA /* immich_stub_settings.py in Resources */,
@@ -2619,6 +2629,7 @@
 				3F4590980AE7C4949A484A21 /* AssetTagsSheetTests.swift in Sources */,
 				B18EF6903B034ACF55584723 /* TagAssetsViewModelTests.swift in Sources */,
 				4D9A3C0FD09B51281BA93841 /* TagsViewModelTests.swift in Sources */,
+				2C19328ED6B29224FB54EF43 /* JpegXLTests.swift in Sources */,
 				73D25E54F87DC27BCFEA37BB /* TagTreeTests.swift in Sources */,
 				8589CDFBD9C8472915191C9F /* RoadTripCameraTests.swift in Sources */,
 				EFAB69E1147F023FA5C41CF5 /* RoadTripClustererTests.swift in Sources */,
@@ -2688,6 +2699,7 @@
 				74D985B24A966DC7EDF6DACD /* ReadOnlyModeUITests.swift in Sources */,
 				ACC4925270474CFBF825B5B7 /* RecentlyTakenUITests.swift in Sources */,
 				D124F55E9FE29D78431BECBC /* TagsHierarchyUITests.swift in Sources */,
+				E116BC561A9B12C075EE3FC4 /* JpegXLUITests.swift in Sources */,
 				54458D16DEBEF6B70BDC9265 /* SearchFiltersUITests.swift in Sources */,
 				4845F6C3CB85D09F6B1B0CE9 /* SelfSignedTrustUITests.swift in Sources */,
 				536F02CADD00C2197C649D8C /* SettingsParityUITests.swift in Sources */,

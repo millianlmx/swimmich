@@ -491,6 +491,40 @@ final class WidgetDataProviderTests: XCTestCase {
         XCTAssertEqual(budgeted.map(\.id), photos.map(\.id), "every cell survives, just without bytes")
     }
 
+    /// L-05 / AC-101: a server that generates its thumbnails and previews as
+    /// JPEG XL still gives the widget decodable bytes (the encoder re-encodes
+    /// to JPEG, which is what `WidgetPhotoTile` draws), and a thumbnail that
+    /// cannot be decoded leaves the branded plate instead.
+    func test_AC_101_jpegXLThumbnailsReachTheWidgetDecoded() async {
+        func spy(serving thumbnail: Data) -> TransportSpy {
+            TransportSpy { request in
+                let path = request.url?.path ?? ""
+                if path == "/api/timeline/buckets" {
+                    return (200, Data(#"[{"timeBucket":"2026-09-13T00:00:00.000Z","count":3}]"#.utf8))
+                }
+                if path == "/api/timeline/bucket" {
+                    return (200, Data(#"{"id":["a","b","c"]}"#.utf8))
+                }
+                return (200, thumbnail)
+            }
+        }
+
+        let wall = await provider(spy(serving: JpegXLFixture.thumbnail)).recentPhotos(limit: 3)
+
+        XCTAssertEqual(wall.photos.map(\.id), ["a", "b", "c"])
+        let bytes = wall.photos.compactMap(\.imageData)
+        XCTAssertEqual(bytes.count, 3, "every JPEG XL thumbnail carried bytes")
+        for data in bytes {
+            XCTAssertEqual(Array(data.prefix(2)), [0xFF, 0xD8], "re-encoded as JPEG")
+            XCTAssertNotNil(UIImage(data: data), "WidgetPhotoTile draws UIImage(data:), so it must decode")
+        }
+        XCTAssertLessThanOrEqual(bytes.reduce(0) { $0 + $1.count }, WidgetImageEncoder.budget)
+
+        let broken = await provider(spy(serving: JpegXLFixture.truncated)).recentPhotos(limit: 3)
+        XCTAssertEqual(broken.photos.count, 3)
+        XCTAssertTrue(broken.photos.allSatisfy { $0.imageData == nil }, "undecodable bytes fall back to the plate")
+    }
+
     func test_wall_fetchedFromARealSizedServer_staysSmall() async {
         let spy = TransportSpy { request in
             let path = request.url?.path ?? ""
