@@ -57,7 +57,19 @@ common=(
 
 # Signed for the simulator on purpose: CODE_SIGNING_ALLOWED=NO drops the
 # keychain-sharing entitlements, and the session-store tests then read nil.
-xcodebuild build-for-testing "${common[@]}" -quiet
+# The persistent DerivedData can be left inconsistent by an earlier run (the
+# build then dies with "failed with exit code 0 but produced no further
+# output" and no usable diagnostic). On failure: print the compiler errors,
+# purge that cache and build once more; a genuine source error fails twice.
+build_log="$(mktemp)"
+if ! xcodebuild build-for-testing "${common[@]}" -quiet 2>&1 | tee "$build_log"; then
+  echo "ci.sh: build failed; compiler errors of the first attempt:" >&2
+  grep -E "error:" "$build_log" >&2 || true
+  echo "ci.sh: purging $CACHE/DerivedData and building again" >&2
+  rm -rf "$CACHE/DerivedData"
+  xcodebuild build-for-testing "${common[@]}"
+fi
+rm -f "$build_log"
 
 rm -rf "$RESULT"
 mkdir -p "$(dirname "$RESULT")"
