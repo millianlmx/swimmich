@@ -173,7 +173,7 @@ struct MemoriesView: View {
 /// background with the day + year set in big poster typography over a bottom
 /// scrim ("1 juillet" / "2022"), plus "N years ago" and Liquid Glass chips
 /// (photo/video counts, location, asset count). Tapping the card opens the
-/// full-screen `MemoryMomentView`; the bookmark toggles `isSaved` and the long
+/// full-screen `MemoryPlaybackView`; the bookmark toggles `isSaved` and the long
 /// press opens the memory's mutations.
 private struct MemoryCard: View {
     let memory: MemoryResponseDto
