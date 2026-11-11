@@ -315,8 +315,10 @@ final class ImmichAPIClient: ImmichClient, @unchecked Sendable {
 
     // MARK: - Albums (AC-500..AC-518)
 
-    func getAlbums() async throws -> [AlbumResponseDto] {
-        try await sendAuthed(.GET, path: ImmichAPI.albums.path(""))
+    func getAlbums(shared: Bool?) async throws -> [AlbumResponseDto] {
+        var query: [URLQueryItem] = []
+        if let shared { query.append(URLQueryItem(name: "shared", value: String(shared))) }
+        return try await sendAuthed(.GET, path: ImmichAPI.albums.path(""), query: query)
     }
 
     func createAlbum(dto: CreateAlbumDto) async throws -> AlbumResponseDto {

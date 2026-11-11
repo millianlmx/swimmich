@@ -289,12 +289,14 @@ final class AlbumsTests: XCTestCase {
 
     func test_updateAlbumDetails_sendsDtoAndUpdatesAlbum() async {
         let mock = MockImmichClient()
-        mock.getAlbumResponse = ["alb": makeAlbum(id: "alb", name: "Old Name")]
+        var album = makeAlbum(id: "alb", name: "Old Name")
+        album.ownerId = "me"
+        mock.getAlbumResponse = ["alb": album]
         let vm = AlbumDetailViewModel(client: mock, albumId: "alb")
         await vm.load()
         XCTAssertEqual(vm.album?.albumName, "Old Name")
 
-        let ok = await vm.updateAlbumDetails(name: "New Name", description: "Trip", isActivityEnabled: true)
+        let ok = await vm.updateAlbumDetails(name: "New Name", description: "Trip", isActivityEnabled: true, currentUserId: "me")
 
         XCTAssertTrue(ok)
         XCTAssertEqual(mock.lastUpdateAlbumId, "alb")
@@ -307,12 +309,14 @@ final class AlbumsTests: XCTestCase {
 
     func test_updateAlbumDetails_failure_keepsAlbum() async {
         let mock = MockImmichClient()
-        mock.getAlbumResponse = ["alb": makeAlbum(id: "alb", name: "Old Name")]
+        var album = makeAlbum(id: "alb", name: "Old Name")
+        album.ownerId = "me"
+        mock.getAlbumResponse = ["alb": album]
         let vm = AlbumDetailViewModel(client: mock, albumId: "alb")
         await vm.load()
         mock.updateAlbumError = Boom()
 
-        let ok = await vm.updateAlbumDetails(name: "New Name", description: nil, isActivityEnabled: nil)
+        let ok = await vm.updateAlbumDetails(name: "New Name", description: nil, isActivityEnabled: nil, currentUserId: "me")
 
         XCTAssertFalse(ok)
         XCTAssertEqual(vm.album?.albumName, "Old Name", "failed edit must keep the album")

@@ -87,7 +87,7 @@ actor AlbumSyncService: AlbumSyncServicing {
                 unresolved.append(album)
             }
         }
-        let serverAlbums = unresolved.isEmpty ? [] : try await client.getAlbums()
+        let serverAlbums = unresolved.isEmpty ? [] : try await client.getAlbums(shared: nil)
 
         for album in unresolved {
             if let match = Self.nameMatch(of: album.name, in: serverAlbums, userID: userID) {
@@ -115,17 +115,19 @@ actor AlbumSyncService: AlbumSyncServicing {
     }
 
     /// The album `name` already belongs to `userID`, or nil. Ownership comes
-    /// first (`albumUsers.first` is always the owner server-side) because that
-    /// is the album this mirror created; then an album merely shared with the
-    /// user. An album owned by somebody else and not shared is not a match —
-    /// merging into it would write into a stranger's album and come back
-    /// `no_permission` per asset.
+    /// first (`role(of:)` reads `ownerId` on v2.x and the user's own
+    /// `albumUsers` entry on v3+, never `albumUsers.first`) because that is
+    /// the album this mirror created; then an album where the user is an
+    /// editor. Viewers never match — the server refuses each add — and an
+    /// album owned by somebody else that does not include the user is not a
+    /// match either: merging into it would write into a stranger's album and
+    /// come back `no_permission` per asset.
     private static func nameMatch(of name: String, in albums: [AlbumResponseDto], userID: String) -> String? {
         let sameName = albums.filter { $0.albumName == name }
-        if let owned = sameName.first(where: { $0.albumUsers.first?.user.id == userID }) {
+        if let owned = sameName.first(where: { $0.role(of: userID) == .owner }) {
             return owned.id
         }
-        return sameName.first { $0.albumUsers.contains { $0.user.id == userID } }?.id
+        return sameName.first { $0.role(of: userID) == .editor }?.id
     }
 
     // MARK: - Buffering

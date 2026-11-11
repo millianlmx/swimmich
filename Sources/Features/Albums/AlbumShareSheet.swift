@@ -131,6 +131,8 @@ struct AlbumShareSheet: View {
                 .background(Color(uiColor: .secondarySystemGroupedBackground))
                 .clipShape(Capsule())
         }
+        .accessibilityElement(children: .contain)
+        .accessibilityIdentifier("albumShareOwnerRow_\(user.id)")
     }
 
     private func collaboratorRow(_ user: UserResponseDto) -> some View {
@@ -147,6 +149,8 @@ struct AlbumShareSheet: View {
                 .foregroundStyle(Color.accentColor)
                 .disabled(vm.busyUserIds.contains(user.id))
         }
+        .accessibilityElement(children: .contain)
+        .accessibilityIdentifier("albumShareCollaborator_\(user.id)")
         .swipeActions(edge: .trailing) {
             // Forced red: a global accent tint (ImmichPrimary) overrides the
             // destructive role's default red on iOS 26 — same class of bug as
@@ -185,6 +189,8 @@ struct AlbumShareSheet: View {
             )
             .labelStyle(.titleAndIcon)
         }
+        .accessibilityIdentifier("albumShareRole_\(user.id)")
+        .accessibilityValue(vm.role(for: user.id) == .editor ? Text("Editor") : Text("Viewer"))
     }
 }
 

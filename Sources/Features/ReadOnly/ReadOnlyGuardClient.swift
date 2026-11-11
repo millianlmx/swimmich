@@ -239,8 +239,8 @@ final class ReadOnlyGuardClient: ImmichClient {
 
     // MARK: - Albums
 
-    func getAlbums() async throws -> [AlbumResponseDto] {
-        try await inner.getAlbums()
+    func getAlbums(shared: Bool?) async throws -> [AlbumResponseDto] {
+        try await inner.getAlbums(shared: shared)
     }
 
     func createAlbum(dto: CreateAlbumDto) async throws -> AlbumResponseDto {

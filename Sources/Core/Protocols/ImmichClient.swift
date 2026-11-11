@@ -127,7 +127,9 @@ protocol ImmichClient: AnyObject, Sendable {
     func getMapMarkers(filter: MapMarkerFilter) async throws -> [MapMarkerResponseDto]
 
     // MARK: - Albums (AC-500..AC-518)
-    func getAlbums() async throws -> [AlbumResponseDto]
+    /// `shared == nil` sends no filter: owned albums up to v2.7.5, every visible album from v3.
+    /// `shared == true` adds the albums shared with the user (v2.x).
+    func getAlbums(shared: Bool?) async throws -> [AlbumResponseDto]
     func createAlbum(dto: CreateAlbumDto) async throws -> AlbumResponseDto
     func getAlbum(id: String) async throws -> AlbumResponseDto
     func updateAlbum(id: String, dto: UpdateAlbumDto) async throws -> AlbumResponseDto

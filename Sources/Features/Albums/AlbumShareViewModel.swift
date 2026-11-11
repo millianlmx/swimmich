@@ -32,9 +32,9 @@ final class AlbumShareViewModel {
     /// Instance users available to grant access to (self excluded).
     var users: [UserResponseDto] = []
 
-    /// The album owner (signed-in user). Always shown as the first row in the
-    /// people card; never revocable. Seeded from `albumUsers` (the server puts
-    /// the owner first, with `role == .owner`).
+    /// The album owner: the `albumUsers` entry with role `.owner` (v3+), else
+    /// the album's `owner` (v2.x), else nil. Never `albumUsers.first`. Always
+    /// the first row of the people card; never revocable.
     private(set) var owner: UserResponseDto?
 
     /// Granted collaborators present in the directory (owner excluded).
@@ -68,12 +68,15 @@ final class AlbumShareViewModel {
     private(set) var lastRoleUpdateDto: UpdateAlbumUserDto?
     private(set) var lastRemovedUserId: String?
 
+    /// - Parameter owner: the album's `owner` as sent by v2.x (where
+    ///   `albumUsers` excludes the owner). Used when no member has role `.owner`.
     init(
         client: any ImmichClient,
         albumId: String,
         currentUserId: String,
         isAdmin: Bool,
-        albumUsers: [AlbumUserResponseDto]
+        albumUsers: [AlbumUserResponseDto],
+        owner: UserResponseDto? = nil
     ) {
         self.client = client
         self.albumId = albumId
@@ -83,8 +86,10 @@ final class AlbumShareViewModel {
         var granted: [String: UserResponseDto] = [:]
         var foundOwner: UserResponseDto?
         for entry in albumUsers {
-            if foundOwner == nil, entry.role == .owner {
-                foundOwner = entry.user
+            // The owner is never a collaborator: not listed, never revocable.
+            if entry.role == .owner {
+                if foundOwner == nil { foundOwner = entry.user }
+                continue
             }
             guard entry.user.id != currentUserId else { continue }
             seeded[entry.user.id] = entry.role
@@ -92,7 +97,7 @@ final class AlbumShareViewModel {
         }
         self.roles = seeded
         self.grantedByID = granted
-        self.owner = foundOwner ?? albumUsers.first?.user
+        self.owner = foundOwner ?? owner
     }
 
     func role(for userId: String) -> AlbumUserRole? {
