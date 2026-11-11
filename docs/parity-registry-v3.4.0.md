@@ -465,7 +465,7 @@ Chaque écran principal a une ligne par aspect. « États » regroupe le chargem
 | L-02 | Albums : vrai propriétaire, édition par les éditeurs et ordre de tri | B-4, B-5, B-6 | planifié | — | — |
 | L-03 | Tags hiérarchiques | B-7 | livré | a5a5d8152e22 | AC-12, AC-13, AC-76, AC-77, AC-78, AC-79, AC-80, AC-81 |
 | L-04 | Timeline : curseur de défilement par date | B-8 | livré | 71b04a120142 | AC-14, AC-86, AC-87, AC-88, AC-89, AC-90, AC-91, AC-92, AC-93, AC-95, AC-96 |
-| L-05 | Affichage des photos JPEG XL | B-9 | livré | 122dcfc6a660 | AC-15, AC-97, AC-98, AC-99, AC-100, AC-101, AC-102, AC-103, AC-104, AC-105 |
+| L-05 | Affichage des photos JPEG XL | B-9 | livré | 6866ff26de28 | AC-15, AC-97, AC-98, AC-99, AC-100, AC-101, AC-102, AC-103, AC-104, AC-105 |
 | L-06 | Visionneuse : zoom maximal selon la résolution de la photo | B-10 | planifié | — | — |
 | L-07 | Souvenirs : tous les types v3.3+, enchaînement et écran de fin | B-11, B-34 | planifié | — | — |
 | L-08 | Bibliothèque d'un partenaire | B-12 | planifié | — | — |
