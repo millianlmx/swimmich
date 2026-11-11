@@ -469,7 +469,7 @@ Chaque écran principal a une ligne par aspect. « États » regroupe le chargem
 | L-06 | Visionneuse : zoom maximal selon la résolution de la photo | B-10 | livré | 3f5f33d267df | AC-16, AC-106, AC-107, AC-108, AC-109, AC-110, AC-111, AC-112, AC-113, AC-114 |
 | L-07 | Souvenirs : tous les types v3.3+, enchaînement et écran de fin | B-11, B-34 | livré | c5cbeebd854a | AC-17, AC-60 |
 | L-08 | Bibliothèque d'un partenaire | B-12 | livré | 00c63c47e251 | AC-18 |
-| L-09 | En-têtes HTTP personnalisés pour les proxys | B-13 | livré | 9e7642d5d6ec | AC-19, AC-20, AC-116, AC-117, AC-118, AC-119, AC-120, AC-121, AC-122, AC-123, AC-124, AC-125 |
+| L-09 | En-têtes HTTP personnalisés pour les proxys | B-13 | livré | f3328bc0a426 | AC-19, AC-20, AC-116, AC-117, AC-118, AC-119, AC-120, AC-121, AC-122, AC-123, AC-124, AC-125 |
 | L-10 | Certificat client (TLS mutuel) | B-14 | planifié | — | — |
 | L-11 | Journal applicatif partagé sans secrets | B-15 | planifié | — | — |
 | L-12 | Collections de contenu accessibles hors du hub « Me » | B-16 | planifié | — | — |
