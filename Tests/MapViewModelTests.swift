@@ -500,10 +500,11 @@ final class MapViewModelTests: XCTestCase {
         XCTAssertEqual(mock.requestCount, 2, "one reload — not one request per control")
         XCTAssertEqual(vm.markers.map(\.id), ["paris"])
 
-        // The filtered payload gets its own file: a filtered response is not a
-        // valid answer for another filter.
+        // The filtered payload gets its own file, in the account's folder: a
+        // filtered response is not a valid answer for another filter.
         let files = try? FileManager.default.contentsOfDirectory(
-            atPath: dir.appendingPathComponent("MapMarkers").path
+            atPath: dir.appendingPathComponent("MapMarkers")
+                .appendingPathComponent(SavedAccount.storageKey(forID: "test-account")).path
         )
         XCTAssertEqual(files?.sorted(), ["markers-f1-a0-p0-r30.json", "markers.json"])
     }
