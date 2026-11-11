@@ -182,7 +182,10 @@ final class ClientCertificateSessionsTests: XCTestCase {
             _ = try await makeClient(log: TLSChallengeLog()).ping()
             XCTFail("the request must fail")
         } catch {
-            XCTAssertEqual(error as? APIError, .network(URLError(.secureConnectionFailed)))
+            guard case .network(let urlError)? = error as? APIError else {
+                return XCTFail("expected a network error, got \(error)")
+            }
+            XCTAssertEqual(urlError.code, .secureConnectionFailed)
         }
     }
 
@@ -195,7 +198,10 @@ final class ClientCertificateSessionsTests: XCTestCase {
             _ = try await makeClient(log: log).ping()
             XCTFail("the request must fail")
         } catch {
-            XCTAssertEqual(error as? APIError, .network(URLError(.timedOut)))
+            guard case .network(let urlError)? = error as? APIError else {
+                return XCTFail("expected a network error, got \(error)")
+            }
+            XCTAssertEqual(urlError.code, .timedOut)
         }
     }
 
@@ -214,7 +220,10 @@ final class ClientCertificateSessionsTests: XCTestCase {
             _ = try await client.ping()
             XCTFail("the request must fail")
         } catch {
-            XCTAssertEqual(error as? APIError, .network(URLError(.networkConnectionLost)))
+            guard case .network(let urlError)? = error as? APIError else {
+                return XCTFail("expected a network error, got \(error)")
+            }
+            XCTAssertEqual(urlError.code, .networkConnectionLost)
         }
     }
 

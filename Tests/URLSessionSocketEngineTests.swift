@@ -146,7 +146,7 @@ final class URLSessionSocketEngineTests: XCTestCase {
 
         XCTAssertTrue(socket.wasResumed)
         XCTAssertEqual(socket.request.url?.scheme, "wss")
-        XCTAssertEqual(socket.request.url?.path, "/api/socket.io/")
+        XCTAssertEqual(socket.request.url?.path(percentEncoded: true), "/api/socket.io/")
         XCTAssertEqual(socket.request.url?.query, "transport=websocket&EIO=4")
         XCTAssertEqual(socket.request.value(forHTTPHeaderField: "Authorization"), "Bearer tok")
         XCTAssertEqual(socket.request.value(forHTTPHeaderField: "X-Access"), "secret")
