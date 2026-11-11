@@ -946,19 +946,30 @@ final class TimelineScrubberUITests: XCTestCase {
         resetPreferencesToDefaults()
     }
 
-    /// AC-93: VoiceOver adjustment, one month at a time.
+    /// AC-93: VoiceOver adjustment, one month at a time. The handle is exposed
+    /// to accessibility as a slider from the oldest month (0) to the newest (1);
+    /// XCUITest on iOS cannot swipe an adjustable element, so the slider is set
+    /// one step at a time, which is what a VoiceOver swipe does.
     func test_AC_93() throws {
         startFresh()
         XCTAssertEqual(scrubber.label, "Date scrubber", "the handle must announce its (localized) label")
         XCTAssertEqual(scrubberValue, expectedLabel(2025, 12, enUS), "the handle must announce the month as value")
 
-        scrubber.decrement()
+        // One step older (swipe down): month 1 of the 36.
+        scrubber.adjust(toNormalizedSliderPosition: sliderPosition(ofMonthIndex: 1, of: 36))
         waitForScrubberValue(expectedLabel(2025, 11, enUS))
         waitForTop(2025, 11, rank: 1)
 
-        scrubber.increment()
+        // One step newer (swipe up): back to month 0.
+        scrubber.adjust(toNormalizedSliderPosition: sliderPosition(ofMonthIndex: 0, of: 36))
         waitForScrubberValue(expectedLabel(2025, 12, enUS))
         waitForTop(2025, 12, rank: 1)
+    }
+
+    /// Normalized position of the accessibility slider for month `index` of `count`
+    /// (newest = 1, oldest = 0).
+    private func sliderPosition(ofMonthIndex index: Int, of count: Int) -> CGFloat {
+        CGFloat(count - 1 - index) / CGFloat(count - 1)
     }
 
     /// AC-95: a release on A (slow), then at once on B: B wins, whenever A answers.

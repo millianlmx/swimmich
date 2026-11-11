@@ -48,13 +48,16 @@ enum TimelineScrubberMath {
         return max(0, min(c - 1, Int((f * Double(c)).rounded(.down))))
     }
 
-    /// Month index after a VoiceOver adjustment: swipe up = newer, down = older.
-    static func adjusted(monthIndex m: Int, direction: AccessibilityAdjustmentDirection, monthCount n: Int) -> Int {
-        switch direction {
-        case .increment: return max(m - 1, 0)
-        case .decrement: return min(m + 1, n - 1)
-        @unknown default: return m
-        }
+    /// The accessibility slider runs from the oldest month (`0`) to the newest
+    /// (`n - 1`): a VoiceOver increment (swipe up) goes to a newer month.
+    static func sliderValue(monthIndex m: Int, monthCount n: Int) -> Double {
+        Double(max(n - 1 - m, 0))
+    }
+
+    /// Inverse of `sliderValue`, clamped to the months of the list.
+    static func monthIndex(sliderValue v: Double, monthCount n: Int) -> Int {
+        guard n > 0, v.isFinite else { return 0 }
+        return max(0, min(n - 1, n - 1 - Int(v.rounded())))
     }
 }
 
@@ -200,14 +203,26 @@ struct TimelineScrubber: View {
                         scheduleLabelFade()
                     }
             )
-            .accessibilityElement(children: .ignore)
-            .accessibilityLabel(Text("Date scrubber"))
-            .accessibilityValue(Text(verbatim: monthLabel(month)))
-            .accessibilityAdjustableAction { direction in
-                let next = TimelineScrubberMath.adjusted(monthIndex: month, direction: direction, monthCount: n)
+            .accessibilityRepresentation {
+                Slider(value: adjustBinding(month: month, monthCount: n), in: 0...Double(max(n - 1, 1)), step: 1) {
+                    Text("Date scrubber")
+                }
+                .accessibilityLabel(Text("Date scrubber"))
+                .accessibilityValue(Text(verbatim: monthLabel(month)))
+                .accessibilityIdentifier("timelineScrubber")
+            }
+    }
+
+    /// The VoiceOver slider: reads the resting month, and a change of its value
+    /// asks for a jump to that month.
+    private func adjustBinding(month: Int, monthCount n: Int) -> Binding<Double> {
+        Binding<Double>(
+            get: { TimelineScrubberMath.sliderValue(monthIndex: month, monthCount: n) },
+            set: { value in
+                let next = TimelineScrubberMath.monthIndex(sliderValue: value, monthCount: n)
                 if next != month { onAdjust(next) }
             }
-            .accessibilityIdentifier("timelineScrubber")
+        )
     }
 
     /// Hides the bubble 1.5 s after the release, unless a new gesture began.

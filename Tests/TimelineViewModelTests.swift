@@ -1,5 +1,4 @@
 import XCTest
-import SwiftUI
 @testable import ImmichSwiftUI
 
 final class TimelineViewModelTests: XCTestCase {
@@ -2110,10 +2109,18 @@ final class TimelineViewModelTests: XCTestCase {
     }
 
     func test_AC_93_adjustedMonthIndexClamps() {
-        XCTAssertEqual(TimelineScrubberMath.adjusted(monthIndex: 5, direction: .decrement, monthCount: 36), 6, "swipe down = older")
-        XCTAssertEqual(TimelineScrubberMath.adjusted(monthIndex: 5, direction: .increment, monthCount: 36), 4, "swipe up = newer")
-        XCTAssertEqual(TimelineScrubberMath.adjusted(monthIndex: 0, direction: .increment, monthCount: 36), 0)
-        XCTAssertEqual(TimelineScrubberMath.adjusted(monthIndex: 35, direction: .decrement, monthCount: 36), 35)
+        // The slider runs oldest (0) to newest (n - 1): an increment is a newer month.
+        XCTAssertEqual(TimelineScrubberMath.sliderValue(monthIndex: 0, monthCount: 36), 35)
+        XCTAssertEqual(TimelineScrubberMath.sliderValue(monthIndex: 35, monthCount: 36), 0)
+        XCTAssertEqual(TimelineScrubberMath.monthIndex(sliderValue: 34, monthCount: 36), 1, "one step down = older")
+        XCTAssertEqual(TimelineScrubberMath.monthIndex(sliderValue: 35, monthCount: 36), 0, "one step up = newer")
+        XCTAssertEqual(TimelineScrubberMath.monthIndex(sliderValue: 99, monthCount: 36), 0, "clamped to the newest")
+        XCTAssertEqual(TimelineScrubberMath.monthIndex(sliderValue: -4, monthCount: 36), 35, "clamped to the oldest")
+        XCTAssertEqual(TimelineScrubberMath.monthIndex(sliderValue: .nan, monthCount: 36), 0)
+        for month in 0..<36 {
+            let value = TimelineScrubberMath.sliderValue(monthIndex: month, monthCount: 36)
+            XCTAssertEqual(TimelineScrubberMath.monthIndex(sliderValue: value, monthCount: 36), month)
+        }
     }
 
     @MainActor
