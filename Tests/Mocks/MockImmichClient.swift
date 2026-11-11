@@ -717,9 +717,11 @@ final class MockImmichClient: ImmichClient, @unchecked Sendable {
         )
     }
 
+    private func recordSharedArg(_ shared: Bool?) { lock.lock(); getAlbumsSharedArgs.append(shared); lock.unlock() }
+
     func getAlbums(shared: Bool?) async throws -> [AlbumResponseDto] {
         bump()
-        getAlbumsSharedArgs.append(shared)
+        recordSharedArg(shared)
         if let e = globalError ?? albumsError { throw e }
         if shared == true { return sharedAlbumsResponse ?? [] }
         return albumsResponse ?? []
