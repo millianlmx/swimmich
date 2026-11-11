@@ -44,3 +44,105 @@ final class JpegXLDecodingTests: XCTestCase {
         XCTAssertEqual(Array(encoded.prefix(2)), [0xFF, 0xD8], "widget re-encode is not a JPEG")
     }
 }
+
+extension JpegXLDecodingTests {
+
+    /// Negative control: two signature bytes carry no size header, so nothing
+    /// can be decoded — the grid and the widget must see a failure, not an image.
+    func test_AC_97_truncatedJpegXLIsNotDecoded() {
+        XCTAssertNil(UIImage(data: JpegXLFixture.truncated))
+        XCTAssertNil(WidgetImageEncoder.encode(JpegXLFixture.truncated, at: .cell))
+    }
+
+    func test_AC_97_fixtureIsTheConformanceFileUnmodified() {
+        let digest = SHA256.hash(data: JpegXLFixture.thumbnail).map { String(format: "%02x", $0) }.joined()
+        XCTAssertEqual(digest, JpegXLFixture.thumbnailSHA256)
+        XCTAssertEqual(JpegXLFixture.thumbnail.count, 1069)
+    }
+
+    func test_AC_97_loadStateProbeValues() throws {
+        XCTAssertEqual(ImageLoadState.placeholder.probeValue(extra: nil), "placeholder")
+        XCTAssertEqual(ImageLoadState.failed.probeValue(extra: nil), "failed")
+        XCTAssertEqual(ImageLoadState.loaded(pixelWidth: 1024, pixelHeight: 631).probeValue(extra: nil), "loaded 1024x631")
+
+        XCTAssertEqual(ImageLoadState.placeholder.probeValue(extra: "zoom=1.00"), "placeholder zoom=1.00")
+        XCTAssertEqual(ImageLoadState.failed.probeValue(extra: "zoom=1.00"), "failed zoom=1.00")
+        XCTAssertEqual(
+            ImageLoadState.loaded(pixelWidth: 1024, pixelHeight: 631).probeValue(extra: "zoom=2.50"),
+            "loaded 1024x631 zoom=2.50"
+        )
+        XCTAssertEqual(ImageLoadState.failed.probeValue(extra: ""), "failed", "an empty extra adds nothing")
+
+        let image = try XCTUnwrap(UIImage(data: JpegXLFixture.thumbnail))
+        XCTAssertEqual(ImageLoadState(loaded: image), .loaded(pixelWidth: 200, pixelHeight: 200))
+    }
+
+    /// AC-100: an offline copy is an original, read from disk through the
+    /// downsampler that bounds its decoded size.
+    func test_AC_100_downsamplerDecodesJpegXLFile() throws {
+        let url = FileManager.default.temporaryDirectory.appendingPathComponent("jxl-offline-\(UUID().uuidString).jxl")
+        try JpegXLFixture.thumbnail.write(to: url)
+        defer { try? FileManager.default.removeItem(at: url) }
+
+        for limit in [2048, 4096] {
+            let image = try XCTUnwrap(ImageDownsampler.image(at: url, maxPixelSize: limit))
+            XCTAssertEqual(image.cgImage?.width, 200, "maxPixelSize \(limit)")
+            XCTAssertEqual(image.cgImage?.height, 200, "maxPixelSize \(limit)")
+        }
+
+        let small = try XCTUnwrap(ImageDownsampler.image(at: url, maxPixelSize: 100))
+        let longest = max(small.cgImage?.width ?? 0, small.cgImage?.height ?? 0)
+        XCTAssertEqual(longest, 100)
+    }
+
+    /// AC-103: the formats that worked before keep working and keep their names.
+    func test_AC_103_otherFormatsUnchanged() throws {
+        let renderer = UIGraphicsImageRenderer(size: CGSize(width: 40, height: 30))
+        let canvas = renderer.image { context in
+            UIColor.systemTeal.setFill()
+            context.fill(CGRect(x: 0, y: 0, width: 40, height: 30))
+        }
+        let jpeg = try XCTUnwrap(canvas.jpegData(compressionQuality: 0.8))
+        let png = try XCTUnwrap(canvas.pngData())
+
+        for data in [jpeg, png] {
+            let decoded = try XCTUnwrap(UIImage(data: data))
+            XCTAssertEqual(ImageLoadState(loaded: decoded), .loaded(pixelWidth: 40, pixelHeight: 30))
+            XCTAssertEqual(PhotoLibraryServiceImpl.imageExtension(for: data), "jpg")
+        }
+
+        XCTAssertEqual(AssetFileTransfer.fileExtension(forMime: "image/png"), "png")
+        XCTAssertEqual(AssetFileTransfer.fileExtension(forMime: "image/webp"), "webp")
+        XCTAssertEqual(AssetFileTransfer.fileExtension(forMime: "image/heic"), "heic")
+        XCTAssertEqual(AssetFileTransfer.fileExtension(forMime: "image/gif"), "gif")
+        XCTAssertEqual(AssetFileTransfer.fileExtension(forMime: "image/avif"), "avif")
+        XCTAssertEqual(AssetFileTransfer.fileExtension(forMime: "video/mp4"), "mp4")
+        XCTAssertEqual(AssetFileTransfer.fileExtension(forMime: "video/quicktime"), "mov")
+        XCTAssertEqual(AssetFileTransfer.fileExtension(forMime: "video/mpeg"), "mpg")
+        XCTAssertEqual(AssetFileTransfer.fileExtension(forMime: "application/octet-stream"), "jpg")
+        XCTAssertEqual(AssetFileTransfer.fileExtension(forMime: nil), "jpg")
+    }
+
+    /// AC-104: "Partager" sends the preview, so the extension follows the
+    /// preview's own `Content-Type`, not the original's.
+    func test_AC_104_shareExtensionFollowsSharedBytes() {
+        XCTAssertEqual(AssetFileTransfer.sharedFileExtension(sharedContentType: "image/jxl", originalMime: "image/jxl"), "jxl")
+        XCTAssertEqual(AssetFileTransfer.sharedFileExtension(sharedContentType: "image/jpeg", originalMime: "image/jxl"), "jpg")
+        XCTAssertEqual(AssetFileTransfer.sharedFileExtension(sharedContentType: nil, originalMime: "image/jxl"), "jxl")
+        XCTAssertEqual(AssetFileTransfer.fileExtension(forMime: "image/jxl; charset=binary"), "jxl")
+    }
+
+    /// AC-105: Photos infers the type from the file, so a JPEG XL original must
+    /// be written as `.jxl` — by its bytes, whichever name the server gave.
+    func test_AC_105_photosExtensionSniffsJpegXL() throws {
+        XCTAssertEqual(PhotoLibraryServiceImpl.imageExtension(for: JpegXLFixture.thumbnail), "jxl")
+        XCTAssertEqual(PhotoLibraryServiceImpl.imageExtension(for: JpegXLFixture.containerHeader), "jxl")
+
+        let renderer = UIGraphicsImageRenderer(size: CGSize(width: 40, height: 30))
+        let canvas = renderer.image { $0.cgContext.fill(CGRect(x: 0, y: 0, width: 40, height: 30)) }
+        XCTAssertEqual(PhotoLibraryServiceImpl.imageExtension(for: try XCTUnwrap(canvas.jpegData(compressionQuality: 0.8))), "jpg")
+        XCTAssertEqual(PhotoLibraryServiceImpl.imageExtension(for: try XCTUnwrap(canvas.pngData())), "jpg")
+        XCTAssertEqual(PhotoLibraryServiceImpl.imageExtension(for: Data("....ftypheic".utf8)), "heic")
+        XCTAssertEqual(PhotoLibraryServiceImpl.imageExtension(for: Data()), "jpg")
+    }
+}

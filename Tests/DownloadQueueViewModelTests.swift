@@ -86,6 +86,18 @@ final class DownloadQueueViewModelTests: XCTestCase {
         XCTAssertEqual(vm.items.first?.destinationURL?.lastPathComponent, "IMG_0421.HEIC")
     }
 
+    func test_AC_102_queuedOriginalWithoutExtensionIsNamedJxl() async {
+        stubAsset(id: "a", name: "IMG_0001", mime: "image/jxl")
+        stubAsset(id: "b", name: "IMG_0002.jxl", mime: "image/jxl")
+
+        await vm.enqueue(asset: makeAsset(id: "a"))
+        await vm.enqueue(asset: makeAsset(id: "b"))
+        await settle()
+
+        XCTAssertEqual(vm.items.first { $0.id == "a" }?.fileName, "IMG_0001.jxl")
+        XCTAssertEqual(vm.items.first { $0.id == "b" }?.fileName, "IMG_0002.jxl")
+    }
+
     func test_oneRowFailing_doesNotStopTheOthers() async {
         stubAsset(id: "bad", name: "bad.jpg")
         stubAsset(id: "good", name: "good.jpg")

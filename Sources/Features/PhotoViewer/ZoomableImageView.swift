@@ -74,8 +74,12 @@ struct ZoomableImageView: View {
                 // Full screen: keep enough pixels for pinch-zoom to 4x without
                 // re-decoding, still far below the original's own size.
                 localMaxPixelSize: 4096,
-                thumbnailURL: asset.thumbnailURL(base: baseURL, size: .thumbnail, sharedLink: sharedLink)
+                thumbnailURL: asset.thumbnailURL(base: baseURL, size: .thumbnail, sharedLink: sharedLink),
+                // Read by the test probe only (`-uiTestImageProbe`): POSIX locale
+                // so the value never depends on the device's decimal separator.
+                probeExtra: String(format: "zoom=%.2f", locale: Locale(identifier: "en_US_POSIX"), scale)
             )
+            .accessibilityIdentifier("viewerImage_\(asset.id)")
             .frame(width: proxy.size.width, height: proxy.size.height)
             .scaleEffect(scale)
             .offset(offset)
