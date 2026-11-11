@@ -191,7 +191,7 @@ final class AuthViewModelTests: XCTestCase {
             publicUsers: false, mapDarkStyleUrl: "", mapLightStyleUrl: "",
             maintenanceMode: false, minFaces: 3
         )
-        let auth = AuthViewModel(client: mock, keychain: keychain, defaults: defaults)
+        let auth = AuthViewModel(client: mock, keychain: keychain, defaults: defaults, realtime: RealtimeService(transport: MockRealtimeTransport()))
 
         XCTAssertTrue(auth.isAuthenticated, "token restored from keychain")
         XCTAssertEqual(auth.serverURLString, "https://photos.example.com")
@@ -220,7 +220,7 @@ final class AuthViewModelTests: XCTestCase {
         makeStoredSession(defaults: defaults, keychain: keychain)
         let mock = MockImmichClient()
         mock.validateError = APIError.unauthorized
-        let auth = AuthViewModel(client: mock, keychain: keychain, defaults: defaults)
+        let auth = AuthViewModel(client: mock, keychain: keychain, defaults: defaults, realtime: RealtimeService(transport: MockRealtimeTransport()))
 
         await auth.restoreSession()
 
@@ -239,7 +239,7 @@ final class AuthViewModelTests: XCTestCase {
         makeStoredSession(defaults: defaults, keychain: keychain)
         let mock = MockImmichClient()
         mock.validateError = URLError(.notConnectedToInternet)
-        let auth = AuthViewModel(client: mock, keychain: keychain, defaults: defaults)
+        let auth = AuthViewModel(client: mock, keychain: keychain, defaults: defaults, realtime: RealtimeService(transport: MockRealtimeTransport()))
 
         await auth.restoreSession()
 
@@ -253,13 +253,87 @@ final class AuthViewModelTests: XCTestCase {
         let (defaults, suite) = makeIsolatedDefaults()
         defer { defaults.removePersistentDomain(forName: suite) }
         let mock = MockImmichClient()
-        let auth = AuthViewModel(client: mock, keychain: MockKeychainStore(), defaults: defaults)
+        let auth = AuthViewModel(client: mock, keychain: MockKeychainStore(), defaults: defaults, realtime: RealtimeService(transport: MockRealtimeTransport()))
 
         await auth.restoreSession()
 
         XCTAssertFalse(auth.isAuthenticated)
         XCTAssertFalse(auth.isRestoringSession)
         XCTAssertEqual(mock.requestCount, 0, "no validation without a session")
+    }
+
+    // MARK: - Realtime socket at relaunch
+
+    // AC-1: a confirmed stored session connects the socket to that URL with that token.
+    @MainActor
+    func test_realtime_AC1_restoreSessionValidTokenConnectsSocket() async {
+        let (defaults, suite) = makeIsolatedDefaults()
+        defer { defaults.removePersistentDomain(forName: suite) }
+        let keychain = MockKeychainStore()
+        makeStoredSession(defaults: defaults, keychain: keychain)
+        let transport = MockRealtimeTransport()
+        let auth = AuthViewModel(client: MockImmichClient(), keychain: keychain, defaults: defaults, realtime: RealtimeService(transport: transport))
+
+        await auth.restoreSession()
+
+        XCTAssertEqual(transport.connects.count, 1)
+        XCTAssertEqual(transport.connects.first?.baseURL.absoluteString, "https://photos.example.com")
+        XCTAssertEqual(transport.connects.first?.token, "saved-jwt")
+        XCTAssertTrue(transport.isConnected)
+    }
+
+    // AC-2: a network failure during validation keeps the session and still connects.
+    @MainActor
+    func test_realtime_AC2_restoreSessionNetworkErrorConnectsSocket() async {
+        let (defaults, suite) = makeIsolatedDefaults()
+        defer { defaults.removePersistentDomain(forName: suite) }
+        let keychain = MockKeychainStore()
+        makeStoredSession(defaults: defaults, keychain: keychain)
+        let mock = MockImmichClient()
+        mock.validateError = URLError(.notConnectedToInternet)
+        let transport = MockRealtimeTransport()
+        let auth = AuthViewModel(client: mock, keychain: keychain, defaults: defaults, realtime: RealtimeService(transport: transport))
+
+        await auth.restoreSession()
+
+        XCTAssertTrue(auth.isAuthenticated)
+        XCTAssertEqual(transport.connects.count, 1)
+        XCTAssertEqual(transport.connects.first?.baseURL.absoluteString, "https://photos.example.com")
+        XCTAssertEqual(transport.connects.first?.token, "saved-jwt")
+        XCTAssertTrue(transport.isConnected)
+    }
+
+    // AC-3: a rejected token (401) leaves no connected socket.
+    @MainActor
+    func test_realtime_AC3_restoreSessionRejectedTokenLeavesNoSocket() async {
+        let (defaults, suite) = makeIsolatedDefaults()
+        defer { defaults.removePersistentDomain(forName: suite) }
+        let keychain = MockKeychainStore()
+        makeStoredSession(defaults: defaults, keychain: keychain)
+        let mock = MockImmichClient()
+        mock.validateError = APIError.unauthorized
+        let transport = MockRealtimeTransport()
+        let auth = AuthViewModel(client: mock, keychain: keychain, defaults: defaults, realtime: RealtimeService(transport: transport))
+
+        await auth.restoreSession()
+
+        XCTAssertFalse(auth.isAuthenticated)
+        XCTAssertTrue(transport.connects.isEmpty)
+        XCTAssertFalse(transport.isConnected)
+    }
+
+    // AC-3: no stored session leaves no connected socket.
+    @MainActor
+    func test_realtime_AC3_restoreSessionNoSessionLeavesNoSocket() async {
+        let (defaults, suite) = makeIsolatedDefaults()
+        defer { defaults.removePersistentDomain(forName: suite) }
+        let transport = MockRealtimeTransport()
+        let auth = AuthViewModel(client: MockImmichClient(), keychain: MockKeychainStore(), defaults: defaults, realtime: RealtimeService(transport: transport))
+
+        await auth.restoreSession()
+
+        XCTAssertTrue(transport.connects.isEmpty)
+        XCTAssertFalse(transport.isConnected)
     }
 
     // AC-7: a 401 on a signed-in session shows the expiry copy, returns to

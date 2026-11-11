@@ -151,6 +151,8 @@
 		3B94236313A82778C1DD9F40 /* LocalLibraryView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2CEE463F828CBAB87F4BE351 /* LocalLibraryView.swift */; };
 		3BF7016C945AF0500CF26931 /* SharedLinksViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = ED83254B66ED0E84314CD3F1 /* SharedLinksViewModel.swift */; };
 		3C3E7DB6ABCD73CE81DFA3C5 /* MockImmichClient.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3B9AE950509E9F2C77A88EB3 /* MockImmichClient.swift */; };
+		7A11CE00010000000000A002 /* MockRealtimeTransport.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7A11CE00010000000000A001 /* MockRealtimeTransport.swift */; };
+		7A11CE00010000000000B002 /* RealtimeServiceTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7A11CE00010000000000B001 /* RealtimeServiceTests.swift */; };
 		3C7D0A06D816806EBE848628 /* FreeUpSpaceUITests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A14A4BDD1813503721593F03 /* FreeUpSpaceUITests.swift */; };
 		3C8825E3CF40E4DFCB3F0075 /* DownloadProgressPanel.swift in Sources */ = {isa = PBXBuildFile; fileRef = A93DCDE041388953765AD3C2 /* DownloadProgressPanel.swift */; };
 		3DBCAE0EC9573E6E46A181D2 /* MapSettingsStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 03FB0288F074A6D4A64930F5 /* MapSettingsStore.swift */; };
@@ -797,6 +799,7 @@
 		3AF7E78692845BCDDBE07DE3 /* immich_stub_share_extension.py */ = {isa = PBXFileReference; lastKnownFileType = text.script.python; path = immich_stub_share_extension.py; sourceTree = "<group>"; };
 		3B8BBFD23F801DA7B4C9EEF9 /* LockedFolderView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LockedFolderView.swift; sourceTree = "<group>"; };
 		3B9AE950509E9F2C77A88EB3 /* MockImmichClient.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MockImmichClient.swift; sourceTree = "<group>"; };
+		7A11CE00010000000000A001 /* MockRealtimeTransport.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MockRealtimeTransport.swift; sourceTree = "<group>"; };
 		3BC11DA5F547A67A539BABD8 /* SearchFilterSheet.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SearchFilterSheet.swift; sourceTree = "<group>"; };
 		3BDE5C36FB210ED6F4F6B9A3 /* HapticsEnvironment.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HapticsEnvironment.swift; sourceTree = "<group>"; };
 		3CECF6B45B0DE5651C9B54AD /* SharedLinkViewerView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SharedLinkViewerView.swift; sourceTree = "<group>"; };
@@ -888,6 +891,7 @@
 		6892FD91BCB405574D2E2665 /* ImmichAPIClient.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ImmichAPIClient.swift; sourceTree = "<group>"; };
 		6977E7827E495C0488F26170 /* WidgetDataProvider.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WidgetDataProvider.swift; sourceTree = "<group>"; };
 		6AAAC623B25E2F58794D2DE8 /* TimelineViewModelTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TimelineViewModelTests.swift; sourceTree = "<group>"; };
+		7A11CE00010000000000B001 /* RealtimeServiceTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RealtimeServiceTests.swift; sourceTree = "<group>"; };
 		6AC767038DB5DA626CF3E1DB /* ImageCache.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ImageCache.swift; sourceTree = "<group>"; };
 		6AFA3FF97E3B0FEE3DDAB35E /* RoadTripFramePlanTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RoadTripFramePlanTests.swift; sourceTree = "<group>"; };
 		6B809395179EFC13C5A424BE /* TrustedServerStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TrustedServerStore.swift; sourceTree = "<group>"; };
@@ -1734,6 +1738,7 @@
 				6FC3814BFC146B5B49F9091F /* TimelineGridZoomTests.swift */,
 				A557E6E89A1B0868B3957EC3 /* TimelineSectionBuilderTests.swift */,
 				6AAAC623B25E2F58794D2DE8 /* TimelineViewModelTests.swift */,
+				7A11CE00010000000000B001 /* RealtimeServiceTests.swift */,
 				E9F278A2DD511F10E13FDED5 /* TrashViewModelTests.swift */,
 				1D58BB447FEF7A1EE41810F9 /* TrustedServerStoreTests.swift */,
 				E5D10C82D78CAF4D69F0B565 /* UploadDetailViewModelTests.swift */,
@@ -1891,6 +1896,7 @@
 				46D0BFB5C4F94C1B1A290EEB /* MockCastService.swift */,
 				AB22775352AF339062CDD7A3 /* MockFileDownloadTransport.swift */,
 				3B9AE950509E9F2C77A88EB3 /* MockImmichClient.swift */,
+				7A11CE00010000000000A001 /* MockRealtimeTransport.swift */,
 				32494F08196735AC40C42E65 /* MockKeychainStore.swift */,
 				F49E6261B65065297B08532A /* MockLibraryMonitor.swift */,
 				3DE9F6765E7DE075925A62C0 /* MockLocationGeocoding.swift */,
@@ -2681,6 +2687,7 @@
 				3EFD9A7DEFD6448114F03815 /* MockCastService.swift in Sources */,
 				EEA0C599CE8F4EB380B2DAB1 /* MockFileDownloadTransport.swift in Sources */,
 				3C3E7DB6ABCD73CE81DFA3C5 /* MockImmichClient.swift in Sources */,
+				7A11CE00010000000000A002 /* MockRealtimeTransport.swift in Sources */,
 				1073BAEE4F1F707ED70F6C07 /* MockKeychainStore.swift in Sources */,
 				697B523CF61732C3F03492E1 /* MockLibraryMonitor.swift in Sources */,
 				2F68BDD218095E9AB4C6DA7F /* MockLocationGeocoding.swift in Sources */,
@@ -2735,6 +2742,7 @@
 				4244006500C17C37EC3C23D6 /* TimelineGridZoomTests.swift in Sources */,
 				9B9C6DF5786353C2AF23F18F /* TimelineSectionBuilderTests.swift in Sources */,
 				16A15FE17FE057D4F3F4B5A8 /* TimelineViewModelTests.swift in Sources */,
+				7A11CE00010000000000B002 /* RealtimeServiceTests.swift in Sources */,
 				2516D9D5C7D2EC06E7CF8D30 /* TrashViewModelTests.swift in Sources */,
 				9C2C794CED578970A384690F /* TrustedServerStoreTests.swift in Sources */,
 				649FA46B988D267F7F9BF744 /* UploadDetailViewModelTests.swift in Sources */,

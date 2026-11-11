@@ -162,6 +162,11 @@ final class AuthViewModel: AuthSessionDelegate {
         // therefore leave `externalDomain` unknown — and the public URL of a
         // shared link would fall back to the server's internal address.
         if isAuthenticated {
+            // The token/URL pair that was just validated; a switch of account
+            // during the await must not reconnect with the old token.
+            if accessToken == token, baseURL == url {
+                realtime.connect(baseURL: url, token: token)
+            }
             serverConfig = try? await client.serverConfig()
             publishWidgetSession()
         }
