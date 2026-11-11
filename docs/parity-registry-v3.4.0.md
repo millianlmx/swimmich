@@ -470,7 +470,7 @@ Chaque écran principal a une ligne par aspect. « États » regroupe le chargem
 | L-07 | Souvenirs : tous les types v3.3+, enchaînement et écran de fin | B-11, B-34 | livré | c5cbeebd854a | AC-17, AC-60 |
 | L-08 | Bibliothèque d'un partenaire | B-12 | livré | 6999e9d63611 | AC-18 |
 | L-09 | En-têtes HTTP personnalisés pour les proxys | B-13 | livré | 5e08be7bb2e3 | AC-19, AC-20, AC-116, AC-117, AC-118, AC-119, AC-120, AC-121, AC-122, AC-123, AC-124, AC-125 |
-| L-10 | Certificat client (TLS mutuel) | B-14 | livré | 24df8bbc49b8 | AC-21, AC-22, AC-37 |
+| L-10 | Certificat client (TLS mutuel) | B-14 | livré | 09e37be71eca | AC-21, AC-22, AC-37 |
 | L-11 | Journal applicatif partagé sans secrets | B-15 | planifié | — | — |
 | L-12 | Collections de contenu accessibles hors du hub « Me » | B-16 | planifié | — | — |
 | L-13 | Texte lisible à toutes les tailles Dynamic Type | B-17 | planifié | — | — |
