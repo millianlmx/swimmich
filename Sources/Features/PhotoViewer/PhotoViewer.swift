@@ -996,6 +996,7 @@ struct PhotoViewer: View {
                             }
                             .buttonStyle(.plain)
                             .accessibilityLabel("Edit")
+                            .accessibilityIdentifier("viewerEditButton")
                         }
                     }
                     .padding(.horizontal, PVSpacing.s8)
@@ -1038,6 +1039,7 @@ struct PhotoViewer: View {
                     }
                     .buttonStyle(.plain)
                     .accessibilityLabel(isTrash ? "Delete Permanently" : "Delete")
+                    .accessibilityIdentifier("viewerDeleteButton")
                 }
             }
         }

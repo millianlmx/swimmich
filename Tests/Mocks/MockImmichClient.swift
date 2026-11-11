@@ -12,6 +12,7 @@ struct TimelineFilterCapture: Equatable {
     let withStacked: Bool?
     let orderBy: AssetOrderBy?
     var tagId: String? = nil
+    var userId: String? = nil
 }
 
 /// One `getPeople` request, comparable in tests.
@@ -187,6 +188,7 @@ final class MockImmichClient: ImmichClient, @unchecked Sendable {
     /// Every `getTimeBucket` call in order: the month and the filters sent.
     var timeBucketCalls: [(timeBucket: String, filters: TimelineFilterCapture)] = []
     var lastTimeBucketsTagId: String?
+    var lastTimeBucketsUserId: String?
     /// Errors thrown, one per call and in order, by the matching route — before `globalError`.
     var timeBucketsErrorQueue: [Error] = []
     var timeBucketErrorQueue: [Error] = []
@@ -498,7 +500,8 @@ final class MockImmichClient: ImmichClient, @unchecked Sendable {
         visibility: String?,
         withStacked: Bool?,
         orderBy: AssetOrderBy?,
-        tagId: String?
+        tagId: String?,
+        userId: String?
     ) async throws -> [TimeBucketsResponseDto] {
         bump()
         lastTimeBucketsIsTrashed = isTrashed
@@ -508,10 +511,11 @@ final class MockImmichClient: ImmichClient, @unchecked Sendable {
         lastTimeBucketsWithStacked = withStacked
         lastTimeBucketsOrderBy = orderBy
         lastTimeBucketsTagId = tagId
+        lastTimeBucketsUserId = userId
         lastTimeBucketsFilters = TimelineFilterCapture(
             isFavorite: isFavorite, isTrashed: isTrashed, personId: personId,
             withPartners: withPartners, visibility: visibility,
-            withStacked: withStacked, orderBy: orderBy, tagId: tagId
+            withStacked: withStacked, orderBy: orderBy, tagId: tagId, userId: userId
         )
         if !timeBucketsErrorQueue.isEmpty { throw timeBucketsErrorQueue.removeFirst() }
         if let e = globalError { throw e }
@@ -527,7 +531,8 @@ final class MockImmichClient: ImmichClient, @unchecked Sendable {
         visibility: String?,
         withStacked: Bool?,
         orderBy: AssetOrderBy?,
-        tagId: String?
+        tagId: String?,
+        userId: String?
     ) async throws -> TimeBucketAssetResponseDto {
         bump()
         lastTimeBucketIsFavorite = isFavorite
@@ -539,7 +544,7 @@ final class MockImmichClient: ImmichClient, @unchecked Sendable {
         timeBucketCalls.append((timeBucket: timeBucket, filters: TimelineFilterCapture(
             isFavorite: isFavorite, isTrashed: isTrashed, personId: personId,
             withPartners: withPartners, visibility: visibility,
-            withStacked: withStacked, orderBy: orderBy, tagId: tagId
+            withStacked: withStacked, orderBy: orderBy, tagId: tagId, userId: userId
         )))
         if let gate = timeBucketGate { try await gate(timeBucket) }
         if !timeBucketErrorQueue.isEmpty { throw timeBucketErrorQueue.removeFirst() }

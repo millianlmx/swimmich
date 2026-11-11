@@ -66,6 +66,19 @@ enum TimelineSectionBuilder {
         }
     }
 
+    /// Cuts a flat asset list into day groups: the key is the `YYYY-MM-DD`
+    /// prefix of `fileCreatedAt`, days run newest first, and a day's items run
+    /// newest first too. Shared by the timeline and the partner library so a
+    /// grid and the viewer paging over it agree on one order.
+    static func groupedByDay(_ items: [AssetReactItem]) -> [(day: String, items: [AssetReactItem])] {
+        Dictionary(grouping: items) { item -> String in
+            // ISO8601 YYYY-MM-DD prefix
+            String(item.fileCreatedAt.prefix(10))
+        }
+        .map { (day: $0.key, items: $0.value.sorted { $0.fileCreatedAt > $1.fileCreatedAt }) }
+        .sorted { $0.day > $1.day }
+    }
+
     /// Cuts the day-descending groups according to `groupBy`: one banner +
     /// day group per day (`.day`, the default and today's behavior), one banner
     /// + month group per month (`.month`), or a single flat run (`.none`).

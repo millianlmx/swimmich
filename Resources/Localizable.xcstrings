@@ -7146,6 +7146,34 @@
         }
       }
     },
+    "Photos %@ adds to their library appear here." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Fotos, die %@ zur eigenen Mediathek hinzufügt, erscheinen hier."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Las fotos que %@ añada a su biblioteca aparecerán aquí."
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Les photos que %@ ajoute à sa bibliothèque apparaîtront ici."
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Le foto che %@ aggiunge alla sua libreria appariranno qui."
+          }
+        }
+      }
+    },
     "Photos backed up before Immich started recording checksums can't be verified against the server, so they are never offered here." : {
       "localizations" : {
         "fr" : {
@@ -9243,6 +9271,34 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Mostra la password"
+          }
+        }
+      }
+    },
+    "Shows their photos" : {
+      "localizations" : {
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Affiche ses photos"
+          }
+        },
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Zeigt die Fotos dieser Person"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Muestra sus fotos"
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Mostra le sue foto"
           }
         }
       }

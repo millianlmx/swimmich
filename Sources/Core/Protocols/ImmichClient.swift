@@ -49,6 +49,11 @@ protocol ImmichClient: AnyObject, Sendable {
     /// is a day of **upload** and the grid reads "recently added". `nil` leaves
     /// the server default (`takenAt`). This is the only route that can sort by
     /// upload date — `POST /api/search/metadata` has no such order field.
+    ///
+    /// `userId` is another account's library (a partner who shares with the
+    /// user): the server then forces `visibility=timeline` and answers 400 to
+    /// `isTrashed=true` or any `isFavorite`. Never combine it with
+    /// `withPartners`, which would add the user's other partners to the list.
     func getTimeBuckets(
         isFavorite: Bool?,
         isTrashed: Bool?,
@@ -57,12 +62,14 @@ protocol ImmichClient: AnyObject, Sendable {
         visibility: String?,
         withStacked: Bool?,
         orderBy: AssetOrderBy?,
-        tagId: String?
+        tagId: String?,
+        userId: String?
     ) async throws -> [TimeBucketsResponseDto]
     /// `GET /api/timeline/bucket` — every filter must be the value sent to
     /// `getTimeBuckets` for the same list of months, otherwise the server
     /// applies its defaults (no `orderBy=createdAt` → the month is filled by
     /// date taken; no `isTrashed` → only non-trashed; no `isFavorite` → all).
+    /// `userId` must be the value sent to `getTimeBuckets` too.
     func getTimeBucket(
         timeBucket: String,
         isFavorite: Bool?,
@@ -72,7 +79,8 @@ protocol ImmichClient: AnyObject, Sendable {
         visibility: String?,
         withStacked: Bool?,
         orderBy: AssetOrderBy?,
-        tagId: String?
+        tagId: String?,
+        userId: String?
     ) async throws -> TimeBucketAssetResponseDto
 
     func getAsset(id: String) async throws -> AssetResponseDto
@@ -552,4 +560,60 @@ struct DownloadInfoResponse: Sendable, Equatable {
     /// Total bytes across every archive.
     let totalSize: Int64
     let archives: [Archive]
+}
+
+extension ImmichClient {
+    /// Timeline buckets of the signed-in account.
+    ///
+    /// `userId` arrived with the partner library (L-08): same overload
+    /// convention as above, so every caller that never read another account's
+    /// library keeps compiling.
+    func getTimeBuckets(
+        isFavorite: Bool?,
+        isTrashed: Bool?,
+        personId: String?,
+        withPartners: Bool?,
+        visibility: String?,
+        withStacked: Bool?,
+        orderBy: AssetOrderBy?,
+        tagId: String?
+    ) async throws -> [TimeBucketsResponseDto] {
+        try await getTimeBuckets(
+            isFavorite: isFavorite,
+            isTrashed: isTrashed,
+            personId: personId,
+            withPartners: withPartners,
+            visibility: visibility,
+            withStacked: withStacked,
+            orderBy: orderBy,
+            tagId: tagId,
+            userId: nil
+        )
+    }
+
+    /// One timeline bucket of the signed-in account — same convention as above.
+    func getTimeBucket(
+        timeBucket: String,
+        isFavorite: Bool?,
+        isTrashed: Bool?,
+        personId: String?,
+        withPartners: Bool?,
+        visibility: String?,
+        withStacked: Bool?,
+        orderBy: AssetOrderBy?,
+        tagId: String?
+    ) async throws -> TimeBucketAssetResponseDto {
+        try await getTimeBucket(
+            timeBucket: timeBucket,
+            isFavorite: isFavorite,
+            isTrashed: isTrashed,
+            personId: personId,
+            withPartners: withPartners,
+            visibility: visibility,
+            withStacked: withStacked,
+            orderBy: orderBy,
+            tagId: tagId,
+            userId: nil
+        )
+    }
 }
