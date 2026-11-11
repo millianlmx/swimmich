@@ -450,12 +450,19 @@ final class JpegXLUITests: XCTestCase {
         let id = "viewerImage_\(jxlPhoto)"
         waitForValue(id, prefix: previewValue)
 
+        // The size (1600×1096) arrives with the record: native ≈ 1.36 sits under
+        // the 2x floor, so the ceiling is 2.00 (L-06). Pinch only once it is in.
+        let ceilingDeadline = Date().addingTimeInterval(15)
+        while !(value(id) ?? "").contains("max=2.00") && Date() < ceilingDeadline {
+            Thread.sleep(forTimeInterval: 0.3)
+        }
+        XCTAssertTrue((value(id) ?? "").contains("max=2.00"), "the zoom ceiling never became 2.00 — read \(value(id) ?? "nothing")")
         element(id).pinch(withScale: 2.5, velocity: 3)
         let deadline = Date().addingTimeInterval(10)
         var zoom = 0.0
         while Date() < deadline {
             if let read = value(id), read.hasPrefix("\(previewValue) zoom="),
-               let parsed = Double(read.dropFirst("\(previewValue) zoom=".count)) {
+               let parsed = Double(read.dropFirst("\(previewValue) zoom=".count).prefix { $0 != " " }) {
                 zoom = parsed
                 if zoom >= 1.5 { break }
             }
@@ -468,7 +475,7 @@ final class JpegXLUITests: XCTestCase {
         waitForValue(id, prefix: "\(previewValue) zoom=1.00")
 
         element(id).doubleTap()
-        waitForValue(id, prefix: "\(previewValue) zoom=3.00")
+        waitForValue(id, prefix: "\(previewValue) zoom=2.00")
 
         element(id).doubleTap()
         waitForValue(id, prefix: "\(previewValue) zoom=1.00")
