@@ -210,14 +210,21 @@ final class AlbumRolesUITests: XCTestCase {
 
     private func tile(_ assetId: String) -> XCUIElement { element("assetTile_\(assetId)") }
 
+    /// Tile identifiers in reading order (row by row, then left to right).
+    /// Written as typed statements: one chained closure expression mixing
+    /// CGFloat arithmetic, a ternary and a tuple key path is the kind the
+    /// type checker can give up on ("unable to type-check … in reasonable time").
     private func tileIdentifiersByPosition() -> [String] {
         let tiles = app.descendants(matching: .any)
             .matching(NSPredicate(format: "identifier BEGINSWITH 'assetTile_'"))
             .allElementsBoundByIndex
-        return tiles
-            .map { (id: $0.identifier, frame: $0.frame) }
-            .sorted { (abs($0.frame.minY - $1.frame.minY) > 4) ? $0.frame.minY < $1.frame.minY : $0.frame.minX < $1.frame.minX }
-            .map(\.id)
+        let placed: [(id: String, frame: CGRect)] = tiles.map { tile in (id: tile.identifier, frame: tile.frame) }
+        let ordered = placed.sorted { (a: (id: String, frame: CGRect), b: (id: String, frame: CGRect)) -> Bool in
+            let rowGap: CGFloat = abs(a.frame.minY - b.frame.minY)
+            if rowGap > 4 { return a.frame.minY < b.frame.minY }
+            return a.frame.minX < b.frame.minX
+        }
+        return ordered.map { (entry: (id: String, frame: CGRect)) -> String in entry.id }
     }
 
     private func firstTileIdentifier() -> String? { tileIdentifiersByPosition().first }

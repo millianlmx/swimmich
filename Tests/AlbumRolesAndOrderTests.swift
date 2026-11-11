@@ -375,7 +375,7 @@ final class AlbumRolesAndOrderTests: XCTestCase {
         let mock = MockImmichClient()
         let all = [album(id: "B", name: "B"), album(id: "A", name: "A")]
         mock.albumsResponse = all
-        mock.sharedAlbumsResponse = all.reversed()
+        mock.sharedAlbumsResponse = Array(all.reversed())
         let vm = AlbumsViewModel(client: mock)
         await vm.load()
         XCTAssertEqual(vm.albums.map(\.id), ["B", "A"])
