@@ -190,6 +190,9 @@ final class MockImmichClient: ImmichClient, @unchecked Sendable {
     /// Errors thrown, one per call and in order, by the matching route — before `globalError`.
     var timeBucketsErrorQueue: [Error] = []
     var timeBucketErrorQueue: [Error] = []
+    /// Awaited in `getTimeBucket` after the call is recorded and before the
+    /// error queue: holds a month's answer so a test orders two responses.
+    var timeBucketGate: ((String) async throws -> Void)?
     var lastRestoreTrashAssetsIds: [String]?
     var restoreTrashAssetsResponse: TrashResponseDto?
     var restoreTrashAssetsError: Error?
@@ -538,6 +541,7 @@ final class MockImmichClient: ImmichClient, @unchecked Sendable {
             withPartners: withPartners, visibility: visibility,
             withStacked: withStacked, orderBy: orderBy, tagId: tagId
         )))
+        if let gate = timeBucketGate { try await gate(timeBucket) }
         if !timeBucketErrorQueue.isEmpty { throw timeBucketErrorQueue.removeFirst() }
         if let e = globalError { throw e }
         return bucketResponses[timeBucket] ?? TimeBucketAssetResponseDto(

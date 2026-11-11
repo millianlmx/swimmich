@@ -1740,4 +1740,384 @@ final class TimelineViewModelTests: XCTestCase {
         XCTAssertEqual(vm.actionErrorMessage, expected)
         XCTAssertEqual(vm.items, itemsBefore)
     }
+
+    // MARK: - Date scrubber (L-04)
+
+    /// Server key of the month `k` places back from December 2025 (`0` = newest).
+    private func scrubKey(_ k: Int) -> String {
+        let total = 2025 * 12 + 11 - k
+        return String(format: "%04d-%02d-01", total / 12, total % 12 + 1)
+    }
+
+    /// Id of the photo of rank `rank` (grid order, newest first) of month `k`.
+    private func scrubId(_ k: Int, rank: Int) -> String {
+        "s-\(scrubKey(k).prefix(7))-\(String(format: "%03d", rank))"
+    }
+
+    /// A month of `count` photos with distinct, strictly decreasing capture
+    /// times by rank — served in the REVERSE order, so that the server order
+    /// is never the grid order.
+    private func scrubColumnar(month k: Int, count: Int) -> TimeBucketAssetResponseDto {
+        let ids = (0..<count).map { scrubId(k, rank: $0) }.reversed() as [String]
+        let stamps = (0..<count).map { "\(scrubKey(k).prefix(7))-15T12:\(String(format: "%02d", 59 - $0)):00.000Z" }
+            .reversed() as [String]
+        return TimeBucketAssetResponseDto(
+            id: ids,
+            ownerId: ids.map { _ in "owner" },
+            ratio: ids.map { _ in 1.0 },
+            isFavorite: ids.map { _ in false },
+            visibility: ids.map { _ in "timeline" },
+            isTrashed: ids.map { _ in false },
+            isImage: ids.map { _ in true },
+            thumbhash: ids.map { _ in nil },
+            createdAt: stamps,
+            fileCreatedAt: stamps,
+            localOffsetHours: ids.map { _ in 0.0 },
+            duration: ids.map { _ in nil },
+            livePhotoVideoId: ids.map { _ in nil },
+            projectionType: ids.map { _ in nil },
+            stack: nil, city: nil, country: nil, latitude: nil, longitude: nil
+        )
+    }
+
+    /// 36 months (Dec 2025 … Jan 2023), 6 photos each unless `counts` says otherwise.
+    @MainActor
+    private func scrubMock(counts: [Int: Int] = [:]) -> MockImmichClient {
+        let mock = MockImmichClient()
+        mock.bucketsResponse = (0..<36).map { TimeBucketsResponseDto(timeBucket: scrubKey($0), count: counts[$0] ?? 6) }
+        for k in 0..<36 { mock.bucketResponses[scrubKey(k)] = scrubColumnar(month: k, count: counts[k] ?? 6) }
+        return mock
+    }
+
+    /// A VM that has done its first load: only the newest month is in.
+    @MainActor
+    private func scrubVM(_ mock: MockImmichClient) async -> TimelineViewModel {
+        let vm = TimelineViewModel(client: mock)
+        await vm.load()
+        return vm
+    }
+
+    private func monthPrefixes(_ vm: TimelineViewModel) -> [String] {
+        vm.items.map { String($0.id.dropFirst(2).prefix(7)) }
+    }
+
+    func test_AC_90_scrubberMath_monthAtEachBoundary() {
+        let n = 36
+        for k in 0..<n {
+            let inside = TimelineScrubberMath.target(atTrackFraction: (Double(k) + 0.5) / Double(n), monthCount: n)
+            XCTAssertEqual(inside?.monthIndex, k)
+            XCTAssertEqual(inside?.fraction ?? -1, 0.5, accuracy: 1e-9)
+            XCTAssertEqual(TimelineScrubberMath.target(atTrackFraction: Double(k) / Double(n) + 1e-9, monthCount: n)?.monthIndex, k)
+            XCTAssertEqual(TimelineScrubberMath.target(atTrackFraction: Double(k + 1) / Double(n) - 1e-9, monthCount: n)?.monthIndex, k)
+        }
+        let top = TimelineScrubberMath.target(atTrackFraction: 0, monthCount: n)
+        XCTAssertEqual(top?.monthIndex, 0)
+        XCTAssertEqual(top?.fraction, 0)
+        let bottom = TimelineScrubberMath.target(atTrackFraction: 1, monthCount: n)
+        XCTAssertEqual(bottom?.monthIndex, 35)
+        XCTAssertLessThan(bottom?.fraction ?? 2, 1, "the end of the track stays inside the oldest month")
+        XCTAssertEqual(TimelineScrubberMath.target(atTrackFraction: -3, monthCount: n)?.monthIndex, 0)
+        XCTAssertEqual(TimelineScrubberMath.target(atTrackFraction: 7, monthCount: n)?.monthIndex, 35)
+
+        let only = TimelineScrubberMath.target(atTrackFraction: 0.4, monthCount: 1)
+        XCTAssertEqual(only?.monthIndex, 0)
+        XCTAssertEqual(only?.fraction ?? -1, 0.4, accuracy: 1e-9)
+        XCTAssertNil(TimelineScrubberMath.target(atTrackFraction: 0.4, monthCount: 0))
+
+        XCTAssertEqual(TimelineScrubberMath.trackFraction(monthIndex: 18, fraction: 0.5, monthCount: 36), 18.5 / 36, accuracy: 1e-12)
+        XCTAssertEqual(TimelineScrubberMath.trackFraction(monthIndex: 0, fraction: 0, monthCount: 0), 0)
+    }
+
+    func test_AC_90_monthLabel_followsLocale() {
+        XCTAssertEqual(TimelineSectionBuilder.monthLabel(forTimeBucket: "2023-03-01", locale: Locale(identifier: "fr_FR")), "mars 2023")
+        XCTAssertEqual(TimelineSectionBuilder.monthLabel(forTimeBucket: "2023-03-01", locale: Locale(identifier: "en_US")), "March 2023")
+    }
+
+    func test_AC_90_labelVisibleAndUpdatedDuringDrag() {
+        let n = 36
+        var gesture = TimelineScrubberGesture()
+        XCTAssertNil(gesture.labelMonthIndex)
+        XCTAssertFalse(gesture.isScrubbing)
+
+        for k in [10, 11, 12] {
+            gesture.changed(trackFraction: (Double(k) + 0.5) / Double(n), monthCount: n)
+            XCTAssertTrue(gesture.isScrubbing, "the finger is still down")
+            XCTAssertEqual(gesture.labelMonthIndex, k, "the bubble names the month under the finger")
+        }
+        let before = gesture.labelMonthIndex
+        gesture.changed(trackFraction: 12.7 / Double(n), monthCount: n)
+        XCTAssertEqual(gesture.labelMonthIndex, before, "a move inside the same month changes nothing")
+
+        gesture.changed(trackFraction: 12.5 / Double(n), monthCount: n)
+        let staleToken = gesture.lingerToken
+        let release = gesture.ended(monthCount: n)
+        XCTAssertEqual(release?.monthIndex, 12)
+        XCTAssertEqual(release?.fraction ?? -1, 0.5, accuracy: 1e-9)
+        XCTAssertFalse(gesture.isScrubbing)
+        XCTAssertEqual(gesture.labelMonthIndex, 12, "the bubble keeps the released month")
+
+        // A new gesture before the delay is up cancels the planned fade.
+        let lingering = gesture.lingerToken
+        gesture.changed(trackFraction: 13.5 / Double(n), monthCount: n)
+        gesture.lingerExpired(token: lingering)
+        XCTAssertEqual(gesture.labelMonthIndex, 13)
+        XCTAssertNotEqual(staleToken, gesture.lingerToken)
+
+        _ = gesture.ended(monthCount: n)
+        let finalToken = gesture.lingerToken
+        gesture.lingerExpired(token: finalToken)
+        XCTAssertNil(gesture.labelMonthIndex, "the bubble fades once the delay is up")
+    }
+
+    func test_AC_92_anchorRank() {
+        XCTAssertEqual(TimelineScrubberMath.anchorRank(fraction: 0.5, count: 21), 10)
+        XCTAssertEqual(TimelineScrubberMath.anchorRank(fraction: 0, count: 21), 0)
+        XCTAssertEqual(TimelineScrubberMath.anchorRank(fraction: 1.0.nextDown, count: 21), 20)
+        XCTAssertEqual(TimelineScrubberMath.anchorRank(fraction: 0.9, count: 1), 0)
+        XCTAssertEqual(TimelineScrubberMath.anchorRank(fraction: 0.5, count: 0), 0)
+    }
+
+    @MainActor
+    func test_AC_92_jumpToMonth_anchorsOnRankInGridOrder() async {
+        let mock = scrubMock(counts: [18: 21])
+        let vm = await scrubVM(mock)
+
+        let middle = await vm.jumpToMonth(at: 18, fraction: 0.5)
+        XCTAssertEqual(middle, scrubId(18, rank: 10), "the 11th photo of the month in grid order")
+        XCTAssertEqual(vm.items.count, 21)
+        XCTAssertEqual(vm.topVisibleId, middle)
+
+        let first = await vm.jumpToMonth(at: 18, fraction: 0)
+        XCTAssertEqual(first, scrubId(18, rank: 0), "the newest photo of the month, whatever the server order")
+        XCTAssertEqual(vm.scrubPosition, TimelineScrubPosition(monthIndex: 18, fraction: 0))
+    }
+
+    @MainActor
+    func test_AC_87_jumpToMonth_repeatsBucketsFiltersAndOpensNeighbours() async {
+        let mock = scrubMock()
+        let vm = await scrubVM(mock)
+        XCTAssertEqual(mock.timeBucketCalls.count, 1)
+
+        await vm.jumpToMonth(at: 10, fraction: 0)
+
+        XCTAssertEqual(mock.timeBucketCalls.count, 2, "one GET bucket for the jump")
+        XCTAssertEqual(mock.timeBucketCalls.last?.timeBucket, scrubKey(10))
+        XCTAssertEqual(mock.timeBucketCalls.last?.filters, mock.lastTimeBucketsFilters, "same filters on /bucket as on /buckets")
+        XCTAssertEqual(mock.lastTimeBucketVisibility, "timeline", "visibility=timeline is explicit for «All»")
+        XCTAssertEqual(mock.lastTimeBucketWithPartners, true)
+        XCTAssertEqual(vm.bucketIndex, 11)
+        XCTAssertEqual(vm.upperBucketIndex, 9)
+        XCTAssertEqual(monthPrefixes(vm), Array(repeating: String(scrubKey(10).prefix(7)), count: 6))
+
+        await vm.loadNewer()
+        await vm.loadMore()
+
+        XCTAssertEqual(vm.upperBucketIndex, 8)
+        XCTAssertEqual(vm.bucketIndex, 12)
+        let months = monthPrefixes(vm)
+        XCTAssertEqual(months.count, 18)
+        XCTAssertEqual(Set(vm.items.map(\.id)).count, 18, "no photo twice")
+        let expected = [9, 10, 11].flatMap { Array(repeating: String(scrubKey($0).prefix(7)), count: 6) }
+        XCTAssertEqual(months, expected, "the neighbours come in order, no month skipped")
+    }
+
+    @MainActor
+    func test_AC_95_obsoleteJumpResponseIsIgnored() async {
+        let mock = scrubMock()
+        let vm = await scrubVM(mock)
+        let latch = TestLatch()
+        let slow = scrubKey(20)
+        mock.timeBucketGate = { key in if key == slow { try await latch.wait() } }
+
+        let jumpA = Task { await vm.jumpToMonth(at: 20, fraction: 0) }
+        await pollUntil("the request of A") { mock.timeBucketCalls.last?.timeBucket == slow }
+        let idB = await vm.jumpToMonth(at: 10, fraction: 0)
+        XCTAssertNotNil(idB)
+        latch.open()
+        let idA = await jumpA.value
+
+        XCTAssertNil(idA, "the late answer of A is dropped")
+        XCTAssertEqual(monthPrefixes(vm), Array(repeating: String(scrubKey(10).prefix(7)), count: 6))
+        XCTAssertEqual(vm.scrubPosition?.monthIndex, 10)
+        XCTAssertEqual(vm.upperBucketIndex, 9)
+        XCTAssertEqual(vm.bucketIndex, 11)
+        XCTAssertFalse(vm.isLoading)
+        XCTAssertNil(vm.loadErrorMessage)
+    }
+
+    @MainActor
+    func test_AC_95_jumpDuringLoadNewerKeepsJumpWindow() async {
+        let mock = scrubMock()
+        let vm = await scrubVM(mock)
+        await vm.jumpToMonth(at: 10, fraction: 0)
+        let latch = TestLatch()
+        let held = scrubKey(9)
+        mock.timeBucketGate = { key in if key == held { try await latch.wait() } }
+
+        let newer = Task { await vm.loadNewer() }
+        await pollUntil("the request of the newer month") { mock.timeBucketCalls.last?.timeBucket == held }
+        await vm.jumpToMonth(at: 20, fraction: 0)
+        latch.open()
+        await newer.value
+
+        XCTAssertEqual(monthPrefixes(vm), Array(repeating: String(scrubKey(20).prefix(7)), count: 6), "the interrupted load adds nothing")
+        XCTAssertEqual(vm.upperBucketIndex, 19)
+        XCTAssertEqual(vm.bucketIndex, 21)
+        XCTAssertFalse(vm.isLoading)
+
+        await vm.loadNewer()
+        await vm.loadMore()
+        XCTAssertEqual(vm.items.count, 18, "both neighbours of the jump still load")
+    }
+
+    @MainActor
+    func test_AC_95_jumpDuringLoadMoreKeepsJumpWindow() async {
+        let mock = scrubMock()
+        let vm = await scrubVM(mock)
+        let latch = TestLatch()
+        let held = scrubKey(1)
+        mock.timeBucketGate = { key in if key == held { try await latch.wait() } }
+
+        let more = Task { await vm.loadMore() }
+        await pollUntil("the request of the older month") { mock.timeBucketCalls.last?.timeBucket == held }
+        await vm.jumpToMonth(at: 10, fraction: 0)
+        latch.open()
+        await more.value
+
+        XCTAssertEqual(monthPrefixes(vm), Array(repeating: String(scrubKey(10).prefix(7)), count: 6), "the interrupted load adds nothing")
+        XCTAssertEqual(vm.bucketIndex, 11)
+        XCTAssertEqual(vm.upperBucketIndex, 9)
+
+        await vm.loadMore()
+        XCTAssertEqual(vm.bucketIndex, 12)
+        XCTAssertEqual(vm.items.count, 12)
+    }
+
+    @MainActor
+    func test_AC_95_refreshSupersedesJumpInFlight() async {
+        let mock = scrubMock()
+        let vm = await scrubVM(mock)
+        let latch = TestLatch()
+        let slow = scrubKey(20)
+        mock.timeBucketGate = { key in if key == slow { try await latch.wait() } }
+
+        let jumpA = Task { await vm.jumpToMonth(at: 20, fraction: 0) }
+        await pollUntil("the request of A") { mock.timeBucketCalls.last?.timeBucket == slow }
+        await vm.refresh()
+        latch.open()
+        let idA = await jumpA.value
+
+        XCTAssertNil(idA)
+        XCTAssertEqual(monthPrefixes(vm), Array(repeating: String(scrubKey(0).prefix(7)), count: 6), "the refresh wins")
+        XCTAssertNil(vm.scrubPosition)
+        XCTAssertFalse(vm.isLoading)
+        XCTAssertTrue(vm.windowStartsAtNewest)
+    }
+
+    @MainActor
+    func test_AC_89_failedJumpRetryReloadsSameMonthOnly() async {
+        let mock = scrubMock()
+        let vm = await scrubVM(mock)
+        let itemsBefore = vm.items
+
+        mock.timeBucketErrorQueue = [APIError.serverError(500, "boom")]
+        let failed = await vm.jumpToMonth(at: 12, fraction: 0.5)
+
+        XCTAssertNil(failed)
+        XCTAssertNotNil(vm.loadErrorMessage, "the banner offers «Try Again»")
+        XCTAssertEqual(vm.pendingJump, PendingJump(timeBucket: scrubKey(12), fraction: 0.5))
+        XCTAssertEqual(vm.items, itemsBefore, "the window on screen stays")
+        XCTAssertNil(vm.scrubPosition, "the handle goes back where it was")
+        XCTAssertFalse(vm.isLoading)
+
+        let requests = mock.requestCount
+        let id = await vm.retryLoad()
+
+        XCTAssertEqual(id, scrubId(12, rank: 3))
+        XCTAssertEqual(mock.requestCount, requests + 1, "one GET bucket, no GET buckets")
+        XCTAssertEqual(mock.timeBucketCalls.last?.timeBucket, scrubKey(12))
+        XCTAssertEqual(monthPrefixes(vm), Array(repeating: String(scrubKey(12).prefix(7)), count: 6))
+        XCTAssertNil(vm.loadErrorMessage)
+        XCTAssertNil(vm.pendingJump)
+    }
+
+    @MainActor
+    func test_AC_89_cancelledJumpLeavesNoPendingRetry() async {
+        let mock = scrubMock()
+        let vm = await scrubVM(mock)
+
+        mock.timeBucketErrorQueue = [URLError(.cancelled)]
+        let result = await vm.jumpToMonth(at: 12, fraction: 0)
+
+        XCTAssertNil(result)
+        XCTAssertNil(vm.loadErrorMessage, "a cancelled jump writes no banner")
+        XCTAssertNil(vm.pendingJump)
+        XCTAssertFalse(vm.isLoading)
+    }
+
+    @MainActor
+    func test_AC_91_updateScrubPosition_usesMinimumPlaceWhateverTheOrder() async {
+        let mock = scrubMock(counts: [5: 21])
+        let vm = await scrubVM(mock)
+        await vm.jumpToMonth(at: 5, fraction: 0)
+
+        vm.updateScrubPosition(visibleIds: [scrubId(5, rank: 12), "unknown", scrubId(5, rank: 7), scrubId(5, rank: 9)])
+        XCTAssertEqual(vm.scrubPosition, TimelineScrubPosition(monthIndex: 5, fraction: 7.0 / 21.0))
+        XCTAssertEqual(vm.topVisibleId, scrubId(5, rank: 7))
+
+        vm.updateScrubPosition(visibleIds: [])
+        XCTAssertEqual(vm.scrubPosition?.monthIndex, 5, "nothing reported, nothing changes")
+
+        await vm.loadMore()
+        vm.updateScrubPosition(visibleIds: [scrubId(6, rank: 0), scrubId(5, rank: 20)])
+        XCTAssertEqual(vm.scrubPosition, TimelineScrubPosition(monthIndex: 5, fraction: 20.0 / 21.0), "an older month's photo never wins")
+
+        vm.updateScrubPosition(visibleIds: [scrubId(6, rank: 0)])
+        XCTAssertEqual(vm.scrubPosition, TimelineScrubPosition(monthIndex: 6, fraction: 0))
+    }
+
+    @MainActor
+    func test_AC_91_failedReloadLeavesNoOutOfRangePlace() async {
+        let mock = scrubMock()
+        let vm = await scrubVM(mock)
+        await vm.jumpToMonth(at: 3, fraction: 0)
+        let shown = vm.items.map(\.id)
+        vm.updateScrubPosition(visibleIds: [shown[0]])
+        XCTAssertEqual(vm.scrubPosition?.monthIndex, 3)
+
+        mock.bucketsResponse = [
+            TimeBucketsResponseDto(timeBucket: "2025-10-01", count: 3),
+            TimeBucketsResponseDto(timeBucket: "2024-10-01", count: 3)
+        ]
+        mock.timeBucketErrorQueue = [APIError.serverError(500, "boom")]
+        await vm.setFilter(.archived)
+
+        XCTAssertEqual(vm.items.map(\.id), shown, "the photos from before stay")
+        XCTAssertNil(vm.scrubPosition, "the handle waits at the top")
+        vm.updateScrubPosition(visibleIds: shown)
+        XCTAssertNil(vm.scrubPosition, "old places are not restored against the new list")
+    }
+
+    func test_AC_93_adjustedMonthIndexClamps() {
+        XCTAssertEqual(TimelineScrubberMath.adjusted(monthIndex: 5, direction: .decrement, monthCount: 36), 6, "swipe down = older")
+        XCTAssertEqual(TimelineScrubberMath.adjusted(monthIndex: 5, direction: .increment, monthCount: 36), 4, "swipe up = newer")
+        XCTAssertEqual(TimelineScrubberMath.adjusted(monthIndex: 0, direction: .increment, monthCount: 36), 0)
+        XCTAssertEqual(TimelineScrubberMath.adjusted(monthIndex: 35, direction: .decrement, monthCount: 36), 35)
+    }
+
+    @MainActor
+    func test_AC_96_jumpToNewestRestoresWindowStart() async {
+        let mock = scrubMock()
+        let vm = await scrubVM(mock)
+        XCTAssertTrue(vm.windowStartsAtNewest)
+
+        await vm.jumpToMonth(at: 35, fraction: 0)
+        XCTAssertFalse(vm.windowStartsAtNewest, "a newer month is missing above the window")
+
+        let id = await vm.jumpToMonth(at: 0, fraction: 0)
+        XCTAssertEqual(id, scrubId(0, rank: 0))
+        XCTAssertTrue(vm.windowStartsAtNewest)
+        XCTAssertEqual(monthPrefixes(vm), Array(repeating: String(scrubKey(0).prefix(7)), count: 6))
+        XCTAssertEqual(vm.scrubPosition, TimelineScrubPosition(monthIndex: 0, fraction: 0))
+    }
 }

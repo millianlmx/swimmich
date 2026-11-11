@@ -26885,6 +26885,90 @@
         }
       }
     },
+    "Date scrubber" : {
+      "localizations" : {
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Curseur de date"
+          }
+        },
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Datumsregler"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Selector de fecha"
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Cursore della data"
+          }
+        }
+      }
+    },
+    "Smooth Scrubbing" : {
+      "localizations" : {
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Défilement fluide"
+          }
+        },
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Flüssiges Scrollen"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Desplazamiento fluido"
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Scorrimento fluido"
+          }
+        }
+      }
+    },
+    "When on, releasing the date scrubber stops at the exact spot in the month. When off, it snaps to the month's first photo." : {
+      "localizations" : {
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Activé, le curseur de date s'arrête à l'endroit exact du mois où vous le relâchez. Désactivé, il se cale sur la première photo du mois."
+          }
+        },
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Wenn aktiviert, hält der Datumsregler genau an der Stelle im Monat, an der Sie ihn loslassen. Wenn deaktiviert, springt er zum ersten Foto des Monats."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Si está activado, el selector de fecha se detiene en el punto exacto del mes donde lo sueltas. Si está desactivado, salta a la primera foto del mes."
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Se attivo, il cursore della data si ferma nel punto esatto del mese in cui lo rilasci. Se disattivo, si posiziona sulla prima foto del mese."
+          }
+        }
+      }
+    },
     "Slideshow" : {
       "extractionState" : "stale",
       "localizations" : {

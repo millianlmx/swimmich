@@ -35,6 +35,11 @@ final class PreferencesViewModel {
         set { store.tilesPerRow = newValue }
     }
 
+    var smoothScrubbing: Bool {
+        get { store.smoothScrubbing }
+        set { store.smoothScrubbing = newValue }
+    }
+
     // MARK: - Viewer
 
     var loadOriginal: Bool {

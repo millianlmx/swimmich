@@ -50,6 +50,7 @@ final class AppSettingsStoreTests: XCTestCase {
         XCTAssertEqual(store.theme, .system, "iOS decided the appearance")
         XCTAssertEqual(store.accent, .immich)
         XCTAssertTrue(store.hapticsEnabled)
+        XCTAssertFalse(store.smoothScrubbing, "the date scrubber snapped to months")
     }
 
     // MARK: - Density bound
@@ -88,6 +89,7 @@ final class AppSettingsStoreTests: XCTestCase {
         store.theme = .dark
         store.accent = .purple
         store.hapticsEnabled = false
+        store.smoothScrubbing = true
 
         let reloaded = AppSettingsStore(defaults: defaults)
 
@@ -105,6 +107,7 @@ final class AppSettingsStoreTests: XCTestCase {
         XCTAssertEqual(reloaded.theme, .dark)
         XCTAssertEqual(reloaded.accent, .purple)
         XCTAssertFalse(reloaded.hapticsEnabled)
+        XCTAssertTrue(reloaded.smoothScrubbing)
     }
 
     func test_unreadableStoredTheme_fallsBackToSystem() {
@@ -131,6 +134,7 @@ final class AppSettingsStoreTests: XCTestCase {
         store.theme = .light
         store.accent = .pink
         store.hapticsEnabled = false
+        store.smoothScrubbing = true
 
         store.resetToDefaults()
 
@@ -148,11 +152,21 @@ final class AppSettingsStoreTests: XCTestCase {
         XCTAssertEqual(store.theme, .system)
         XCTAssertEqual(store.accent, .immich)
         XCTAssertTrue(store.hapticsEnabled)
+        XCTAssertFalse(store.smoothScrubbing)
 
         // The keys are removed, not rewritten with their defaults: the next
         // launch must read what a fresh install reads.
         XCTAssertEqual(AppSettingsStore(defaults: defaults).tilesPerRow, 3)
         XCTAssertEqual(AppSettingsStore(defaults: defaults).accent, .immich)
+    }
+
+    func test_AC_92_smoothScrubbing_defaultsOffAndPersists() {
+        XCTAssertFalse(AppSettingsStore(defaults: defaults).smoothScrubbing)
+        XCTAssertNil(defaults.object(forKey: AppSettingsStore.timelineSmoothScrubbingKey), "reading writes nothing")
+
+        AppSettingsStore(defaults: defaults).smoothScrubbing = true
+        XCTAssertEqual(defaults.object(forKey: "timelineSmoothScrubbing") as? Bool, true, "the key is upstream's")
+        XCTAssertTrue(AppSettingsStore(defaults: defaults).smoothScrubbing)
     }
 
     // MARK: - The two projections the root consumes

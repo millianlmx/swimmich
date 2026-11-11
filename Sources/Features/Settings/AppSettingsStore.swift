@@ -16,7 +16,7 @@ import Observation
 ///   `groupBy = .day`, `loadOriginal = false`, `autoPlayVideo = true`,
 ///   `loopVideo = false`, `loadOriginalVideo = false`, slideshow wrapping and
 ///   dissolving at 3 s, `theme = .system`, `accent = .immich`,
-///   `hapticsEnabled = true`), so the feature is purely additive for anyone who
+///   `hapticsEnabled = true`, `smoothScrubbing = false`), so the feature is purely additive for anyone who
 ///   never opens the screen.
 /// - **A stored value that cannot be decoded falls back to the default** rather
 ///   than wedging a screen into a state the user cannot see the origin of.
@@ -50,6 +50,7 @@ final class AppSettingsStore {
     static let themeModeKey = "themeMode"
     static let accentColorKey = "themePrimaryColor"
     static let hapticsEnabledKey = "hapticFeedbackEnabled"
+    static let timelineSmoothScrubbingKey = "timelineSmoothScrubbing"
 
     private let defaults: UserDefaults
 
@@ -75,6 +76,7 @@ final class AppSettingsStore {
     private var storedTheme: AppTheme
     private var storedAccent: AppAccent
     private var storedHapticsEnabled: Bool
+    private var storedSmoothScrubbing: Bool
 
     init(defaults: UserDefaults = .standard) {
         self.defaults = defaults
@@ -100,6 +102,7 @@ final class AppSettingsStore {
         storedAccent = defaults.string(forKey: Self.accentColorKey)
             .flatMap(AppAccent.init(rawValue:)) ?? .immich
         storedHapticsEnabled = defaults.object(forKey: Self.hapticsEnabledKey) as? Bool ?? true
+        storedSmoothScrubbing = defaults.object(forKey: Self.timelineSmoothScrubbingKey) as? Bool ?? false
     }
 
     // MARK: - Photos (timeline)
@@ -123,6 +126,18 @@ final class AppSettingsStore {
             guard clamped != storedTilesPerRow else { return }
             storedTilesPerRow = clamped
             defaults.set(clamped, forKey: Self.timelineTilesPerRowKey)
+        }
+    }
+
+    /// Date scrubber behavior: off, releasing it snaps the grid to the first
+    /// photo of the targeted month; on, to the spot of the month it was
+    /// released at (upstream's "Smooth timeline scrubbing", PR #32552).
+    var smoothScrubbing: Bool {
+        get { storedSmoothScrubbing }
+        set {
+            guard newValue != storedSmoothScrubbing else { return }
+            storedSmoothScrubbing = newValue
+            defaults.set(newValue, forKey: Self.timelineSmoothScrubbingKey)
         }
     }
 
@@ -264,7 +279,7 @@ final class AppSettingsStore {
             Self.tapToNavigateKey, Self.autoPlayVideoKey, Self.loopVideoKey,
             Self.loadOriginalVideoKey, Self.slideshowRepeatKey, Self.slideshowSpeedKey,
             Self.slideshowLookKey, Self.slideshowReverseKey, Self.themeModeKey,
-            Self.accentColorKey, Self.hapticsEnabledKey
+            Self.accentColorKey, Self.hapticsEnabledKey, Self.timelineSmoothScrubbingKey
         ].forEach(defaults.removeObject(forKey:))
 
         storedGroupBy = .day
@@ -281,5 +296,6 @@ final class AppSettingsStore {
         storedTheme = .system
         storedAccent = .immich
         storedHapticsEnabled = true
+        storedSmoothScrubbing = false
     }
 }
