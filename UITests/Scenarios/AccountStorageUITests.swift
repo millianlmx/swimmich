@@ -611,7 +611,10 @@ final class AccountStorageUITests: XCTestCase {
         guard allow.waitForExistence(timeout: 8) else { return }
         allow.tap()
         let springboard = XCUIApplication(bundleIdentifier: "com.apple.springboard")
-        for host in [springboard, app] {
+        // Typed on purpose: `app` is an IUO, so `[springboard, app]` would infer
+        // `[XCUIApplication?]` and `host.alerts` would not compile.
+        let hosts: [XCUIApplication] = [springboard, app]
+        for host in hosts {
             let alert = host.alerts.firstMatch
             guard alert.waitForExistence(timeout: 8) else { continue }
             let button = alert.buttons.matching(labelPredicate(Self.allowFullAccess)).firstMatch
