@@ -82,6 +82,45 @@ final class AppStringsTests: XCTestCase {
         }
     }
 
+    func test_AC_17_1_birthdayKeysAreTranslatedInEveryShippedLanguage() throws {
+        let catalog = try Self.loadCatalog()
+        let strings = try XCTUnwrap(catalog["strings"] as? [String: Any])
+
+        let birthday = try XCTUnwrap(strings["%@'s birthday"] as? [String: Any])
+        let birthdayLocalizations = try XCTUnwrap(birthday["localizations"] as? [String: Any])
+        let age = try XCTUnwrap(strings["%lld years old"] as? [String: Any])
+        let ageLocalizations = try XCTUnwrap(age["localizations"] as? [String: Any])
+
+        for language in ["en", "fr", "de", "es", "it"] {
+            let unit = try XCTUnwrap(birthdayLocalizations[language] as? [String: Any], "birthday \(language)")
+            let value = ((unit["stringUnit"] as? [String: Any])?["value"] as? String) ?? ""
+            XCTAssertFalse(value.isEmpty, "birthday \(language)")
+
+            let localization = try XCTUnwrap(ageLocalizations[language] as? [String: Any], "age \(language)")
+            let variations = try XCTUnwrap(localization["variations"] as? [String: Any], "age \(language)")
+            let plural = try XCTUnwrap(variations["plural"] as? [String: Any], "age \(language)")
+            for form in ["one", "other"] {
+                let formUnit = try XCTUnwrap(plural[form] as? [String: Any], "age \(language) \(form)")
+                let text = ((formUnit["stringUnit"] as? [String: Any])?["value"] as? String) ?? ""
+                XCTAssertFalse(text.isEmpty, "age \(language) \(form)")
+            }
+        }
+    }
+
+    func test_AC_60_6_epilogueKeysAreTranslatedInEveryShippedLanguage() throws {
+        let catalog = try Self.loadCatalog()
+        let strings = try XCTUnwrap(catalog["strings"] as? [String: Any])
+        for key in ["All caught up", "Check back tomorrow for more memories", "Start Over"] {
+            let entry = try XCTUnwrap(strings[key] as? [String: Any], "Missing key \(key)")
+            let localizations = try XCTUnwrap(entry["localizations"] as? [String: Any])
+            for language in ["en", "fr", "de", "es", "it"] {
+                let unit = localizations[language] as? [String: Any]
+                let value = ((unit?["stringUnit"] as? [String: Any])?["value"] as? String) ?? ""
+                XCTAssertFalse(value.isEmpty, "\(language): \(key)")
+            }
+        }
+    }
+
     /// True when a key carries something a translator can act on: format
     /// specifiers and punctuation alone do not.
     private static func hasWords(_ key: String) -> Bool {

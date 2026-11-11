@@ -30,6 +30,8 @@ struct ActivityResponseDto: Codable, Equatable {
 
 enum MemoryType: String, Codable, Equatable {
     case on_this_day
+    /// Birthday memories, served since Immich v3.3 (`data.personId` / `data.personName`).
+    case birthday
     /// Server-side memory types this client doesn't render yet. Decoding
     /// unknown types as `.unknown` keeps the whole `GET /api/memories`
     /// payload decodable instead of failing the entire list.
@@ -41,8 +43,13 @@ enum MemoryType: String, Codable, Equatable {
     }
 }
 
-struct OnThisDayDto: Codable, Equatable {
+/// `MemoryDataDto` — `year` is required for every type (for a birthday it is the
+/// person's birth year); `personId` / `personName` only come with birthdays.
+/// Extra keys of a future type are ignored by the synthesized decoding.
+struct MemoryDataDto: Codable, Equatable {
     let year: Int
+    var personId: String?
+    var personName: String?
 }
 
 /// `GET /api/memories`
@@ -53,7 +60,7 @@ struct MemoryResponseDto: Codable, Equatable {
     let memoryAt: String
     let ownerId: String
     let type: MemoryType
-    let data: OnThisDayDto
+    let data: MemoryDataDto
     let assets: [AssetResponseDto]
     let isSaved: Bool
     var showAt: String?
@@ -65,15 +72,14 @@ struct MemoryResponseDto: Codable, Equatable {
 /// `POST /api/memories` — the server's create contract, verified against the
 /// published OpenAPI: `data`, `memoryAt` and `type` are **required** (a missing
 /// one is a 400), and there is **no name/description field at all** — a memory
-/// is a date, a type and a set of assets. `type` only ever takes `on_this_day`
-/// server-side (`MemoryType` there is a single-value enum).
-///
+/// is a date, a type and a set of assets. The server knows `on_this_day` and
+/// `birthday` (v3.3+); the app only ever creates `on_this_day`.
 /// The client does not schedule memories (`showAt`/`hideAt`) — that is how the
 /// server's own `on_this_day` lanes stay hidden until their day; a memory
 /// created here is visible immediately and dated by `memoryAt`.
 struct MemoryCreateDto: Codable, Equatable {
     let assetIds: [String]
-    let data: OnThisDayDto
+    let data: MemoryDataDto
     let memoryAt: String
     let type: MemoryType
     /// Set by `MemoriesViewModel.createMemory`: the server's cleanup job deletes

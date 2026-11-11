@@ -507,6 +507,47 @@ final class DTOEncodingTests: XCTestCase {
         XCTAssertEqual(decoded.data.year, 2023)
     }
 
+    func test_AC_17_1_birthdayMemoryDecodesPersonAndBirthYear() throws {
+        let json = """
+        {"id": "b1", "createdAt": "2026-07-01T00:00:00.000Z", "updatedAt": "2026-07-01T00:00:00.000Z", "memoryAt": "2026-07-01T00:00:00.000Z", "ownerId": "me", "type": "birthday", "data": {"year": 1990, "personId": "p1", "personName": "Alice"}, "assets": [], "isSaved": false}
+        """.data(using: .utf8)!
+        let decoded = try JSONDecoder.immich.decode(MemoryResponseDto.self, from: json)
+        XCTAssertEqual(decoded.type, .birthday)
+        XCTAssertEqual(decoded.data.year, 1990)
+        XCTAssertEqual(decoded.data.personId, "p1")
+        XCTAssertEqual(decoded.data.personName, "Alice")
+    }
+
+    func test_AC_17_3_birthdayMemoryWithoutPersonNameDecodes() throws {
+        let json = """
+        {"id": "b2", "createdAt": "2026-07-01T00:00:00.000Z", "updatedAt": "2026-07-01T00:00:00.000Z", "memoryAt": "2026-07-01T00:00:00.000Z", "ownerId": "me", "type": "birthday", "data": {"year": 1985, "personId": "p2"}, "assets": [], "isSaved": false}
+        """.data(using: .utf8)!
+        let decoded = try JSONDecoder.immich.decode(MemoryResponseDto.self, from: json)
+        XCTAssertEqual(decoded.type, .birthday)
+        XCTAssertNil(decoded.data.personName)
+    }
+
+    func test_AC_17_4_unknownTypeWithExtraDataKeysDecodes() throws {
+        let json = """
+        {"id": "t1", "createdAt": "2026-07-01T00:00:00.000Z", "updatedAt": "2026-07-01T00:00:00.000Z", "memoryAt": "2021-07-01T00:00:00.000Z", "ownerId": "me", "type": "trip", "data": {"year": 2021, "tripName": "Lisbon", "places": ["Lisbon"]}, "assets": [], "isSaved": false}
+        """.data(using: .utf8)!
+        let decoded = try JSONDecoder.immich.decode(MemoryResponseDto.self, from: json)
+        XCTAssertEqual(decoded.type, .unknown)
+        XCTAssertEqual(decoded.data.year, 2021)
+    }
+
+    func test_AC_17_5_memoryCreateDtoEncodesYearOnly() throws {
+        let dto = MemoryCreateDto(
+            assetIds: ["a1"], data: MemoryDataDto(year: 2019),
+            memoryAt: "2019-05-04T00:00:00.000Z", type: .on_this_day, isSaved: true
+        )
+        let object = try JSONSerialization.jsonObject(with: JSONEncoder.immich.encode(dto)) as? [String: Any]
+        let data = try XCTUnwrap(object?["data"] as? [String: Any])
+        XCTAssertEqual(data.count, 1)
+        XCTAssertEqual(data["year"] as? Int, 2019)
+        XCTAssertEqual(object?["type"] as? String, "on_this_day")
+    }
+
     func test_P0_duplicateResponseDto() throws {
         let json = """
         {"duplicateId": "d1", "assets": [], "suggestedKeepAssetIds": ["keep-1"]}
