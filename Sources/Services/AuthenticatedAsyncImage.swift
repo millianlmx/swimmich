@@ -90,6 +90,12 @@ struct AuthenticatedAsyncImage: View {
     /// Appended to the probe value (the viewer reports its zoom there).
     var probeExtra: String? = nil
 
+    /// Called with the oriented size (`UIImage.size`, what `Image(uiImage:)`
+    /// draws — not the raw pixels of `ImageLoadState`) each time the real image
+    /// lands: offline copy, memory cache or network. Never for the thumbhash or
+    /// the provisional cached thumbnail. The viewer fits its zoom geometry to it.
+    var onImageSize: ((CGSize) -> Void)? = nil
+
     @State private var image: UIImage?
     @State private var placeholderImage: UIImage?
     @State private var didFail = false
@@ -103,7 +109,8 @@ struct AuthenticatedAsyncImage: View {
         localMaxPixelSize: Int = 2048,
         thumbnailURL: URL? = nil,
         thumbhash: String? = nil,
-        probeExtra: String? = nil
+        probeExtra: String? = nil,
+        onImageSize: ((CGSize) -> Void)? = nil
     ) {
         self.url = url
         self.token = token
@@ -113,6 +120,7 @@ struct AuthenticatedAsyncImage: View {
         self.thumbnailURL = thumbnailURL
         self.thumbhash = thumbhash
         self.probeExtra = probeExtra
+        self.onImageSize = onImageSize
         if let thumbhash, let cached = ThumbHashDecoder.shared.cachedImage(for: thumbhash) {
             _placeholderImage = State(initialValue: cached)
         }
@@ -186,6 +194,7 @@ struct AuthenticatedAsyncImage: View {
             if let local = box.image {
                 self.image = local
                 loadState = ImageLoadState(loaded: local)
+                onImageSize?(local.size)
                 return
             }
         }
@@ -201,6 +210,7 @@ struct AuthenticatedAsyncImage: View {
         if let cached = await ImageCache.shared.image(for: url) {
             self.image = cached
             loadState = ImageLoadState(loaded: cached)
+            onImageSize?(cached.size)
             return
         }
 
@@ -226,6 +236,7 @@ struct AuthenticatedAsyncImage: View {
             await ImageCache.shared.store(img, for: url, epoch: epoch)
             self.image = img
             loadState = ImageLoadState(loaded: img)
+            onImageSize?(img.size)
         } catch {
             if self.image == nil { didFail = true; loadState = .failed }
         }

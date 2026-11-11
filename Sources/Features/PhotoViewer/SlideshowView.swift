@@ -18,6 +18,8 @@ struct SlideshowView: View {
     let baseURL: URL
     let token: String?
     var onClose: () -> Void = {}
+    /// Reads each photo's pixel size for its zoom ceiling when the item has none.
+    var client: (any ImmichClient)? = nil
 
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @Environment(\.accessibilityReduceTransparency) private var reduceTransparency
@@ -106,7 +108,8 @@ struct SlideshowView: View {
                 baseURL: baseURL,
                 token: token,
                 onSingleTap: toggleControls,
-                localFileURL: offline?.localURL(for: asset.id)
+                localFileURL: offline?.localURL(for: asset.id),
+                client: client
             )
         }
     }

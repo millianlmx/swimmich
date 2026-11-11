@@ -543,7 +543,8 @@ struct PhotoViewer: View {
                     vm: vm,
                     baseURL: baseURL,
                     token: token,
-                    onClose: { slideshowVM = nil }
+                    onClose: { slideshowVM = nil },
+                    client: client
                 )
                 .zIndex(10)
             }
@@ -597,7 +598,8 @@ struct PhotoViewer: View {
                                 onZoomChange: { isZoomed = $0 > 1.01 },
                                 localFileURL: offlineIndex?.localURL(for: asset.id),
                                 ocrBoxes: ocrVM?.boxes ?? [],
-                                showOcr: showOcr && asset.isImage
+                                showOcr: showOcr && asset.isImage,
+                                client: client
                             )
                             if asset.livePhotoVideoId != nil {
                                 livePhotoOverlay(asset)

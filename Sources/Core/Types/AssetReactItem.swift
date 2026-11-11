@@ -41,6 +41,12 @@ struct AssetReactItem: Identifiable, Equatable, Hashable, Sendable {
     /// Read `stackId` / `stackCount` instead of indexing this array.
     let stack: [String]
 
+    /// Pixel size of the original as displayed (EXIF, orientation applied), when
+    /// the source carries it: a full DTO does, a timeline bucket does not. Bounds
+    /// the viewer's maximum zoom; nil keeps the 4x default. Declared last, with a
+    /// default, so every existing memberwise call site is unchanged.
+    var pixelSize: PixelSize? = nil
+
     /// True for video assets.
     var isVideo: Bool { !isImage }
 
@@ -166,7 +172,8 @@ struct AssetReactItem: Identifiable, Equatable, Hashable, Sendable {
             country: country,
             latitude: latitude,
             longitude: longitude,
-            stack: stack
+            stack: stack,
+            pixelSize: pixelSize
         )
     }
 
@@ -196,7 +203,8 @@ struct AssetReactItem: Identifiable, Equatable, Hashable, Sendable {
             country: country,
             latitude: latitude,
             longitude: longitude,
-            stack: stack
+            stack: stack,
+            pixelSize: pixelSize
         )
     }
 }
@@ -233,5 +241,9 @@ extension AssetReactItem {
         self.latitude = dto.exifInfo?.latitude
         self.longitude = dto.exifInfo?.longitude
         self.stack = []
+        // The EXIF describes the original. A surface that shows the edited
+        // version (a shared link, which the server always serves edited) draws
+        // other dimensions, so an edited asset counts as unknown size (L-06 #13).
+        self.pixelSize = dto.isEdited == true ? nil : PixelSize(exif: dto.exifInfo)
     }
 }
