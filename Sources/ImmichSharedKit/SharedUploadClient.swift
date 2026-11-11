@@ -73,6 +73,8 @@ public struct SharedUploadClient: ShareUploading {
     private let baseURL: String
     private let token: String
     private let deviceId: String
+    /// The server's custom headers, read from the shared session by the caller.
+    private let customHeaders: [CustomHTTPHeader]
     private let session: URLSession
     private let logger = Logger(subsystem: "app.immich.swiftui", category: "share-upload")
 
@@ -80,6 +82,7 @@ public struct SharedUploadClient: ShareUploading {
         baseURL: String,
         token: String,
         deviceId: String,
+        customHeaders: [CustomHTTPHeader] = [],
         session: URLSession = URLSessionWidgetTransport.interactive()
     ) {
         var trimmed = baseURL
@@ -87,6 +90,7 @@ public struct SharedUploadClient: ShareUploading {
         self.baseURL = trimmed
         self.token = token
         self.deviceId = deviceId
+        self.customHeaders = customHeaders
         self.session = session
     }
 
@@ -130,9 +134,9 @@ public struct SharedUploadClient: ShareUploading {
         )
         defer { try? FileManager.default.removeItem(at: bodyURL) }
 
+        // The token and the server's custom headers come with the base request.
         var request = try request(.POST, path: "api/assets")
         request.setValue(multipart.contentType, forHTTPHeaderField: "Content-Type")
-        request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
         // Drives the server's dedup table: the same bytes shared twice answer
         // `status: duplicate` instead of storing the asset twice.
         request.setValue(try Self.sha1Base64(of: fileURL), forHTTPHeaderField: "x-immich-checksum")
@@ -177,7 +181,7 @@ public struct SharedUploadClient: ShareUploading {
         }
         var request = URLRequest(url: url)
         request.httpMethod = method.rawValue
-        request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
+        ServerRequestAuthorization.apply(token: token, custom: customHeaders, to: &request)
         request.setValue("application/json", forHTTPHeaderField: "Accept")
         // Extensions are killed quickly: fail loudly rather than hang past the
         // host's patience. `WidgetDataProvider.interactive()` already caps this,

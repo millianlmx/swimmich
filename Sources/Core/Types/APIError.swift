@@ -12,6 +12,10 @@ enum APIError: Error, LocalizedError, Equatable {
     /// The device is in read-only mode: a write was attempted and refused
     /// before it reached the wire (gap G17).
     case readOnlyMode
+    /// A 401 carrying `WWW-Authenticate`: a proxy in front of the server refused
+    /// the request (Immich never sets that header). The session is untouched —
+    /// the fix is in the server's HTTP headers, not a new sign-in.
+    case proxyRejected
 
     var errorDescription: String? { UserFacingError.from(self)?.message }
 

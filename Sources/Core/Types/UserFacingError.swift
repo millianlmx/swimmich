@@ -36,6 +36,8 @@ struct UserFacingError: Equatable, Sendable {
                 return UserFacingError(family: .serverError, message: serverErrorMessage)
             case .readOnlyMode:
                 return UserFacingError(family: .other, message: readOnlyModeMessage)
+            case .proxyRejected:
+                return UserFacingError(family: .other, message: proxyRejectedMessage)
             case .serverError, .decoding, .invalidURL, .multipartEncoding, .http:
                 return UserFacingError(family: .other, message: genericMessage)
             }
@@ -64,6 +66,10 @@ struct UserFacingError: Equatable, Sendable {
 
     static var readOnlyModeMessage: String {
         String(localized: "Read-only mode is on. Turn it off in Me to change your library.")
+    }
+
+    static var proxyRejectedMessage: String {
+        String(localized: "The proxy in front of this server refused the request. Check this server's HTTP headers.")
     }
 }
 

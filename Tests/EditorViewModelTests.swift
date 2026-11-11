@@ -55,6 +55,47 @@ final class EditorViewModelTests: XCTestCase {
         XCTAssertFalse(vm.isLoading)
     }
 
+    // MARK: L-09 custom HTTP headers
+
+    func test_AC_118_originalCarriesHeaders() async {
+        CapturingURLProtocol.nextData = onePixelPNG()
+        let vm = PhotoEditorViewModel(
+            assetId: "abc", client: MockImmichClient(), urlSession: makeMockedSession(),
+            customHeaders: StaticCustomHeaders([StaticCustomHeaders.xAccess], for: "https://example.com")
+        )
+        await vm.loadOriginal(url: URL(string: "https://example.com/api/assets/abc/original")!, token: "tok")
+
+        XCTAssertNotNil(vm.originalImage)
+        XCTAssertEqual(CapturingURLProtocol.lastRequest?.value(forHTTPHeaderField: "X-Access"), "secret")
+        XCTAssertEqual(CapturingURLProtocol.lastRequest?.value(forHTTPHeaderField: "Authorization"), "Bearer tok")
+    }
+
+    // A blank token (the empty-string rule of `loadOriginal`) still means "no token".
+    func test_AC_124_blankTokenSendsNoAuthorization() async {
+        CapturingURLProtocol.nextData = onePixelPNG()
+        let vm = PhotoEditorViewModel(
+            assetId: "abc", client: MockImmichClient(), urlSession: makeMockedSession(), customHeaders: NoCustomHeaders()
+        )
+        await vm.loadOriginal(url: URL(string: "https://example.com/img")!, token: "")
+        XCTAssertNil(CapturingURLProtocol.lastRequest?.value(forHTTPHeaderField: "Authorization"))
+    }
+
+    func test_AC_120_loadOriginalDropsHeadersOnCrossHostRedirect() async throws {
+        RedirectingURLProtocol.reset()
+        let vm = PhotoEditorViewModel(
+            assetId: "abc", client: MockImmichClient(), urlSession: RedirectingURLProtocol.makeSession(),
+            customHeaders: StaticCustomHeaders([StaticCustomHeaders.xAccess], for: "https://a.proxy.test")
+        )
+        await vm.loadOriginal(url: URL(string: "https://a.proxy.test/api/assets/abc/original")!, token: "tok")
+        let crossed = try XCTUnwrap(RedirectingURLProtocol.requests(toHost: "b.other.test").first)
+        crossed.assertNoSecrets()
+
+        RedirectingURLProtocol.reset()
+        await vm.loadOriginal(url: URL(string: "https://a.proxy.test/same/original")!, token: "tok")
+        let same = try XCTUnwrap(RedirectingURLProtocol.requests(toHost: "a.proxy.test").first)
+        same.assertSecretsKept()
+    }
+
     func test_AC_604_renderPreview_triggers_on_mutation() async {
         let vm = PhotoEditorViewModel(assetId: "abc", client: MockImmichClient())
         // Pre-seed original image directly (no network) to isolate render logic.

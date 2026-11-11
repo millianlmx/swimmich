@@ -109,7 +109,7 @@ public struct ToggleFavoriteIntent: AppIntent {
         do {
             var request = URLRequest(url: url)
             request.httpMethod = "PUT"
-            request.setValue("Bearer \(session.token)", forHTTPHeaderField: "Authorization")
+            ServerRequestAuthorization.apply(token: session.token, custom: session.customHeaders ?? [], to: &request)
             request.setValue("application/json", forHTTPHeaderField: "Content-Type")
             request.httpBody = try JSONSerialization.data(withJSONObject: ["isFavorite": favorite])
 

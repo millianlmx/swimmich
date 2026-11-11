@@ -163,6 +163,7 @@ actor OfflineAssetStore {
     private let transport: any FileDownloadTransport
     private let fileManager: FileManager
     private let defaults: UserDefaults
+    private let customHeaders: any CustomHeadersProviding
     private nonisolated let scope = OfflineScopeBox()
 
     /// Account whose index is in memory, with the epoch it was loaded under.
@@ -186,12 +187,14 @@ actor OfflineAssetStore {
         rootURL: URL? = nil,
         transport: any FileDownloadTransport,
         fileManager: FileManager = .default,
-        defaults: UserDefaults = .standard
+        defaults: UserDefaults = .standard,
+        customHeaders: any CustomHeadersProviding = NoCustomHeaders()
     ) {
         self.rootURL = rootURL ?? Self.defaultRootURL(fileManager: fileManager)
         self.transport = transport
         self.fileManager = fileManager
         self.defaults = defaults
+        self.customHeaders = customHeaders
     }
 
     // MARK: - Active account
@@ -277,9 +280,7 @@ actor OfflineAssetStore {
         }
 
         var request = URLRequest(url: url)
-        if let token {
-            request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
-        }
+        ServerRequestAuthorization.apply(token: token, custom: customHeaders.headers(for: url), to: &request)
 
         // The transport runs in a registered Task so `clearAll(accountID:)` /
         // `clearEveryAccount()` can cancel it. The actor is re-entrant across

@@ -34,6 +34,10 @@ final class ImmichAPIClient: ImmichClient, @unchecked Sendable {
     /// attached: tests, previews, and any extension that builds a client.
     private let log: any AppLogSink
 
+    /// Where the server's custom headers come from (L-09): asked for the URL of
+    /// every request, so a change takes effect on the next one.
+    private let customHeaders: any CustomHeadersProviding
+
     var requestCount: Int { lock.lock(); defer { lock.unlock() }; return _requestCount }
 
     weak var authDelegate: AuthSessionDelegate?
@@ -42,9 +46,11 @@ final class ImmichAPIClient: ImmichClient, @unchecked Sendable {
         session: URLSession = .shared,
         trustStore: TrustedServerStore? = nil,
         sessionConfiguration: URLSessionConfiguration = .ephemeral,
-        log: any AppLogSink = NoopAppLogSink()
+        log: any AppLogSink = NoopAppLogSink(),
+        customHeaders: any CustomHeadersProviding = NoCustomHeaders()
     ) {
         self.log = log
+        self.customHeaders = customHeaders
         if let trustStore {
             let delegate = TrustEvaluatingURLSessionDelegate(trustStore: trustStore)
             self.session = URLSession(configuration: sessionConfiguration, delegate: delegate, delegateQueue: nil)
@@ -808,11 +814,8 @@ final class ImmichAPIClient: ImmichClient, @unchecked Sendable {
         )
         defer { try? FileManager.default.removeItem(at: multipart.file) }
 
-        var request = try baseRequest(HTTPMethod.POST, path: ImmichAPI.users.path("/profile-image"), query: [], auth: false)
+        var request = try baseRequest(HTTPMethod.POST, path: ImmichAPI.users.path("/profile-image"), query: [], auth: true, token: token)
         request.setValue(multipart.contentType, forHTTPHeaderField: ImmichHeader.contentType)
-        if let token = token {
-            request.setValue("Bearer \(token)", forHTTPHeaderField: ImmichHeader.authorization)
-        }
 
         let (responseData, response) = try await dispatchUpload(request, fromFile: multipart.file)
         try validate(response: response, data: responseData)
@@ -889,12 +892,9 @@ final class ImmichAPIClient: ImmichClient, @unchecked Sendable {
         )
         defer { try? FileManager.default.removeItem(at: multipart.file) }
 
-        var request = try baseRequest(HTTPMethod.POST, path: ImmichAPI.assets.path(""), query: [], auth: false)
+        var request = try baseRequest(HTTPMethod.POST, path: ImmichAPI.assets.path(""), query: [], auth: true, token: token)
         request.setValue(multipart.contentType, forHTTPHeaderField: ImmichHeader.contentType)
         request.setValue(checksum, forHTTPHeaderField: ImmichHeader.checksum)
-        if let token = token {
-            request.setValue("Bearer \(token)", forHTTPHeaderField: ImmichHeader.authorization)
-        }
 
         let (responseData, response) = try await dispatchUpload(request, fromFile: multipart.file)
         try validate(response: response, data: responseData)
@@ -1093,16 +1093,19 @@ final class ImmichAPIClient: ImmichClient, @unchecked Sendable {
         }
     }
 
-    /// Method + URL + `Accept` (+ `Bearer` when `auth`), with no body: the JSON
-    /// callers and the multipart upload both start from here.
+    /// Method + URL + `Accept`, then the server's custom headers and — when
+    /// `auth` — the session token (`ServerRequestAuthorization`), with no body:
+    /// the JSON callers and the multipart upload both start from here. The
+    /// custom headers are the ones of THIS request's URL, so a request never
+    /// carries another server's list.
     private func baseRequest(_ method: HTTPMethod, path: String, query: [URLQueryItem], auth: Bool, token: String? = nil) throws -> URLRequest {
         guard let url = resolvedURL(path: path, query: query) else { throw APIError.invalidURL }
         var request = URLRequest(url: url)
         request.httpMethod = method.rawValue
         request.setValue(ImmichAPI.acceptJSON, forHTTPHeaderField: ImmichHeader.accept)
-        if auth, let token {
-            request.setValue("Bearer \(token)", forHTTPHeaderField: ImmichHeader.authorization)
-        }
+        ServerRequestAuthorization.apply(
+            token: auth ? token : nil, custom: customHeaders.headers(for: url), to: &request
+        )
         return request
     }
 
@@ -1110,7 +1113,7 @@ final class ImmichAPIClient: ImmichClient, @unchecked Sendable {
         let start = Date()
         bumpRequestCount()
         do {
-            let result = try await session.data(for: request)
+            let result = try await ServerRedirectTaskDelegate.data(for: request, on: session)
             log.record(entry(for: request, category: "HTTP", status: (result.1 as? HTTPURLResponse)?.statusCode, since: start))
             return result
         } catch let urlError as URLError {
@@ -1129,7 +1132,7 @@ final class ImmichAPIClient: ImmichClient, @unchecked Sendable {
         let start = Date()
         bumpRequestCount()
         do {
-            let result = try await session.upload(for: request, fromFile: fileURL)
+            let result = try await ServerRedirectTaskDelegate.upload(for: request, fromFile: fileURL, on: session)
             log.record(entry(for: request, category: "Upload", status: (result.1 as? HTTPURLResponse)?.statusCode, since: start))
             return result
         } catch let urlError as URLError {
@@ -1177,6 +1180,12 @@ final class ImmichAPIClient: ImmichClient, @unchecked Sendable {
     private func validate(response: URLResponse, data: Data) throws {
         guard let http = response as? HTTPURLResponse else { return }
         if http.statusCode == 401 {
+            // A 401 that carries `WWW-Authenticate` comes from a proxy in front
+            // of the server (Immich never sets that header): the session is
+            // fine, the proxy refused. It must not sign the user out.
+            if let challenge = http.value(forHTTPHeaderField: "WWW-Authenticate"), !challenge.isEmpty {
+                throw APIError.proxyRejected
+            }
             authDelegate?.didReceiveUnauthorized()
             throw APIError.unauthorized
         }

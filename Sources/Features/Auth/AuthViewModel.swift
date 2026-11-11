@@ -101,6 +101,8 @@ final class AuthViewModel: AuthSessionDelegate {
     /// The local stores bound to the active account at each session change
     /// (`scopeLocalData`) and wiped by a voluntary logout. `nil` = none attached.
     private let localData: LocalDataPurger?
+    /// The server's custom HTTP headers (L-09): copied into the widget session.
+    private let customHeaders: any CustomHeadersProviding
 
     init(
         client: any ImmichClient,
@@ -110,7 +112,8 @@ final class AuthViewModel: AuthSessionDelegate {
         realtime: RealtimeService = RealtimeService(),
         widgetSession: any WidgetSessionStoring = WidgetSessionStore(),
         reloadWidgets: @escaping () -> Void = { WidgetCenter.shared.reloadAllTimelines() },
-        localData: LocalDataPurger? = nil
+        localData: LocalDataPurger? = nil,
+        customHeaders: any CustomHeadersProviding = NoCustomHeaders()
     ) {
         self.client = client
         self.keychain = keychain
@@ -120,6 +123,7 @@ final class AuthViewModel: AuthSessionDelegate {
         self.widgetSession = widgetSession
         self.reloadWidgets = reloadWidgets
         self.localData = localData
+        self.customHeaders = customHeaders
         self.serverURLString = defaults.string(forKey: Self.serverURLDefaultsKey) ?? ""
         self.userEmail = defaults.string(forKey: Self.userEmailDefaultsKey)
         self.userName = defaults.string(forKey: Self.userNameDefaultsKey)
@@ -162,6 +166,11 @@ final class AuthViewModel: AuthSessionDelegate {
         // therefore leave `externalDomain` unknown — and the public URL of a
         // shared link would fall back to the server's internal address.
         if isAuthenticated {
+            // The token/URL pair that was just validated; a switch of account
+            // during the await must not reconnect with the old token.
+            if accessToken == token, baseURL == url {
+                realtime.connect(baseURL: url, token: token)
+            }
             serverConfig = try? await client.serverConfig()
             publishWidgetSession()
         }
@@ -189,9 +198,31 @@ final class AuthViewModel: AuthSessionDelegate {
             // The share extension uploads from its own process and reads this
             // snapshot; without the id its assets would show up as a second
             // device in the web UI's per-device filter.
-            deviceId: DeviceIdentity.current
+            deviceId: DeviceIdentity.current,
+            // The widget and the extension cannot read the in-memory registry:
+            // the active server's headers travel with the session. `nil` (not
+            // `[]`) when there are none, so the stored JSON is the one of a
+            // build without custom headers.
+            customHeaders: Self.nonEmpty(customHeaders.headers(for: baseURL))
         ))
         reloadWidgets()
+    }
+
+    private static func nonEmpty(_ headers: [CustomHTTPHeader]) -> [CustomHTTPHeader]? {
+        headers.isEmpty ? nil : headers
+    }
+
+    /// The headers of `key`'s server were saved. Requests read the registry per
+    /// call, so the next one already carries the new list; what needs a nudge is
+    /// what holds a copy — the realtime socket (its handshake headers are fixed
+    /// at connect) and the widgets' session. The session itself is never reset.
+    /// Without a session, or for another server, there is nothing to do.
+    func customHeadersDidChange(for key: ServerKey) {
+        guard isAuthenticated, let token = accessToken, let url = baseURL,
+              ServerKey(url: url) == key
+        else { return }
+        realtime.connect(baseURL: url, token: token)
+        publishWidgetSession()
     }
 
     // MARK: - URL helpers

@@ -45,7 +45,8 @@ final class ShareViewController: UIViewController {
         let client = SharedUploadClient(
             baseURL: session.baseURL,
             token: session.token,
-            deviceId: session.deviceId ?? Self.fallbackDeviceId()
+            deviceId: session.deviceId ?? Self.fallbackDeviceId(),
+            customHeaders: session.customHeaders ?? []
         )
         let model = ShareExtensionViewModel(
             uploader: client,

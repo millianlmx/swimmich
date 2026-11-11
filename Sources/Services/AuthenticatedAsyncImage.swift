@@ -219,9 +219,9 @@ struct AuthenticatedAsyncImage: View {
         let epoch = await ImageCache.shared.epoch
         do {
             var request = URLRequest(url: url)
-            if let token {
-                request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
-            }
+            ServerRequestAuthorization.apply(
+                token: token, custom: CustomHeadersRegistry.shared.headers(for: url), to: &request
+            )
             // Tiers 2+3 — URLCache dedup + network.
             let (data, response) = try await Self.imageSession.data(for: request)
             if let http = response as? HTTPURLResponse, !(200..<300).contains(http.statusCode) {

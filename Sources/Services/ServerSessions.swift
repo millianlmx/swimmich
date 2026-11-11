@@ -6,8 +6,8 @@ import Foundation
 /// - Challenges go to `TrustEvaluatingURLSessionDelegate` unchanged, so the
 ///   trust rule is the API client's (standard evaluation first, then anchoring
 ///   the presented chain only for a host in the trust store).
-/// - On an HTTP redirect, `Authorization` is re-applied when the target is the
-///   same host as the original request, and never otherwise.
+/// - On an HTTP redirect, `ServerRedirectPolicy` applies: the token and the
+///   custom headers are re-applied on the same host and dropped for any other.
 ///
 /// It deliberately does not implement `urlSession(_:task:didReceive:)`.
 final class ServerSessionDelegate: NSObject, URLSessionTaskDelegate, @unchecked Sendable {
@@ -33,12 +33,7 @@ final class ServerSessionDelegate: NSObject, URLSessionTaskDelegate, @unchecked 
         newRequest request: URLRequest,
         completionHandler: @escaping @Sendable (URLRequest?) -> Void
     ) {
-        var redirectedRequest = request
-        if let auth = task.originalRequest?.value(forHTTPHeaderField: "Authorization"),
-           request.url?.host == task.originalRequest?.url?.host {
-            redirectedRequest.setValue(auth, forHTTPHeaderField: "Authorization")
-        }
-        completionHandler(redirectedRequest)
+        completionHandler(ServerRedirectPolicy.redirectedRequest(request, original: task.originalRequest))
     }
 }
 

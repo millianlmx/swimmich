@@ -101,7 +101,8 @@ flowchart TD
 
 - **`ImmichAPIClient`**: all URLs pass through `ImmichAPI.SubPath`; token in header; thread-safe client; typed errors `APIError`.
 - **Images:** `AuthenticatedAsyncImage`, 4-level pipeline (offline file — served from the download cache when present and downsampled through ImageIO, actor-isolated memory cache `NSCache`, disk cache, network with auth headers).
-- **Real-time:** `RealtimeService` (Socket.IO) for server events.
+- **Real-time:** `RealtimeService` (Socket.IO, injectable `RealtimeTransport`) for server events, connected at login and at relaunch with a stored session. Each debounced burst posts `.immichAssetsChanged` with its event names (`RealtimeBatch`) and every screen refreshes as before.
+- **Custom HTTP headers (proxy):** name/value pairs declared per server (host + effective port) from the server step of onboarding ("HTTP Headers") or Me › Advanced. They live in the shared-group Keychain (`KeychainCustomHeadersStore`), never in the logs or `UserDefaults`, and every request to that server carries them — API, images, video, transfers, offline copies, editor, realtime socket (`CustomHeadersRegistry`), and widgets/share extension through `WidgetSession.customHeaders`. One rule dresses a request: `ServerRequestAuthorization` (a custom `Authorization`, e.g. proxy Basic auth, moves the session token to `x-immich-user-token`). A redirect to another host drops them (`ServerRedirectPolicy`). A `401` carrying `WWW-Authenticate` is the proxy refusing (`APIError.proxyRejected`): the session is kept.
 
 ### Auto-Backup — the crown jewel
 

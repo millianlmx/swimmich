@@ -49,6 +49,7 @@ enum ImmichHeader {
     static let accept = "Accept"
     static let checksum = "x-immich-checksum"
     static let cookie = "Cookie"
+    static let userToken = ServerRequestAuthorization.userTokenHeader
 }
 
 /// Cookie names the server sets — mirrors `ImmichCookie` in

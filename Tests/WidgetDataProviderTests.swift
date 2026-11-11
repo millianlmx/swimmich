@@ -653,6 +653,126 @@ final class WidgetDataProviderTests: XCTestCase {
 
         XCTAssertNil(store.load(), "a blank token would make every widget fetch a 401")
     }
+
+    // MARK: - Custom HTTP headers (L-09)
+
+    /// Answers every route a photo wall and a memory feed use.
+    private func headersWallSpy() -> TransportSpy {
+        TransportSpy { request in
+            switch request.url?.path ?? "" {
+            case "/api/timeline/buckets":
+                return (200, Data(#"[{"timeBucket":"2026-09-13T00:00:00.000Z","count":2}]"#.utf8))
+            case "/api/timeline/bucket":
+                return (200, Data(#"{"id":["hero","second"],"isImage":[true,true]}"#.utf8))
+            case "/api/memories":
+                return (200, Data("[]".utf8))
+            default:
+                return (200, self.tinyImage())
+            }
+        }
+    }
+
+    /// Remembers what the app wrote, like the shared keychain would.
+    private final class PublishedSession: WidgetSessionStoring, @unchecked Sendable {
+        private let lock = NSLock()
+        private var stored: WidgetSession?
+        func save(_ session: WidgetSession) { lock.lock(); stored = session; lock.unlock() }
+        func load() -> WidgetSession? { lock.lock(); defer { lock.unlock() }; return stored }
+        func clear() { lock.lock(); stored = nil; lock.unlock() }
+    }
+
+    /// The session as the widget process reads it: encoded by the app, decoded
+    /// by `JSONDecoder` the way `WidgetSessionStore.load()` does.
+    private func decodedFromKeychain(_ session: WidgetSession?) throws -> WidgetSession {
+        let data = try JSONEncoder().encode(try XCTUnwrap(session))
+        return try JSONDecoder().decode(WidgetSession.self, from: data)
+    }
+
+    private func requestsOfAFullRefresh(_ session: WidgetSession, spy: TransportSpy) async -> [URLRequest] {
+        let wallProvider = provider(spy, session: session)
+        _ = await wallProvider.recentPhotos(limit: 2)
+        _ = await wallProvider.memories(limit: 1, offset: 0)
+        return spy.requests
+    }
+
+    @MainActor
+    private func publishedSession(headers: [CustomHTTPHeader]) async throws -> WidgetSession {
+        let suite = "widget-headers-\(UUID().uuidString)"
+        let defaults = UserDefaults(suiteName: suite)!
+        defer { defaults.removePersistentDomain(forName: suite) }
+        let mock = MockImmichClient()
+        mock.loginResponse = LoginResponseDto(
+            accessToken: "widget-jwt", userId: "u1", userEmail: "t@e.com", name: "Milian",
+            profileImagePath: "", isAdmin: false, shouldChangePassword: false, isOnboarded: true
+        )
+        let published = PublishedSession()
+        let auth = AuthViewModel(
+            client: mock, keychain: MockKeychainStore(), defaults: defaults, widgetSession: published,
+            reloadWidgets: {},
+            customHeaders: StaticCustomHeaders(headers, for: "https://photos.example.com")
+        )
+        auth.serverURLString = "https://photos.example.com"
+        _ = auth.baseURL
+        await auth.login(email: "t@e.com", password: "secret")
+        return try decodedFromKeychain(published.load())
+    }
+
+    // S-19: from the session the app publishes to every request a widget makes.
+    @MainActor
+    func test_AC_19_widgetRequestsCarryHeaders() async throws {
+        let session = try await publishedSession(headers: [StaticCustomHeaders.xAccess])
+        XCTAssertEqual(session.customHeaders, [StaticCustomHeaders.xAccess])
+
+        let spy = headersWallSpy()
+        let requests = await requestsOfAFullRefresh(session, spy: spy)
+
+        let paths = Set(requests.compactMap { $0.url?.path })
+        XCTAssertTrue(paths.contains("/api/timeline/buckets"))
+        XCTAssertTrue(paths.contains("/api/timeline/bucket"))
+        XCTAssertTrue(paths.contains("/api/memories"))
+        XCTAssertTrue(paths.contains { $0.hasSuffix("/thumbnail") }, "thumbnails are requests too")
+        for request in requests {
+            XCTAssertEqual(request.value(forHTTPHeaderField: "X-Access"), "secret", request.url?.path ?? "")
+            XCTAssertEqual(request.value(forHTTPHeaderField: "Authorization"), "Bearer widget-jwt")
+        }
+    }
+
+    // AC-119 (provider half): after the header is deleted and the session
+    // republished, the next refresh carries nothing.
+    @MainActor
+    func test_AC_119_refreshAfterRemovalCarriesNoHeader() async throws {
+        let without = try await publishedSession(headers: [])
+        XCTAssertNil(without.customHeaders, "no list: the key is absent, like before this feature")
+        let requests = await requestsOfAFullRefresh(without, spy: headersWallSpy())
+        XCTAssertFalse(requests.isEmpty)
+        XCTAssertTrue(requests.allSatisfy { $0.value(forHTTPHeaderField: "X-Access") == nil })
+    }
+
+    func test_AC_124_legacySessionDecodesAndSendsBearerOnly() async throws {
+        let legacy = Data(#"{"baseURL":"https://photos.example.com","token":"widget-jwt","userName":"Milian"}"#.utf8)
+        let session = try JSONDecoder().decode(WidgetSession.self, from: legacy)
+        XCTAssertNil(session.customHeaders)
+
+        let requests = await requestsOfAFullRefresh(session, spy: headersWallSpy())
+        XCTAssertFalse(requests.isEmpty)
+        for request in requests {
+            XCTAssertEqual(request.value(forHTTPHeaderField: "Authorization"), "Bearer widget-jwt")
+            XCTAssertNil(request.value(forHTTPHeaderField: "x-immich-user-token"))
+            XCTAssertLessThanOrEqual(request.allHTTPHeaderFields?.count ?? 0, 2, "Authorization and, for JSON routes, Accept")
+        }
+    }
+
+    func test_AC_125_widgetUsesUserTokenHeader() async throws {
+        let session = WidgetSession(
+            baseURL: "https://photos.example.com", token: "widget-jwt", customHeaders: [StaticCustomHeaders.basic]
+        )
+        let requests = await requestsOfAFullRefresh(session, spy: headersWallSpy())
+        XCTAssertFalse(requests.isEmpty)
+        for request in requests {
+            XCTAssertEqual(request.value(forHTTPHeaderField: "Authorization"), "Basic dXNlcjpwYXNz")
+            XCTAssertEqual(request.value(forHTTPHeaderField: "x-immich-user-token"), "widget-jwt")
+        }
+    }
 }
 
 /// The app publishes what the widgets read: without these, every widget shows
@@ -1210,5 +1330,44 @@ final class ToggleFavoriteIntentWriteTests: XCTestCase {
         XCTAssertEqual(outcome.reloads, [])
         XCTAssertEqual(outcome.logs.count, 1)
         XCTAssertTrue(outcome.logs.first?.contains("invalid server URL") == true)
+    }
+
+    // MARK: - Custom HTTP headers (L-09)
+
+    func test_AC_19_favoriteWriteCarriesHeaders() async throws {
+        let session = WidgetSession(
+            baseURL: "https://photos.example.com", token: "widget-jwt", customHeaders: [StaticCustomHeaders.xAccess]
+        )
+        let outcome = await run(session: session, transport: TransportSpy(status: 200))
+        let request = try XCTUnwrap(outcome.transport.requests.first)
+        XCTAssertEqual(request.value(forHTTPHeaderField: "X-Access"), "secret")
+        XCTAssertEqual(request.value(forHTTPHeaderField: "Authorization"), "Bearer widget-jwt")
+    }
+
+    // AC-119: the favorite carries the header; once the app republished the
+    // session without it, the next favorite does not.
+    func test_AC_119_favoriteCarriesHeadersThenNotAfterRemoval() async throws {
+        let with = WidgetSession(
+            baseURL: "https://photos.example.com", token: "widget-jwt", customHeaders: [StaticCustomHeaders.xAccess]
+        )
+        let first = await run(session: with, transport: TransportSpy(status: 200))
+        XCTAssertEqual(first.transport.requests.first?.value(forHTTPHeaderField: "X-Access"), "secret")
+
+        var republished = with
+        republished.customHeaders = nil
+        let second = await run(session: republished, transport: TransportSpy(status: 200))
+        XCTAssertNil(second.transport.requests.first?.value(forHTTPHeaderField: "X-Access"))
+        XCTAssertEqual(second.transport.requests.first?.value(forHTTPHeaderField: "Authorization"), "Bearer widget-jwt")
+    }
+
+    func test_AC_125_favoriteUsesUserTokenHeader() async throws {
+        let session = WidgetSession(
+            baseURL: "https://photos.example.com", token: "widget-jwt", customHeaders: [StaticCustomHeaders.basic]
+        )
+        let outcome = await run(session: session, transport: TransportSpy(status: 200))
+        let request = try XCTUnwrap(outcome.transport.requests.first)
+        XCTAssertEqual(request.value(forHTTPHeaderField: "Authorization"), "Basic dXNlcjpwYXNz")
+        XCTAssertEqual(request.value(forHTTPHeaderField: "x-immich-user-token"), "widget-jwt")
+        XCTAssertFalse(outcome.logs.joined().contains("secret"))
     }
 }

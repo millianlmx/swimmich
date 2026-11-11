@@ -119,6 +119,27 @@ final class OfflineAssetStoreTests: XCTestCase {
         XCTAssertEqual(recorder.fractions.sorted(), [0.25, 0.5, 1.0])
     }
 
+    // L-09 / AC-118: an offline copy is downloaded with the server's headers.
+    func test_AC_118_downloadCarriesHeaders() async throws {
+        transport.payload = Data(repeating: 0x01, count: 10)
+        let headered = OfflineAssetStore(
+            rootURL: root, transport: transport, defaults: defaults,
+            customHeaders: StaticCustomHeaders([StaticCustomHeaders.xAccess], for: "https://example.com")
+        )
+        headered.setActiveAccount(Self.accountA, otherAccountsRegistered: false)
+
+        _ = try await headered.download(
+            accountID: Self.accountA, assetID: "asset-1",
+            url: URL(string: "https://example.com/api/assets/asset-1/original")!,
+            token: "tok", fileName: "photo.jpg", isVideo: false, ratio: 0.75,
+            fileCreatedAt: "2024-07-01T10:00:00.000Z", duration: nil, thumbhash: nil,
+            announcedSize: nil, onProgress: { _, _ in }
+        )
+
+        XCTAssertEqual(transport.lastRequest?.value(forHTTPHeaderField: "X-Access"), "secret")
+        XCTAssertEqual(transport.lastRequest?.value(forHTTPHeaderField: "Authorization"), "Bearer tok")
+    }
+
     func test_download_usesTheServerFileNameExtension() async throws {
         transport.payload = Data(repeating: 0x01, count: 10)
         transport.contentType = "video/quicktime"
