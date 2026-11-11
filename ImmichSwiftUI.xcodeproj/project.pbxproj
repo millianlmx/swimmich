@@ -136,6 +136,7 @@
 		3624B2A08F9652A63ED13453 /* PhotoLibraryChangeMonitoring.swift in Sources */ = {isa = PBXBuildFile; fileRef = AEFE4EBF848A641180419217 /* PhotoLibraryChangeMonitoring.swift */; };
 		365EBE988B9DB1483C23C6FC /* immich_stub_upload_detail.py in Resources */ = {isa = PBXBuildFile; fileRef = 7DA861477F3413995E33B935 /* immich_stub_upload_detail.py */; };
 		3670AD015A2E270961800429 /* TimelineGridZoom.swift in Sources */ = {isa = PBXBuildFile; fileRef = B401D9CEED0EFFEE799E61F1 /* TimelineGridZoom.swift */; };
+		5D1A7C3E9B2F40186AC7D301 /* TimelineScrubber.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5D1A7C3E9B2F40186AC7D302 /* TimelineScrubber.swift */; };
 		37547BE769BDC8B23CD020E3 /* CountryFlag.swift in Sources */ = {isa = PBXBuildFile; fileRef = CB6D635F0CFE068BCCC41652 /* CountryFlag.swift */; };
 		375CC3D254EFA48471384587 /* MapDTOs.swift in Sources */ = {isa = PBXBuildFile; fileRef = 712D1C56106FA8DAE37F50C8 /* MapDTOs.swift */; };
 		387F37D344900C7D42BD74E4 /* immich_stub_whats_new.py in Resources */ = {isa = PBXBuildFile; fileRef = D7CDFD9D40457278408F95D6 /* immich_stub_whats_new.py */; };
@@ -251,6 +252,7 @@
 		7054B0C13EF885F5CC0A1C92 /* OcrOverlayView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7033916824290F1F230DBA38 /* OcrOverlayView.swift */; };
 		7066979BA43E84DD98058FF3 /* FolderView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2E0A77E31B92E874904F6F20 /* FolderView.swift */; };
 		70A9CF257B5FFECEF0C8B85B /* immich_stub_favorites_filter.py in Resources */ = {isa = PBXBuildFile; fileRef = 03632C077FCF1B55FBC589F0 /* immich_stub_favorites_filter.py */; };
+		5D1A7C3E9B2F40186AC7D305 /* immich_stub_timeline_scrubber.py in Resources */ = {isa = PBXBuildFile; fileRef = 5D1A7C3E9B2F40186AC7D306 /* immich_stub_timeline_scrubber.py */; };
 		713A94699F5AFE930190CC37 /* RoadTripVideoRenderer.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6E9FC5CB9439ACC48B2E780B /* RoadTripVideoRenderer.swift */; };
 		71AA341CADE9279140866901 /* PVRatingBar.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9CBBDC3A3D8B7F03189536ED /* PVRatingBar.swift */; };
 		71DF4CD3849F4CBDE59D11A7 /* ShareViewController.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9F2C169659BCE35EC4A9A09B /* ShareViewController.swift */; };
@@ -486,6 +488,7 @@
 		DEEE3F4BAB35BDCF8DC5A0E5 /* TeslaCar.usdz in Resources */ = {isa = PBXBuildFile; fileRef = 9F183C2BA758F27446A7FF14 /* TeslaCar.usdz */; };
 		DF56AF55F4C25922114C4396 /* LockedFolderUITests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 86533554A77DF5D2D61EA1FF /* LockedFolderUITests.swift */; };
 		DF7A0FB005A9A1230D45DAC0 /* FavoritesFilterUITests.swift in Sources */ = {isa = PBXBuildFile; fileRef = B03C5CFAF754218B24E97A04 /* FavoritesFilterUITests.swift */; };
+		5D1A7C3E9B2F40186AC7D303 /* TimelineScrubberUITests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5D1A7C3E9B2F40186AC7D304 /* TimelineScrubberUITests.swift */; };
 		DFFA30063578322A1AB52D3A /* ImmichColors.swift in Sources */ = {isa = PBXBuildFile; fileRef = AF2FE20DC73A4EF7C653097A /* ImmichColors.swift */; };
 		E00CB72F2D79A32EC663A9F0 /* AppLockViewModelTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4AB868B52ADB57744F84B7EB /* AppLockViewModelTests.swift */; };
 		E09ADD5088E5F330E8B782CA /* WhatsNewUITests.swift in Sources */ = {isa = PBXBuildFile; fileRef = F0811A00478B347A7005063B /* WhatsNewUITests.swift */; };
@@ -665,6 +668,7 @@
 		0296808F41BB923762620C64 /* MapViewModelTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MapViewModelTests.swift; sourceTree = "<group>"; };
 		029B3BE33C062C1EDA30A7C3 /* ActivityFeedViewModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ActivityFeedViewModel.swift; sourceTree = "<group>"; };
 		03632C077FCF1B55FBC589F0 /* immich_stub_favorites_filter.py */ = {isa = PBXFileReference; lastKnownFileType = text.script.python; path = immich_stub_favorites_filter.py; sourceTree = "<group>"; };
+		5D1A7C3E9B2F40186AC7D306 /* immich_stub_timeline_scrubber.py */ = {isa = PBXFileReference; lastKnownFileType = text.script.python; path = immich_stub_timeline_scrubber.py; sourceTree = "<group>"; };
 		036BFADE71C7FA65CBFEA7D2 /* TrustedServerStoreImpl.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TrustedServerStoreImpl.swift; sourceTree = "<group>"; };
 		0382F4AB250DCB3826D6C3D7 /* ShareConfirmationView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ShareConfirmationView.swift; sourceTree = "<group>"; };
 		03FB0288F074A6D4A64930F5 /* MapSettingsStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MapSettingsStore.swift; sourceTree = "<group>"; };
@@ -1013,6 +1017,7 @@
 		B02B93754FE50288E2321D3A /* ConnectionResetting.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ConnectionResetting.swift; sourceTree = "<group>"; };
 		B032F8E8A997D00D932B511E /* immich_stub_locked_folder.py */ = {isa = PBXFileReference; lastKnownFileType = text.script.python; path = immich_stub_locked_folder.py; sourceTree = "<group>"; };
 		B03C5CFAF754218B24E97A04 /* FavoritesFilterUITests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FavoritesFilterUITests.swift; sourceTree = "<group>"; };
+		5D1A7C3E9B2F40186AC7D304 /* TimelineScrubberUITests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TimelineScrubberUITests.swift; sourceTree = "<group>"; };
 		B07A5F2A47B9299F033309AE /* BackgroundBackupScheduling.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BackgroundBackupScheduling.swift; sourceTree = "<group>"; };
 		B10C390A70E5C7C2C4501752 /* DTOs+Album.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "DTOs+Album.swift"; sourceTree = "<group>"; };
 		B1B997AD4CE39A508D9AE7F7 /* AssetOcrDTOs.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AssetOcrDTOs.swift; sourceTree = "<group>"; };
@@ -1020,6 +1025,7 @@
 		B2AD9D1FB2C3B2D0C650EE19 /* OfflineAssetsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OfflineAssetsView.swift; sourceTree = "<group>"; };
 		B2BE58A959176290845E8EF8 /* LocalLibraryUITests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LocalLibraryUITests.swift; sourceTree = "<group>"; };
 		B401D9CEED0EFFEE799E61F1 /* TimelineGridZoom.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TimelineGridZoom.swift; sourceTree = "<group>"; };
+		5D1A7C3E9B2F40186AC7D302 /* TimelineScrubber.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TimelineScrubber.swift; sourceTree = "<group>"; };
 		B409F3E2E98EF82B46FF3BD7 /* AlbumSyncService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AlbumSyncService.swift; sourceTree = "<group>"; };
 		B443542BBDCA7FB3FF94AD94 /* SearchFilterTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SearchFilterTests.swift; sourceTree = "<group>"; };
 		B454873E88BC71CB37D9B99C /* ChromecastUITests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ChromecastUITests.swift; sourceTree = "<group>"; };
@@ -1857,6 +1863,7 @@
 				60290B25870E4D7852401377 /* DateHeaderFormatter.swift */,
 				B74E7C08F4EE298959335CB6 /* PinnedHeaderResolver.swift */,
 				B401D9CEED0EFFEE799E61F1 /* TimelineGridZoom.swift */,
+				5D1A7C3E9B2F40186AC7D302 /* TimelineScrubber.swift */,
 				D543DF3FA536684E66F2E356 /* TimelineSectionBuilder.swift */,
 				8F3CC41BE0841865DDCC77FE /* TimelineView.swift */,
 				15168B21BF81DE8DB9FB219B /* TimelineViewModel.swift */,
@@ -1929,6 +1936,7 @@
 				CC36E2B7F204C9A1266F2B98 /* immich_stub_device_sessions.py */,
 				607CE3CE9738B53399D0FDEB /* immich_stub_download_panel.py */,
 				03632C077FCF1B55FBC589F0 /* immich_stub_favorites_filter.py */,
+				5D1A7C3E9B2F40186AC7D306 /* immich_stub_timeline_scrubber.py */,
 				C524A83EB4E2B20E819024A1 /* immich_stub_folder_view.py */,
 				5674388C6E6D6308091F95AC /* immich_stub_free_up_space.py */,
 				8FD4678BF9AC2355AC59D544 /* immich_stub_local_library.py */,
@@ -2039,6 +2047,7 @@
 				EB2E19CAC2028AE8C556676B /* DeviceSessionsUITests.swift */,
 				3DE668217FAB4DE961AEF8E4 /* DownloadPanelUITests.swift */,
 				B03C5CFAF754218B24E97A04 /* FavoritesFilterUITests.swift */,
+				5D1A7C3E9B2F40186AC7D304 /* TimelineScrubberUITests.swift */,
 				78372C4588F75079AFAE958B /* FolderViewUITests.swift */,
 				A14A4BDD1813503721593F03 /* FreeUpSpaceUITests.swift */,
 				B2BE58A959176290845E8EF8 /* LocalLibraryUITests.swift */,
@@ -2443,6 +2452,7 @@
 				80BD8D041B23F7E5E4AD0032 /* immich_stub_device_sessions.py in Resources */,
 				893C20C474681F778448A0F4 /* immich_stub_download_panel.py in Resources */,
 				70A9CF257B5FFECEF0C8B85B /* immich_stub_favorites_filter.py in Resources */,
+				5D1A7C3E9B2F40186AC7D305 /* immich_stub_timeline_scrubber.py in Resources */,
 				332E532AFB4139649D93275D /* immich_stub_folder_view.py in Resources */,
 				4748E6D5E5941D3DD2BCC558 /* immich_stub_free_up_space.py in Resources */,
 				79D68068E03737251E7BBB4B /* immich_stub_local_library.py in Resources */,
@@ -2663,6 +2673,7 @@
 				D15991D9082320B92652BFB6 /* DeviceSessionsUITests.swift in Sources */,
 				7FB32C8946193B5BF24D1FC4 /* DownloadPanelUITests.swift in Sources */,
 				DF7A0FB005A9A1230D45DAC0 /* FavoritesFilterUITests.swift in Sources */,
+				5D1A7C3E9B2F40186AC7D303 /* TimelineScrubberUITests.swift in Sources */,
 				1DB3F51D0ECDB05A6A44D382 /* FolderViewUITests.swift in Sources */,
 				3C7D0A06D816806EBE848628 /* FreeUpSpaceUITests.swift in Sources */,
 				6EE4B13C616AD03120A4C765 /* ImmichRenderScreenshots.swift in Sources */,
@@ -2965,6 +2976,7 @@
 				807142DBACA42A1EDCF35707 /* ThirdPartyLicense.swift in Sources */,
 				B7A50ED30BC62BFADAD60901 /* ThumbHashDecoder.swift in Sources */,
 				3670AD015A2E270961800429 /* TimelineGridZoom.swift in Sources */,
+				5D1A7C3E9B2F40186AC7D301 /* TimelineScrubber.swift in Sources */,
 				107144723CA4D34EB393EF4D /* TimelineSectionBuilder.swift in Sources */,
 				5257FD93BBB1F2AEBE24BAE2 /* TimelineView.swift in Sources */,
 				989446660BFF32E378E09957 /* TimelineViewModel.swift in Sources */,

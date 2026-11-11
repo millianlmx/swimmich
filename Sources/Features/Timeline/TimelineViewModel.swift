@@ -24,6 +24,30 @@ final class TimelineViewModel {
     /// Loaded item IDs for O(1) dedup (FM-1 / AC-006).
     private(set) var loadedIds: Set<String> = []
 
+    // MARK: - Date scrubber state (L-04)
+
+    /// Where the date scrubber's handle rests outside a gesture: the month of
+    /// the first visible photo and how far into it. Observed by
+    /// `TimelineScrubber` only — `TimelineView.body` never reads it, or every
+    /// row change would re-evaluate the whole grid.
+    var scrubPosition: TimelineScrubPosition?
+    /// The month a failed jump was heading to, so "Try Again" reloads that
+    /// month and nothing else. `nil` once any load supersedes it.
+    private(set) var pendingJump: PendingJump?
+    /// Bumped by every jump and by every reload: a jump (or a neighbour load)
+    /// whose answer arrives after a newer one must not touch the window.
+    @ObservationIgnored private var jumpGeneration = 0
+    @ObservationIgnored private var activeJump: Int?
+    /// Bumped each time the window of loaded months is replaced; a neighbour
+    /// load that started before the replacement is discarded on arrival.
+    @ObservationIgnored private(set) var windowEpoch = 0
+    /// Month index and rank (grid order) of every loaded photo — what turns
+    /// the ids the scroll view reports as visible into a scrubber position.
+    @ObservationIgnored private var placeById: [String: (month: Int, rank: Int)] = [:]
+    /// The first visible photo as last reported by the scroll view; the
+    /// re-anchor target after a newer month is prepended.
+    @ObservationIgnored private(set) var topVisibleId: String?
+
     let client: any ImmichClient
     /// Active filter of the main timeline. `.all` asks the server for my
     /// photos plus those of partners with "Show in timeline" on.
@@ -45,6 +69,10 @@ final class TimelineViewModel {
     }
 
     var canLoadMore: Bool { bucketIndex < buckets.count }
+
+    /// True while the loaded window begins at the newest month (nothing newer
+    /// to prepend).
+    var windowStartsAtNewest: Bool { upperBucketIndex < 0 }
 
     // MARK: - Selection mode (AC-201)
 
@@ -366,12 +394,21 @@ final class TimelineViewModel {
 
     /// Re-fetches the bucket list and the first page. The shown items are only
     /// replaced once the first bucket has loaded: if that bucket fails or is
-    /// cancelled, the photos already on screen stay (SP-1 / SP-5).
+    /// cancelled, the photos already on screen stay (SP-1 / SP-5). The scrubber
+    /// places are not restored: `buckets` already names the new list, and old
+    /// places would point at months that are absent or wrong in it.
     @MainActor
     private func reloadFirstPage() async throws {
-        buckets = try await fetchBuckets()
+        supersedeJumps()
+        let fetched = try await fetchBuckets()
+        // A jump started while the list was in flight read the old one.
+        supersedeJumps()
+        buckets = fetched
         bucketIndex = 0
         upperBucketIndex = -1
+        placeById = [:]
+        topVisibleId = nil
+        scrubPosition = nil
         let previousItems = items
         let previousLoadedIds = loadedIds
         items = []
@@ -383,13 +420,21 @@ final class TimelineViewModel {
         }
     }
 
+    /// A reload replaces any jump in flight and invalidates neighbour loads.
+    private func supersedeJumps() {
+        jumpGeneration &+= 1
+        activeJump = nil
+        pendingJump = nil
+        windowEpoch &+= 1
+    }
+
     @MainActor
     func loadMore() async {
         guard !isLoading else { return }
         await loadNextBucket()
     }
 
-    /// Teleports the timeline to a specific day: loads that day's bucket
+    /// Teleports the timeline to a specific day: loads that day's month
     /// directly (replacing `items`), then lets `loadMore` continue into older
     /// buckets and `loadNewer` into newer ones. No-op when the day isn't found.
     @MainActor
@@ -404,18 +449,97 @@ final class TimelineViewModel {
             }
         }
         guard let index = buckets.firstIndex(where: { $0.timeBucket == day }) else { return }
+        await jumpToMonth(at: index, fraction: 0)
+    }
+
+    /// The single entry point of every jump (date scrubber, VoiceOver,
+    /// "view in timeline", "scroll to top" after a jump): loads month `index`
+    /// alone, replacing the window, with exactly one `GET bucket`.
+    /// - Returns: the id of the photo to put at the top of the grid — the first
+    ///   of the month for `fraction == 0`, else the photo at that fraction of
+    ///   the month in grid order — or `nil` when nothing changed (superseded,
+    ///   failed, cancelled, empty month, unknown index).
+    @MainActor
+    @discardableResult
+    func jumpToMonth(at index: Int, fraction: Double) async -> String? {
+        guard buckets.indices.contains(index) else { return nil }
+        jumpGeneration &+= 1
+        let gen = jumpGeneration
+        activeJump = gen
         isLoading = true
+        pendingJump = nil
+        let previous = scrubPosition
+        scrubPosition = TimelineScrubPosition(monthIndex: index, fraction: fraction)
+        let key = buckets[index].timeBucket
         do {
-            let columnar = try await fetchBucket(buckets[index].timeBucket)
+            let columnar = try await fetchBucket(key)
+            // A newer jump or a reload owns the window now: touch nothing.
+            guard gen == jumpGeneration else { return nil }
+            activeJump = nil
+            isLoading = false
             let zipped = AssetReactItem.zip(columnar)
+            if zipped.isEmpty {
+                scrubPosition = previous
+                return nil
+            }
+            windowEpoch &+= 1
             items = zipped
             loadedIds = Set(zipped.map(\.id))
             bucketIndex = index + 1
             upperBucketIndex = index - 1
+            placeById = [:]
+            recordPlaces(of: zipped, month: index)
+            loadErrorMessage = nil
+            let ordered = Self.gridOrdered(zipped)
+            let anchor = ordered[TimelineScrubberMath.anchorRank(fraction: fraction, count: ordered.count)].id
+            topVisibleId = anchor
+            return anchor
         } catch let e {
-            loadErrorMessage = e.userFacingMessage
+            guard gen == jumpGeneration else { return nil }
+            activeJump = nil
+            isLoading = false
+            scrubPosition = previous
+            if let message = e.userFacingMessage {
+                loadErrorMessage = message
+                pendingJump = PendingJump(timeBucket: key, fraction: fraction)
+            }
+            return nil
         }
-        isLoading = false
+    }
+
+    /// "Try Again" of the error banner: a failed jump reloads its month only
+    /// (one `GET bucket`, no `GET buckets`); any other failure refreshes.
+    @MainActor
+    @discardableResult
+    func retryLoad() async -> String? {
+        if let pending = pendingJump,
+           let index = buckets.firstIndex(where: { $0.timeBucket == pending.timeBucket }) {
+            loadErrorMessage = nil
+            return await jumpToMonth(at: index, fraction: pending.fraction)
+        }
+        await refresh()
+        return nil
+    }
+
+    /// Records the topmost visible photo reported by the scroll view as the
+    /// scrubber's resting position. Takes the minimum `(month, rank)` of the
+    /// ids it knows — the order of `visibleIds` is not documented — and only
+    /// writes when the position changes.
+    func updateScrubPosition(visibleIds: [String]) {
+        var best: (month: Int, rank: Int, id: String)?
+        for id in visibleIds {
+            guard let place = placeById[id], buckets.indices.contains(place.month) else { continue }
+            if let current = best, (current.month, current.rank) <= (place.month, place.rank) { continue }
+            best = (place.month, place.rank, id)
+        }
+        guard let best else { return }
+        topVisibleId = best.id
+        let count = Double(max(buckets[best.month].count, 1))
+        let position = TimelineScrubPosition(
+            monthIndex: best.month,
+            fraction: min(Double(best.rank) / count, 1.0.nextDown)
+        )
+        if position != scrubPosition { scrubPosition = position }
     }
 
     /// Loads the bucket immediately NEWER than the current top (used when the
@@ -423,17 +547,24 @@ final class TimelineViewModel {
     /// newest-first.
     @MainActor
     func loadNewer() async {
-        guard !isLoading, upperBucketIndex >= 0 else { return }
+        guard !isLoading, upperBucketIndex >= 0, buckets.indices.contains(upperBucketIndex) else { return }
         isLoading = true
-        defer { isLoading = false }
+        // A jump that started meanwhile owns `isLoading`.
+        defer { if activeJump == nil { isLoading = false } }
+        let epoch = windowEpoch
+        let index = upperBucketIndex
+        let key = buckets[index].timeBucket
         do {
-            let columnar = try await fetchBucket(buckets[upperBucketIndex].timeBucket)
+            let columnar = try await fetchBucket(key)
+            guard epoch == windowEpoch, upperBucketIndex == index, bucketIsCurrent(index, key) else { return }
             let zipped = AssetReactItem.zip(columnar)
             let newItems = zipped.filter { !loadedIds.contains($0.id) }
             items.insert(contentsOf: newItems, at: 0)
             loadedIds.formUnion(newItems.map(\.id))
+            recordPlaces(of: zipped, month: index)
             upperBucketIndex -= 1
         } catch let e {
+            guard epoch == windowEpoch, upperBucketIndex == index, bucketIsCurrent(index, key) else { return }
             loadErrorMessage = e.userFacingMessage
         }
     }
@@ -441,18 +572,40 @@ final class TimelineViewModel {
     @MainActor
     private func loadNextBucket() async {
         guard bucketIndex < buckets.count else { return }
-        let bucket = buckets[bucketIndex]
+        let epoch = windowEpoch
+        let index = bucketIndex
+        let key = buckets[index].timeBucket
         do {
-            let columnar = try await fetchBucket(bucket.timeBucket)
+            let columnar = try await fetchBucket(key)
+            // The window may have been replaced during the await (a jump, a
+            // reload): then this month no longer belongs after its end.
+            guard epoch == windowEpoch, bucketIndex == index, bucketIsCurrent(index, key) else { return }
             // AC-013: zip columnar into objects.
             let zipped = AssetReactItem.zip(columnar)
             for item in zipped where !loadedIds.contains(item.id) {
                 items.append(item)
                 loadedIds.insert(item.id)
             }
+            recordPlaces(of: zipped, month: index)
             bucketIndex += 1
         } catch let e {
+            guard epoch == windowEpoch, bucketIndex == index, bucketIsCurrent(index, key) else { return }
             loadErrorMessage = e.userFacingMessage
+        }
+    }
+
+    private func bucketIsCurrent(_ index: Int, _ key: String) -> Bool {
+        buckets.indices.contains(index) && buckets[index].timeBucket == key
+    }
+
+    /// The order the grid draws a month in: newest first.
+    private static func gridOrdered(_ items: [AssetReactItem]) -> [AssetReactItem] {
+        items.sorted { $0.fileCreatedAt > $1.fileCreatedAt }
+    }
+
+    private func recordPlaces(of items: [AssetReactItem], month: Int) {
+        for (rank, item) in Self.gridOrdered(items).enumerated() {
+            placeById[item.id] = (month: month, rank: rank)
         }
     }
 
