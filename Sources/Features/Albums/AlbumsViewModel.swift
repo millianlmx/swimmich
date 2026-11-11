@@ -21,13 +21,24 @@ final class AlbumsViewModel {
 
     // MARK: - Load (AC-506)
 
+    /// Owned albums plus the ones shared with the user. A v2.x server returns
+    /// only owned albums without a filter and the shared ones with
+    /// `shared=true`; v3 returns every album for both, so the merge by id
+    /// yields the first list unchanged.
     func load() async {
         isLoading = true
         defer { isLoading = false }
         do {
-            let result = try await client.getAlbums()
+            async let owned = client.getAlbums(shared: nil)
+            async let shared = client.getAlbums(shared: true)
+            let (ownedList, sharedList) = try await (owned, shared)
+            var seen = Set(ownedList.map(\.id))
+            var merged = ownedList
+            for album in sharedList where seen.insert(album.id).inserted {
+                merged.append(album)
+            }
             // try-then-mutate: only mutate on success.
-            albums = result
+            albums = merged
             loadErrorMessage = nil
         } catch {
             loadErrorMessage = error.userFacingMessage

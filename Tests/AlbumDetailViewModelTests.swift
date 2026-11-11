@@ -61,7 +61,7 @@ final class AlbumDetailViewModelTests: XCTestCase {
         AlbumDetailPermissions(album: album, userId: userId).role
     }
 
-    private let ownerOnlyActions: Set<AlbumDetailAction> = [.editAlbum, .setCover, .deleteAlbum, .sharedWith]
+    private let ownerOnlyActions: Set<AlbumDetailAction> = [.editAlbum, .setCover, .deleteAlbum, .sharedWith, .changeOrder]
 
     // MARK: - Role (AC-1..AC-9)
 
@@ -123,7 +123,7 @@ final class AlbumDetailViewModelTests: XCTestCase {
         XCTAssertEqual(vm.permissions(currentUserId: "me", fallback: asOwner).role, .owner)
         XCTAssertEqual(
             vm.allowedActions(on: .albumMenu, currentUserId: "me", fallback: asOwner),
-            [.editAlbum, .sharedWith, .deleteAlbum]
+            [.editAlbum, .sharedWith, .deleteAlbum, .changeOrder]
         )
 
         mock.getAlbumResponse = ["alb": asViewer]
@@ -136,7 +136,7 @@ final class AlbumDetailViewModelTests: XCTestCase {
         XCTAssertEqual(vm.permissions(currentUserId: "me", fallback: asViewer).role, .owner)
         XCTAssertEqual(
             vm.allowedActions(on: .albumMenu, currentUserId: "me", fallback: asViewer),
-            [.editAlbum, .sharedWith, .deleteAlbum]
+            [.editAlbum, .sharedWith, .deleteAlbum, .changeOrder]
         )
     }
 
@@ -155,7 +155,7 @@ final class AlbumDetailViewModelTests: XCTestCase {
 
     func test_AC_13_owner_allOwnerActions() {
         let p = AlbumDetailPermissions(album: makeAlbum(ownerId: "me"), userId: "me")
-        XCTAssertEqual(p.allowedActions(on: .albumMenu), [.editAlbum, .sharedWith, .deleteAlbum])
+        XCTAssertEqual(p.allowedActions(on: .albumMenu), [.editAlbum, .sharedWith, .deleteAlbum, .changeOrder])
         XCTAssertTrue(p.allowedActions(on: .selectionBar).contains(.setCover))
         XCTAssertTrue(p.allowedActions(on: .assetContextMenu).contains(.setCover))
     }

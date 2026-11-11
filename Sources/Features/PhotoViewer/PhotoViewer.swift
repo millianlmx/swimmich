@@ -1441,7 +1441,8 @@ private struct PhotoShareSheet: View {
                 asset: asset,
                 client: client,
                 baseURL: baseURL,
-                externalDomain: auth.serverConfig?.externalDomain ?? ""
+                externalDomain: auth.serverConfig?.externalDomain ?? "",
+                currentUserId: auth.userId
             )
             vm = new
             await new.load()

@@ -7,6 +7,7 @@ struct EditAlbumSheet: View {
     @Bindable var vm: AlbumDetailViewModel
 
     @Environment(\.dismiss) private var dismiss
+    @Environment(AuthViewModel.self) private var auth
     @State private var name: String
     @State private var description: String
     @State private var isActivityEnabled: Bool
@@ -25,11 +26,17 @@ struct EditAlbumSheet: View {
             Form {
                 Section("Details") {
                     TextField("Album name", text: $name)
+                        .accessibilityIdentifier("editAlbumNameField")
                     TextField("Description (optional)", text: $description, axis: .vertical)
                         .lineLimit(1...4)
+                        .accessibilityIdentifier("editAlbumDescriptionField")
                 }
-                Section("Sharing") {
-                    Toggle("Activity feed", isOn: $isActivityEnabled)
+                // The activity feed stays with the owner; an editor only edits title and description.
+                if vm.canToggleActivity(currentUserId: auth.userId) {
+                    Section("Sharing") {
+                        Toggle("Activity feed", isOn: $isActivityEnabled)
+                            .accessibilityIdentifier("editAlbumActivityToggle")
+                    }
                 }
             }
             .navigationTitle("Edit Album")
@@ -50,7 +57,8 @@ struct EditAlbumSheet: View {
                                 let ok = await vm.updateAlbumDetails(
                                     name: trimmed.isEmpty ? nil : trimmed,
                                     description: description.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? nil : description,
-                                    isActivityEnabled: isActivityEnabled
+                                    isActivityEnabled: isActivityEnabled,
+                                    currentUserId: auth.userId
                                 )
                                 isSaving = false
                                 if ok {
@@ -60,6 +68,7 @@ struct EditAlbumSheet: View {
                             }
                         }
                         .fontWeight(.semibold)
+                        .accessibilityIdentifier("editAlbumSaveButton")
                         .disabled(name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
                     }
                 }

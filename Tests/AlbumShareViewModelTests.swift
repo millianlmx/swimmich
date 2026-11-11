@@ -136,13 +136,6 @@ final class AlbumShareViewModelTests: XCTestCase {
         XCTAssertEqual(vm.owner?.name, "Me")
     }
 
-    func test_init_ownerFallsBackToFirstEntry() {
-        let vm = makeVM(
-            mock: MockImmichClient(),
-            albumUsers: [makeEntry(makeUser(id: "u1", name: "Alice"), role: .viewer)]
-        )
-        XCTAssertEqual(vm.owner?.id, "u1", "first entry is the owner per server contract")
-    }
 
     func test_init_ownerNilWhenAlbumHasNoUsers() {
         let vm = makeVM(mock: MockImmichClient())

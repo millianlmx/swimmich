@@ -41,7 +41,8 @@ final class PhotoShareViewModelTests: XCTestCase {
             makeAlbum(id: "al-private", name: "Private", shared: false)
         ]
 
-        let vm = PhotoShareViewModel(asset: makeAsset(ownerId: "owner"), client: mock, baseURL: baseURL)
+        // The asset belongs to a partner: only the signed-in user ("owner") leaves the picker.
+        let vm = PhotoShareViewModel(asset: makeAsset(ownerId: "partner"), client: mock, baseURL: baseURL, currentUserId: "owner")
         await vm.load()
 
         XCTAssertEqual(vm.users.map(\.id), ["u1"], "self must be excluded from the picker")
@@ -54,7 +55,7 @@ final class PhotoShareViewModelTests: XCTestCase {
         mock.getUsersError = Boom()
         mock.albumsResponse = [makeAlbum(id: "al", name: "Trip", shared: true)]
 
-        let vm = PhotoShareViewModel(asset: makeAsset(), client: mock, baseURL: baseURL)
+        let vm = PhotoShareViewModel(asset: makeAsset(), client: mock, baseURL: baseURL, currentUserId: "owner")
         await vm.load()
 
         XCTAssertTrue(vm.users.isEmpty, "user list failed but albums still load")
@@ -65,7 +66,7 @@ final class PhotoShareViewModelTests: XCTestCase {
     // MARK: - User selection
 
     func test_toggleUser() {
-        let vm = PhotoShareViewModel(asset: makeAsset(), client: MockImmichClient(), baseURL: baseURL)
+        let vm = PhotoShareViewModel(asset: makeAsset(), client: MockImmichClient(), baseURL: baseURL, currentUserId: "owner")
         vm.toggleUser("u1")
         XCTAssertTrue(vm.selectedUserIds.contains("u1"))
         vm.toggleUser("u1")
@@ -76,7 +77,7 @@ final class PhotoShareViewModelTests: XCTestCase {
 
     func test_createSharedAlbum_dispatchesAlbumWithUsersAndAsset() async {
         let mock = MockImmichClient()
-        let vm = PhotoShareViewModel(asset: makeAsset(), client: mock, baseURL: baseURL)
+        let vm = PhotoShareViewModel(asset: makeAsset(), client: mock, baseURL: baseURL, currentUserId: "owner")
         vm.albumName = "Weekend"
         vm.selectedUserIds = ["u1", "u2"]
 
@@ -95,7 +96,7 @@ final class PhotoShareViewModelTests: XCTestCase {
 
     func test_createSharedAlbum_requiresNameAndUsers() async {
         let mock = MockImmichClient()
-        let vm = PhotoShareViewModel(asset: makeAsset(), client: mock, baseURL: baseURL)
+        let vm = PhotoShareViewModel(asset: makeAsset(), client: mock, baseURL: baseURL, currentUserId: "owner")
 
         await vm.createSharedAlbum()
         XCTAssertNil(vm.lastCreateAlbumDto, "no dispatch without name + users")
@@ -106,7 +107,7 @@ final class PhotoShareViewModelTests: XCTestCase {
         struct Boom: Error {}
         let mock = MockImmichClient()
         mock.createAlbumError = Boom()
-        let vm = PhotoShareViewModel(asset: makeAsset(), client: mock, baseURL: baseURL)
+        let vm = PhotoShareViewModel(asset: makeAsset(), client: mock, baseURL: baseURL, currentUserId: "owner")
         vm.albumName = "Weekend"
         vm.selectedUserIds = ["u1"]
 
@@ -122,7 +123,7 @@ final class PhotoShareViewModelTests: XCTestCase {
 
     func test_addToAlbum_dispatchesBulkAdd() async {
         let mock = MockImmichClient()
-        let vm = PhotoShareViewModel(asset: makeAsset(), client: mock, baseURL: baseURL)
+        let vm = PhotoShareViewModel(asset: makeAsset(), client: mock, baseURL: baseURL, currentUserId: "owner")
 
         await vm.addToAlbum(id: "al-shared")
 
@@ -136,7 +137,7 @@ final class PhotoShareViewModelTests: XCTestCase {
         struct Boom: Error {}
         let mock = MockImmichClient()
         mock.addAssetsError = Boom()
-        let vm = PhotoShareViewModel(asset: makeAsset(), client: mock, baseURL: baseURL)
+        let vm = PhotoShareViewModel(asset: makeAsset(), client: mock, baseURL: baseURL, currentUserId: "owner")
 
         await vm.addToAlbum(id: "al-shared")
 
@@ -151,7 +152,7 @@ final class PhotoShareViewModelTests: XCTestCase {
         client.configure(baseURL: baseURL, token: "tok")
         CapturingURLProtocol.nextData = Data(#"[{"id":"a1","success":false,"error":"duplicate"}]"#.utf8)
         defer { CapturingURLProtocol.reset() }
-        let vm = PhotoShareViewModel(asset: makeAsset(), client: client, baseURL: baseURL)
+        let vm = PhotoShareViewModel(asset: makeAsset(), client: client, baseURL: baseURL, currentUserId: "owner")
 
         await vm.addToAlbum(id: "al-shared")
 
@@ -163,7 +164,7 @@ final class PhotoShareViewModelTests: XCTestCase {
 
     func test_createPublicLink_buildsShareURLWithToggles() async {
         let mock = MockImmichClient()
-        let vm = PhotoShareViewModel(asset: makeAsset(), client: mock, baseURL: baseURL)
+        let vm = PhotoShareViewModel(asset: makeAsset(), client: mock, baseURL: baseURL, currentUserId: "owner")
         vm.allowDownload = false
         vm.showMetadata = true
 
@@ -181,7 +182,7 @@ final class PhotoShareViewModelTests: XCTestCase {
         struct Boom: Error {}
         let mock = MockImmichClient()
         mock.createSharedLinkError = Boom()
-        let vm = PhotoShareViewModel(asset: makeAsset(), client: mock, baseURL: baseURL)
+        let vm = PhotoShareViewModel(asset: makeAsset(), client: mock, baseURL: baseURL, currentUserId: "owner")
 
         await vm.createPublicLink()
 

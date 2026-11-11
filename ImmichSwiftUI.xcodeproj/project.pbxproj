@@ -238,6 +238,9 @@
 		6DB42ADF994B02E2121B4E45 /* AuthViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA3BB3A9E0C7AC8A15BFCFA2 /* AuthViewModel.swift */; };
 		6E0CA305C84E7449F703A226 /* PeopleViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 83103D68387ED91742297BAB /* PeopleViewModel.swift */; };
 		6E7B778D9F491BF5176FD1BA /* AlbumShareViewModelTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6F117AF914D1EB40979279C3 /* AlbumShareViewModelTests.swift */; };
+		7C1A0E5B2D4F6A8091B3C5D1 /* AlbumRolesAndOrderTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7C1A0E5B2D4F6A8091B3C5D2 /* AlbumRolesAndOrderTests.swift */; };
+		7C1A0E5B2D4F6A8091B3C5D3 /* AlbumRolesUITests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7C1A0E5B2D4F6A8091B3C5D4 /* AlbumRolesUITests.swift */; };
+		7C1A0E5B2D4F6A8091B3C5D5 /* immich_stub_album_roles.py in Resources */ = {isa = PBXBuildFile; fileRef = 7C1A0E5B2D4F6A8091B3C5D6 /* immich_stub_album_roles.py */; };
 		6EE4B13C616AD03120A4C765 /* ImmichRenderScreenshots.swift in Sources */ = {isa = PBXBuildFile; fileRef = EAB20A19BE3CE84F21953F08 /* ImmichRenderScreenshots.swift */; };
 		6EF13C97719475355E74263C /* immich_stub_star_ratings.py in Resources */ = {isa = PBXBuildFile; fileRef = FB50BC7F53CA5A4D8CFBC05F /* immich_stub_star_ratings.py */; };
 		704BBB20259A55CF5A635683 /* ProfilePictureView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 83721676D7FCACD3EFECA14B /* ProfilePictureView.swift */; };
@@ -673,6 +676,9 @@
 		0E9AEEEBEDC9BE359C150261 /* AppLogEntry.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppLogEntry.swift; sourceTree = "<group>"; };
 		0F898CD7922DFE282D728D59 /* AppLanguageStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppLanguageStore.swift; sourceTree = "<group>"; };
 		0FEA7C783D9158AD24B26DAC /* AlbumPaginationUITests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AlbumPaginationUITests.swift; sourceTree = "<group>"; };
+		7C1A0E5B2D4F6A8091B3C5D4 /* AlbumRolesUITests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AlbumRolesUITests.swift; sourceTree = "<group>"; };
+		7C1A0E5B2D4F6A8091B3C5D2 /* AlbumRolesAndOrderTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AlbumRolesAndOrderTests.swift; sourceTree = "<group>"; };
+		7C1A0E5B2D4F6A8091B3C5D6 /* immich_stub_album_roles.py */ = {isa = PBXFileReference; lastKnownFileType = text.script.python; path = immich_stub_album_roles.py; sourceTree = "<group>"; };
 		103F2A17DA5C174F4DCB0459 /* BackupLedgerReconciliationTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BackupLedgerReconciliationTests.swift; sourceTree = "<group>"; };
 		10E81E937ACB2709DE7A3DAB /* OnboardingFlowView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OnboardingFlowView.swift; sourceTree = "<group>"; };
 		125C8D15AD494746DDDC499A /* PhotoLibraryServiceImpl.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PhotoLibraryServiceImpl.swift; sourceTree = "<group>"; };
@@ -1552,6 +1558,7 @@
 				C2B18628F4D6A34775AFD449 /* AboutLinksTests.swift */,
 				3A58694C1512E94C9B889525 /* ActivityFeedViewModelTests.swift */,
 				4D1D0D3443CFFD1BCEE6F042 /* AlbumDetailViewModelTests.swift */,
+				7C1A0E5B2D4F6A8091B3C5D2 /* AlbumRolesAndOrderTests.swift */,
 				6F117AF914D1EB40979279C3 /* AlbumShareViewModelTests.swift */,
 				484079900F41D46E0DC1B904 /* AlbumsTests.swift */,
 				92A83C640944B384F967A555 /* AlbumSyncServiceTests.swift */,
@@ -1891,6 +1898,7 @@
 			children = (
 				155A75580B734AE221CD3AF3 /* immich_stub_album_pagination_three_pages.py */,
 				D2AA2B31DD2DDAA7AC961CC4 /* immich_stub_album_pagination.py */,
+				7C1A0E5B2D4F6A8091B3C5D6 /* immich_stub_album_roles.py */,
 				4FF1B91E9C4417E215CF8D26 /* immich_stub_album_sync.py */,
 				E1CC7019BA3B4C01BC01F2B0 /* immich_stub_app_utilities.py */,
 				BBF6CB2BADD7C5BABCD243EA /* immich_stub_archive.py */,
@@ -1999,6 +2007,7 @@
 			isa = PBXGroup;
 			children = (
 				0FEA7C783D9158AD24B26DAC /* AlbumPaginationUITests.swift */,
+				7C1A0E5B2D4F6A8091B3C5D4 /* AlbumRolesUITests.swift */,
 				B9CF0B790615363896DCC617 /* AlbumSyncUITests.swift */,
 				3FC0D63F249A1B765BDEFDE1 /* AppLockUITests.swift */,
 				F12E4D5D4AEA776F68BF61B6 /* AppUtilitiesUITests.swift */,
@@ -2397,6 +2406,7 @@
 			files = (
 				502B0CD0B1EBD1416199E0DD /* immich_stub_album_pagination.py in Resources */,
 				8EE5B0DA7028F75A1265069C /* immich_stub_album_pagination_three_pages.py in Resources */,
+				7C1A0E5B2D4F6A8091B3C5D5 /* immich_stub_album_roles.py in Resources */,
 				D95AFA1D1289A6BD8EF5E2D7 /* immich_stub_album_sync.py in Resources */,
 				078AE5EE5A8BF75A6C92E947 /* immich_stub_app_utilities.py in Resources */,
 				EF937EDA299E4EC2A272D51B /* immich_stub_archive.py in Resources */,
@@ -2496,6 +2506,7 @@
 				FE62C0E0A1F48A4F6B18DA05 /* AboutLinksTests.swift in Sources */,
 				FD76418DA93C59C24B69C915 /* ActivityFeedViewModelTests.swift in Sources */,
 				079B55DBDBAD0F58D94AFF9C /* AlbumDetailViewModelTests.swift in Sources */,
+				7C1A0E5B2D4F6A8091B3C5D1 /* AlbumRolesAndOrderTests.swift in Sources */,
 				6E7B778D9F491BF5176FD1BA /* AlbumShareViewModelTests.swift in Sources */,
 				27A019056646723558776C6E /* AlbumSyncServiceTests.swift in Sources */,
 				54C2F7EB6719891AEF726BBB /* AlbumsTests.swift in Sources */,
@@ -2611,6 +2622,7 @@
 			buildActionMask = 2147483647;
 			files = (
 				F15E5A4EE0F95A36206DE8DB /* AlbumPaginationUITests.swift in Sources */,
+				7C1A0E5B2D4F6A8091B3C5D3 /* AlbumRolesUITests.swift in Sources */,
 				8C135C7B90E587648F9339D1 /* AlbumSyncUITests.swift in Sources */,
 				68B39B89B2D5E1286E5757A0 /* AppLockUITests.swift in Sources */,
 				0AFE2D96811EBD78DCBE78CC /* AppUtilitiesUITests.swift in Sources */,

@@ -50,6 +50,13 @@ struct ServerVersionResponseDto: Codable, Equatable {
     let prerelease: Int?
 }
 
+extension ServerVersionResponseDto {
+    /// Lexicographic (major, minor, patch) comparison; `prerelease` is ignored.
+    func isAtLeast(major: Int, minor: Int, patch: Int) -> Bool {
+        (self.major, self.minor, self.patch) >= (major, minor, patch)
+    }
+}
+
 struct ServerConfigDto: Codable, Equatable {
     let oauthButtonText: String
     let loginPageMessage: String

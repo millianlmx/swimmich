@@ -56,6 +56,14 @@ struct AlbumDetailView: View {
         vm.allowedActions(on: surface, currentUserId: auth.userId, fallback: initialAlbum)
     }
 
+    /// Reflects the saved order: a refused save leaves the old choice selected.
+    private var orderBinding: Binding<AssetOrder> {
+        Binding(
+            get: { vm.albumOrder },
+            set: { order in Task { await vm.setAlbumOrder(order) } }
+        )
+    }
+
     init(
         album: AlbumResponseDto,
         client: any ImmichClient = DependencyContainer.shared.libraryClient
@@ -219,6 +227,7 @@ struct AlbumDetailView: View {
                                     .foregroundStyle(Color.primary)
                             }
                             .tint(Color.primary)
+                            .accessibilityIdentifier("albumEditAction")
                         }
                         Divider()
                         Button {
@@ -250,6 +259,24 @@ struct AlbumDetailView: View {
                         .tint(Color.primary)
                         if !albumActions.isEmpty {
                             Divider()
+                        }
+                        if albumActions.contains(.changeOrder) {
+                            Menu {
+                                Picker("Sort Order", selection: orderBinding) {
+                                    Text("Newest First")
+                                        .tag(AssetOrder.desc)
+                                        .accessibilityIdentifier("albumOrderNewest")
+                                    Text("Oldest First")
+                                        .tag(AssetOrder.asc)
+                                        .accessibilityIdentifier("albumOrderOldest")
+                                }
+                                .pickerStyle(.inline)
+                            } label: {
+                                Label("Sort Order", systemImage: "arrow.up.arrow.down")
+                                    .foregroundStyle(Color.primary)
+                            }
+                            .tint(Color.primary)
+                            .accessibilityIdentifier("albumOrderMenu")
                         }
                         if albumActions.contains(.sharedWith) {
                             Button {
@@ -288,10 +315,14 @@ struct AlbumDetailView: View {
                             .labelStyle(.iconOnly)
                     }
                     .tint(.primary)
+                    .accessibilityIdentifier("albumActionsMenu")
                 }
             }
         }
-        .task { await vm.load() }
+        .task {
+            await vm.load()
+            await vm.probeServerVersionIfEditor(currentUserId: auth.userId)
+        }
         .sheet(isPresented: $presentingShare) {
             SharedLinkSheet(vm: vm)
         }
@@ -643,6 +674,7 @@ struct AlbumDetailView: View {
 
             VStack(alignment: .leading, spacing: PVSpacing.s2) {
                 Text(album.albumName)
+                    .accessibilityIdentifier("albumHeroTitle")
                     .font(.pvTitle)
                     .foregroundStyle(.white)
                     .lineLimit(2)

@@ -38,11 +38,16 @@ final class PhotoShareViewModel {
     private(set) var lastAddAlbumId: String?
     private(set) var lastCreateLinkDto: SharedLinkCreateDto?
 
-    init(asset: AssetReactItem, client: any ImmichClient, baseURL: URL, externalDomain: String = "") {
+    /// The signed-in user, left out of the people picker. The photo's owner is
+    /// not: a photo from a partner or shared album can be shared with its owner.
+    private let currentUserId: String?
+
+    init(asset: AssetReactItem, client: any ImmichClient, baseURL: URL, externalDomain: String = "", currentUserId: String?) {
         self.asset = asset
         self.client = client
         self.baseURL = baseURL
         self.externalDomain = externalDomain
+        self.currentUserId = currentUserId
     }
 
     /// Albums that are shared (`shared == true`) — candidates for "add to an
@@ -56,12 +61,12 @@ final class PhotoShareViewModel {
     func load() async {
         isBusy = true
         do {
-            users = try await client.getUsers().filter { $0.id != asset.ownerId }
+            users = try await client.getUsers().filter { currentUserId?.isEmpty != false || $0.id != currentUserId }
         } catch let e {
             errorMessage = e.userFacingMessage
         }
         do {
-            albums = try await client.getAlbums()
+            albums = try await client.getAlbums(shared: nil)
         } catch let e {
             errorMessage = e.userFacingMessage
         }
