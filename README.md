@@ -158,7 +158,7 @@ Scripts/ci.sh   # what CI runs: xcodegen generate, build both test bundles, unit
 
 - **CI** (`.github/workflows/ci.yml`) runs `Scripts/ci.sh` on every push, any branch, on a self-hosted Mac runner (labels `self-hosted, macOS, ARM64, xcode`). It uses a dedicated simulator, `swimmich-ci`, and keeps DerivedData in `~/Library/Caches/swimmich-ci`, so a run only rebuilds what changed. The job `Unit tests (iOS simulator)` is the check `main` requires. There is no `pull_request` trigger: a fork's pull request never runs code on that Mac.
 - **UI scenarios** are compiled by CI, not run: each needs its own stub from `UITests/stubs/`.
-- **TestFlight** (`.github/workflows/release.yml`): pushing a `v<version>` tag (for example `v0.2.0`) runs the unit tests, then `Scripts/release.sh` archives in Release and uploads that version. A manual run ships `main` with the project's version. The build number is the UTC time (`YYYYMMDD.HHMM`). It needs three repository secrets from an App Store Connect API key with the App Manager role: `ASC_KEY_ID`, `ASC_ISSUER_ID`, and `ASC_KEY_P8` (the `.p8` content).
+- **TestFlight** (`.github/workflows/release.yml`): pushing a `v<version>` tag (for example `v0.2.0`) runs the unit tests, then `Scripts/release.sh` archives in Release and uploads that version. A manual run ships `main` with the project's version. The build number is the UTC time (`YYYYMMDD.HHMM`). Signing is automatic. It uses an App Store Connect API key (App Manager role) when the repository has the secrets `ASC_KEY_ID`, `ASC_ISSUER_ID`, and `ASC_KEY_P8` (the `.p8` content). Without them, it uses the Apple ID signed in to Xcode on the runner's Mac, so the release breaks if that account signs out or its session expires.
 
 ### String catalog audit
 

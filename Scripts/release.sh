@@ -1,34 +1,44 @@
 #!/usr/bin/env bash
 # Archives Swimmich in Release and uploads it to App Store Connect (TestFlight).
 #
+#   Scripts/release.sh [marketing-version]
 #   ASC_KEY_ID=… ASC_ISSUER_ID=… ASC_KEY_PATH=/path/AuthKey_….p8 Scripts/release.sh [marketing-version]
 #
-# Signing is automatic: the App Store Connect API key lets xcodebuild create or
-# refresh the distribution certificate and the App Store profiles of the app,
-# the widget and the share extension (-allowProvisioningUpdates), with no Apple
-# ID signed in to Xcode. The key needs the App Manager role.
+# Signing is automatic (-allowProvisioningUpdates): xcodebuild creates or
+# refreshes the distribution certificate and the App Store profiles of the app,
+# the widget and the share extension, then uploads. It authenticates with, in
+# order:
+#   - an App Store Connect API key (App Manager role), when all three ASC_*
+#     variables are set: works on any Mac;
+#   - otherwise the Apple ID signed in to Xcode (Settings › Accounts) of the
+#     user running the script: only on that Mac, in that user's session.
 #
 # The build number is the UTC time (YYYYMMDD.HHMM, each part under 2^31): it
 # only grows, and never collides with a build uploaded by hand from Xcode.
 set -euo pipefail
 cd "$(dirname "$0")/.."
 
-: "${ASC_KEY_ID:?App Store Connect API key id (ASC_KEY_ID) is required}"
-: "${ASC_ISSUER_ID:?App Store Connect issuer id (ASC_ISSUER_ID) is required}"
-: "${ASC_KEY_PATH:?path to the AuthKey_<id>.p8 file (ASC_KEY_PATH) is required}"
-[[ -f "$ASC_KEY_PATH" ]] || { echo "release.sh: $ASC_KEY_PATH not found" >&2; exit 2; }
+auth=(-allowProvisioningUpdates)
+if [[ -n "${ASC_KEY_ID:-}" || -n "${ASC_ISSUER_ID:-}" || -n "${ASC_KEY_PATH:-}" ]]; then
+  : "${ASC_KEY_ID:?ASC_KEY_ID is required with an API key}"
+  : "${ASC_ISSUER_ID:?ASC_ISSUER_ID is required with an API key}"
+  : "${ASC_KEY_PATH:?ASC_KEY_PATH is required with an API key}"
+  [[ -f "$ASC_KEY_PATH" ]] || { echo "release.sh: $ASC_KEY_PATH not found" >&2; exit 2; }
+  auth+=(
+    -authenticationKeyPath "$ASC_KEY_PATH"
+    -authenticationKeyID "$ASC_KEY_ID"
+    -authenticationKeyIssuerID "$ASC_ISSUER_ID"
+  )
+  echo "release.sh: signing with App Store Connect API key $ASC_KEY_ID"
+else
+  echo "release.sh: signing with the Apple ID signed in to Xcode"
+fi
 
 VERSION="${1:-}"
 BUILD="$(date -u +%Y%m%d.%H%M)"
 OUT="${SWIMMICH_RELEASE_DIR:-build/release}"
 CACHE="${SWIMMICH_CI_CACHE:-$HOME/Library/Caches/swimmich-ci}"
 
-auth=(
-  -allowProvisioningUpdates
-  -authenticationKeyPath "$ASC_KEY_PATH"
-  -authenticationKeyID "$ASC_KEY_ID"
-  -authenticationKeyIssuerID "$ASC_ISSUER_ID"
-)
 versions=(CURRENT_PROJECT_VERSION="$BUILD")
 [[ -n "$VERSION" ]] && versions+=(MARKETING_VERSION="$VERSION")
 
