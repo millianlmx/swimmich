@@ -5,11 +5,14 @@ import Foundation
 /// `"2024-07-01T12:34:56.000Z"`. TimeBucket strings are plain `YYYY-MM-DD`
 /// (handled as plain strings, no Date decoding).
 extension JSONEncoder {
-    static let immich: JSONEncoder = {
+    /// A NEW encoder on every read: `JSONEncoder` is a class, and a caller that
+    /// tunes it (the offline index sets `.prettyPrinted`) must not reformat the
+    /// request bodies of the whole app.
+    static var immich: JSONEncoder {
         let e = JSONEncoder()
         e.dateEncodingStrategy = .immichISO8601
         return e
-    }()
+    }
 }
 
 extension JSONDecoder {

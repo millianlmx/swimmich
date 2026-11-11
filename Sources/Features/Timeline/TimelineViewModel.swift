@@ -101,7 +101,7 @@ final class TimelineViewModel {
     /// unspecified.
     func ownerScopedSelection(currentUserId: String?) -> (ids: [String], skipped: Int) {
         let foreign = Set(items.lazy.filter {
-            selectedIds.contains($0.id) && !$0.allowsOwnerActions(currentUserId: currentUserId)
+            self.selectedIds.contains($0.id) && !$0.allowsOwnerActions(currentUserId: currentUserId)
         }.map(\.id))
         return (Array(selectedIds).filter { !foreign.contains($0) }, foreign.count)
     }

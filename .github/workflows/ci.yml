@@ -1,0 +1,41 @@
+name: CI
+
+# Every push to this repository, any branch: the omp harness pushes its run
+# branch and judges the checks of that exact SHA. No `pull_request` trigger on
+# purpose: the runner is a self-hosted Mac, and a fork's pull request must never
+# run code on it.
+on:
+  push:
+  workflow_dispatch:
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  unit-tests:
+    # Required by the branch protection of `main` under this exact name.
+    name: Unit tests (iOS simulator)
+    runs-on: [self-hosted, macOS, ARM64, xcode]
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Toolchain
+        run: |
+          xcodebuild -version
+          xcodegen --version
+
+      - name: Build and run unit tests
+        run: Scripts/ci.sh
+
+      - name: Keep the result bundle
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: unit-tests-xcresult
+          path: build/ci/unit-tests.xcresult
+          retention-days: 7

@@ -65,7 +65,8 @@ final class LocalLibraryViewModelTests: XCTestCase {
         readOnly = .ephemeral()
         checkDirectory = URL(fileURLWithPath: NSTemporaryDirectory())
             .appendingPathComponent("local-check-test-\(UUID().uuidString)", isDirectory: true)
-        let userID: (@MainActor () -> String?)? = albumSync == nil ? nil : { "me" }
+        var userID: (@MainActor () -> String?)?
+        if albumSync != nil { userID = { "me" } }
         let engine = BackupEngine(
             client: client, source: source, environment: environment,
             ledger: ledger, albumSync: albumSync, userID: userID
