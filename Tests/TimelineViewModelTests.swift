@@ -2139,3 +2139,740 @@ final class TimelineViewModelTests: XCTestCase {
         XCTAssertEqual(vm.scrubPosition, TimelineScrubPosition(monthIndex: 0, fraction: 0))
     }
 }
+
+// MARK: - Realtime
+
+private let rt8 = "2024-08-01", rt7 = "2024-07-01", rt6 = "2024-06-01"
+private let rt5 = "2024-05-01", rt4 = "2024-04-01", rt3 = "2024-03-01"
+
+/// Holds the `matching`-th (0-based `skip`) timeline call whose key equals
+/// `target`, until `open()`. Logs every key it sees. Thread-safe: the mock calls
+/// it off the main actor.
+private final class RTGate: @unchecked Sendable {
+    private let lock = NSLock()
+    private let target: String
+    private var skip: Int
+    private var entered = false
+    private var opened = false
+    private var continuation: CheckedContinuation<Void, Never>?
+    private var keys: [String] = []
+
+    init(target: String, skip: Int = 0) {
+        self.target = target
+        self.skip = skip
+    }
+
+    var isWaiting: Bool { lock.lock(); defer { lock.unlock() }; return entered && !opened }
+    var seen: [String] { lock.lock(); defer { lock.unlock() }; return keys }
+
+    /// Locked, synchronous part of `pass`: true when this call must park.
+    private func shouldPark(_ key: String) -> Bool {
+        lock.lock()
+        defer { lock.unlock() }
+        keys.append(key)
+        guard key == target, !entered else { return false }
+        if skip > 0 { skip -= 1; return false }
+        entered = true
+        return true
+    }
+
+    private func park(_ c: CheckedContinuation<Void, Never>) {
+        lock.lock()
+        if opened {
+            lock.unlock()
+            c.resume()
+            return
+        }
+        continuation = c
+        lock.unlock()
+    }
+
+    func pass(_ key: String) async {
+        guard shouldPark(key) else { return }
+        await withCheckedContinuation { (c: CheckedContinuation<Void, Never>) in park(c) }
+    }
+
+    func open() {
+        lock.lock()
+        opened = true
+        let c = continuation
+        continuation = nil
+        lock.unlock()
+        c?.resume()
+    }
+}
+
+extension TimelineViewModelTests {
+
+    private func rtMonth(_ key: String, _ ids: [String], favorites: [Bool]? = nil, stacks: [[String]?]? = nil) -> TimeBucketAssetResponseDto {
+        TimeBucketAssetResponseDto(
+            id: ids,
+            ownerId: ids.map { _ in "owner" },
+            ratio: ids.map { _ in 1.0 },
+            isFavorite: favorites ?? ids.map { _ in false },
+            visibility: ids.map { _ in "timeline" },
+            isTrashed: ids.map { _ in false },
+            isImage: ids.map { _ in true },
+            thumbhash: ids.map { _ in nil },
+            createdAt: ids.map { _ in "\(key)T00:00:00.000Z" },
+            fileCreatedAt: ids.map { _ in "\(key)T00:00:00.000Z" },
+            localOffsetHours: ids.map { _ in 0.0 },
+            duration: ids.map { _ in nil },
+            livePhotoVideoId: ids.map { _ in nil },
+            projectionType: ids.map { _ in nil },
+            stack: stacks, city: nil, country: nil, latitude: nil, longitude: nil
+        )
+    }
+
+    /// Server state: the month list (in the given, newest-first order) and each month's photos.
+    private func rtServe(_ mock: MockImmichClient, _ months: [(String, [String])]) {
+        mock.bucketsResponse = months.map { TimeBucketsResponseDto(timeBucket: $0.0, count: $0.1.count) }
+        mock.bucketResponses = Dictionary(uniqueKeysWithValues: months.map { ($0.0, rtMonth($0.0, $0.1)) })
+    }
+
+    /// Photos the grid renders, from the memoized sections.
+    private func rtRendered(_ vm: TimelineViewModel) -> [AssetReactItem] {
+        vm.timelineSections(groupBy: .day).flatMap { section -> [AssetReactItem] in
+            switch section {
+            case .dayGroup(_, let items), .monthGroup(_, let items), .flat(let items): return items
+            case .monthHeader: return []
+            }
+        }
+    }
+
+    @MainActor
+    private func rtWaitUntil(_ condition: () -> Bool, file: StaticString = #filePath, line: UInt = #line) async {
+        for _ in 0..<500 {
+            if condition() { return }
+            try? await Task.sleep(for: .milliseconds(10))
+        }
+        XCTFail("timed out waiting for the condition", file: file, line: line)
+    }
+
+    /// A VM refreshed on `months`, then `moreMonths` scroll loads.
+    @MainActor
+    private func rtLoadedVM(_ mock: MockImmichClient, _ months: [(String, [String])], scrolled: Int = 0) async -> TimelineViewModel {
+        rtServe(mock, months)
+        let vm = TimelineViewModel(client: mock)
+        await vm.refresh()
+        for _ in 0..<scrolled { await vm.loadMore() }
+        return vm
+    }
+
+    /// Same chain as the app: names → `RealtimeService` (no socket) → notification →
+    /// `RealtimeRelay.handle`, with the other screens on a second mock (`side`).
+    @MainActor
+    private func deliver(_ events: [String], to vm: TimelineViewModel, side: MockImmichClient = MockImmichClient()) async {
+        let center = NotificationCenter()
+        let transport = MockRealtimeTransport()
+        let service = RealtimeService(transport: transport, debounceInterval: .zero, notificationCenter: center)
+        service.connect(baseURL: URL(string: "https://photos.example.com")!, token: "t")
+        var captured: Notification?
+        let arrived = expectation(forNotification: .immichAssetsChanged, object: nil, notificationCenter: center) { note in
+            captured = note
+            return true
+        }
+        events.forEach(transport.emit)
+        await fulfillment(of: [arrived], timeout: 2)
+        guard let note = captured else { return XCTFail("no notification") }
+
+        let folder = FileManager.default.temporaryDirectory.appendingPathComponent("rt-offline-\(UUID().uuidString)", isDirectory: true)
+        addTeardownBlock { try? FileManager.default.removeItem(at: folder) }
+        let defaults = UserDefaults(suiteName: "rt-offline-\(UUID().uuidString)")!
+        let store = OfflineAssetStore(rootURL: folder, transport: MockFileDownloadTransport(), defaults: defaults)
+        await RealtimeRelay.handle(
+            note, timeline: vm,
+            albums: AlbumsViewModel(client: side), people: PeopleViewModel(client: side),
+            memories: MemoriesViewModel(client: side),
+            offline: OfflineDownloadViewModel(store: store, client: side, index: OfflineAssetIndex(), accountID: "rt-account")
+        )
+    }
+
+    // MARK: Selection
+
+    // AC-4: an asset event during a selection keeps the mode and the exact selection.
+    @MainActor
+    func test_realtime_AC4_eventDuringSelectionKeepsSelection() async {
+        let mock = MockImmichClient()
+        let vm = await rtLoadedVM(mock, [(rt7, ["a1", "a2", "a3"])])
+        vm.enterSelectionMode()
+        vm.toggleSelection(id: "a1")
+        vm.toggleSelection(id: "a2")
+        rtServe(mock, [(rt7, ["n1", "a1", "a2", "a3"])])
+
+        await deliver(["on_upload_success"], to: vm)
+
+        XCTAssertTrue(vm.selectionMode)
+        XCTAssertEqual(vm.selectedIds, ["a1", "a2"])
+    }
+
+    // AC-5: a photo added during a selection is on the grid once the user leaves selection mode.
+    @MainActor
+    func test_realtime_AC5_photoAddedDuringSelectionShownAfterExit() async {
+        let mock = MockImmichClient()
+        let vm = await rtLoadedVM(mock, [(rt7, ["a1", "a2"])])
+        vm.enterSelectionMode()
+        vm.toggleSelection(id: "a1")
+        rtServe(mock, [(rt7, ["n1", "a1", "a2"])])
+
+        await deliver(["on_upload_success"], to: vm)
+        vm.exitSelectionMode()
+
+        XCTAssertTrue(rtRendered(vm).contains { $0.id == "n1" })
+        XCTAssertTrue(vm.items.contains { $0.id == "n1" })
+    }
+
+    // AC-6: a photo deleted elsewhere leaves the grid and the selection; the mode stays.
+    @MainActor
+    func test_realtime_AC6_photoDeletedElsewhereLeavesGridAndSelection() async {
+        let mock = MockImmichClient()
+        let vm = await rtLoadedVM(mock, [(rt7, ["a1", "a2", "a3"])])
+        vm.enterSelectionMode()
+        vm.toggleSelection(id: "a1")
+        vm.toggleSelection(id: "a2")
+        rtServe(mock, [(rt7, ["a2", "a3"])])
+
+        await deliver(["on_asset_delete"], to: vm)
+
+        XCTAssertFalse(vm.items.contains { $0.id == "a1" })
+        XCTAssertFalse(rtRendered(vm).contains { $0.id == "a1" })
+        XCTAssertEqual(vm.selectedIds, ["a2"])
+        XCTAssertTrue(vm.selectionMode)
+        XCTAssertTrue(vm.selectedIds.isSubset(of: vm.loadedIds))
+    }
+
+    // MARK: Loaded window kept
+
+    // AC-7: three scrolled months stay loaded; one list + three months are re-read, nothing else.
+    @MainActor
+    func test_realtime_AC7_threeLoadedMonthsStayLoaded() async {
+        let mock = MockImmichClient()
+        let vm = await rtLoadedVM(mock, [(rt7, ["a1", "a2"]), (rt6, ["b1", "b2"]), (rt5, ["c1"]), (rt4, ["d1"])], scrolled: 2)
+        XCTAssertEqual(vm.bucketIndex, 3)
+        let before = mock.requestCount
+        let revision = vm.realtimeRevision
+
+        await deliver(["on_asset_update"], to: vm)
+
+        XCTAssertEqual(vm.items.map(\.id), ["a1", "a2", "b1", "b2", "c1"])
+        XCTAssertEqual(vm.bucketIndex, 3)
+        XCTAssertEqual(vm.upperBucketIndex, -1)
+        XCTAssertEqual(mock.requestCount - before, 4, "1 list + 3 loaded months")
+        XCTAssertEqual(vm.realtimeRevision, revision + 1)
+    }
+
+    // AC-8: a photo deleted on the server leaves the rendered sections; the others stay.
+    @MainActor
+    func test_realtime_AC8_deletedPhotoLeavesRenderedSections() async {
+        let mock = MockImmichClient()
+        let vm = await rtLoadedVM(mock, [(rt7, ["a1", "a2"]), (rt6, ["b1", "b2"])], scrolled: 1)
+        XCTAssertEqual(rtRendered(vm).count, 4, "primes the section cache")
+        rtServe(mock, [(rt7, ["a1", "a2"]), (rt6, ["b2"])])
+
+        await deliver(["on_asset_delete"], to: vm)
+
+        XCTAssertEqual(Set(rtRendered(vm).map(\.id)), ["a1", "a2", "b2"])
+        XCTAssertEqual(Set(vm.groupedByDay.flatMap(\.items).map(\.id)), ["a1", "a2", "b2"])
+    }
+
+    // AC-9: a photo added to a loaded month appears once, in the rendered sections.
+    @MainActor
+    func test_realtime_AC9_addedPhotoAppearsOnceInItsMonth() async {
+        let mock = MockImmichClient()
+        let vm = await rtLoadedVM(mock, [(rt7, ["a1"]), (rt6, ["b1"])], scrolled: 1)
+        XCTAssertEqual(rtRendered(vm).count, 2)
+        rtServe(mock, [(rt7, ["a1"]), (rt6, ["b1", "n1"])])
+
+        await deliver(["on_upload_success"], to: vm)
+
+        let rendered = rtRendered(vm).map(\.id)
+        XCTAssertEqual(rendered.filter { $0 == "n1" }.count, 1)
+        XCTAssertEqual(Set(rendered), ["a1", "b1", "n1"])
+        XCTAssertEqual(vm.items.count, Set(vm.items.map(\.id)).count, "no duplicate")
+        XCTAssertEqual(vm.loadedIds, Set(vm.items.map(\.id)))
+    }
+
+    // AC-10: after a jump the window stays; paging then continues up and down without skip or repeat.
+    @MainActor
+    func test_realtime_AC10_jumpWindowKeptAndPagingContinues() async {
+        let mock = MockImmichClient()
+        let months = [(rt8, ["h1"]), (rt7, ["a1"]), (rt6, ["b1"]), (rt5, ["c1"]), (rt4, ["d1"])]
+        rtServe(mock, months)
+        let vm = TimelineViewModel(client: mock)
+        await vm.jump(toDay: rt5)
+        XCTAssertEqual(vm.items.map(\.id), ["c1"])
+        let callsBefore = mock.timeBucketCalls.count
+        rtServe(mock, [(rt8, ["h1"]), (rt7, ["a1"]), (rt6, ["b1"]), (rt5, ["c1", "c2"]), (rt4, ["d1"])])
+
+        await deliver(["on_asset_update"], to: vm)
+
+        XCTAssertEqual(vm.items.map(\.id), ["c1", "c2"], "window stays on the jumped month")
+        XCTAssertEqual(vm.upperBucketIndex, 2)
+        XCTAssertEqual(vm.bucketIndex, 4)
+        await vm.loadNewer()
+        await vm.loadNewer()
+        await vm.loadNewer()
+        await vm.loadMore()
+        XCTAssertEqual(vm.items.map(\.id), ["h1", "a1", "b1", "c1", "c2", "d1"])
+        XCTAssertEqual(mock.timeBucketCalls.dropFirst(callsBefore).map(\.timeBucket), [rt5, rt6, rt7, rt8, rt4])
+    }
+
+    // AC-11 (example 3): the last loaded month vanishes; its neighbour loads without a scroll call, no repeat.
+    @MainActor
+    func test_realtime_AC11_monthEmptiedThenLoadMoreNoSkipNoRepeat() async {
+        let mock = MockImmichClient()
+        let vm = await rtLoadedVM(mock, [(rt7, ["a1"]), (rt6, ["b1"]), (rt5, ["c1"])], scrolled: 1)
+        XCTAssertEqual(vm.bucketIndex, 2)
+        rtServe(mock, [(rt7, ["a1"]), (rt5, ["c1"])])
+        let callsBefore = mock.timeBucketCalls.count
+
+        await deliver(["on_asset_delete"], to: vm)
+
+        XCTAssertEqual(vm.items.map(\.id), ["a1", "c1"], "05 loaded by the edge relaunch")
+        XCTAssertEqual(vm.bucketIndex, 2)
+        let afterEvent = mock.timeBucketCalls.count
+        await vm.loadMore()
+        XCTAssertEqual(mock.timeBucketCalls.count, afterEvent, "nothing left to load")
+        XCTAssertEqual(mock.timeBucketCalls.dropFirst(callsBefore).map(\.timeBucket), [rt7, rt5])
+        XCTAssertEqual(vm.items.map(\.id), ["a1", "c1"])
+    }
+
+    // AC-11 (example 4): a month that appears inside the loaded window is loaded.
+    @MainActor
+    func test_realtime_AC11_monthAppearedInsideWindowIsLoaded() async {
+        let mock = MockImmichClient()
+        let vm = await rtLoadedVM(mock, [(rt7, ["a1"]), (rt5, ["c1"])], scrolled: 1)
+        rtServe(mock, [(rt7, ["a1"]), (rt6, ["b1"]), (rt5, ["c1"])])
+
+        await deliver(["on_upload_success"], to: vm)
+
+        XCTAssertEqual(vm.items.map(\.id), ["a1", "b1", "c1"])
+        XCTAssertEqual(vm.bucketIndex, 3)
+        XCTAssertEqual(vm.upperBucketIndex, -1)
+    }
+
+    // AC-12: under the Favorites filter every request repeats the view's filters; only favorites show.
+    @MainActor
+    func test_realtime_AC12_favoritesFilterRepeatedOnEveryRequest() async {
+        let mock = MockImmichClient()
+        rtServe(mock, [(rt7, ["a1", "a2"]), (rt6, ["b1"])])
+        let vm = TimelineViewModel(client: mock)
+        await vm.setFilter(.favorites)
+        await vm.loadMore()
+        let callsBefore = mock.timeBucketCalls.count
+        mock.bucketResponses = [
+            rt7: rtMonth(rt7, ["a1", "n1"], favorites: [true, true]),
+            rt6: rtMonth(rt6, ["b1"], favorites: [true]),
+        ]
+
+        await deliver(["on_asset_update"], to: vm)
+
+        let sent = mock.timeBucketCalls.dropFirst(callsBefore)
+        XCTAssertEqual(sent.count, 2)
+        XCTAssertEqual(mock.lastTimeBucketsFilters?.isFavorite, true)
+        XCTAssertTrue(sent.allSatisfy { $0.filters == mock.lastTimeBucketsFilters })
+        XCTAssertEqual(vm.items.map(\.id), ["a1", "n1", "b1"])
+        XCTAssertTrue(vm.items.allSatisfy(\.isFavorite))
+        XCTAssertTrue(vm.selectedIds.isSubset(of: vm.loadedIds))
+    }
+
+    // MARK: Event classification
+
+    // AC-13: on_person_thumbnail alone: no timeline request, nothing moves.
+    @MainActor
+    func test_realtime_AC13_personThumbnailOnlyLeavesTimelineUntouched() async {
+        let mock = MockImmichClient()
+        let vm = await rtLoadedVM(mock, [(rt7, ["a1", "a2"]), (rt6, ["b1"])], scrolled: 1)
+        vm.enterSelectionMode()
+        vm.toggleSelection(id: "a1")
+        let requests = mock.requestCount
+        let items = vm.items, bucketIndex = vm.bucketIndex, upper = vm.upperBucketIndex, buckets = vm.buckets
+        rtServe(mock, [(rt7, ["zz"])])
+
+        await deliver(["on_person_thumbnail"], to: vm)
+
+        XCTAssertEqual(mock.requestCount, requests)
+        XCTAssertEqual(vm.items, items)
+        XCTAssertEqual(vm.buckets, buckets)
+        XCTAssertEqual(vm.bucketIndex, bucketIndex)
+        XCTAssertEqual(vm.upperBucketIndex, upper)
+        XCTAssertEqual(vm.selectedIds, ["a1"])
+        XCTAssertTrue(vm.selectionMode)
+    }
+
+    // AC-14: a mixed burst updates the timeline like the asset event alone.
+    @MainActor
+    func test_realtime_AC14_mixedBurstUpdatesTimeline() async {
+        let mock = MockImmichClient()
+        let vm = await rtLoadedVM(mock, [(rt7, ["a1", "a2"])])
+        rtServe(mock, [(rt7, ["a1"])])
+
+        await deliver(["on_person_thumbnail", "on_asset_trash"], to: vm)
+
+        XCTAssertEqual(vm.items.map(\.id), ["a1"])
+    }
+
+    // AC-15: the people list reloads on on_person_thumbnail, the timeline does not.
+    @MainActor
+    func test_realtime_AC15_personThumbnailReloadsPeopleNotTimeline() async {
+        let mock = MockImmichClient()
+        let side = MockImmichClient()
+        let vm = await rtLoadedVM(mock, [(rt7, ["a1"])])
+        let requests = mock.requestCount
+        XCTAssertNil(side.lastPeopleWithHidden)
+
+        await deliver(["on_person_thumbnail"], to: vm, side: side)
+
+        XCTAssertNotNil(side.lastPeopleWithHidden, "RealtimeRelay reloads people")
+        XCTAssertEqual(mock.requestCount, requests)
+    }
+
+    // MARK: Failure
+
+    // AC-16: a failed update (list, then a month) changes nothing visible.
+    @MainActor
+    func test_realtime_AC16_failedSyncKeepsGridAndSelection() async {
+        let mock = MockImmichClient()
+        let vm = await rtLoadedVM(mock, [(rt7, ["a1", "a2"]), (rt6, ["b1"])], scrolled: 1)
+        vm.enterSelectionMode()
+        vm.toggleSelection(id: "a1")
+        let items = vm.items, buckets = vm.buckets, bucketIndex = vm.bucketIndex, upper = vm.upperBucketIndex
+        let revision = vm.realtimeRevision
+        func assertUnchanged(_ note: String, file: StaticString = #filePath, line: UInt = #line) {
+            XCTAssertEqual(vm.items, items, note, file: file, line: line)
+            XCTAssertEqual(vm.buckets, buckets, note, file: file, line: line)
+            XCTAssertEqual(vm.bucketIndex, bucketIndex, note, file: file, line: line)
+            XCTAssertEqual(vm.upperBucketIndex, upper, note, file: file, line: line)
+            XCTAssertEqual(vm.selectedIds, ["a1"], note, file: file, line: line)
+            XCTAssertTrue(vm.selectionMode, note, file: file, line: line)
+            XCTAssertNil(vm.loadErrorMessage, note, file: file, line: line)
+            XCTAssertNil(vm.actionErrorMessage, note, file: file, line: line)
+            XCTAssertFalse(vm.isLoading, note, file: file, line: line)
+            XCTAssertEqual(vm.realtimeRevision, revision, note, file: file, line: line)
+        }
+        rtServe(mock, [(rt8, ["h1"]), (rt7, ["a2"]), (rt6, ["b1", "b2"])])
+
+        mock.globalError = URLError(.notConnectedToInternet)
+        await deliver(["on_asset_update"], to: vm)
+        assertUnchanged("list fails")
+
+        mock.globalError = nil
+        mock.timelineGate = { key in if key == rt6 { mock.globalError = URLError(.timedOut) } }
+        await deliver(["on_asset_update"], to: vm)
+        assertUnchanged("second month fails, first month discarded")
+    }
+
+    // MARK: Section cache
+
+    // AC-17: swap one photo for another (same count, same last id): the sections follow.
+    @MainActor
+    func test_realtime_AC17_sameCountSameLastIdStillRendered() async {
+        let mock = MockImmichClient()
+        let vm = await rtLoadedVM(mock, [(rt7, ["a1", "a2"]), (rt6, ["b1", "b2"])], scrolled: 1)
+        XCTAssertEqual(rtRendered(vm).count, 4)
+        XCTAssertEqual(vm.groupedByDay.flatMap(\.items).count, 4)
+        rtServe(mock, [(rt7, ["n1", "a2"]), (rt6, ["b1", "b2"])])
+
+        await deliver(["on_asset_delete", "on_upload_success"], to: vm)
+
+        XCTAssertEqual(vm.items.count, 4)
+        XCTAssertEqual(vm.items.last?.id, "b2")
+        for ids in [rtRendered(vm).map(\.id), vm.groupedByDay.flatMap(\.items).map(\.id)] {
+            XCTAssertFalse(ids.contains("a1"))
+            XCTAssertTrue(ids.contains("n1"))
+        }
+    }
+
+    // AC-18: a favorite changed elsewhere shows on the rendered tile.
+    @MainActor
+    func test_realtime_AC18_favoriteChangedElsewhereShownInSections() async {
+        let mock = MockImmichClient()
+        let vm = await rtLoadedVM(mock, [(rt7, ["a1", "a2"])])
+        XCTAssertEqual(rtRendered(vm).first { $0.id == "a1" }?.isFavorite, false)
+        mock.bucketResponses[rt7] = rtMonth(rt7, ["a1", "a2"], favorites: [true, false])
+
+        await deliver(["on_asset_update"], to: vm)
+
+        XCTAssertEqual(rtRendered(vm).first { $0.id == "a1" }?.isFavorite, true)
+        XCTAssertEqual(vm.groupedByDay.flatMap(\.items).first { $0.id == "a1" }?.isFavorite, true)
+    }
+
+    // AC-18: a photo removed from a stack elsewhere loses its stack badge on the tile.
+    @MainActor
+    func test_realtime_AC18_stackChangedElsewhereShownInSections() async {
+        let mock = MockImmichClient()
+        rtServe(mock, [(rt7, ["a1", "a2"])])
+        mock.bucketResponses[rt7] = rtMonth(rt7, ["a1", "a2"], stacks: [["s1", "2"], nil])
+        let vm = TimelineViewModel(client: mock)
+        await vm.refresh()
+        XCTAssertEqual(rtRendered(vm).first { $0.id == "a1" }?.stackId, "s1")
+        mock.bucketResponses[rt7] = rtMonth(rt7, ["a1", "a2"], stacks: [nil, nil])
+
+        await deliver(["on_asset_stack_update"], to: vm)
+
+        XCTAssertNil(rtRendered(vm).first { $0.id == "a1" }?.stackId)
+    }
+
+    // AC-18: a redated photo moves to its new month when loaded, leaves the grid otherwise; never duplicated.
+    @MainActor
+    func test_realtime_AC18_redatedPhotoMovesOrLeaves() async {
+        let mock = MockImmichClient()
+        let vm = await rtLoadedVM(mock, [(rt7, ["a1", "a2"]), (rt6, ["b1"]), (rt5, ["c1"])], scrolled: 1)
+        XCTAssertEqual(rtRendered(vm).count, 3)
+        rtServe(mock, [(rt7, ["a2"]), (rt6, ["b1", "a1"]), (rt5, ["c1"])])
+
+        await deliver(["on_asset_update"], to: vm)
+
+        let moved = rtRendered(vm).filter { $0.id == "a1" }
+        XCTAssertEqual(moved.count, 1)
+        XCTAssertTrue(moved.first?.fileCreatedAt.hasPrefix("2024-06") == true)
+        XCTAssertEqual(vm.items.count, Set(vm.items.map(\.id)).count)
+
+        // The photo moves to 04: neither loaded nor the neighbour of the window.
+        // (05 is loaded by the edge relaunch, since the last photo changed.)
+        rtServe(mock, [(rt7, ["a2"]), (rt6, ["b1"]), (rt5, ["c1"]), (rt4, ["a1"])])
+        await deliver(["on_asset_update"], to: vm)
+
+        XCTAssertFalse(rtRendered(vm).contains { $0.id == "a1" }, "new month is not loaded")
+        XCTAssertFalse(vm.loadedIds.contains("a1"))
+        XCTAssertEqual(vm.items.map(\.id), ["a2", "b1", "c1"])
+        XCTAssertEqual(vm.bucketIndex, 3)
+    }
+
+    // MARK: New head months
+
+    // AC-19 (example 1): a newer month appears while the head is loaded: it is loaded in front, order kept.
+    @MainActor
+    func test_realtime_AC19_newHeadMonthLoadedWhenWindowHasHead() async {
+        let mock = MockImmichClient()
+        let vm = await rtLoadedVM(mock, [(rt7, ["a1", "a2"]), (rt6, ["b1"])])
+        let revision = vm.realtimeRevision
+        rtServe(mock, [(rt8, ["h1", "h2"]), (rt7, ["a1", "a2"]), (rt6, ["b1"])])
+
+        await deliver(["on_upload_success"], to: vm)
+
+        XCTAssertEqual(vm.items.map(\.id), ["h1", "h2", "a1", "a2"])
+        XCTAssertEqual(vm.upperBucketIndex, -1)
+        XCTAssertEqual(vm.bucketIndex, 2)
+        XCTAssertEqual(vm.realtimeRevision, revision + 1)
+        await vm.loadMore()
+        XCTAssertEqual(vm.items.map(\.id), ["h1", "h2", "a1", "a2", "b1"])
+    }
+
+    // AC-19 (example 2): after a jump, a newer month is not requested.
+    @MainActor
+    func test_realtime_AC19_newHeadMonthNotLoadedAfterJump() async {
+        let mock = MockImmichClient()
+        rtServe(mock, [(rt7, ["a1"]), (rt6, ["b1"]), (rt5, ["c1"]), (rt4, ["d1"])])
+        let vm = TimelineViewModel(client: mock)
+        await vm.jump(toDay: rt5)
+        rtServe(mock, [(rt8, ["h1"]), (rt7, ["a1"]), (rt6, ["b1"]), (rt5, ["c1"]), (rt4, ["d1"])])
+
+        await deliver(["on_upload_success"], to: vm)
+
+        XCTAssertFalse(mock.timeBucketCalls.contains { $0.timeBucket == rt8 })
+        XCTAssertEqual(vm.items.map(\.id), ["c1"])
+        XCTAssertEqual(vm.buckets[vm.upperBucketIndex].timeBucket, rt6)
+    }
+
+    // AC-19: first upload into an empty library.
+    @MainActor
+    func test_realtime_AC19_firstUploadIntoEmptyLibrary() async {
+        let mock = MockImmichClient()
+        let vm = await rtLoadedVM(mock, [])
+        XCTAssertTrue(vm.items.isEmpty)
+        rtServe(mock, [(rt8, ["h1"])])
+
+        await deliver(["on_upload_success"], to: vm)
+
+        XCTAssertEqual(vm.items.map(\.id), ["h1"])
+        XCTAssertEqual(vm.bucketIndex, 1)
+    }
+
+    // MARK: Concurrency
+
+    // AC-20: a second burst during a pass ends on the latest answers, with exactly two list reads.
+    @MainActor
+    func test_realtime_AC20_secondBurstDuringSyncEndsOnLatest() async {
+        let mock = MockImmichClient()
+        let vm = await rtLoadedVM(mock, [(rt7, ["a1", "a2"])])
+        let gate = RTGate(target: rt7)
+        mock.timelineGate = { await gate.pass($0) }
+        let first = Task { await self.deliver(["on_asset_update"], to: vm) }
+        await rtWaitUntil { gate.isWaiting }
+        rtServe(mock, [(rt7, ["n1", "a1", "a2"])])
+
+        let requests = mock.requestCount
+        await deliver(["on_asset_update"], to: vm)
+        XCTAssertEqual(mock.requestCount, requests, "the second burst returns without a request")
+        gate.open()
+        await first.value
+
+        XCTAssertEqual(vm.items.map(\.id), ["n1", "a1", "a2"])
+        XCTAssertEqual(gate.seen.filter { $0 == "buckets" }.count, 2)
+    }
+
+    // AC-20: a scroll load in flight during a pass: no duplicate, indices consistent.
+    @MainActor
+    func test_realtime_AC20_loadMoreDuringSyncNoDuplicate() async {
+        let mock = MockImmichClient()
+        let vm = await rtLoadedVM(mock, [(rt7, ["a1", "a2"]), (rt6, ["b1"]), (rt5, ["c1"])])
+        let gate = RTGate(target: rt6)
+        mock.timelineGate = { await gate.pass($0) }
+        let scroll = Task { await vm.loadMore() }
+        await rtWaitUntil { gate.isWaiting }
+        rtServe(mock, [(rt7, ["n1", "a1", "a2"]), (rt6, ["b1"]), (rt5, ["c1"])])
+
+        await deliver(["on_upload_success"], to: vm)
+        gate.open()
+        await scroll.value
+
+        XCTAssertEqual(vm.items.map(\.id), ["n1", "a1", "a2", "b1"])
+        XCTAssertEqual(vm.items.count, Set(vm.items.map(\.id)).count)
+        XCTAssertEqual(vm.bucketIndex, 2)
+        XCTAssertEqual(vm.buckets[vm.bucketIndex].timeBucket, rt5)
+    }
+
+    // AC-20: the window moved during a pass: the pass restarts and includes the new month.
+    @MainActor
+    func test_realtime_AC20_syncRestartsWhenWindowMovedMidFlight() async {
+        let mock = MockImmichClient()
+        let vm = await rtLoadedVM(mock, [(rt7, ["a1", "a2"]), (rt6, ["b1"]), (rt5, ["c1"])])
+        let gate = RTGate(target: rt7)
+        mock.timelineGate = { await gate.pass($0) }
+        let pass = Task { await self.deliver(["on_asset_update"], to: vm) }
+        await rtWaitUntil { gate.isWaiting }
+
+        await vm.loadMore()
+        XCTAssertEqual(vm.bucketIndex, 2)
+        gate.open()
+        await pass.value
+
+        XCTAssertEqual(vm.items.map(\.id), ["a1", "a2", "b1"])
+        XCTAssertEqual(vm.bucketIndex, 2)
+        XCTAssertEqual(vm.items.count, Set(vm.items.map(\.id)).count)
+    }
+
+    // AC-21: bursts during a pass: each finished pass is applied, and they make one more pass only.
+    @MainActor
+    func test_realtime_AC21_burstsDuringSyncDoNotStarveIt() async {
+        let mock = MockImmichClient()
+        let vm = await rtLoadedVM(mock, [(rt7, ["a1", "a2"])])
+        let passA = RTGate(target: rt7)
+        let listOfPassB = RTGate(target: "buckets", skip: 1)
+        mock.timelineGate = { key in
+            await passA.pass(key)
+            await listOfPassB.pass(key)
+        }
+        let first = Task { await self.deliver(["on_asset_update"], to: vm) }
+        await rtWaitUntil { passA.isWaiting }
+        rtServe(mock, [(rt7, ["n1", "a1", "a2"])])
+
+        await deliver(["on_asset_update"], to: vm)
+        await deliver(["on_asset_trash"], to: vm)
+        passA.open()
+        await rtWaitUntil { listOfPassB.isWaiting }
+
+        XCTAssertEqual(vm.realtimeRevision, 1, "pass A is applied before pass B starts")
+        XCTAssertEqual(vm.items.map(\.id), ["n1", "a1", "a2"])
+        rtServe(mock, [(rt7, ["n2", "n1", "a1", "a2"])])
+        listOfPassB.open()
+        await first.value
+
+        XCTAssertEqual(vm.realtimeRevision, 2)
+        XCTAssertEqual(vm.items.map(\.id), ["n2", "n1", "a1", "a2"])
+        XCTAssertEqual(passA.seen.filter { $0 == "buckets" }.count, 2, "two passes in all")
+    }
+
+    // MARK: Edge relaunch
+
+    // AC-22: a month appears just under the range while a loadMore is in flight: it is loaded, not skipped.
+    @MainActor
+    func test_realtime_AC22_inFlightLoadMoreLoadsMonthAppearedBelow() async {
+        let mock = MockImmichClient()
+        let vm = await rtLoadedVM(mock, [(rt7, ["a1", "a2"]), (rt5, ["c1"])])
+        let gate = RTGate(target: rt5)
+        mock.timelineGate = { await gate.pass($0) }
+        let scroll = Task { await vm.loadMore() }
+        await rtWaitUntil { gate.isWaiting }
+        rtServe(mock, [(rt7, ["a1", "a2"]), (rt6, ["b1"]), (rt5, ["c1"])])
+        let callsBefore = mock.timeBucketCalls.count
+
+        await deliver(["on_upload_success"], to: vm)
+        gate.open()
+        await scroll.value
+
+        XCTAssertEqual(vm.items.map(\.id), ["a1", "a2", "b1"])
+        XCTAssertEqual(vm.buckets[vm.bucketIndex].timeBucket, rt5)
+        await vm.loadMore()
+        XCTAssertEqual(vm.items.map(\.id), ["a1", "a2", "b1", "c1"])
+        let keys = mock.timeBucketCalls.dropFirst(callsBefore).map(\.timeBucket)
+        XCTAssertEqual(keys, [rt7, rt6, rt5], "05 was dropped once, then loaded after 06")
+        XCTAssertEqual(mock.timeBucketCalls.filter { $0.timeBucket == rt5 }.count, 2)
+    }
+
+    // AC-22: a month appears just above the range while a loadNewer is in flight.
+    @MainActor
+    func test_realtime_AC22_inFlightLoadNewerLoadsMonthAppearedAbove() async {
+        let mock = MockImmichClient()
+        rtServe(mock, [(rt8, ["h1"]), (rt7, ["a1"]), (rt5, ["c1"])])
+        let vm = TimelineViewModel(client: mock)
+        await vm.jump(toDay: rt5)
+        let gate = RTGate(target: rt7)
+        mock.timelineGate = { await gate.pass($0) }
+        let scroll = Task { await vm.loadNewer() }
+        await rtWaitUntil { gate.isWaiting }
+        rtServe(mock, [(rt8, ["h1"]), (rt7, ["a1"]), (rt6, ["b1"]), (rt5, ["c1"])])
+
+        await deliver(["on_upload_success"], to: vm)
+        gate.open()
+        await scroll.value
+
+        XCTAssertEqual(vm.items.map(\.id), ["b1", "c1"])
+        XCTAssertEqual(vm.buckets[vm.upperBucketIndex].timeBucket, rt7)
+    }
+
+    // AC-22: the last photo of the last month is deleted: the next month is loaded.
+    @MainActor
+    func test_realtime_AC22_lastPhotoDeletedLoadsNextMonth() async {
+        let mock = MockImmichClient()
+        let vm = await rtLoadedVM(mock, [(rt7, ["a1"]), (rt6, ["b1", "b2"]), (rt5, ["c1"])], scrolled: 1)
+        XCTAssertEqual(vm.bucketIndex, 2)
+        rtServe(mock, [(rt7, ["a1"]), (rt6, ["b1"]), (rt5, ["c1"])])
+
+        await deliver(["on_asset_delete"], to: vm)
+
+        XCTAssertEqual(vm.items.map(\.id), ["a1", "b1", "c1"])
+        XCTAssertEqual(vm.bucketIndex, 3)
+    }
+
+    // AC-22: a month appears under an end that was already fully loaded.
+    @MainActor
+    func test_realtime_AC22_monthAppearedBelowExhaustedEndIsLoaded() async {
+        let mock = MockImmichClient()
+        let vm = await rtLoadedVM(mock, [(rt7, ["a1"])])
+        XCTAssertFalse(vm.canLoadMore)
+        rtServe(mock, [(rt7, ["a1"]), (rt3, ["z1"])])
+
+        await deliver(["on_upload_success"], to: vm)
+
+        XCTAssertEqual(vm.items.map(\.id), ["a1", "z1"])
+        XCTAssertEqual(vm.bucketIndex, 2)
+    }
+
+    // AC-22: the first photo after a jump is deleted: the newer month is loaded in front.
+    @MainActor
+    func test_realtime_AC22_firstPhotoDeletedAfterJumpLoadsNewer() async {
+        let mock = MockImmichClient()
+        rtServe(mock, [(rt7, ["a1"]), (rt5, ["c1", "c2"])])
+        let vm = TimelineViewModel(client: mock)
+        await vm.jump(toDay: rt5)
+        rtServe(mock, [(rt7, ["a1"]), (rt5, ["c2"])])
+
+        await deliver(["on_asset_delete"], to: vm)
+
+        XCTAssertEqual(vm.items.map(\.id), ["a1", "c2"])
+        XCTAssertEqual(vm.upperBucketIndex, -1)
+        XCTAssertEqual(vm.realtimeRevision, 2, "the pass, then the edge load")
+    }
+}

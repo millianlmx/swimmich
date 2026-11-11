@@ -156,6 +156,10 @@ final class MockImmichClient: ImmichClient, @unchecked Sendable {
 
     var bucketsResponse: [TimeBucketsResponseDto] = []
     var bucketResponses: [String: TimeBucketAssetResponseDto] = [:]
+    /// Suspends a timeline call after its request is recorded and before the
+    /// response is read (`"buckets"` for the list, the month key otherwise): a
+    /// test can hold a pass, change the responses or `globalError`, then release.
+    var timelineGate: ((String) async -> Void)?
 
     var getAssetResponse: [String: AssetResponseDto] = [:]
     /// Ids passed to `getAsset`, recorded before the gate.
@@ -521,6 +525,7 @@ final class MockImmichClient: ImmichClient, @unchecked Sendable {
             withPartners: withPartners, visibility: visibility,
             withStacked: withStacked, orderBy: orderBy, tagId: tagId, userId: userId
         )
+        await timelineGate?("buckets")
         if !timeBucketsErrorQueue.isEmpty { throw timeBucketsErrorQueue.removeFirst() }
         if let e = globalError { throw e }
         return bucketsResponse
@@ -550,6 +555,7 @@ final class MockImmichClient: ImmichClient, @unchecked Sendable {
             withPartners: withPartners, visibility: visibility,
             withStacked: withStacked, orderBy: orderBy, tagId: tagId, userId: userId
         )))
+        await timelineGate?(timeBucket)
         if let gate = timeBucketGate { try await gate(timeBucket) }
         if !timeBucketErrorQueue.isEmpty { throw timeBucketErrorQueue.removeFirst() }
         if let e = globalError { throw e }

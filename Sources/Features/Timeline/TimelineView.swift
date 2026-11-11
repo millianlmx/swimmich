@@ -226,6 +226,14 @@ struct TimelineView: View {
                 .onChange(of: vm.items.count) { _, _ in
                     if scrollTargetID != nil { attemptTimelineScroll(proxy: proxy) }
                 }
+                // A realtime pass rebuilt `items`: keep the photo the user was
+                // looking at on screen (a newer month inserted above it would
+                // otherwise push it down).
+                .onChange(of: vm.realtimeRevision) {
+                    if let id = vm.topVisibleId, vm.items.contains(where: { $0.id == id }) {
+                        requestScroll(to: id)
+                    }
+                }
                 .onChange(of: scrollRequest) { _, request in
                     if let request { proxy.scrollTo(request.id, anchor: .top) }
                 }

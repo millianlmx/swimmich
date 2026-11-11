@@ -47,6 +47,14 @@ final class TimelineViewModel {
     /// The first visible photo as last reported by the scroll view; the
     /// re-anchor target after a newer month is prepended.
     @ObservationIgnored private(set) var topVisibleId: String?
+    /// Bumped when a realtime pass changed what is on screen; the view
+    /// re-anchors its scroll position on `topVisibleId` when it changes.
+    private(set) var realtimeRevision = 0
+    @ObservationIgnored private var realtimeSyncRunning = false
+    @ObservationIgnored private var realtimeSyncPending = false
+    /// Bumped each time a realtime pass rewrites the bucket list: a neighbour
+    /// load that started before it re-resolves its month by key.
+    @ObservationIgnored private var listRewrites = 0
 
     let client: any ImmichClient
     /// Active filter of the main timeline. `.all` asks the server for my
@@ -307,10 +315,7 @@ final class TimelineViewModel {
             for idx in items.indices where ids.contains(items[idx].id) {
                 items[idx] = items[idx].with(visibility: AssetVisibility.timeline.rawValue)
             }
-            _groupedByDay = nil
-            _groupedByDayKey = nil
-            _timelineSections = nil
-            _timelineSectionsKey = nil
+            invalidateSectionCaches()
         }
     }
 
@@ -551,51 +556,219 @@ final class TimelineViewModel {
         isLoading = true
         // A jump that started meanwhile owns `isLoading`.
         defer { if activeJump == nil { isLoading = false } }
-        let epoch = windowEpoch
-        let index = upperBucketIndex
-        let key = buckets[index].timeBucket
-        do {
-            let columnar = try await fetchBucket(key)
-            guard epoch == windowEpoch, upperBucketIndex == index, bucketIsCurrent(index, key) else { return }
-            let zipped = AssetReactItem.zip(columnar)
-            let newItems = zipped.filter { !loadedIds.contains($0.id) }
-            items.insert(contentsOf: newItems, at: 0)
-            loadedIds.formUnion(newItems.map(\.id))
-            recordPlaces(of: zipped, month: index)
-            upperBucketIndex -= 1
-        } catch let e {
-            guard epoch == windowEpoch, upperBucketIndex == index, bucketIsCurrent(index, key) else { return }
-            loadErrorMessage = e.userFacingMessage
+        while upperBucketIndex >= 0, buckets.indices.contains(upperBucketIndex) {
+            let epoch = windowEpoch
+            let rewrites = listRewrites
+            let index = upperBucketIndex
+            let key = buckets[index].timeBucket
+            do {
+                let columnar = try await fetchBucket(key)
+                switch arrival(epoch: epoch, rewrites: rewrites, index: index, key: key, current: upperBucketIndex) {
+                case .drop: return
+                case .retry: continue
+                case .apply(let month):
+                    let zipped = AssetReactItem.zip(columnar)
+                    let newItems = zipped.filter { !loadedIds.contains($0.id) }
+                    items.insert(contentsOf: newItems, at: 0)
+                    loadedIds.formUnion(newItems.map(\.id))
+                    recordPlaces(of: zipped, month: month)
+                    upperBucketIndex -= 1
+                    return
+                }
+            } catch let e {
+                if case .apply = arrival(epoch: epoch, rewrites: rewrites, index: index, key: key, current: upperBucketIndex) {
+                    loadErrorMessage = e.userFacingMessage
+                }
+                return
+            }
         }
     }
 
     @MainActor
     private func loadNextBucket() async {
-        guard bucketIndex < buckets.count else { return }
-        let epoch = windowEpoch
-        let index = bucketIndex
-        let key = buckets[index].timeBucket
-        do {
-            let columnar = try await fetchBucket(key)
-            // The window may have been replaced during the await (a jump, a
-            // reload): then this month no longer belongs after its end.
-            guard epoch == windowEpoch, bucketIndex == index, bucketIsCurrent(index, key) else { return }
-            // AC-013: zip columnar into objects.
-            let zipped = AssetReactItem.zip(columnar)
-            for item in zipped where !loadedIds.contains(item.id) {
-                items.append(item)
-                loadedIds.insert(item.id)
+        while bucketIndex < buckets.count {
+            let epoch = windowEpoch
+            let rewrites = listRewrites
+            let index = bucketIndex
+            let key = buckets[index].timeBucket
+            do {
+                let columnar = try await fetchBucket(key)
+                // The window may have been replaced during the await (a jump, a
+                // reload): then this month no longer belongs after its end.
+                switch arrival(epoch: epoch, rewrites: rewrites, index: index, key: key, current: bucketIndex) {
+                case .drop: return
+                case .retry: continue
+                case .apply(let month):
+                    // AC-013: zip columnar into objects.
+                    let zipped = AssetReactItem.zip(columnar)
+                    for item in zipped where !loadedIds.contains(item.id) {
+                        items.append(item)
+                        loadedIds.insert(item.id)
+                    }
+                    recordPlaces(of: zipped, month: month)
+                    bucketIndex += 1
+                    return
+                }
+            } catch let e {
+                if case .apply = arrival(epoch: epoch, rewrites: rewrites, index: index, key: key, current: bucketIndex) {
+                    loadErrorMessage = e.userFacingMessage
+                }
+                return
             }
-            recordPlaces(of: zipped, month: index)
-            bucketIndex += 1
-        } catch let e {
-            guard epoch == windowEpoch, bucketIndex == index, bucketIsCurrent(index, key) else { return }
-            loadErrorMessage = e.userFacingMessage
         }
+    }
+
+    private enum Arrival {
+        case apply(month: Int)
+        case retry
+        case drop
+    }
+
+    /// Where the month read for neighbour `index` lands once its answer is
+    /// there. A replaced window (jump, reload) drops it. A list rewritten by a
+    /// realtime pass in the meantime keeps it only if that month is still the
+    /// neighbour (at its new index), else the loader takes a turn on the new
+    /// neighbour. Otherwise the month must still be exactly where it was.
+    private func arrival(epoch: Int, rewrites: Int, index: Int, key: String, current: Int) -> Arrival {
+        guard epoch == windowEpoch else { return .drop }
+        if rewrites == listRewrites {
+            return current == index && bucketIsCurrent(index, key) ? .apply(month: index) : .drop
+        }
+        guard buckets.indices.contains(current) else { return .drop }
+        return buckets[current].timeBucket == key ? .apply(month: current) : .retry
     }
 
     private func bucketIsCurrent(_ index: Int, _ key: String) -> Bool {
         buckets.indices.contains(index) && buckets[index].timeBucket == key
+    }
+
+    /// Drops the memoized sections. Needed after an in-place patch or a
+    /// replacement that keeps `(count, lastId)`, the key of both caches.
+    private func invalidateSectionCaches() {
+        _groupedByDay = nil
+        _groupedByDayKey = nil
+        _timelineSections = nil
+        _timelineSectionsKey = nil
+    }
+
+    // MARK: - Realtime update
+
+    /// Applies one burst of server events (`RealtimeService`). A burst made
+    /// only of `on_person_thumbnail` leaves the timeline untouched. Otherwise
+    /// the loaded range is re-read in place — selection mode, selection and
+    /// scroll window stay. One pass at a time: a burst arriving during a pass
+    /// only flags another pass, which a single follow-up pass then serves.
+    @MainActor
+    func handleRealtime(_ batch: RealtimeBatch) async {
+        guard batch.touchesAssets else { return }
+        realtimeSyncPending = true
+        guard !realtimeSyncRunning else { return }
+        realtimeSyncRunning = true
+        defer { realtimeSyncRunning = false }
+        while realtimeSyncPending {
+            realtimeSyncPending = false
+            await syncLoadedWindow()
+        }
+    }
+
+    /// Where the loaded range stands: any change during an `await` (a scroll
+    /// load, a jump, a reload) means the pass read a stale window.
+    private var windowSignature: [Int] { [windowEpoch, bucketIndex, upperBucketIndex, buckets.count] }
+
+    /// One pass: bucket list, then every month of the new window, applied in a
+    /// single synchronous block. All-or-nothing: any error leaves the state
+    /// untouched and silent (the next burst retries). A range that moved
+    /// during an `await` restarts the pass. A jump still in flight when the
+    /// pass is ready to apply owns the window and reads its own month: the pass
+    /// is dropped rather than racing it.
+    @MainActor
+    private func syncLoadedWindow() async {
+        restart: while true {
+            let signature = windowSignature
+            let lower = upperBucketIndex + 1
+            let upper = min(bucketIndex, buckets.count)
+            let loadedKeys = lower < upper ? buckets[lower..<upper].map(\.timeBucket) : []
+            let headIncluded = upperBucketIndex < 0
+
+            let newBuckets: [TimeBucketsResponseDto]
+            do { newBuckets = try await fetchBuckets() } catch { return }
+            guard windowSignature == signature else { continue restart }
+
+            let range = Self.realtimeWindow(in: newBuckets, loadedKeys: loadedKeys, headIncluded: headIncluded, position: lower)
+            var months: [[AssetReactItem]] = []
+            for i in range {
+                do { months.append(AssetReactItem.zip(try await fetchBucket(newBuckets[i].timeBucket))) } catch { return }
+                guard windowSignature == signature else { continue restart }
+            }
+            guard activeJump == nil else { return }
+
+            var newIds = Set<String>()
+            var newItems: [AssetReactItem] = []
+            for month in months {
+                for item in month where newIds.insert(item.id).inserted { newItems.append(item) }
+            }
+
+            let oldFirst = items.first?.id
+            let oldLast = items.last?.id
+            let oldIds = loadedIds
+            let oldExhausted = bucketIndex >= buckets.count
+            let scrubKey = scrubPosition.flatMap { buckets.indices.contains($0.monthIndex) ? buckets[$0.monthIndex].timeBucket : nil }
+            let scrubFraction = scrubPosition?.fraction ?? 0
+
+            listRewrites &+= 1
+            buckets = newBuckets
+            upperBucketIndex = range.lowerBound - 1
+            bucketIndex = range.upperBound
+            items = newItems
+            loadedIds = newIds
+            selectedIds.formIntersection(newIds)
+            invalidateSectionCaches()
+            placeById = [:]
+            for (offset, i) in range.enumerated() { recordPlaces(of: months[offset], month: i) }
+            if let id = topVisibleId, !newIds.contains(id) { topVisibleId = nil }
+            scrubPosition = scrubKey
+                .flatMap { key in newBuckets.firstIndex(where: { $0.timeBucket == key }) }
+                .map { TimelineScrubPosition(monthIndex: $0, fraction: scrubFraction) }
+            realtimeRevision &+= 1
+
+            // An edge cell that was already on screen keeps its `.task`
+            // spent: load its new neighbour here.
+            let before = items.count
+            if let newLast = items.last?.id, oldIds.contains(newLast), bucketIndex < buckets.count,
+               newLast != oldLast || oldExhausted {
+                await loadNextBucket()
+            }
+            if let newFirst = items.first?.id, oldIds.contains(newFirst), newFirst != oldFirst, upperBucketIndex >= 0 {
+                await loadNewer()
+            }
+            if items.count != before { realtimeRevision &+= 1 }
+            return
+        }
+    }
+
+    /// Which months of `newBuckets` (server list, newest first) the window
+    /// covers after an update. Months kept from the old window bound it; months
+    /// that appeared at the head of a window that held the head, or between two
+    /// kept months, join it. Anything else stays on demand (scroll).
+    nonisolated static func realtimeWindow(
+        in newBuckets: [TimeBucketsResponseDto],
+        loadedKeys: [String],
+        headIncluded: Bool,
+        position: Int
+    ) -> Range<Int> {
+        guard !newBuckets.isEmpty else { return 0..<0 }
+        let loaded = Set(loadedKeys)
+        let kept = newBuckets.indices.filter { loaded.contains(newBuckets[$0].timeBucket) }
+        if let first = kept.first, let last = kept.last {
+            return (headIncluded ? 0 : first)..<(last + 1)
+        }
+        if headIncluded { return 0..<1 }
+        if let oldest = loadedKeys.last {
+            if let p = newBuckets.firstIndex(where: { $0.timeBucket < oldest }) { return p..<(p + 1) }
+            return (newBuckets.count - 1)..<newBuckets.count
+        }
+        let q = min(max(position, 0), newBuckets.count)
+        return q..<q
     }
 
     /// The order the grid draws a month in: newest first.
