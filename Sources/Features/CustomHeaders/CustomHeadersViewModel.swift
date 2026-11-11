@@ -41,7 +41,7 @@ final class CustomHeadersViewModel {
     }
 
     private var validation: (headers: [CustomHTTPHeader], issues: [Int: CustomHeaderIssue]) {
-        CustomHeaderValidation.validate(rows.map { ($0.name, $0.value) })
+        CustomHeaderValidation.validate(rows.map { (name: $0.name, value: $0.value) })
     }
 
     /// Rows in error, by `Row.id`.

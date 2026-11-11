@@ -142,11 +142,15 @@ public enum ServerRequestAuthorization {
         var customAuthorization = false
         for header in custom where CustomHeaderValidation.isToken(header.name)
             && !CustomHeaderValidation.isReserved(header.name) {
-            result.append((header.name, header.value))
+            result.append((name: header.name, value: header.value))
             if header.name.lowercased() == "authorization" { customAuthorization = true }
         }
         if let token, !token.isEmpty {
-            result.append(customAuthorization ? (userTokenHeader, token) : ("Authorization", "Bearer \(token)"))
+            if customAuthorization {
+                result.append((name: userTokenHeader, value: token))
+            } else {
+                result.append((name: "Authorization", value: "Bearer \(token)"))
+            }
         }
         return result
     }
