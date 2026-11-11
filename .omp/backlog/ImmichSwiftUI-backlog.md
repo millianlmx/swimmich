@@ -759,6 +759,8 @@ Ouvrir un lien partagé **reçu** : vérifier son mot de passe, parcourir ses ph
 
 ### 2.17. Registre des écarts vs upstream — audit 2026-09-15 (aucune carte AC ouverte)
 
+> Ce registre (v3.2.1, audit 2026-09-15) est remplacé par `docs/parity-registry-v3.4.0.md` (cible v3.4.0, audit 2026-11-11) ; il reste ici en historique.
+
 Audit du client officiel `immich-app/immich` @ `main` (`e55ac299`, release **v3.2.1** du
 2026-09-14), comparé à l'état du dépôt au 2026-09-15. Sources upstream : `mobile/lib/routing/router.dart`
 (57 routes, 3 guards), `mobile/lib/{pages,presentation/pages,services,domain/services,widgets/settings}`,
@@ -793,7 +795,7 @@ fantôme, table des gaps #1/#2/#5/#12 close).
 | G18 | **Changement de mot de passe** | ❌ absent (`shouldChangePassword` non consommé) | `pages/login/change_password.page.dart` (route `ChangePasswordRoute`) | `POST /api/auth/change-password` |
 | G19 | **Sessions / appareils connectés** | ❌ absent | `user-settings-page/DeviceCard.svelte` (web) + écrans de compte du client mobile | `GET /api/sessions`, `DELETE /api/sessions/{id}`, `POST /api/auth/session/{lock,unlock}` |
 | G20 | **Clés API utilisateur** (hors admin) + rotation | 🟡 admin seulement (`/api/api-keys`) | `user-settings-page/UserApiKeyGrid.svelte` | `GET /api/api-keys` (liste des clés de l'utilisateur courant, non réservée aux admins), `GET /api/api-keys/me` (**une seule** clé : celle qui porte la requête), `POST /api/api-keys`, `DELETE /api/api-keys/{id}`, **`POST` `/api/api-keys/{id}/rotate`** (pas PUT — coquille corrigée le 2026-09-15 par la spec `user-api-keys`) |
-| G21 | **Extension de partage iOS** (partager une photo *vers* Immich) | ❌ absent (`project.yml` : pas de cible ShareExtension ; AppIntents couvre Siri/Shortcuts, pas la share sheet) | `mobile/ios/ShareExtension/`, plugin `share_handler`, route `ShareIntentRoute` | `POST /api/assets` (upload depuis la share sheet) |
+| G21 | **Extension de partage iOS** (partager une photo *vers* Immich) | ✅ livré (cible `ImmichShareExtension`, `project.yml:187-227`) | `mobile/ios/ShareExtension/`, plugin `share_handler`, route `ShareIntentRoute` | `POST /api/assets` (upload depuis la share sheet) |
 | G22 | Réglages manquants : photo grid (regroupement/layout), viewer (qualité image, tap-to-navigate, vidéo, slideshow), préférences (thème, couleur primaire, haptique) | 🟡 | `widgets/settings/{asset_list_settings,asset_viewer_settings,preference_settings}/*` | client |
 | G23 | Écrans « Quoi de neuf » + licences open-source | ❌ absent | route `WhatsNewRoute`, `presentation/pages/feature_message/whats_new.page.dart`, `utils/licenses.dart` | client (+ `feature_message` serveur) |
 | G24 | Utilitaires : logs applicatifs, dépannage asset, infos de téléchargement, stats média | ❌ absent (seuls stockage + doublons existent) | routes `AppLogRoute`, `AppLogDetailRoute`, `AssetTroubleshootRoute`, `DownloadInfoRoute` ; `pages/common/app_log{,_detail}.page.dart`, `presentation/pages/asset_troubleshoot.page.dart` | client (+ `POST /api/assets/bulk-upload-check`, `GET /api/assets/{id}/original`) |
@@ -865,9 +867,10 @@ avec son dossier de specs dans `.omp/<slug>/` :
 - **Sessions/appareils** : `DELETE /api/sessions` **ne supprime pas** la session courante (le serveur exclut
   `currentSessionId`), `POST /api/auth/session/lock` est **sans corps** et retire l'accès élevé,
   `POST /api/auth/session/unlock` ne lit que `pinCode` et pose un **TTL de 15 min côté serveur** ; les deux
-  routes `/auth/session/*` exigent un **token de session** (400 pour un compte par clé API), et l'élévation
-  n'est exposée par **aucun** champ de `SessionResponseDto` — donc état local optimiste côté iOS, tandis que
-  le dossier verrouillé lit bien `AuthStatusResponseDto.isElevated`. Le client Flutter n'a **rien** sur les
+  routes `/auth/session/*` exigent un **token de session** (400 pour un compte par clé API) ; l'élévation
+  n'est exposée par **aucun** champ de `SessionResponseDto`, mais elle se lit sur le serveur par
+  `GET /api/auth/status` (`AuthStatusResponseDto.isElevated`), dans le dossier verrouillé comme dans l'écran
+  des sessions. Le client Flutter n'a **rien** sur les
   sessions : l'écran iOS s'aligne sur `DeviceCard.svelte` (web).
 - **Sync/dossier** : les deux features s'appuient sur `POST /api/assets/bulk-upload-check` + le ledger
   (`BackupLedger.entriesForReconciliation()`), pas sur une base locale.
@@ -1004,8 +1007,8 @@ accordée en cours de route.
 - `chromecast` livre **AirPlay**, pas Google Cast (aucun paquet SPM officiel, pas de
   `Podfile`) : **G9 reste partiellement ouvert pour l'image fixe**, qu'AirPlay ne transporte pas.
 - `locked-folder` : le PIN est **serveur**, l'élévation (`isElevated`) n'est exposée par
-  aucun champ de session — l'état iOS est optimiste, et les deux routes `/auth/session/*`
-  exigent un token de session (un compte par clé API reçoit un 400).
+  aucun champ de session, mais elle se lit sur le serveur par `GET /api/auth/status` (`isElevated`) ;
+  les deux routes `/auth/session/*` exigent un token de session (un compte par clé API reçoit un 400).
 - `device-sessions` s'aligne sur `DeviceCard.svelte` (le client Flutter n'a rien) :
   `DELETE /api/sessions` ne supprime pas la session courante.
 - `settings-parity` ajoute deux réglages sans équivalent upstream (densité 5/3/2, clé

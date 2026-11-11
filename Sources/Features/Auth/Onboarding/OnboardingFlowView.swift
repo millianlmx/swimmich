@@ -11,9 +11,10 @@ import SwiftUI
 ///
 /// Server connectivity is validated inline on the connection screen (spinner →
 /// reachable info card → Continue), so the user never leaves the input context
-/// to learn whether the server responded. Future work — OAuth/SSO, QR-code
-/// discovery and self-signed certificate validation — is tracked via the
-/// `$PHASE_OAUTH` / `$PHASE_QR` / `$PHASE_CERT` markers inside each screen.
+/// to learn whether the server responded. OAuth/SSO lives in `LoginScreen` and
+/// `AuthViewModel.startOAuthFlow`; QR-code discovery in `ServerURLScreen` and
+/// `QRScannerView`; self-signed certificate approval in the "Trust this server?"
+/// alert of `ServerURLScreen` and `TrustEvaluatingURLSessionDelegate`.
 struct OnboardingFlowView: View {
     @Environment(AuthViewModel.self) private var auth
 
