@@ -512,20 +512,16 @@ struct ProfileView: View {
         }
     }
 
-    /// Server storage usage (P1 storage-stats): photo/video counts, total
-    /// bytes used and, when the server defines a quota, a determinate bar.
+    /// Account storage (own counts, usage, quota): the shared rows, then the
+    /// loading indicator.
     @ViewBuilder
     private var storageSection: some View {
         Section {
-            LabeledContent("Photos", value: storage.photos.formatted())
-            LabeledContent("Videos", value: storage.videos.formatted())
-            LabeledContent("Usage", value: StorageStatsViewModel.format(storage.usage))
-            if let quota = storage.quotaSizeInBytes, quota > 0 {
-                ProgressView(
-                    value: min(Double(storage.usage) / Double(quota), 1.0)
-                )
-                LabeledContent("Quota", value: StorageStatsViewModel.format(quota))
-            }
+            AccountStorageRows(
+                storage: storage,
+                idPrefix: "profileStorage",
+                showsQuotaBar: true
+            ) { Task { await storage.load() } }
             if storage.isLoading {
                 HStack(spacing: PVSpacing.s8) {
                     ProgressView()
@@ -533,13 +529,66 @@ struct ProfileView: View {
                         .font(.pvCaption)
                         .foregroundStyle(Color.textSecondaryPV)
                 }
-            } else if let error = storage.errorMessage {
-                Label(error, systemImage: "exclamationmark.triangle.fill")
-                    .font(.pvCaption)
-                    .foregroundStyle(Color.immichError)
+                .accessibilityIdentifier("profileStorageLoading")
             }
         } header: {
             Text("Storage")
+        }
+    }
+}
+
+/// The account-storage rows shared by the Me hub and Media Stats. Each half of
+/// `StorageStatsViewModel` renders on its own: a value that was read, or
+/// "Unavailable" plus a badge with Try Again — never a "0" for a half that was
+/// not read, and never a bar or a "0" for an account without quota.
+///
+/// Order: Photos, Videos, counts badge, Usage, bar, Quota, usage badge.
+struct AccountStorageRows: View {
+    let storage: StorageStatsViewModel
+    /// Prefix of every `accessibilityIdentifier` (`<prefix>Photos`, …).
+    let idPrefix: String
+    let showsQuotaBar: Bool
+    let retry: () -> Void
+
+    var body: some View {
+        switch storage.counts {
+        case .loaded(let counts):
+            LabeledContent("Photos", value: counts.photos.formatted())
+                .accessibilityIdentifier("\(idPrefix)Photos")
+            LabeledContent("Videos", value: counts.videos.formatted())
+                .accessibilityIdentifier("\(idPrefix)Videos")
+        case .unavailable(let message):
+            LabeledContent("Photos", value: String(localized: "Unavailable"))
+                .accessibilityIdentifier("\(idPrefix)Photos")
+            LabeledContent("Videos", value: String(localized: "Unavailable"))
+                .accessibilityIdentifier("\(idPrefix)Videos")
+            InlineErrorBadge(message: message, retry: retry)
+                .accessibilityIdentifier("\(idPrefix)CountsError")
+        case .notLoaded:
+            EmptyView()
+        }
+        switch storage.usage {
+        case .loaded(let usage):
+            LabeledContent("Usage", value: StorageStatsViewModel.format(usage.usedBytes))
+                .accessibilityIdentifier("\(idPrefix)Usage")
+            if showsQuotaBar, let fraction = usage.fraction {
+                ProgressView(value: fraction)
+                    .accessibilityIdentifier("\(idPrefix)QuotaBar")
+            }
+            LabeledContent(
+                "Quota",
+                value: usage.quotaBytes.map(StorageStatsViewModel.format) ?? String(localized: "Unlimited")
+            )
+            .accessibilityIdentifier("\(idPrefix)Quota")
+        case .unavailable(let message):
+            LabeledContent("Usage", value: String(localized: "Unavailable"))
+                .accessibilityIdentifier("\(idPrefix)Usage")
+            LabeledContent("Quota", value: String(localized: "Unavailable"))
+                .accessibilityIdentifier("\(idPrefix)Quota")
+            InlineErrorBadge(message: message, retry: retry)
+                .accessibilityIdentifier("\(idPrefix)UsageError")
+        case .notLoaded:
+            EmptyView()
         }
     }
 }

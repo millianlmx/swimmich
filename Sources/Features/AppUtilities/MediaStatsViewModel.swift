@@ -3,9 +3,12 @@ import Observation
 
 /// Media Stats (gap G24): what the device and the server actually hold.
 ///
-/// The server half is the same call the storage card makes
-/// (`GET /api/server/statistics`); the local half is the two counts this app
-/// really owns — the backup ledger's tracked assets and the offline cache.
+/// The server half is the *account's* storage (`StorageStatsViewModel`: usage
+/// and quota from `GET /api/users/me`, own counts from
+/// `GET /api/assets/statistics`); instance totals live in Administration only.
+/// The local half is the two counts this app really owns — the backup ledger's
+/// tracked assets and the offline cache — and stays correct when the server
+/// reads fail.
 ///
 /// The counters the Flutter page reads from its Drift database (stacks, people,
 /// memories, faces…) are deliberately **absent**: iOS keeps no local asset
@@ -13,23 +16,15 @@ import Observation
 @MainActor
 @Observable
 final class MediaStatsViewModel {
-    private let client: any ImmichClient
     private let ledger: any BackupLedgerStoring
     private let offline: OfflineDownloadViewModel
-
-    var photos = 0
-    var videos = 0
-    var usage: Int64 = 0
-    /// nil when the server defines no quota — the row is then omitted, like the
-    /// storage card's bar.
-    var quotaSizeInBytes: Int64?
+    let storage: StorageStatsViewModel
     private(set) var isLoading = false
-    private(set) var errorMessage: String?
 
     init(client: any ImmichClient, ledger: any BackupLedgerStoring, offline: OfflineDownloadViewModel) {
-        self.client = client
         self.ledger = ledger
         self.offline = offline
+        self.storage = StorageStatsViewModel(client: client)
     }
 
     // MARK: - Local facts (no network)
@@ -43,29 +38,14 @@ final class MediaStatsViewModel {
 
     // MARK: - Loading
 
-    /// Fetches the server's counters once per invocation, re-entrancy guarded —
-    /// the same shape as the storage card, so the two cannot drift. The device's
-    /// half is refreshed first: it comes from the offline cache, which is a
-    /// projection, not a live read.
+    /// Refreshes the device's half (the offline cache is a projection, not a
+    /// live read), then the account's two server reads; re-entrancy guarded.
     func load() async {
         guard !isLoading else { return }
         isLoading = true
         defer { isLoading = false }
         await offline.load()
-        do {
-            let stats = try await client.getServerStatistics()
-            photos = stats.photos
-            videos = stats.videos
-            usage = Int64(stats.usage)
-            // First user-level entry carrying a quota wins.
-            quotaSizeInBytes = stats.usageByUser
-                .first { ($0.quotaSizeInBytes ?? 0) > 0 }
-                .flatMap { $0.quotaSizeInBytes }
-                .map(Int64.init)
-            errorMessage = nil
-        } catch {
-            errorMessage = error.userFacingMessage
-        }
+        await storage.load()
     }
 
     // MARK: - Formatting (bytes and dates are never formatted in the view)

@@ -17,6 +17,11 @@ final class AdminViewModel {
     var isLoading = false
     var errorMessage: String?
 
+    /// Instance-wide totals (`GET /api/server/statistics`, administrators only).
+    private(set) var instanceStats: ServerStatsResponseDto?
+    private(set) var instanceStatsError: String?
+    private(set) var isLoadingInstanceStats = false
+
     init(client: any ImmichClient) {
         self.client = client
     }
@@ -39,6 +44,33 @@ final class AdminViewModel {
             errorMessage = nil
         } catch {
             errorMessage = error.userFacingMessage
+        }
+    }
+
+    /// Pull-to-refresh: the three admin lists and the instance totals, in
+    /// parallel. Each keeps its own outcome.
+    func refresh() async {
+        async let stats: Void = loadInstanceStats()
+        await load(force: true)
+        await stats
+    }
+
+    // MARK: - Instance statistics
+
+    /// Reads the instance totals on their own: `load(force:)` does not touch
+    /// them, so one failing never hides the other sections. A cancelled read
+    /// (SwiftUI cancels `.task` / `.refreshable`) changes nothing.
+    func loadInstanceStats() async {
+        guard !isLoadingInstanceStats else { return }
+        isLoadingInstanceStats = true
+        defer { isLoadingInstanceStats = false }
+        do {
+            instanceStats = try await client.getServerStatistics()
+            instanceStatsError = nil
+        } catch {
+            if UserFacingError.isCancellation(error) || Task.isCancelled { return }
+            instanceStats = nil
+            instanceStatsError = error.userFacingMessage ?? UserFacingError.genericMessage
         }
     }
 

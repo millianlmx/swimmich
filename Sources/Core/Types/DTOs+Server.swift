@@ -2,7 +2,7 @@ import Foundation
 
 // MARK: - Server statistics DTOs (P0 api-surface-expansion)
 
-/// `GET /api/server/statistics` — current user's storage usage.
+/// `GET /api/server/statistics` — instance-wide totals, administrators only.
 struct ServerStatsResponseDto: Codable, Equatable {
     let photos: Int
     let videos: Int
@@ -10,6 +10,16 @@ struct ServerStatsResponseDto: Codable, Equatable {
     let usagePhotos: Int
     let usageVideos: Int
     let usageByUser: [UsageByUserDto]
+}
+
+/// `GET /api/assets/statistics` — counts of the calling account only (the
+/// token's own assets). Trash, hidden (Live Photo videos) and locked-folder
+/// assets are excluded server-side; `total` also counts audio/other, so it can
+/// exceed `images + videos` and is never displayed.
+struct AssetStatsResponseDto: Codable, Equatable {
+    let images: Int
+    let videos: Int
+    let total: Int
 }
 
 struct UsageByUserDto: Codable, Equatable {

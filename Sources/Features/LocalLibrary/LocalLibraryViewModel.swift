@@ -11,9 +11,9 @@ import UIKit
 /// * the library is read through the injected `PhotoLibraryService` (the same
 ///   instance the backup engine uses) — no second PhotoKit abstraction, and no
 ///   `fetchAssets()` from a view;
-/// * the remote aggregate is the symbol the Profile storage section already
-///   reads (`getServerStatistics()`), so `/assets/statistics` is decoded once in
-///   the app, not twice;
+/// * the server column is the *account's* storage, read by
+///   `StorageStatsViewModel` (usage and quota from `GET /api/users/me`, own
+///   counts from `GET /api/assets/statistics`), each half failing on its own;
 /// * the "already on the server?" verdict is *ephemeral*: it comes from
 ///   `POST /api/assets/bulk-upload-check` on the checksum of the *original* —
 ///   the one the backup sends — lives in memory for this visit and is never
@@ -39,9 +39,8 @@ final class LocalLibraryViewModel {
     struct MediaSummary: Equatable {
         var photos: Int
         var videos: Int
-        var bytes: Int64
 
-        static let zero = MediaSummary(photos: 0, videos: 0, bytes: 0)
+        static let zero = MediaSummary(photos: 0, videos: 0)
 
         var total: Int { photos + videos }
     }
@@ -79,7 +78,9 @@ final class LocalLibraryViewModel {
     /// different things and the screen must not show the second for the first.
     private(set) var hasVerdict = false
     var localSummary = MediaSummary.zero
-    var remoteSummary: MediaSummary?
+    /// The account's server-side storage (two reads, each "unavailable" on its own).
+    let storage: StorageStatsViewModel
+    /// Errors of the check and the upload only; the server column's state is `storage`.
     var errorMessage: String?
     var uploadProgress: (done: Int, total: Int)?
     /// Photos access as Photos reports it, refreshed on every request.
@@ -100,6 +101,7 @@ final class LocalLibraryViewModel {
         self.photoLibrary = photoLibrary
         self.albumSource = albumSource
         self.client = client
+        self.storage = StorageStatsViewModel(client: client)
         self.backup = backup
         self.checkDirectory = checkDirectory
         self.authorization = photoLibrary.authorizationStatus()
@@ -166,8 +168,8 @@ final class LocalLibraryViewModel {
     /// Counts of a set of local assets.
     ///
     /// Only `mediaType` is read: the byte volume would mean reading every
-    /// resource of every asset, so the device column never claims one — the
-    /// server column's `usage` is the only real byte count on this screen.
+    /// resource of every asset, so the device column claims no byte count; the
+    /// server column's usage is the only byte figure on this screen.
     func summary(for assets: [PHAsset]) -> MediaSummary {
         var photos = 0
         var videos = 0
@@ -178,25 +180,14 @@ final class LocalLibraryViewModel {
             default: break
             }
         }
-        return MediaSummary(photos: photos, videos: videos, bytes: 0)
+        return MediaSummary(photos: photos, videos: videos)
     }
 
-    /// The server's own aggregate, through the symbol the Profile storage
-    /// section already uses. A failure leaves `remoteSummary` nil so the screen
-    /// shows the device column alone: an unreachable server is not an empty one.
+    /// Reads the account's storage (usage, quota, own counts) for the server
+    /// column. Failures live in `storage` — per half, as "unavailable" — and
+    /// never touch `errorMessage`, which belongs to the check and the upload.
     func loadRemoteSummary() async {
-        do {
-            let stats = try await client.getServerStatistics()
-            remoteSummary = MediaSummary(
-                photos: stats.photos,
-                videos: stats.videos,
-                bytes: Int64(stats.usage)
-            )
-            errorMessage = nil
-        } catch {
-            remoteSummary = nil
-            errorMessage = error.userFacingMessage
-        }
+        await storage.load()
     }
 
     // MARK: - Photos access
@@ -356,13 +347,11 @@ final class LocalLibraryViewModel {
         errorMessage = nil
         let total = pending.count
         uploadProgress = (done: 0, total: total)
-        defer {
-            uploadProgress = nil
-            phase = .idle
-        }
         let result = await backup.runBackup(manual: true, only: pending) { [weak self] processed, _ in
             self?.uploadProgress = (done: min(processed, total), total: total)
         }
+        uploadProgress = nil
+        phase = .idle
         switch result {
         case .refused(let message):
             errorMessage = message
@@ -371,6 +360,9 @@ final class LocalLibraryViewModel {
             savedIDs.formUnion(sent)
             localOnlyIDs.subtract(sent)
             errorMessage = pending.first { !sent.contains($0) }.map { problem(for: $0, in: outcome) }
+            // The server now holds more: re-read the account's usage and counts
+            // once the selection bar is idle again (nothing sent → nothing read).
+            if !sent.isEmpty { await storage.load() }
         }
     }
 

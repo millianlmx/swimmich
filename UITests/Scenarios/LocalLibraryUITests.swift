@@ -482,11 +482,12 @@ final class LocalLibraryUITests: XCTestCase {
             .joined(separator: "\n")
     }
 
-    /// The server's own totals, read from the stub by the scenario rather than
+    /// The account's own counts, read from the stub by the scenario rather than
     /// hard-coded: the second column of the screen must show exactly what
-    /// `/api/server/statistics` answered.
+    /// `/api/assets/statistics` answered — `images + videos`, never `total`
+    /// (which also counts audio and other media).
     private func stubStatisticsTotal() -> Int? {
-        guard let url = URL(string: "\(stub)/api/server/statistics") else { return nil }
+        guard let url = URL(string: "\(stub)/api/assets/statistics") else { return nil }
         let done = DispatchSemaphore(value: 0)
         var body = ""
         URLSession.shared.dataTask(with: url) { data, _, _ in
@@ -495,7 +496,7 @@ final class LocalLibraryUITests: XCTestCase {
         }.resume()
         guard done.wait(timeout: .now() + 6) == .success,
               let stats = try? JSONSerialization.jsonObject(with: Data(body.utf8)) as? [String: Any],
-              let photos = stats["photos"] as? Int, let videos = stats["videos"] as? Int
+              let photos = stats["images"] as? Int, let videos = stats["videos"] as? Int
         else { return nil }
         return photos + videos
     }
@@ -532,12 +533,12 @@ final class LocalLibraryUITests: XCTestCase {
                        "the device column reads “\(deviceColumn.label)” while the grid lists \(listed.count) tiles")
 
         // MARK: The screen reads the SERVER, through the route the Profile storage
-        // section already uses — a second source, so a wrong one shows.
+        // section reads (the account's own counts) — a second source, so a wrong one shows.
 
         let remoteColumn = app.staticTexts.matching(identifier: "localLibraryRemoteSummary").firstMatch
         XCTAssertTrue(remoteColumn.waitForExistence(timeout: 15), "no server column on the summary card")
         guard let expectedRemote = stubStatisticsTotal() else {
-            return XCTFail("the stub did not answer /api/server/statistics")
+            return XCTFail("the stub did not answer /api/assets/statistics")
         }
         XCTAssertTrue(waitUntil(timeout: 20) {
             remoteColumn.label == "\(expectedRemote)"

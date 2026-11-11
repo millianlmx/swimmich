@@ -34,7 +34,7 @@
 | archive | `PUT /assets` (`isArchived`), timeline `visibility` + `isArchived` filters |
 | favorites-filter | timeline `isFavorite` (already in client) |
 | map-extras | MKMapItem external nav; asset location edit via `PATCH /assets/:id` |
-| storage-stats | `GET /server/statistics` |
+| storage-stats | `GET /users/me` (usage, quota) and `GET /assets/statistics` (own counts) for the account; `GET /server/statistics` (instance totals, admins) only in Administration |
 | backup-engine | `POST /assets` multipart, `POST /assets/bulk-upload-check` (wired), BGTaskScheduler, URLSession background |
 | backup-live-activity | ActivityKit + widget extension (new target in project.yml) |
 | people-faces | `GET/PUT /people`, `GET /people/:id/assets`, merge; search `personIds` deck |
