@@ -186,7 +186,7 @@ final class ZoomLimitTests: XCTestCase {
             CGSize(width: -9999, height: -9999), scale: native, fitted: fitted, viewport: viewport
         )
         XCTAssertEqual(atNative.width, -1136.8, accuracy: 0.1)
-        XCTAssertEqual(atNative.height, -573.9, accuracy: 0.1)
+        XCTAssertEqual(atNative.height, -574.0, accuracy: 0.01, "(294.75 × 8000/1179 − 852) / 2 = 574 exactly")
 
         // Zooming out after a pan re-bounds the offset.
         let settled = ZoomGeometry.settled(
