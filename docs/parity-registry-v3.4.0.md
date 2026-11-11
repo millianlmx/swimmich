@@ -70,7 +70,7 @@ Vocabulaire. Statut d'une fonction : `présent`, `partiel`, `absent` ou `hors p�
 |  |
 | F-07.1 | Créer des albums distants (`create_album.page.dart`) | présent | docs §7 ; `CreateAlbumRoute` | Sources/Features/Albums/CreateAlbumSheet.swift:10, Sources/Features/Albums/AlbumsViewModel.swift:39-60 | — |
 | F-07.2 | Sélection d'utilisateurs (`UserSelectionRoute` ; variante : invitation une par une avec choix du rôle) | présent | docs §7 ; `mobile/lib/presentation/pages/user_selection.page.dart@v3.4.0` | Sources/Features/Albums/AlbumShareSheet.swift:194-262 (AlbumInvitePeopleView), Sources/Features/Albums/AlbumShareViewModel.swift:102-105 | — |
-| F-07.3 | Éditer titre / description d'un album (par les éditeurs en v3 et plus) | partiel | docs §7 ; PR #31954 et #31805 (v3.3.0) | Sources/Features/Albums/EditAlbumSheet.swift:6-7 (modification réservée au propriétaire, règle v2) | B-5 |
+| F-07.3 | Éditer titre / description d'un album (par les éditeurs dès le serveur 2.6.2) | présent | docs §7 ; PR #31954 et #31805 (v3.3.0) | Sources/Features/Albums/EditAlbumSheet.swift:35 (section Sharing réservée au propriétaire), Sources/Features/Albums/AlbumDetailViewModel.swift:688-697 (canEditDetails ; `.editAlbum` pour le propriétaire et pour l'éditeur dès 2.6.2) | — |
 | F-07.4 | Supprimer des assets d'un album | présent | docs §7 | Sources/Features/Albums/AlbumDetailView.swift:21 (Remove from album), Sources/Features/Albums/AlbumDetailView.swift:163-170, Sources/Features/Albums/AlbumDetailViewModel.swift:423 (removeAssets) | — |
 | F-07.5 | Albums partagés (rôles éditeur / viewer) | présent | docs §7 | Sources/Features/Albums/AlbumShareSheet.swift:183-184 (Editor / Viewer), Sources/Core/Types/DTOs+Album.swift:46-50 (AlbumUserRole) | — |
 | F-07.6 | Albums distants (`RemoteAlbum`) | présent | docs §7 ; `RemoteAlbumRoute` | Sources/Features/Albums/AlbumsView.swift:12-15 | — |
@@ -207,8 +207,8 @@ Vocabulaire. Statut d'une fonction : `présent`, `partiel`, `absent` ou `hors p�
 | ID | Fonction amont | Statut | Preuve amont | Preuve locale | Lot / justification |
 |---|---|---|---|---|---|
 | R-ActivitiesRoute | Activités d'un album | présent | `mobile/lib/routing/router.dart@v3.4.0` | Sources/Features/Albums/ActivityFeedSheet.swift:6 | — |
-| R-AlbumOptionsRoute | Options d'album (`album_options.page.dart`) | partiel | `mobile/lib/routing/router.dart@v3.4.0` ; PR #31954 (v3.3.0) | Sources/Features/Albums/EditAlbumSheet.swift:6 (modification réservée au propriétaire) | B-5 |
-| R-AlbumsRoute | Liste des albums | partiel | `mobile/lib/routing/router.dart@v3.4.0` ; `mobile/lib/presentation/pages/album.page.dart@v3.4.0` | Sources/Features/Albums/AlbumsView.swift:12 (pas de choix d'ordre de tri de l'album) | B-6 |
+| R-AlbumOptionsRoute | Options d'album (`album_options.page.dart`) | partiel | `mobile/lib/routing/router.dart@v3.4.0` ; PR #31954 (v3.3.0) | Sources/Features/Albums/AlbumDetailViewModel.swift:695-697 (menu de l'album : options réservées au propriétaire, hors titre et description) | B-5 livré par L-02 ; reste B-40 |
+| R-AlbumsRoute | Liste des albums | partiel | `mobile/lib/routing/router.dart@v3.4.0` ; `mobile/lib/presentation/pages/album.page.dart@v3.4.0` | Sources/Features/Albums/AlbumsView.swift:12 (ni tri ni filtre de la liste) | B-6 livré par L-02 ; reste B-39 |
 | R-AppLogDetailRoute | Détail d'une entrée du journal | partiel | `mobile/lib/routing/router.dart@v3.4.0` ; PR #32287 (v3.4.0) | Sources/Features/AppUtilities/AppLogDetailView.swift:9 (aucune expurgation de l'adresse serveur ni des jetons) | B-15 |
 | R-AppLogRoute | Journal de l'app | partiel | `mobile/lib/routing/router.dart@v3.4.0` ; PR #32288 et #32287 (v3.4.0) | Sources/Features/AppUtilities/AppLogView.swift:11 (ShareLink du journal brut : Sources/Features/AppUtilities/AppLogView.swift:52-55) | B-15 |
 | R-ArchiveRoute | Archive | présent | `mobile/lib/routing/router.dart@v3.4.0` | Sources/Features/Timeline/TimelineViewModel.swift:631 | — |
@@ -248,7 +248,7 @@ Vocabulaire. Statut d'une fonction : `présent`, `partiel`, `absent` ou `hors p�
 | R-ProfilePictureCropRoute | Recadrage de la photo de profil | présent | `mobile/lib/routing/router.dart@v3.4.0` | Sources/Features/Profile/ProfilePictureView.swift:15, Sources/Features/Profile/ProfilePictureView.swift:175 | — |
 | R-RecentlyAddedRoute | Récemment ajoutés | présent | `mobile/lib/routing/router.dart@v3.4.0` | Sources/Features/Recent/RecentAssetsView.swift:12, Sources/Features/Profile/ProfileView.swift:144-149 | — |
 | R-RecentlyTakenRoute | Récemment pris | présent | `mobile/lib/routing/router.dart@v3.4.0` | Sources/Features/Recent/RecentAssetsView.swift:12, Sources/Features/Profile/ProfileView.swift:136-142 | — |
-| R-RemoteAlbumRoute | Détail d'un album distant | partiel | `mobile/lib/routing/router.dart@v3.4.0` ; `mobile/lib/presentation/pages/album.page.dart@v3.4.0` | Sources/Features/Albums/AlbumDetailView.swift:22 (propriétaire réel et modification par les éditeurs à corriger) | B-4, B-5 |
+| R-RemoteAlbumRoute | Détail d'un album distant | présent | `mobile/lib/routing/router.dart@v3.4.0` ; `mobile/lib/presentation/pages/album.page.dart@v3.4.0` | Sources/Features/Albums/AlbumDetailView.swift:22 (rôle par AlbumResponseDto.role(of:), Sources/Core/Types/DTOs+Album.swift:44-48 ; propriétaire de la feuille de partage : Sources/Features/Albums/AlbumShareViewModel.swift:100 ; modification par les éditeurs : Sources/Features/Albums/AlbumDetailViewModel.swift:688-697) | — |
 | R-RemoteMediaSummaryRoute | Résumé des médias distants | partiel | `mobile/lib/routing/router.dart@v3.4.0` ; `mobile/lib/presentation/pages/dev/media_stat.page.dart@v3.4.0` | Sources/Features/AppUtilities/MediaStatsView.swift:13, Sources/Features/AppUtilities/MediaStatsViewModel.swift:56 (`GET /api/server/statistics`) | B-3 |
 | R-SearchRoute | Recherche | présent | `mobile/lib/routing/router.dart@v3.4.0` | Sources/Features/Search/SearchView.swift:16 | — |
 | R-SettingsRoute | Réglages (`settings.page.dart`) | partiel | `mobile/lib/routing/router.dart@v3.4.0` ; `mobile/lib/pages/common/settings.page.dart:23-34@v3.4.0` | Sources/Features/Profile/ProfileView.swift:6 (réglages mêlés aux collections dans le hub Me) | B-16 |
@@ -275,8 +275,8 @@ Vocabulaire. Statut d'une fonction : `présent`, `partiel`, `absent` ou `hors p�
 | V-#30831 | feat : souvenirs d'anniversaire (serveur v3.3+) | absent | PR #30831 (v3.3.0) | Sources/Core/Types/DTOs+Social.swift:31-42 (`MemoryType` ne connaît que `on_this_day` plus un repli `.unknown`) | B-11 |
 | V-#31798 | feat : souvenirs d'anniversaire, interface | absent | PR #31798 (v3.3.0) | Sources/Features/Memories/MemoryMomentView.swift:346-367 (le titre est l'année), Sources/Features/Memories/MemoriesViewModel.swift:10-14 (aucun type anniversaire) | B-11 |
 | V-#31620 | feat : gestion des personnes (partage de personnes) — « modal not available on mobile, yet » | hors périmètre | PR #31620 (v3.3.0), voir A.4 U-1 | — | Exclu : absent du mobile v3.4.0 (voir U-1) |
-| V-#31954 | Les éditeurs modifient titre et description d'un album (mobile + serveur) | partiel | PR #31954 (v3.3.0) | Sources/Features/Albums/EditAlbumSheet.swift:6-7 (réservé au propriétaire, règle v2) | B-5 |
-| V-#31805 | Les éditeurs modifient titre et description d'un album (serveur) | partiel | PR #31805 (v3.3.0) | Sources/Features/Albums/EditAlbumSheet.swift:6-7 | B-5 |
+| V-#31954 | Les éditeurs modifient titre et description d'un album (mobile + serveur) | présent | PR #31954 (v3.3.0) | Sources/Features/Albums/AlbumDetailViewModel.swift:688-697 (canEditDetails), Sources/Features/Albums/AlbumDetailViewModel.swift:218-227 (version du serveur lue pour l'éditeur) | — |
+| V-#31805 | Les éditeurs modifient titre et description d'un album (serveur) | présent | PR #31805 (v3.3.0) | Sources/Features/Albums/EditAlbumSheet.swift:35 (section Sharing réservée au propriétaire), Sources/Features/Albums/AlbumDetailViewModel.swift:688-697 (canEditDetails : l'éditeur dès le serveur 2.6.2) | — |
 | V-#31609 | Limiter le zoom maximal de la visionneuse | partiel | PR #31609 (v3.3.0) | Sources/Features/PhotoViewer/ZoomableImageView.swift:50-51 (`maxScale = 4` constant, non lié aux pixels) | B-10 |
 | V-#31941 | Ne pas ré-uploader une photo que le serveur possède déjà | présent | PR #31941 (v3.3.0) | Sources/Core/Protocols/ImmichClient.swift:405 (bulkUploadCheck), Sources/Features/LocalLibrary/LocalLibraryViewModel.swift:241-290, Sources/Features/FreeUpSpace/FreeUpSpaceViewModel.swift:203-209 | — |
 | V-#31942 | iOS : le lot d'envoi attend la synchro distante de la même passe | présent | PR #31942 (v3.3.0) ; non applicable : pas de synchro distante parallèle | Sources/Services/BackupEngine.swift:447-449 (filtre du ledger), Sources/Services/BackupEngine.swift:745-746 (bulkUploadCheck accept / reject) | — |
@@ -462,7 +462,7 @@ Chaque écran principal a une ligne par aspect. « États » regroupe le chargem
 | Lot | Titre | Besoins | Statut | SHA | AC prouvés |
 |---|---|---|---|---|---|
 | L-01 | Stockage du compte : chiffres propres à chaque utilisateur | B-3 | planifié | — | — |
-| L-02 | Albums : vrai propriétaire, édition par les éditeurs et ordre de tri | B-4, B-5, B-6 | planifié | — | — |
+| L-02 | Albums : vrai propriétaire, édition par les éditeurs et ordre de tri | B-4, B-5, B-6 | livré | 8804e4631c7d | AC-7, AC-8, AC-9, AC-10, AC-11, AC-67, AC-68, AC-69, AC-70 |
 | L-03 | Tags hiérarchiques | B-7 | planifié | — | — |
 | L-04 | Timeline : curseur de défilement par date | B-8 | planifié | — | — |
 | L-05 | Affichage des photos JPEG XL | B-9 | planifié | — | — |
@@ -494,11 +494,12 @@ Chaque écran principal a une ligne par aspect. « États » regroupe le chargem
 | L-31 | Confirmations avec Annuler, échec Face ID, barre unique et retours haptiques | B-36 | planifié | — | — |
 | L-32 | Sauvegarde : liste des photos qui restent à sauvegarder | B-37 | planifié | — | — |
 | L-33 | Correction de la date avec choix du fuseau horaire | B-38 | planifié | — | — |
+| L-34 | Albums : tri et filtre de la liste, options pour les membres | B-39, B-40 | planifié | — | — |
 
 #### Critères par lot
 
 - L-01 : AC-5, AC-6
-- L-02 : AC-7, AC-8, AC-9, AC-10, AC-11
+- L-02 : AC-7, AC-8, AC-9, AC-10, AC-11, AC-67, AC-68, AC-69, AC-70
 - L-03 : AC-12, AC-13
 - L-04 : AC-14
 - L-05 : AC-15
@@ -558,7 +559,7 @@ AC-36 (B-24) : Given quatre stubs, un par seuil d'apparition des routes remplaç
 
 ## D. Besoins ajoutés par l'audit
 
-Besoins B-25 à B-38 et critères AC-39 à AC-66, écrits par l'audit ; chacun appartient à exactement un lot de la section C.
+Besoins B-25 à B-38 et critères AC-39 à AC-66, écrits par l'audit ; B-39, B-40 et AC-67 à AC-70, ajoutés par le lot L-02 (B-39 et B-40 sont portés par L-34, planifié). Chacun appartient à exactement un lot de la section C.
 
 - B-25 : retoucher une photo sur le serveur sans créer de copie : recadrage, rotation et miroir (horizontal, vertical) enregistrés comme retouches non destructives (`/api/assets/{id}/edits`), réappliqués partout à l'affichage et annulables, puis télécharger au choix la version retouchée ou l'original. Sur un serveur qui ne sert pas ces routes, l'éditeur garde le comportement actuel (copie enregistrée comme nouvel asset).
 - B-26 : retrouver sur Immich, empilée au-dessus de l'original, la version retouchée d'une photo déjà sauvegardée puis retouchée sur le téléphone (Photos ou une autre app), comme le client officiel v3.3 (« auto-stacked mobile edits », PR #31082). C'est un réglage « Sauvegarder aussi les retouches », désactivé par défaut : désactivé, la sauvegarde reste celle d'aujourd'hui (original seul) (décision #16).
@@ -574,6 +575,8 @@ Besoins B-25 à B-38 et critères AC-39 à AC-66, écrits par l'audit ; chacun a
 - B-36 : confirmer ou annuler toute action destructive avec un « Annuler » toujours visible sous iOS 26, savoir pourquoi Face ID a échoué et pouvoir réessayer, n'avoir qu'une barre de navigation dans l'écran Sauvegarde, et sentir un retour haptique sur les actions importantes (révoquer un lien, arrêter un partage, saisir un PIN erroné, lancer ou arrêter une sauvegarde).
 - B-37 : voir, depuis l'écran Sauvegarde, la liste des photos et vidéos de l'appareil qui restent à sauvegarder, chacune avec sa miniature, son nom, sa date et ses albums, comme la page « reste à sauvegarder » du client officiel (`BackupAssetDetailRoute`). La liste suit le périmètre de sauvegarde réglé (albums inclus et exclus) et perd chaque photo une fois envoyée (décision #20).
 - B-38 : corriger la date d'une photo en choisissant aussi son fuseau horaire, comme le client officiel : le fuseau proposé d'abord est celui de la photo (EXIF), sinon celui de l'appareil ; la liste des fuseaux est triée par décalage puis par nom ; la date est enregistrée avec le décalage choisi (décision #21).
+- B-39 : trier la liste des albums selon les modes du client officiel (création, titre, dernière modification, nombre de photos, photo la plus récente, photo la plus ancienne) et le sens, choix retrouvé après relance ; filtrer tous / mes albums / partagés avec moi.
+- B-40 : en tant que membre non propriétaire d'un album, consulter son propriétaire et ses membres, et quitter l'album.
 - AC-39 (B-25) : Given un serveur v3.4.0 et une photo de l'utilisateur, When il la recadre, la fait pivoter de 90°, la retourne horizontalement puis enregistre, Then le serveur reçoit un `PUT /api/assets/{id}/edits` qui porte ces trois retouches et aucun nouvel asset n'est créé. La grille comme la visionneuse affichent alors la version retouchée. When il retire les retouches, Then un `DELETE /api/assets/{id}/edits` part et l'original réapparaît.
 - AC-40 (B-25) : Given une photo retouchée sur le serveur, When l'utilisateur la télécharge en choisissant « version retouchée » puis « original », Then les deux requêtes portent `edited=true` puis `edited=false`, et les deux fichiers reçus diffèrent. Given un serveur qui ne sert pas `/edits`, When il enregistre une retouche, Then l'éditeur crée une copie comme aujourd'hui, sans erreur.
 - AC-41 (B-26) : Given le réglage « Sauvegarder aussi les retouches » activé et une photo déjà sauvegardée puis retouchée dans Photos, When la sauvegarde suivante tourne, Then la version retouchée est envoyée et le serveur reçoit un `POST /api/stacks` qui met la retouche en tête et l'original dessous. La timeline montre une seule pile. Réglage désactivé, la même sauvegarde n'envoie rien de nouveau.
@@ -602,6 +605,10 @@ Besoins B-25 à B-38 et critères AC-39 à AC-66, écrits par l'audit ; chacun a
 - AC-64 (B-36) : Given le hub « Me », When l'utilisateur ouvre Sauvegarde, Then une seule barre de navigation est visible, avec le retour vers « Me ». Quand le réglage haptique est actif, révoquer un lien, arrêter un partage, saisir un PIN erroné et lancer ou arrêter une sauvegarde produisent chacun un retour haptique.
 - AC-65 (B-37) : Given un périmètre de sauvegarde qui contient 3 photos de l'appareil jamais envoyées et 2 déjà présentes sur le serveur, When l'utilisateur ouvre depuis l'écran Sauvegarde la liste du reste à sauvegarder, Then elle montre les 3 photos, chacune avec sa miniature, son nom et sa date, et aucune des 2 autres. When la sauvegarde envoie l'une des 3, Then elle disparaît de la liste.
 - AC-66 (B-38) : Given une photo dont l'EXIF porte le fuseau « Europe/Paris », When l'utilisateur ouvre la correction de date, Then « Europe/Paris » est proposé d'abord. When il choisit le 2024-07-14 à 10:00 et le fuseau « Asia/Tokyo » puis enregistre, Then le serveur reçoit un `PUT /api/assets/{id}` dont `dateTimeOriginal` vaut `2024-07-14T10:00:00+09:00`.
+- AC-67 (B-4) : Given un serveur v3.x et deux albums de même nom que l'album de l'appareil, l'un possédé par l'utilisateur (entrée `owner` dans `albumUsers`, pas d'`ownerId`, partagé avec un éditeur), l'autre possédé par un tiers où l'utilisateur est éditeur et figure en premier membre non propriétaire, When il ouvre la feuille de partage de son album puis que la synchronisation d'albums tourne, Then la feuille affiche l'utilisateur comme propriétaire et l'éditeur comme éditeur, et la synchronisation range les photos dans l'album possédé par l'utilisateur, sans `POST /api/albums`. Un album de même nom où l'utilisateur n'est que lecteur n'est jamais réutilisé : l'album est créé.
+- AC-68 (B-4) : Given une photo possédée par un autre utilisateur (partenaire ou album partagé) et un annuaire qui contient l'utilisateur connecté et ce propriétaire, When l'utilisateur ouvre la feuille de partage de la photo pour choisir des personnes, Then la liste ne contient pas l'utilisateur connecté et contient le propriétaire de la photo.
+- AC-69 (B-5) : Given successivement un lecteur sur v3.x, un éditeur dont la version du serveur n'a pas pu être lue, un éditeur sur 2.6.2, un éditeur sur v3.x et le propriétaire sur v2.x (antérieur à 2.6.2), When chacun ouvre le menu de l'album, Then l'action de modification est absente pour les deux premiers ; l'éditeur sur 2.6.2 et l'éditeur sur v3.x obtiennent chacun une feuille sans bascule du fil d'activité, dont l'enregistrement envoie un `PATCH /api/albums/{id}` sans `isActivityEnabled` ; le propriétaire sur v2.x obtient la feuille complète. Sur un serveur v2.x, la liste des albums montre aussi les albums partagés avec l'utilisateur (`GET /api/albums` puis `?shared=true`, fusionnés par identifiant).
+- AC-70 (B-6) : Given un album possédé par l'utilisateur dont le serveur ne renvoie pas d'`order`, When il ouvre le choix d'ordre, Then « plus récentes d'abord » est le choix courant. When il choisit « plus anciennes d'abord » et que le serveur refuse le `PATCH`, Then l'ordre affiché et le contenu de la grille restent inchangés et un message d'erreur s'affiche. Given le même album ouvert par un éditeur ou un lecteur, When il ouvre le menu de l'album, Then le choix d'ordre n'est pas proposé.
 
 ## E. Hors périmètre
 
