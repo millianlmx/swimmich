@@ -32,13 +32,20 @@ public struct WidgetSession: Codable, Equatable, Sendable {
     /// `trustedHosts` — an older stored session must keep decoding.
     public var deviceId: String?
 
+    /// The custom HTTP headers (proxy password, `X-Access`…) of the active
+    /// server, copied here by the app because the widget cannot read the app's
+    /// in-memory registry. Optional for the same reason as `trustedHosts`: an
+    /// older stored session has no such key and must keep decoding.
+    public var customHeaders: [CustomHTTPHeader]?
+
     public init(
         baseURL: String,
         token: String,
         userName: String? = nil,
         userId: String? = nil,
         trustedHosts: [String]? = nil,
-        deviceId: String? = nil
+        deviceId: String? = nil,
+        customHeaders: [CustomHTTPHeader]? = nil
     ) {
         self.baseURL = baseURL
         self.token = token
@@ -46,6 +53,7 @@ public struct WidgetSession: Codable, Equatable, Sendable {
         self.userId = userId
         self.trustedHosts = trustedHosts
         self.deviceId = deviceId
+        self.customHeaders = customHeaders
     }
 
     public var trustedHostSet: Set<String> { Set(trustedHosts ?? []) }
@@ -144,11 +152,23 @@ public struct WidgetSessionStore: WidgetSessionStoring {
 /// fetch and the widget shows nothing. Same policy as the app: default
 /// evaluation first, and the server's own chain is anchored only for a host the
 /// user explicitly trusted.
-public final class WidgetTrustDelegate: NSObject, URLSessionDelegate, @unchecked Sendable {
+public final class WidgetTrustDelegate: NSObject, URLSessionTaskDelegate, @unchecked Sendable {
     private let sessionStore: any WidgetSessionStoring
 
     public init(sessionStore: any WidgetSessionStoring = WidgetSessionStore()) {
         self.sessionStore = sessionStore
+    }
+
+    /// Same redirect rule as every other session (`ServerRedirectPolicy`): the
+    /// token and the custom headers follow a redirect on the same host only.
+    public func urlSession(
+        _ session: URLSession,
+        task: URLSessionTask,
+        willPerformHTTPRedirection response: HTTPURLResponse,
+        newRequest request: URLRequest,
+        completionHandler: @escaping (URLRequest?) -> Void
+    ) {
+        completionHandler(ServerRedirectPolicy.redirectedRequest(request, original: task.originalRequest))
     }
 
     /// Whether `host` may be talked to despite a failed evaluation.

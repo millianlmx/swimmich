@@ -149,8 +149,11 @@ public struct URLSessionWidgetTransport: WidgetDataTransport {
         self.session = session ?? Self.makeSession(sessionStore: sessionStore, timeout: timeout)
     }
 
-    static func makeSession(sessionStore: any WidgetSessionStoring, timeout: TimeInterval) -> URLSession {
-        let configuration = URLSessionConfiguration.ephemeral
+    static func makeSession(
+        sessionStore: any WidgetSessionStoring,
+        timeout: TimeInterval,
+        configuration: URLSessionConfiguration = .ephemeral
+    ) -> URLSession {
         configuration.timeoutIntervalForRequest = timeout
         configuration.timeoutIntervalForResource = timeout * 2
         configuration.waitsForConnectivity = false
@@ -239,8 +242,7 @@ public struct WidgetDataProvider: Sendable {
         do {
             let payload: [MemoryPayload] = try await get(
                 path: "/api/memories",
-                token: session.token,
-                baseURL: session.baseURL
+                session: session
             )
             let currentYear = Calendar.current.component(.year, from: Date())
             let cards = payload
@@ -274,8 +276,7 @@ public struct WidgetDataProvider: Sendable {
             let buckets: [BucketPayload] = try await get(
                 path: "/api/timeline/buckets",
                 query: filters,
-                token: session.token,
-                baseURL: session.baseURL
+                session: session
             )
             // Bucket 0 is the newest day (the app indexes the same way: it
             // starts at 0 and walks towards older buckets).
@@ -283,8 +284,7 @@ public struct WidgetDataProvider: Sendable {
             let columnar: ColumnarAssets = try await get(
                 path: "/api/timeline/bucket",
                 query: [URLQueryItem(name: "timeBucket", value: newest.timeBucket)] + filters,
-                token: session.token,
-                baseURL: session.baseURL
+                session: session
             )
             let photos = await hydrate(columnar.photos(day: newest.timeBucket, limit: limit), session: session)
             return PhotoWall(
@@ -418,7 +418,7 @@ public struct WidgetDataProvider: Sendable {
         components.queryItems = [URLQueryItem(name: "size", value: size.rawValue)]
         guard let url = components.url else { return nil }
         var request = URLRequest(url: url)
-        request.setValue("Bearer \(session.token)", forHTTPHeaderField: "Authorization")
+        ServerRequestAuthorization.apply(token: session.token, custom: session.customHeaders ?? [], to: &request)
         do {
             let (data, http) = try await transport.send(request)
             guard http.statusCode == 200, !data.isEmpty else { return nil }
@@ -431,14 +431,13 @@ public struct WidgetDataProvider: Sendable {
     private func get<T: Decodable>(
         path: String,
         query: [URLQueryItem] = [],
-        token: String,
-        baseURL: String
+        session: WidgetSession
     ) async throws -> T {
-        guard var components = URLComponents(string: baseURL + path) else { throw WidgetDataError.transport }
+        guard var components = URLComponents(string: session.baseURL + path) else { throw WidgetDataError.transport }
         if !query.isEmpty { components.queryItems = query }
         guard let url = components.url else { throw WidgetDataError.transport }
         var request = URLRequest(url: url)
-        request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
+        ServerRequestAuthorization.apply(token: session.token, custom: session.customHeaders ?? [], to: &request)
         request.setValue("application/json", forHTTPHeaderField: "Accept")
         let (data, http) = try await transport.send(request)
         guard http.statusCode != 401 else { throw WidgetDataError.unauthorized }

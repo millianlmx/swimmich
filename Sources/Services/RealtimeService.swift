@@ -40,13 +40,13 @@ struct RealtimeBatch: Equatable, Sendable {
 /// The wire under `RealtimeService`, injectable so tests never open a socket.
 @MainActor
 protocol RealtimeTransport: AnyObject {
-    func connect(baseURL: URL, token: String, events: [String], onEvent: @escaping @MainActor (String) -> Void)
+    func connect(baseURL: URL, headers: [String: String], events: [String], onEvent: @escaping @MainActor (String) -> Void)
     func disconnect()
 }
 
 /// Socket.IO transport: connects to the Immich server's `/api/socket.io`
-/// gateway, authenticating with the bearer token via the websocket handshake
-/// headers.
+/// gateway, authenticating through the websocket handshake headers (the session
+/// token and the server's custom headers, see `ServerRequestAuthorization`).
 @MainActor
 final class SocketIORealtimeTransport: RealtimeTransport {
     private var manager: SocketManager?
@@ -54,14 +54,14 @@ final class SocketIORealtimeTransport: RealtimeTransport {
 
     nonisolated init() {}
 
-    func connect(baseURL: URL, token: String, events: [String], onEvent: @escaping @MainActor (String) -> Void) {
+    func connect(baseURL: URL, headers: [String: String], events: [String], onEvent: @escaping @MainActor (String) -> Void) {
         disconnect()
         let manager = SocketManager(
             socketURL: baseURL,
             config: [
                 .path("/api/socket.io"),
                 .forceWebsockets(true),
-                .extraHeaders(["Authorization": "Bearer \(token)"]),
+                .extraHeaders(headers),
                 .reconnects(true),
                 .compress,
             ]
@@ -100,6 +100,7 @@ final class SocketIORealtimeTransport: RealtimeTransport {
 final class RealtimeService {
     private let transport: any RealtimeTransport
     private let notificationCenter: NotificationCenter
+    private let customHeaders: any CustomHeadersProviding
     private var debounceTask: Task<Void, Never>?
     private var pendingEvents: Set<String> = []
 
@@ -109,16 +110,21 @@ final class RealtimeService {
     nonisolated init(
         transport: any RealtimeTransport = SocketIORealtimeTransport(),
         debounceInterval: Duration = .milliseconds(600),
-        notificationCenter: NotificationCenter = .default
+        notificationCenter: NotificationCenter = .default,
+        customHeaders: any CustomHeadersProviding = NoCustomHeaders()
     ) {
         self.transport = transport
         self.debounceInterval = debounceInterval
         self.notificationCenter = notificationCenter
+        self.customHeaders = customHeaders
     }
 
     func connect(baseURL: URL, token: String) {
         disconnect()
-        transport.connect(baseURL: baseURL, token: token, events: RealtimeBatch.listenedEvents) { [weak self] name in
+        let headers = ServerRequestAuthorization.dictionary(
+            token: token, custom: customHeaders.headers(for: baseURL)
+        )
+        transport.connect(baseURL: baseURL, headers: headers, events: RealtimeBatch.listenedEvents) { [weak self] name in
             self?.receive(event: name)
         }
     }

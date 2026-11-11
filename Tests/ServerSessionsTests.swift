@@ -178,6 +178,64 @@ final class ServerSessionsTests: XCTestCase {
         }
     }
 
+    // MARK: - Custom headers on redirects (L-09, AC-120)
+
+    /// The rule of `ServerRedirectPolicy`, through each session's own delegate.
+    func test_AC_120_everySessionAppliesTheRedirectPolicy() throws {
+        let (made, _) = makeSessions(trusting: [])
+        for session in [made.images, made.transfers, made.roadTrip] {
+            let delegate = try XCTUnwrap(session.delegate as? ServerSessionDelegate)
+            var original = URLRequest.proxiedServerRequest()
+            original.setValue("secret-agent", forHTTPHeaderField: "User-Agent")
+            let task = session.dataTask(with: original)
+            defer { task.cancel() }
+
+            func redirect(proposed: URLRequest) -> URLRequest? {
+                let response = HTTPURLResponse(url: original.url!, statusCode: 302, httpVersion: "HTTP/1.1", headerFields: nil)!
+                let answered = expectation(description: "redirect answered")
+                let box = Box<URLRequest?>()
+                delegate.urlSession(session, task: task, willPerformHTTPRedirection: response, newRequest: proposed) {
+                    box.value = .some($0)
+                    answered.fulfill()
+                }
+                wait(for: [answered], timeout: 2)
+                return box.value ?? nil
+            }
+
+            var crossProposed = original
+            crossProposed.url = URL(string: "https://elsewhere.example/x")
+            let cross = redirect(proposed: crossProposed)
+            XCTAssertNil(cross?.value(forHTTPHeaderField: "X-Access"))
+            XCTAssertNil(cross?.value(forHTTPHeaderField: "User-Agent"))
+            XCTAssertNil(cross?.value(forHTTPHeaderField: "Authorization"))
+            XCTAssertEqual(cross?.value(forHTTPHeaderField: "Accept"), "application/json")
+
+            let same = redirect(proposed: URLRequest(url: URL(string: "https://a.proxy.test/y")!))
+            XCTAssertEqual(same?.value(forHTTPHeaderField: "X-Access"), "secret")
+            XCTAssertEqual(same?.value(forHTTPHeaderField: "User-Agent"), "secret-agent")
+            XCTAssertEqual(same?.value(forHTTPHeaderField: "Authorization"), "Bearer tok")
+        }
+    }
+
+    // End to end on the fabric every transfer session comes from: no task
+    // delegate, so only the session delegate can strip the secrets.
+    func test_AC_120_transfersSessionDropsHeadersOnCrossHostRedirect() async throws {
+        RedirectingURLProtocol.reset()
+        let configuration = URLSessionConfiguration.ephemeral
+        configuration.protocolClasses = [RedirectingURLProtocol.self]
+        let session = ServerSessions.makeSession(configuration: configuration, trustStore: makeTrustStore(trusting: []))
+        defer { session.invalidateAndCancel() }
+
+        _ = try await session.data(for: .proxiedServerRequest())
+        let crossed = try XCTUnwrap(RedirectingURLProtocol.requests(toHost: "b.other.test").first)
+        crossed.assertNoSecrets()
+
+        RedirectingURLProtocol.reset()
+        _ = try await session.data(for: .proxiedServerRequest(path: "/same"))
+        let same = try XCTUnwrap(RedirectingURLProtocol.requests(toHost: "a.proxy.test").first)
+        same.assertSecretsKept()
+    }
+
     // MARK: - Configuration (AC-11)
 
     func test_AC11_sessionsKeepTheirOwnConfiguration() {

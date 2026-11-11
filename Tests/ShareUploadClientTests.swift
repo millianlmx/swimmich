@@ -167,4 +167,92 @@ final class ShareUploadClientTests: XCTestCase {
         )
         XCTAssertEqual(body["ids"], ["a1", "a2"])
     }
+
+    // MARK: - Custom HTTP headers (L-09)
+
+    private func headersClient(
+        _ custom: [CustomHTTPHeader], session: URLSession? = nil, baseURL: String = "https://example.com"
+    ) -> SharedUploadClient {
+        SharedUploadClient(
+            baseURL: baseURL, token: "tok", deviceId: "device-1", customHeaders: custom,
+            session: session ?? makeSession()
+        )
+    }
+
+    func test_AC_19_uploadAlbumsAndAddCarryHeaders() async throws {
+        let client = headersClient([StaticCustomHeaders.xAccess])
+        let file = try writeStagedFile(Data(repeating: 0x41, count: 64))
+        defer { try? FileManager.default.removeItem(at: file.deletingLastPathComponent()) }
+
+        CapturingURLProtocol.nextStatus = 201
+        CapturingURLProtocol.nextData = #"{"id":"a1","status":"created"}"#.data(using: .utf8)!
+        _ = try await upload(client, file: file)
+        XCTAssertEqual(CapturingURLProtocol.lastRequest?.url?.path, "/api/assets")
+        XCTAssertEqual(CapturingURLProtocol.lastRequest?.value(forHTTPHeaderField: "X-Access"), "secret")
+        XCTAssertEqual(CapturingURLProtocol.lastRequest?.value(forHTTPHeaderField: "Authorization"), "Bearer tok")
+
+        CapturingURLProtocol.nextStatus = 200
+        CapturingURLProtocol.nextData = #"[{"id":"alb1","albumName":"Trips"}]"#.data(using: .utf8)!
+        _ = try await client.albums()
+        XCTAssertEqual(CapturingURLProtocol.lastRequest?.url?.path, "/api/albums")
+        XCTAssertEqual(CapturingURLProtocol.lastRequest?.value(forHTTPHeaderField: "X-Access"), "secret")
+
+        CapturingURLProtocol.nextData = "[]".data(using: .utf8)!
+        try await client.addAssets(["a1"], toAlbum: "alb1")
+        XCTAssertEqual(CapturingURLProtocol.lastRequest?.httpMethod, "PUT")
+        XCTAssertEqual(CapturingURLProtocol.lastRequest?.value(forHTTPHeaderField: "X-Access"), "secret")
+    }
+
+    func test_AC_119_clientBuiltFromARepublishedSessionSendsNoHeader() async throws {
+        // What the extension does: read the shared session, build the client from it.
+        let withHeader = WidgetSession(baseURL: "https://example.com", token: "tok", customHeaders: [StaticCustomHeaders.xAccess])
+        CapturingURLProtocol.nextData = "[]".data(using: .utf8)!
+        _ = try await headersClient(withHeader.customHeaders ?? []).albums()
+        XCTAssertEqual(CapturingURLProtocol.lastRequest?.value(forHTTPHeaderField: "X-Access"), "secret")
+
+        // The app republished the session after the header was deleted.
+        var republished = withHeader
+        republished.customHeaders = nil
+        _ = try await headersClient(republished.customHeaders ?? []).albums()
+        XCTAssertNil(CapturingURLProtocol.lastRequest?.value(forHTTPHeaderField: "X-Access"))
+        XCTAssertEqual(CapturingURLProtocol.lastRequest?.value(forHTTPHeaderField: "Authorization"), "Bearer tok")
+    }
+
+    func test_AC_124_headersUnchanged() async throws {
+        CapturingURLProtocol.nextData = "[]".data(using: .utf8)!
+        _ = try await makeClient().albums()
+        XCTAssertEqual(CapturingURLProtocol.lastRequest?.allHTTPHeaderFields, [
+            "Authorization": "Bearer tok", "Accept": "application/json",
+        ])
+    }
+
+    func test_AC_125_extensionUsesUserTokenHeader() async throws {
+        CapturingURLProtocol.nextData = "[]".data(using: .utf8)!
+        _ = try await headersClient([StaticCustomHeaders.basic]).albums()
+        let request = try XCTUnwrap(CapturingURLProtocol.lastRequest)
+        XCTAssertEqual(request.value(forHTTPHeaderField: "Authorization"), "Basic dXNlcjpwYXNz")
+        XCTAssertEqual(request.value(forHTTPHeaderField: "x-immich-user-token"), "tok")
+    }
+
+    // The extension's own session factory: a redirect to another host must not
+    // carry the list, the token or anything the user declared.
+    func test_AC_120_crossHostRedirectDropsHeaders() async throws {
+        RedirectingURLProtocol.reset()
+        let configuration = URLSessionConfiguration.ephemeral
+        configuration.protocolClasses = [RedirectingURLProtocol.self]
+        let session = URLSessionWidgetTransport.makeSession(
+            sessionStore: NoWidgetSession(), timeout: 5, configuration: configuration
+        )
+        let client = headersClient([StaticCustomHeaders.xAccess], session: session, baseURL: "https://a.proxy.test")
+        _ = try? await client.albums()
+        let received = try XCTUnwrap(RedirectingURLProtocol.requests(toHost: "b.other.test").first)
+        received.assertNoSecrets()
+
+        RedirectingURLProtocol.reset()
+        let file = try writeStagedFile(Data(repeating: 0x41, count: 64))
+        defer { try? FileManager.default.removeItem(at: file.deletingLastPathComponent()) }
+        _ = try? await upload(client, file: file)
+        let uploaded = try XCTUnwrap(RedirectingURLProtocol.requests(toHost: "b.other.test").first)
+        uploaded.assertNoSecrets()
+    }
 }

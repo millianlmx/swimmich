@@ -1546,6 +1546,163 @@ final class AuthViewModelTests: XCTestCase {
         XCTAssertNotNil(fx.offlineIndex.localURL(for: "b1"))
         XCTAssertFalse(fx.offlineIndex.isCached("offline-1"))
     }
+
+    // MARK: - Custom HTTP headers (L-09)
+
+    /// Remembers what the app wrote to the shared keychain, and counts reloads.
+    private final class PublishedSessionSpy: WidgetSessionStoring, @unchecked Sendable {
+        private let lock = NSLock()
+        private var stored: WidgetSession?
+        private var _reloads = 0
+        func save(_ session: WidgetSession) { lock.lock(); stored = session; lock.unlock() }
+        func load() -> WidgetSession? { lock.lock(); defer { lock.unlock() }; return stored }
+        func clear() { lock.lock(); stored = nil; lock.unlock() }
+        func noteReload() { lock.lock(); _reloads += 1; lock.unlock() }
+        var reloads: Int { lock.lock(); defer { lock.unlock() }; return _reloads }
+    }
+
+    private struct HeadersFixture {
+        let auth: AuthViewModel
+        let registry: CustomHeadersRegistry
+        let transport: MockRealtimeTransport
+        let published: PublishedSessionSpy
+        let mock: MockImmichClient
+        let key: ServerKey
+    }
+
+    /// A restored session on https://photos.example.com whose server has
+    /// `X-Access: secret`, with the socket and the widget session observable.
+    @MainActor
+    private func makeHeadersFixture(
+        defaults: UserDefaults, keychain: MockKeychainStore = MockKeychainStore()
+    ) -> HeadersFixture {
+        makeStoredSession(defaults: defaults, keychain: keychain)
+        let key = ServerKey.of("https://photos.example.com")
+        let registry = CustomHeadersRegistry(
+            store: InMemoryCustomHeadersStore([key: [StaticCustomHeaders.xAccess]]),
+            notificationCenter: NotificationCenter()
+        )
+        let transport = MockRealtimeTransport()
+        let published = PublishedSessionSpy()
+        let mock = MockImmichClient()
+        let auth = AuthViewModel(
+            client: mock, keychain: keychain, defaults: defaults,
+            realtime: RealtimeService(transport: transport, customHeaders: registry),
+            widgetSession: published, reloadWidgets: { published.noteReload() },
+            customHeaders: registry
+        )
+        return HeadersFixture(auth: auth, registry: registry, transport: transport, published: published, mock: mock, key: key)
+    }
+
+    @MainActor
+    func test_AC_117_headersChangeKeepsTheSessionAndRepublishes() async throws {
+        let (defaults, suite) = makeIsolatedDefaults()
+        defer { defaults.removePersistentDomain(forName: suite) }
+        let fx = makeHeadersFixture(defaults: defaults)
+        let auth = fx.auth
+        await auth.restoreSession()
+        XCTAssertEqual(fx.transport.connects.count, 1)
+        XCTAssertEqual(fx.transport.connects.last?.headers["X-Access"], "secret")
+        XCTAssertEqual(fx.published.load()?.customHeaders, [StaticCustomHeaders.xAccess])
+        let reloadsBefore = fx.published.reloads
+
+        try fx.registry.save([CustomHTTPHeader(name: "X-Access", value: "secret2")], for: fx.key)
+        auth.customHeadersDidChange(for: fx.key)
+
+        XCTAssertEqual(auth.accessToken, "saved-jwt", "the session is never reset by a header change")
+        XCTAssertTrue(auth.isAuthenticated)
+        XCTAssertEqual(fx.published.load()?.customHeaders, [CustomHTTPHeader(name: "X-Access", value: "secret2")])
+        XCTAssertEqual(fx.published.load()?.token, "saved-jwt")
+        XCTAssertGreaterThan(fx.published.reloads, reloadsBefore)
+        XCTAssertEqual(fx.transport.connects.count, 2, "the socket reconnects with the new list")
+        XCTAssertEqual(fx.transport.connects.last?.headers["X-Access"], "secret2")
+        XCTAssertEqual(fx.transport.connects.last?.token, "saved-jwt")
+
+        // Deleting the list republishes a session without the key, and reconnects once more.
+        try fx.registry.save([], for: fx.key)
+        auth.customHeadersDidChange(for: fx.key)
+        XCTAssertNil(fx.published.load()?.customHeaders)
+        XCTAssertNil(fx.transport.connects.last?.headers["X-Access"])
+        XCTAssertEqual(fx.transport.connects.last?.headers["Authorization"], "Bearer saved-jwt")
+    }
+
+    @MainActor
+    func test_headersChangeForAnotherServerOrWithoutASessionDoesNothing() async throws {
+        let (defaults, suite) = makeIsolatedDefaults()
+        defer { defaults.removePersistentDomain(forName: suite) }
+        let fx = makeHeadersFixture(defaults: defaults)
+
+        // Not signed in yet: the next request reads the registry, nothing to nudge.
+        fx.auth.customHeadersDidChange(for: fx.key)
+        XCTAssertTrue(fx.transport.connects.isEmpty)
+        XCTAssertNil(fx.published.load())
+
+        await fx.auth.restoreSession()
+        let connects = fx.transport.connects.count
+        fx.auth.customHeadersDidChange(for: ServerKey.of("https://other.example.org"))
+        XCTAssertEqual(fx.transport.connects.count, connects)
+    }
+
+    @MainActor
+    func test_AC_123_logoutKeepsHeaders() async throws {
+        let (defaults, suite) = makeIsolatedDefaults()
+        defer { defaults.removePersistentDomain(forName: suite) }
+        let fx = makeHeadersFixture(defaults: defaults)
+        await fx.auth.restoreSession()
+
+        await fx.auth.logout()
+
+        XCTAssertFalse(fx.auth.isAuthenticated)
+        XCTAssertEqual(fx.registry.headers(for: fx.key), [StaticCustomHeaders.xAccess])
+        // The same address, under another spelling, finds the list again.
+        XCTAssertEqual(
+            fx.registry.headers(for: URL(string: "https://Photos.Example.com:443/")),
+            [StaticCustomHeaders.xAccess]
+        )
+    }
+
+    @MainActor
+    func test_AC_125_proxyRejectionKeepsTheSession() async throws {
+        let (defaults, suite) = makeIsolatedDefaults()
+        defer { defaults.removePersistentDomain(forName: suite) }
+        let fx = makeHeadersFixture(defaults: defaults)
+        fx.mock.validateError = APIError.proxyRejected
+
+        await fx.auth.restoreSession()
+
+        XCTAssertTrue(fx.auth.isAuthenticated, "a proxy refusal is not an expired session")
+        XCTAssertEqual(fx.auth.accessToken, "saved-jwt")
+        XCTAssertEqual(fx.published.load()?.token, "saved-jwt")
+
+        // Same on a switch of account.
+        let keychain = MockKeychainStore()
+        let bob = makeLoginAccount(email: "bob@example.com", userId: "u2")
+        keychain.saveToken("bob-jwt", for: bob.id)
+        seedSavedAccounts([bob], defaults: defaults)
+        let switching = AuthViewModel(client: fx.mock, keychain: keychain, defaults: defaults)
+        switching.serverURLString = "https://photos.example.com"
+        switching.accessToken = "current-jwt"
+        await switching.switchToAccount(bob)
+        XCTAssertTrue(switching.isAuthenticated)
+        XCTAssertEqual(switching.accessToken, "bob-jwt")
+    }
+
+    @MainActor
+    func test_AC_125_loginShowsTheProxyMessage() async {
+        let (defaults, suite) = makeIsolatedDefaults()
+        defer { defaults.removePersistentDomain(forName: suite) }
+        let mock = MockImmichClient()
+        mock.loginError = APIError.proxyRejected
+        let auth = AuthViewModel(client: mock, keychain: MockKeychainStore(), defaults: defaults)
+        auth.serverURLString = "https://example.com"
+        _ = auth.baseURL
+
+        await auth.login(email: "t@e.com", password: "secret")
+
+        XCTAssertEqual(auth.errorMessage, UserFacingError.proxyRejectedMessage)
+        XCTAssertNotEqual(auth.errorMessage, UserFacingError.sessionExpiredMessage)
+        XCTAssertFalse(auth.isAuthenticated)
+    }
 }
 
 /// A signed-in app container on temp folders and UUID suites: two registered accounts

@@ -1822,6 +1822,234 @@ final class ImmichAPIClientTests: XCTestCase {
         XCTAssertNil(captured.url?.query, "no query params expected")
     }
 
+    // MARK: - Custom HTTP headers (L-09)
+
+    private static let loginJSON = Data(
+        #"{"accessToken":"a","userId":"u","userEmail":"e","name":"n","profileImagePath":"","isAdmin":false,"shouldChangePassword":false,"isOnboarded":true}"#.utf8
+    )
+
+    /// A client on the mocked session whose server has `list` declared.
+    private func headersClient(
+        _ list: [CustomHTTPHeader] = [StaticCustomHeaders.xAccess],
+        token: String? = "tok",
+        session: URLSession? = nil
+    ) -> ImmichAPIClient {
+        let client = ImmichAPIClient(
+            session: session ?? makeMockedSession(),
+            customHeaders: StaticCustomHeaders(list, for: "https://example.com")
+        )
+        client.configure(baseURL: URL(string: "https://example.com")!, token: token)
+        return client
+    }
+
+    private func tempFile(_ name: String) throws -> URL {
+        let url = FileManager.default.temporaryDirectory.appendingPathComponent("\(name)-\(UUID().uuidString).bin")
+        try Data("bytes".utf8).write(to: url)
+        addTeardownBlock { try? FileManager.default.removeItem(at: url) }
+        return url
+    }
+
+    func test_AC_19_everyRouteCarriesTheServerHeaders() async throws {
+        let client = headersClient()
+        func assertCarries(_ route: String, authenticated: Bool, file: StaticString = #filePath, line: UInt = #line) {
+            let request = CapturingURLProtocol.lastRequest
+            XCTAssertEqual(request?.value(forHTTPHeaderField: "X-Access"), "secret", route, file: file, line: line)
+            XCTAssertEqual(
+                request?.value(forHTTPHeaderField: "Authorization"),
+                authenticated ? "Bearer tok" : nil, route, file: file, line: line
+            )
+        }
+
+        CapturingURLProtocol.nextData = Data(#"{"res":"pong"}"#.utf8)
+        _ = try await client.ping()
+        assertCarries("ping", authenticated: false)
+
+        CapturingURLProtocol.nextData = Self.loginJSON
+        _ = try await client.login(email: "e", password: "p")
+        assertCarries("login", authenticated: false)
+
+        CapturingURLProtocol.nextData = Data(#"{"url":"https://idp.example"}"#.utf8)
+        _ = try await client.authorizeOAuth(redirectURI: "app://cb", state: "s", codeChallenge: "c")
+        assertCarries("authorizeOAuth", authenticated: false)
+
+        CapturingURLProtocol.nextData = Self.loginJSON
+        _ = try await client.exchangeOAuthCode(url: "app://cb?code=1", state: "s", codeVerifier: "v")
+        assertCarries("exchangeOAuthCode", authenticated: false)
+
+        CapturingURLProtocol.nextData = Data(#"{"authStatus":true}"#.utf8)
+        _ = try await client.validateToken()
+        assertCarries("validateToken", authenticated: true)
+
+        let original = try client.originalRequest(assetId: "a1")
+        XCTAssertEqual(original.value(forHTTPHeaderField: "X-Access"), "secret")
+        XCTAssertEqual(original.value(forHTTPHeaderField: "Authorization"), "Bearer tok")
+
+        let archive = try client.downloadArchiveRequest(archiveName: "z.zip", assetIds: ["a1"], edited: false)
+        XCTAssertEqual(archive.value(forHTTPHeaderField: "X-Access"), "secret")
+        XCTAssertEqual(archive.value(forHTTPHeaderField: "Authorization"), "Bearer tok")
+    }
+
+    func test_AC_116_loginAndPingCarryHeaders() async throws {
+        let client = headersClient(token: nil)
+        CapturingURLProtocol.nextData = Data(#"{"res":"pong"}"#.utf8)
+        _ = try await client.ping()
+        XCTAssertEqual(CapturingURLProtocol.lastRequest?.url?.path, "/api/server/ping")
+        XCTAssertEqual(CapturingURLProtocol.lastRequest?.value(forHTTPHeaderField: "X-Access"), "secret")
+
+        CapturingURLProtocol.nextData = Self.loginJSON
+        _ = try await client.login(email: "e", password: "p")
+        XCTAssertEqual(CapturingURLProtocol.lastRequest?.httpMethod, "POST")
+        XCTAssertEqual(CapturingURLProtocol.lastRequest?.url?.path, "/api/auth/login")
+        XCTAssertEqual(CapturingURLProtocol.lastRequest?.value(forHTTPHeaderField: "X-Access"), "secret")
+    }
+
+    func test_AC_118_profileImageSharedLinkAndUploadCarryHeaders() async throws {
+        let client = headersClient()
+        let file = try tempFile("headers-upload")
+
+        CapturingURLProtocol.nextStatus = 201
+        CapturingURLProtocol.nextData = Data(#"{"userId":"u","profileImagePath":"p","profileChangedAt":"2024-01-01T00:00:00.000Z"}"#.utf8)
+        _ = try await client.uploadProfileImage(fileURL: file, filename: "me.jpg", contentType: "image/jpeg")
+        XCTAssertEqual(CapturingURLProtocol.lastRequest?.url?.path, "/api/users/profile-image")
+        XCTAssertEqual(CapturingURLProtocol.lastRequest?.value(forHTTPHeaderField: "X-Access"), "secret")
+        XCTAssertEqual(CapturingURLProtocol.lastRequest?.value(forHTTPHeaderField: "Authorization"), "Bearer tok")
+
+        CapturingURLProtocol.nextData = Data(#"{"id":"new","status":"created"}"#.utf8)
+        _ = try await client.uploadAsset(
+            fileURL: file, fileCreatedAt: "2024-07-01T00:00:00.000Z", fileModifiedAt: "2024-07-01T00:00:00.000Z",
+            filename: "p.jpg", duration: nil, isFavorite: false, visibility: .timeline, livePhotoVideoId: nil,
+            checksum: "Y2hlY2tzdW0=", deviceAssetId: "local://1", deviceId: "dev"
+        )
+        XCTAssertEqual(CapturingURLProtocol.lastRequest?.url?.path, "/api/assets")
+        XCTAssertEqual(CapturingURLProtocol.lastRequest?.value(forHTTPHeaderField: "X-Access"), "secret")
+        XCTAssertEqual(CapturingURLProtocol.lastRequest?.value(forHTTPHeaderField: "Authorization"), "Bearer tok")
+        XCTAssertEqual(CapturingURLProtocol.lastRequest?.value(forHTTPHeaderField: ImmichHeader.checksum), "Y2hlY2tzdW0=")
+
+        // The shared-link visitor path: the list, never the session token.
+        CapturingURLProtocol.nextStatus = 200
+        CapturingURLProtocol.nextData = Self.sharedLinkJSON(key: "a2V5")
+        _ = try await client.getSharedLinkMine(.key("a2V5"))
+        XCTAssertEqual(CapturingURLProtocol.lastRequest?.value(forHTTPHeaderField: "X-Access"), "secret")
+        XCTAssertNil(CapturingURLProtocol.lastRequest?.value(forHTTPHeaderField: "Authorization"))
+
+        CapturingURLProtocol.nextStatus = 201
+        CapturingURLProtocol.nextData = Data(#"{"id":"asset-new","status":"created"}"#.utf8)
+        _ = try await client.uploadAssetToSharedLink(
+            fileURL: file, filename: "p.jpg", fileCreatedAt: "2026-09-13T00:00:00.000Z",
+            fileModifiedAt: "2026-09-13T00:00:00.000Z", checksum: "c2hhMQ==", deviceAssetId: "d",
+            deviceId: "dev", credential: .key("a2V5")
+        )
+        XCTAssertEqual(CapturingURLProtocol.lastRequest?.value(forHTTPHeaderField: "X-Access"), "secret")
+        XCTAssertNil(CapturingURLProtocol.lastRequest?.value(forHTTPHeaderField: "Authorization"))
+    }
+
+    func test_AC_124_requestHeadersUnchanged() async throws {
+        let client = headersClient([])
+        CapturingURLProtocol.nextData = Data(#"{"authStatus":true}"#.utf8)
+        _ = try await client.validateToken()
+        XCTAssertEqual(CapturingURLProtocol.lastRequest?.allHTTPHeaderFields, [
+            "Accept": ImmichAPI.acceptJSON, "Authorization": "Bearer tok",
+        ])
+        CapturingURLProtocol.nextData = Data(#"{"res":"pong"}"#.utf8)
+        _ = try await client.ping()
+        XCTAssertEqual(CapturingURLProtocol.lastRequest?.allHTTPHeaderFields, ["Accept": ImmichAPI.acceptJSON])
+    }
+
+    func test_AC_125_basicProxy() async throws {
+        let client = headersClient([StaticCustomHeaders.basic])
+        CapturingURLProtocol.nextData = Data(#"{"authStatus":true}"#.utf8)
+        _ = try await client.validateToken()
+        let request = try XCTUnwrap(CapturingURLProtocol.lastRequest)
+        XCTAssertEqual(request.value(forHTTPHeaderField: "Authorization"), "Basic dXNlcjpwYXNz")
+        XCTAssertEqual(request.value(forHTTPHeaderField: "x-immich-user-token"), "tok")
+        XCTAssertEqual(request.allHTTPHeaderFields?.values.filter { $0.contains("Bearer") }.count, 0)
+
+        let original = try client.originalRequest(assetId: "a1")
+        XCTAssertEqual(original.value(forHTTPHeaderField: "Authorization"), "Basic dXNlcjpwYXNz")
+        XCTAssertEqual(original.value(forHTTPHeaderField: "x-immich-user-token"), "tok")
+
+        // Once the line is removed, back to Bearer without the user-token header.
+        let plain = headersClient([])
+        CapturingURLProtocol.nextData = Data(#"{"authStatus":true}"#.utf8)
+        _ = try await plain.validateToken()
+        XCTAssertEqual(CapturingURLProtocol.lastRequest?.value(forHTTPHeaderField: "Authorization"), "Bearer tok")
+        XCTAssertNil(CapturingURLProtocol.lastRequest?.value(forHTTPHeaderField: "x-immich-user-token"))
+    }
+
+    // AC-125 / decision #15: a 401 that carries WWW-Authenticate is the proxy
+    // refusing, not the server expiring the session.
+    func test_AC_125_proxyRejectionDoesNotExpireTheSession() async throws {
+        let spy = UnauthorizedSpy()
+        let client = headersClient()
+        client.authDelegate = spy
+
+        CapturingURLProtocol.nextStatus = 401
+        CapturingURLProtocol.nextHeaders = ["WWW-Authenticate": #"Basic realm="x""#]
+        do {
+            _ = try await client.validateToken()
+            XCTFail("a 401 must throw")
+        } catch {
+            XCTAssertEqual(error as? APIError, .proxyRejected)
+        }
+        XCTAssertEqual(spy.count, 0)
+
+        CapturingURLProtocol.nextHeaders = ["Content-Type": "application/json"]
+        CapturingURLProtocol.nextData = Data(#"{"message":"Invalid user token","statusCode":401}"#.utf8)
+        do {
+            _ = try await client.validateToken()
+            XCTFail("a 401 must throw")
+        } catch {
+            XCTAssertEqual(error as? APIError, .unauthorized)
+        }
+        XCTAssertEqual(spy.count, 1)
+    }
+
+    // MARK: Redirects, end to end (AC-120)
+    //
+    // `RedirectingURLProtocol` imitates CFNetwork's copy of every header onto the
+    // redirected request. These run the client's own send paths, on a session
+    // with NO delegate: only the gate in `dispatch`/`dispatchUpload` can strip
+    // the secrets.
+
+    private func redirectClient(baseURL: String) -> ImmichAPIClient {
+        let client = ImmichAPIClient(
+            session: RedirectingURLProtocol.makeSession(),
+            customHeaders: StaticCustomHeaders([StaticCustomHeaders.xAccess], for: "https://a.proxy.test")
+        )
+        client.configure(baseURL: URL(string: baseURL)!, token: "tok")
+        return client
+    }
+
+    func test_AC_120_dispatchDropsHeadersOnCrossHostRedirect() async throws {
+        RedirectingURLProtocol.reset()
+        let client = redirectClient(baseURL: "https://a.proxy.test")
+        _ = try? await client.validateToken()
+        let received = try XCTUnwrap(RedirectingURLProtocol.requests(toHost: "b.other.test").first)
+        received.assertNoSecrets()
+        XCTAssertEqual(received.value(forHTTPHeaderField: "Accept"), ImmichAPI.acceptJSON)
+    }
+
+    func test_AC_120_dispatchKeepsHeadersOnSameHostRedirect() async throws {
+        RedirectingURLProtocol.reset()
+        let client = redirectClient(baseURL: "https://a.proxy.test/same")
+        _ = try? await client.validateToken()
+        let received = try XCTUnwrap(RedirectingURLProtocol.requests(toHost: "a.proxy.test").first)
+        received.assertSecretsKept()
+    }
+
+    func test_AC_120_uploadDropsHeadersOnCrossHostRedirect() async throws {
+        RedirectingURLProtocol.reset()
+        let client = redirectClient(baseURL: "https://a.proxy.test")
+        let file = try tempFile("redirect-upload")
+        _ = try? await client.uploadAsset(
+            fileURL: file, fileCreatedAt: "2024-07-01T00:00:00.000Z", fileModifiedAt: "2024-07-01T00:00:00.000Z",
+            filename: "p.jpg", duration: nil, isFavorite: false, visibility: .timeline, livePhotoVideoId: nil,
+            checksum: "Y2hlY2tzdW0=", deviceAssetId: "local://1", deviceId: "dev"
+        )
+        let received = try XCTUnwrap(RedirectingURLProtocol.requests(toHost: "b.other.test").first)
+        received.assertNoSecrets()
+    }
+
     /// Minimal `SharedLinkResponseDto` the visitor routes decode.
     private static func sharedLinkJSON(key: String) -> Data {
         """

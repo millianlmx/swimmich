@@ -30464,6 +30464,342 @@
           }
         }
       }
+    },
+    "Use only letters, digits and ! # $ % & ' * + - . ^ _ ` | ~ in a header name." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Verwende im Namen eines Headers nur Buchstaben, Ziffern und ! # $ % & ' * + - . ^ _ ` | ~."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Usa solo letras, dígitos y ! # $ % & ' * + - . ^ _ ` | ~ en el nombre de un encabezado."
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Utilisez uniquement des lettres, des chiffres et ! # $ % & ' * + - . ^ _ ` | ~ dans un nom d’en-tête."
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Usa solo lettere, cifre e ! # $ % & ' * + - . ^ _ ` | ~ nel nome di un'intestazione."
+          }
+        }
+      }
+    },
+    "The app sets this header itself." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Die App setzt diesen Header selbst."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "La app establece este encabezado por sí misma."
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "L’app définit elle-même cet en-tête."
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "L'app imposta questa intestazione da sola."
+          }
+        }
+      }
+    },
+    "This header is already in the list." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Dieser Header steht bereits in der Liste."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Este encabezado ya está en la lista."
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Cet en-tête figure déjà dans la liste."
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Questa intestazione è già nell'elenco."
+          }
+        }
+      }
+    },
+    "A header value cannot contain a line break or a control character." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Der Wert eines Headers darf weder einen Zeilenumbruch noch ein Steuerzeichen enthalten."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "El valor de un encabezado no puede contener un salto de línea ni un carácter de control."
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "La valeur d’un en-tête ne peut pas contenir de saut de ligne ni de caractère de contrôle."
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Il valore di un'intestazione non può contenere un ritorno a capo né un carattere di controllo."
+          }
+        }
+      }
+    },
+    "The headers could not be saved." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Die Header konnten nicht gespeichert werden."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "No se pudieron guardar los encabezados."
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Les en-têtes n’ont pas pu être enregistrés."
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Impossibile salvare le intestazioni."
+          }
+        }
+      }
+    },
+    "Value" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Wert"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Valor"
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Valeur"
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Valore"
+          }
+        }
+      }
+    },
+    "Remove header" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Header entfernen"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Quitar encabezado"
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Supprimer l’en-tête"
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Rimuovi intestazione"
+          }
+        }
+      }
+    },
+    "Add Header" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Header hinzufügen"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Añadir encabezado"
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Ajouter un en-tête"
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Aggiungi intestazione"
+          }
+        }
+      }
+    },
+    "Custom HTTP Headers" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Eigene HTTP-Header"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Encabezados HTTP personalizados"
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "En-têtes HTTP personnalisés"
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Intestazioni HTTP personalizzate"
+          }
+        }
+      }
+    },
+    "HTTP Headers" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "HTTP-Header"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Encabezados HTTP"
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "En-têtes HTTP"
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Intestazioni HTTP"
+          }
+        }
+      }
+    },
+    "Sent with every request to %@, from the app, widgets and the share extension." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Wird mit jeder Anfrage an %@ gesendet – von der App, den Widgets und der Share-Erweiterung."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Se envían con cada solicitud a %@, desde la app, los widgets y la extensión de compartir."
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Envoyés avec chaque requête vers %@, depuis l’app, les widgets et l’extension de partage."
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Inviate con ogni richiesta a %@, dall'app, dai widget e dall'estensione di condivisione."
+          }
+        }
+      }
+    },
+    "The proxy in front of this server refused the request. Check this server's HTTP headers." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Der Proxy vor diesem Server hat die Anfrage abgelehnt. Prüfe die HTTP-Header dieses Servers."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "El proxy situado delante de este servidor rechazó la solicitud. Revisa los encabezados HTTP de este servidor."
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Le proxy placé devant ce serveur a refusé la requête. Vérifiez les en-têtes HTTP de ce serveur."
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Il proxy davanti a questo server ha rifiutato la richiesta. Controlla le intestazioni HTTP di questo server."
+          }
+        }
+      }
     }
   },
   "version" : "1.0"

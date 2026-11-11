@@ -52,14 +52,18 @@ enum AssetFileTransfer {
         return fileURL
     }
 
-    /// Downloads URL-requested bytes with an optional Bearer token, verifying
-    /// a 2xx status and non-empty payload. Returns bytes + Content-Type.
-    static func fetchData(from url: URL, token: String?, session: URLSession) async throws -> (Data, String?) {
+    /// Downloads URL-requested bytes with an optional session token and the
+    /// server's custom headers, verifying a 2xx status and non-empty payload.
+    /// Returns bytes + Content-Type.
+    static func fetchData(
+        from url: URL,
+        token: String?,
+        session: URLSession,
+        customHeaders: any CustomHeadersProviding = CustomHeadersRegistry.shared
+    ) async throws -> (Data, String?) {
         var request = URLRequest(url: url)
-        if let token {
-            request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
-        }
-        let (data, response) = try await session.data(for: request)
+        ServerRequestAuthorization.apply(token: token, custom: customHeaders.headers(for: url), to: &request)
+        let (data, response) = try await ServerRedirectTaskDelegate.data(for: request, on: session)
         if let http = response as? HTTPURLResponse, !(200..<300).contains(http.statusCode) {
             throw APIError.serverError(http.statusCode, nil)
         }

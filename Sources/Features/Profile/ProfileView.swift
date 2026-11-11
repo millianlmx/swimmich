@@ -286,12 +286,24 @@ struct ProfileView: View {
                     Text("About")
                 }
 
-                // Instruments, not settings: these three screens only report
-                // what the app believes. One header keeps them apart from the
-                // preferences above, and the fourth diagnostic — the asset
-                // troubleshoot — lives on the photo it describes, never here:
-                // its page is parameterized by an asset.
+                // Diagnostics and the network settings the official client keeps
+                // under Advanced (custom headers). The three diagnostic screens
+                // only report what the app believes; the fourth diagnostic — the
+                // asset troubleshoot — lives on the photo it describes, never
+                // here: its page is parameterized by an asset.
                 Section {
+                    if let serverKey = auth.baseURL.flatMap({ ServerKey(url: $0) }) {
+                        NavigationLink {
+                            CustomHeadersScreen(
+                                serverKey: serverKey,
+                                onSaved: { auth.customHeadersDidChange(for: $0) }
+                            )
+                        } label: {
+                            Label("Custom HTTP Headers", systemImage: "list.bullet.rectangle")
+                        }
+                        .accessibilityIdentifier("customHeadersRow")
+                    }
+
                     NavigationLink {
                         AppLogView(vm: appLog)
                     } label: {

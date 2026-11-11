@@ -81,4 +81,41 @@ final class RealtimeServiceTests: XCTestCase {
         XCTAssertEqual(count, 0)
         XCTAssertFalse(transport.isConnected)
     }
+
+    // MARK: - Custom HTTP headers (L-09)
+
+    // AC-118: the handshake carries the server's list, with the usual Bearer.
+    @MainActor
+    func test_AC_118_handshakeHeadersCarryCustomList() {
+        let transport = MockRealtimeTransport()
+        let headers = StaticCustomHeaders([StaticCustomHeaders.xAccess], for: "https://photos.example.com")
+        let service = RealtimeService(transport: transport, customHeaders: headers)
+
+        service.connect(baseURL: URL(string: "https://photos.example.com")!, token: "t")
+        XCTAssertEqual(transport.connects.last?.headers, ["X-Access": "secret", "Authorization": "Bearer t"])
+
+        // Another server's socket never gets this list.
+        service.connect(baseURL: URL(string: "https://other.example.org")!, token: "t")
+        XCTAssertEqual(transport.connects.last?.headers, ["Authorization": "Bearer t"])
+    }
+
+    // Without a list, exactly the handshake of before this feature.
+    @MainActor
+    func test_AC_124_handshakeUnchangedWithoutHeaders() {
+        let transport = MockRealtimeTransport()
+        RealtimeService(transport: transport).connect(baseURL: URL(string: "https://photos.example.com")!, token: "t")
+        XCTAssertEqual(transport.connects.last?.headers, ["Authorization": "Bearer t"])
+    }
+
+    @MainActor
+    func test_AC_125_handshakeUsesUserTokenHeader() {
+        let transport = MockRealtimeTransport()
+        let headers = StaticCustomHeaders([StaticCustomHeaders.basic], for: "https://photos.example.com")
+        RealtimeService(transport: transport, customHeaders: headers)
+            .connect(baseURL: URL(string: "https://photos.example.com")!, token: "t")
+        XCTAssertEqual(
+            transport.connects.last?.headers,
+            ["Authorization": "Basic dXNlcjpwYXNz", "x-immich-user-token": "t"]
+        )
+    }
 }

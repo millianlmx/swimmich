@@ -17,6 +17,10 @@ struct ServerURLScreen: View {
     @FocusState private var isFocused: Bool
     @State private var presentingQRScanner = false
     @State private var scanError: String?
+    /// The server the open headers sheet edits (fixed when it opens).
+    @State private var headersKey: HeadersSheetItem?
+    /// Bumped when a list was saved, so the count beside the button re-reads.
+    @State private var headersRevision = 0
 
     var body: some View {
         @Bindable var auth = auth
@@ -56,6 +60,8 @@ struct ServerURLScreen: View {
                         }
                     }
 
+                    serverHeadersButton
+
                     statusSection
                         .transition(.opacity)
 
@@ -89,6 +95,12 @@ struct ServerURLScreen: View {
             auth.serverStatus = .idle
         }
         .animation(PVMotion.gentle, value: auth.serverStatus)
+        .sheet(item: $headersKey) { item in
+            ServerHeadersSheet(serverKey: item.key, onSaved: { auth.customHeadersDidChange(for: $0) })
+        }
+        .onReceive(NotificationCenter.default.publisher(for: .immichCustomHeadersChanged)) { _ in
+            headersRevision &+= 1
+        }
         .sheet(isPresented: $presentingQRScanner) {
             NavigationStack {
                 QRScannerView { payload in
@@ -134,6 +146,37 @@ struct ServerURLScreen: View {
             .buttonStyle(PVPrimaryButtonStyle())
             .disabled(auth.serverURLString.isEmpty || auth.isLoading || auth.serverStatus == .checking)
         }
+    }
+
+    /// The server the field currently names, as its headers know it. `nil` while
+    /// the address is not a usable URL.
+    private var enteredServerKey: ServerKey? {
+        auth.normalizedBaseURL(from: auth.serverURLString).flatMap { ServerKey(url: $0) }
+    }
+
+    /// "HTTP Headers" (B-1): before the address is checked, because a proxy that
+    /// refuses the app makes the check itself fail.
+    private var serverHeadersButton: some View {
+        let key = enteredServerKey
+        // Read for its side effect: a save bumps it, which re-reads the count.
+        _ = headersRevision
+        let count = key.map { DependencyContainer.shared.customHeaders.headers(for: $0).count } ?? 0
+        return Button {
+            if let key { headersKey = HeadersSheetItem(key: key) }
+        } label: {
+            HStack(spacing: PVSpacing.s8) {
+                Label("HTTP Headers", systemImage: "list.bullet.rectangle")
+                if count > 0 {
+                    Text(verbatim: "\(count)")
+                        .accessibilityIdentifier("serverHeadersCount")
+                }
+            }
+            .font(.pvBody)
+            .foregroundStyle(Color.immichPrimary)
+        }
+        .buttonStyle(.plain)
+        .disabled(key == nil || auth.serverStatus == .checking)
+        .accessibilityIdentifier("serverHeadersButton")
     }
 
     @ViewBuilder
@@ -209,6 +252,39 @@ struct ServerURLScreen: View {
         scanError = nil
         auth.serverURLString = url.absoluteString
         connect()
+    }
+}
+
+/// Identifies the server a headers sheet was opened for (`ServerKey` itself is
+/// the kit's, and a sheet item must be `Identifiable`).
+private struct HeadersSheetItem: Identifiable {
+    let key: ServerKey
+    var id: String { key.rawValue }
+}
+
+/// The server step's headers editor in its own navigation stack (a sheet
+/// inherits no bar): "Cancel" closes without saving, a successful "Save" closes
+/// it. The view model is built once, with the key the sheet opened for.
+private struct ServerHeadersSheet: View {
+    @Environment(\.dismiss) private var dismiss
+    @State private var vm: CustomHeadersViewModel
+
+    init(serverKey: ServerKey, onSaved: @escaping @MainActor (ServerKey) -> Void) {
+        _vm = State(initialValue: DependencyContainer.shared.makeCustomHeadersViewModel(
+            serverKey: serverKey, onSaved: onSaved
+        ))
+    }
+
+    var body: some View {
+        NavigationStack {
+            CustomHeadersView(vm: vm, onFinish: { dismiss() })
+                .toolbar {
+                    ToolbarItem(placement: .cancellationAction) {
+                        Button("Cancel") { dismiss() }
+                            .accessibilityIdentifier("customHeadersCancelButton")
+                    }
+                }
+        }
     }
 }
 

@@ -5,7 +5,9 @@ import Foundation
 /// lets a test inject event names with `emit`.
 @MainActor
 final class MockRealtimeTransport: RealtimeTransport {
-    private(set) var connects: [(baseURL: URL, token: String)] = []
+    /// `token` is read back from the handshake headers the way the server reads
+    /// them: `x-immich-user-token`, else the `Bearer` of `Authorization`.
+    private(set) var connects: [(baseURL: URL, headers: [String: String], token: String?)] = []
     private(set) var disconnectCount = 0
     private(set) var isConnected = false
     /// Event names asked at the last `connect`.
@@ -14,8 +16,9 @@ final class MockRealtimeTransport: RealtimeTransport {
 
     nonisolated init() {}
 
-    func connect(baseURL: URL, token: String, events: [String], onEvent: @escaping @MainActor (String) -> Void) {
-        connects.append((baseURL: baseURL, token: token))
+    func connect(baseURL: URL, headers: [String: String], events: [String], onEvent: @escaping @MainActor (String) -> Void) {
+        let bearer = headers["Authorization"].flatMap { $0.hasPrefix("Bearer ") ? String($0.dropFirst(7)) : nil }
+        connects.append((baseURL: baseURL, headers: headers, token: headers["x-immich-user-token"] ?? bearer))
         self.events = events
         self.onEvent = onEvent
         isConnected = true

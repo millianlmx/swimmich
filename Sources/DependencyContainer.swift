@@ -132,6 +132,9 @@ final class DependencyContainer {
     /// argument**, and default arguments are evaluated in the caller's context
     /// — its eight presenters must not each have to thread a client through.
     nonisolated let libraryClient: any ImmichClient
+    /// Every server's custom HTTP headers (L-09): the one registry the API
+    /// client, the realtime socket, the offline store and the editor read.
+    nonisolated let customHeaders: CustomHeadersRegistry = .shared
     /// "What's New" seen-state (gap G23). One store per process: the automatic
     /// sheet, the About row that reopens it and `AuthViewModel`'s
     /// add-an-account write must all agree on which batch has been presented.
@@ -143,7 +146,7 @@ final class DependencyContainer {
         self.trustedServers = trustStore
         let serverSessions = ServerSessions(trustStore: trustStore, imageCache: AuthenticatedAsyncImage.imageDiskCache)
         self.serverSessions = serverSessions
-        self.client = ImmichAPIClient(trustStore: trustStore, log: appLog)
+        self.client = ImmichAPIClient(trustStore: trustStore, log: appLog, customHeaders: customHeaders)
         // Read-only mode: the store persists into `.standard` and the guard
         // reads the very same defaults at call time (never a captured value),
         // so the mode can be flipped without a relaunch and the next write
@@ -159,12 +162,12 @@ final class DependencyContainer {
         self.cleanupSource = photoLibrary
         self.appLock = AppLockViewModel()
         self.lockedFolderPINs = KeychainLockedFolderPINStore(keychain: keychain)
-        self.realtime = RealtimeService()
+        self.realtime = RealtimeService(customHeaders: customHeaders)
         self.backupScheduler = BGTaskBackupScheduler()
         self.backupLedger = BackupLedger.persistent()
         self.backupLiveActivity = LiveActivityBackupService()
         self.libraryMonitor = PhotoLibraryChangeMonitor()
-        self.offlineStore = OfflineAssetStore(transport: serverSessions.makeDownloadTransport())
+        self.offlineStore = OfflineAssetStore(transport: serverSessions.makeDownloadTransport(), customHeaders: customHeaders)
         self.offlineIndex = OfflineAssetIndex()
         self.language = AppLanguageStore()
         // The shared instance, not a fresh one: view models built with the
@@ -237,7 +240,8 @@ final class DependencyContainer {
                 imageDiskCache: AuthenticatedAsyncImage.imageDiskCache,
                 apiClient: client,
                 serverSessions: serverSessions
-            )
+            ),
+            customHeaders: customHeaders
         )
     }
 
@@ -398,6 +402,15 @@ final class DependencyContainer {
         UserApiKeysViewModel(client: libraryClient)
     }
 
+    /// L-09: the editor of one server's custom HTTP headers. `onSaved` is what
+    /// nudges the session (`AuthViewModel.customHeadersDidChange`).
+    func makeCustomHeadersViewModel(
+        serverKey: ServerKey,
+        onSaved: @escaping @MainActor (ServerKey) -> Void
+    ) -> CustomHeadersViewModel {
+        CustomHeadersViewModel(serverKey: serverKey, registry: customHeaders, onSaved: onSaved)
+    }
+
     func makeMemoriesViewModel() -> MemoriesViewModel {
         MemoriesViewModel(client: libraryClient)
     }
@@ -542,7 +555,9 @@ final class DependencyContainer {
     /// writes "Save to Photos" to the device library through `photos`.
     /// V1.5 polish (AC-718): wire 0.033s render debounce (≈30fps cap) for production.
     func makePhotoEditorViewModel(asset: AssetReactItem) -> PhotoEditorViewModel {
-        let vm = PhotoEditorViewModel(assetId: asset.id, client: libraryClient, appLog: appLog, photos: photos)
+        let vm = PhotoEditorViewModel(
+            assetId: asset.id, client: libraryClient, appLog: appLog, photos: photos, customHeaders: customHeaders
+        )
         vm.renderDebounceInterval = 0.033
         return vm
     }
