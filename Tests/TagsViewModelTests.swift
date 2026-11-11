@@ -17,6 +17,7 @@ final class TagsViewModelTests: XCTestCase {
         return vm
     }
 
+    @MainActor
     private func shape(_ vm: TagsViewModel) -> [String] {
         vm.rows.map { "\($0.tag.id)@\($0.depth)" }
     }
