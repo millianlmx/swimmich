@@ -415,7 +415,7 @@ final class ImmichAPIClient: ImmichClient, @unchecked Sendable {
         albumId: String,
         page: Int,
         size: Int
-    ) async throws -> SearchResponseDto {
+    ) async throws -> SharedLinkAlbumAssetsResponseDto {
         // `withExif`: the viewer bounds its zoom by the photo's EXIF pixel size.
         let dto = MetadataSearchDto(albumIds: [albumId], page: page, size: size, withExif: true)
         let response = try await sendSharedLinkRaw(
@@ -424,7 +424,7 @@ final class ImmichAPIClient: ImmichClient, @unchecked Sendable {
             credential: credential,
             body: AnyEncodable(dto)
         )
-        return try Self.decode(SearchResponseDto.self, from: response.data)
+        return try Self.decode(SharedLinkAlbumAssetsResponseDto.self, from: response.data)
     }
 
     func uploadAssetToSharedLink(

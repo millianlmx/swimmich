@@ -876,7 +876,7 @@ final class MockImmichClient: ImmichClient, @unchecked Sendable {
     var sharedLinkMineError: Error?
     var sharedLinkLoginResponse: SharedLinkResponseDto?
     var sharedLinkLoginError: Error?
-    var sharedLinkAlbumAssetsResponse: SearchResponseDto?
+    var sharedLinkAlbumAssetsResponse: SharedLinkAlbumAssetsResponseDto?
     var sharedLinkAlbumAssetsError: Error?
     /// Result of a guest upload: the id the server assigned (or an error).
     var sharedLinkUploadResponse: AssetMediaResponseDto?
@@ -912,14 +912,14 @@ final class MockImmichClient: ImmichClient, @unchecked Sendable {
         albumId: String,
         page: Int,
         size: Int
-    ) async throws -> SearchResponseDto {
+    ) async throws -> SharedLinkAlbumAssetsResponseDto {
         bump()
         _ = credential
         sharedLinkAlbumIds.append(albumId)
         sharedLinkAlbumPages.append(page)
         if let e = globalError ?? sharedLinkAlbumAssetsError { throw e }
         return sharedLinkAlbumAssetsResponse
-            ?? SearchResponseDto(assets: SearchAssetResponseDto(count: 0, items: [], nextPage: nil))
+            ?? SharedLinkAlbumAssetsResponseDto(assets: .init(items: [], nextPage: nil))
     }
 
     func uploadAssetToSharedLink(

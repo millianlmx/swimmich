@@ -162,6 +162,7 @@ struct SharedLinkViewerView: View {
 
                 if let message = vm.message {
                     InlineErrorBadge(message: message)
+                        .accessibilityIdentifier("sharedLinkViewerMessage")
                 }
 
                 if vm.assets.isEmpty {

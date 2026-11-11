@@ -177,13 +177,15 @@ protocol ImmichClient: AnyObject, Sendable {
     /// refuses an unfiltered metadata search under shared-link auth
     /// (`"Shared link access is only allowed in combination with an albumIds
     /// filter"`). An INDIVIDUAL link needs no call at all: its assets come
-    /// inlined in `getSharedLinkMine`.
+    /// inlined in `getSharedLinkMine`. The photos arrive in the full or the
+    /// reduced form (`SharedLinkAssetDto`): a link that hides metadata gets the
+    /// reduced one (v3.x; a v2.x search still answers the full form).
     func getSharedLinkAlbumAssets(
         _ credential: SharedLinkCredential,
         albumId: String,
         page: Int,
         size: Int
-    ) async throws -> SearchResponseDto
+    ) async throws -> SharedLinkAlbumAssetsResponseDto
 
     /// `POST /api/assets?key=|slug=` — a guest upload. The server gates it with
     /// `requireUploadAccess`: a bare **401** means this link does not allow

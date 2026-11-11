@@ -325,7 +325,7 @@ final class ReadOnlyGuardClient: ImmichClient {
         albumId: String,
         page: Int,
         size: Int
-    ) async throws -> SearchResponseDto {
+    ) async throws -> SharedLinkAlbumAssetsResponseDto {
         try await inner.getSharedLinkAlbumAssets(credential, albumId: albumId, page: page, size: size)
     }
 

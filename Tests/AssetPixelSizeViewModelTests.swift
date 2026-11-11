@@ -23,6 +23,13 @@ final class AssetPixelSizeViewModelTests: XCTestCase {
         ExifResponseDto(exifImageWidth: w, exifImageHeight: h, orientation: "1")
     }
 
+    /// The item a shared link (that exposes its metadata) builds from a record.
+    private func linkItem(_ record: AssetResponseDto) -> AssetReactItem {
+        let data = try! JSONEncoder.immich.encode(record)
+        let linkAsset = try! JSONDecoder.immich.decode(SharedLinkAssetDto.self, from: data)
+        return AssetReactItem(sharedLinkAsset: linkAsset, linkShowsMetadata: true)
+    }
+
     /// A timeline grid item: no dimensions.
     private func gridItem(id: String = "a1") -> AssetReactItem {
         AssetReactItem(
@@ -57,7 +64,7 @@ final class AssetPixelSizeViewModelTests: XCTestCase {
         XCTAssertEqual(failing.getAssetCalls.count, 1, "a failed read is not retried")
 
         // A shared-link visitor has no client: an edited item stays unknown.
-        let edited = AssetReactItem(from: dto(exif: exif(8000, 6000), isEdited: true))
+        let edited = linkItem(dto(exif: exif(8000, 6000), isEdited: true))
         let vm3 = AssetPixelSizeViewModel(asset: edited, client: nil)
         await vm3.load()
         XCTAssertNil(vm3.pixelSize)
@@ -76,7 +83,7 @@ final class AssetPixelSizeViewModelTests: XCTestCase {
         await viewer.load()
 
         // Shared link: item built from the same record, no client.
-        let link = AssetPixelSizeViewModel(asset: AssetReactItem(from: record), client: nil)
+        let link = AssetPixelSizeViewModel(asset: linkItem(record), client: nil)
         await link.load()
 
         // Slideshow: grid item + the same client.
