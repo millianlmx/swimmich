@@ -1,9 +1,18 @@
 import XCTest
 @testable import ImmichSwiftUI
 
-/// Type-aware memory titles (L-07, AC-17.x). The bundle language of the test
-/// host is English.
+/// Type-aware memory titles (L-07, AC-17.x). The test host's own language
+/// varies by runner (French on the CI simulator), so every localized
+/// assertion pins the compiled French catalog and checks its values.
 final class MemoryTitlePresentationTests: XCTestCase {
+
+    /// `fr.lproj` of the app bundle (the unit tests are hosted by the app);
+    /// `LocalizationTests` guarantees it is compiled in.
+    private func french() throws -> Bundle {
+        let app = Bundle(for: AppLanguageStore.self)
+        let path = try XCTUnwrap(app.path(forResource: "fr", ofType: "lproj"), "fr.lproj missing")
+        return try XCTUnwrap(Bundle(path: path))
+    }
 
     private func makeAsset(localDateTime: String, fileCreatedAt: String = "2020-07-01T10:00:00.000Z") -> AssetResponseDto {
         AssetResponseDto(
@@ -26,33 +35,36 @@ final class MemoryTitlePresentationTests: XCTestCase {
         )
     }
 
-    func test_AC_17_2_birthdayTitle_followsTheAgeAtThePhoto() {
+    func test_AC_17_2_birthdayTitle_followsTheAgeAtThePhoto() throws {
+        let fr = try french()
         XCTAssertEqual(
-            MemoryTitlePresentation.birthdayTitle(personName: "Alice", ageYear: 2020, birthYear: 1990),
-            "Alice's birthday · 30 years old"
+            MemoryTitlePresentation.birthdayTitle(personName: "Alice", ageYear: 2020, birthYear: 1990, bundle: fr),
+            "Anniversaire de Alice · 30 ans"
         )
         XCTAssertEqual(
-            MemoryTitlePresentation.birthdayTitle(personName: "Alice", ageYear: 1991, birthYear: 1990),
-            "Alice's birthday · 1 year old"
-        )
-    }
-
-    func test_AC_17_2_birthdayTitle_namesOnlyWhenTheAgeIsBelowOneOrUnknown() {
-        XCTAssertEqual(
-            MemoryTitlePresentation.birthdayTitle(personName: "Alice", ageYear: 1990, birthYear: 1990),
-            "Alice's birthday"
-        )
-        XCTAssertEqual(
-            MemoryTitlePresentation.birthdayTitle(personName: "Alice", ageYear: nil, birthYear: 1990),
-            "Alice's birthday"
+            MemoryTitlePresentation.birthdayTitle(personName: "Alice", ageYear: 1991, birthYear: 1990, bundle: fr),
+            "Anniversaire de Alice · 1 an"
         )
     }
 
-    func test_AC_17_3_birthdayTitle_fallsBackToUnknownWithoutAName() {
+    func test_AC_17_2_birthdayTitle_namesOnlyWhenTheAgeIsBelowOneOrUnknown() throws {
+        let fr = try french()
+        XCTAssertEqual(
+            MemoryTitlePresentation.birthdayTitle(personName: "Alice", ageYear: 1990, birthYear: 1990, bundle: fr),
+            "Anniversaire de Alice"
+        )
+        XCTAssertEqual(
+            MemoryTitlePresentation.birthdayTitle(personName: "Alice", ageYear: nil, birthYear: 1990, bundle: fr),
+            "Anniversaire de Alice"
+        )
+    }
+
+    func test_AC_17_3_birthdayTitle_fallsBackToUnknownWithoutAName() throws {
+        let fr = try french()
         for name in [nil, "", "  "] as [String?] {
             XCTAssertEqual(
-                MemoryTitlePresentation.birthdayTitle(personName: name, ageYear: 2020, birthYear: 1990),
-                String(localized: "Unknown")
+                MemoryTitlePresentation.birthdayTitle(personName: name, ageYear: 2020, birthYear: 1990, bundle: fr),
+                "Inconnu"
             )
         }
     }
@@ -67,7 +79,8 @@ final class MemoryTitlePresentationTests: XCTestCase {
         )
     }
 
-    func test_AC_17_1_birthdayNeverShowsTheBirthYearOrAnElapsedCount() {
+    func test_AC_17_1_birthdayNeverShowsTheBirthYearOrAnElapsedCount() throws {
+        let fr = try french()
         let memory = makeMemory(type: .birthday, year: 1990, personName: "Alice")
         let ago = MemoryCardPresentation.yearsAgoText(
             count: Calendar.current.component(.year, from: .now) - 1990
@@ -83,10 +96,10 @@ final class MemoryTitlePresentationTests: XCTestCase {
             XCTAssertFalse(line.contains("1990"), line)
             if let ago { XCTAssertFalse(line.contains(ago), line) }
         }
-        XCTAssertEqual(MemoryTitlePresentation.cardTitle(for: memory), "Alice's birthday")
+        XCTAssertEqual(MemoryTitlePresentation.cardTitle(for: memory, bundle: fr), "Anniversaire de Alice")
         XCTAssertEqual(
-            MemoryTitlePresentation.momentTitle(for: memory, asset: memory.assets.first),
-            "Alice's birthday · 30 years old"
+            MemoryTitlePresentation.momentTitle(for: memory, asset: memory.assets.first, bundle: fr),
+            "Anniversaire de Alice · 30 ans"
         )
     }
 
@@ -118,10 +131,11 @@ final class MemoryTitlePresentationTests: XCTestCase {
         )
     }
 
-    func test_AC_17_badgeIsOwnedByTheType() {
-        XCTAssertEqual(MemoryTitlePresentation.badge(for: makeMemory(type: .on_this_day, year: 2022)).label, "On this day")
-        XCTAssertEqual(MemoryTitlePresentation.badge(for: makeMemory(type: .birthday, year: 1990)).label, "Birthday")
-        XCTAssertEqual(MemoryTitlePresentation.badge(for: makeMemory(type: .unknown, year: 2022)).label, "Memory")
+    func test_AC_17_badgeIsOwnedByTheType() throws {
+        let fr = try french()
+        XCTAssertEqual(MemoryTitlePresentation.badge(for: makeMemory(type: .on_this_day, year: 2022), bundle: fr).label, "Ce jour-là")
+        XCTAssertEqual(MemoryTitlePresentation.badge(for: makeMemory(type: .birthday, year: 1990), bundle: fr).label, "Anniversaire")
+        XCTAssertEqual(MemoryTitlePresentation.badge(for: makeMemory(type: .unknown, year: 2022), bundle: fr).label, "Souvenir")
         XCTAssertEqual(MemoryTitlePresentation.badge(for: makeMemory(type: .birthday, year: 1990)).symbol, "birthday.cake")
     }
 }

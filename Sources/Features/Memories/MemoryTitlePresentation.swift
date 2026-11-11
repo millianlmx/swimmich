@@ -12,13 +12,14 @@ enum MemoryTitlePresentation {
 
     /// "Alice's birthday · 30 years old". Name nil / blank → "Unknown". Age =
     /// `ageYear - birthYear`; nil `ageYear` or an age below 1 → name only.
-    static func birthdayTitle(personName: String?, ageYear: Int?, birthYear: Int) -> String {
+    /// `bundle` picks the catalog language (tests pin one `.lproj`).
+    static func birthdayTitle(personName: String?, ageYear: Int?, birthYear: Int, bundle: Bundle = .main) -> String {
         let name = (personName ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !name.isEmpty else { return String(localized: "Unknown") }
-        let title = String(localized: "\(name)'s birthday")
+        guard !name.isEmpty else { return String(localized: "Unknown", bundle: bundle) }
+        let title = String(localized: "\(name)'s birthday", bundle: bundle)
         guard let ageYear, ageYear - birthYear >= 1 else { return title }
         let age = ageYear - birthYear
-        return "\(title) · \(String(localized: "\(age) years old"))"
+        return "\(title) · \(String(localized: "\(age) years old", bundle: bundle))"
     }
 
     /// The year an asset was taken, read off the wall-clock prefix (no time
@@ -28,12 +29,14 @@ enum MemoryTitlePresentation {
     }
 
     /// Main line of the list card. Never empty.
-    static func cardTitle(for memory: MemoryResponseDto) -> String? {
+    static func cardTitle(for memory: MemoryResponseDto, bundle: Bundle = .main) -> String? {
         switch memory.type {
         case .on_this_day:
             return MemoryMomentPresentation.fullDateLabel(for: memory)
         case .birthday:
-            return birthdayTitle(personName: memory.data.personName, ageYear: nil, birthYear: memory.data.year)
+            return birthdayTitle(
+                personName: memory.data.personName, ageYear: nil, birthYear: memory.data.year, bundle: bundle
+            )
         case .unknown:
             return MemoryMomentPresentation.fullDateLabel(for: memory) ?? String(memory.data.year)
         }
@@ -49,7 +52,7 @@ enum MemoryTitlePresentation {
     }
 
     /// Big title of the full-screen moment; `asset` is the photo on screen.
-    static func momentTitle(for memory: MemoryResponseDto, asset: AssetResponseDto?) -> String {
+    static func momentTitle(for memory: MemoryResponseDto, asset: AssetResponseDto?, bundle: Bundle = .main) -> String {
         switch memory.type {
         case .on_this_day:
             return String(memory.data.year)
@@ -57,7 +60,8 @@ enum MemoryTitlePresentation {
             return birthdayTitle(
                 personName: memory.data.personName,
                 ageYear: asset.flatMap(takenYear),
-                birthYear: memory.data.year
+                birthYear: memory.data.year,
+                bundle: bundle
             )
         case .unknown:
             return MemoryMomentPresentation.fullDateLabel(for: memory) ?? String(memory.data.year)
@@ -79,11 +83,11 @@ enum MemoryTitlePresentation {
     }
 
     /// Top-bar / card badge.
-    static func badge(for memory: MemoryResponseDto) -> (label: String, symbol: String) {
+    static func badge(for memory: MemoryResponseDto, bundle: Bundle = .main) -> (label: String, symbol: String) {
         switch memory.type {
-        case .on_this_day: return (String(localized: "On this day"), "sparkles")
-        case .birthday: return (String(localized: "Birthday"), "birthday.cake")
-        case .unknown: return (String(localized: "Memory"), "sparkles")
+        case .on_this_day: return (String(localized: "On this day", bundle: bundle), "sparkles")
+        case .birthday: return (String(localized: "Birthday", bundle: bundle), "birthday.cake")
+        case .unknown: return (String(localized: "Memory", bundle: bundle), "sparkles")
         }
     }
 
