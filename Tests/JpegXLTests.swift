@@ -97,7 +97,11 @@ extension JpegXLDecodingTests {
 
     /// AC-103: the formats that worked before keep working and keep their names.
     func test_AC_103_otherFormatsUnchanged() throws {
-        let renderer = UIGraphicsImageRenderer(size: CGSize(width: 40, height: 30))
+        // Scale 1: the default format takes the screen scale, which would make
+        // the encoded pixels 2-3x the point size (OfflineAssetStoreTests does the same).
+        let format = UIGraphicsImageRendererFormat.default()
+        format.scale = 1
+        let renderer = UIGraphicsImageRenderer(size: CGSize(width: 40, height: 30), format: format)
         let canvas = renderer.image { context in
             UIColor.systemTeal.setFill()
             context.fill(CGRect(x: 0, y: 0, width: 40, height: 30))
@@ -138,7 +142,9 @@ extension JpegXLDecodingTests {
         XCTAssertEqual(PhotoLibraryServiceImpl.imageExtension(for: JpegXLFixture.thumbnail), "jxl")
         XCTAssertEqual(PhotoLibraryServiceImpl.imageExtension(for: JpegXLFixture.containerHeader), "jxl")
 
-        let renderer = UIGraphicsImageRenderer(size: CGSize(width: 40, height: 30))
+        let format = UIGraphicsImageRendererFormat.default()
+        format.scale = 1
+        let renderer = UIGraphicsImageRenderer(size: CGSize(width: 40, height: 30), format: format)
         let canvas = renderer.image { $0.cgContext.fill(CGRect(x: 0, y: 0, width: 40, height: 30)) }
         XCTAssertEqual(PhotoLibraryServiceImpl.imageExtension(for: try XCTUnwrap(canvas.jpegData(compressionQuality: 0.8))), "jpg")
         XCTAssertEqual(PhotoLibraryServiceImpl.imageExtension(for: try XCTUnwrap(canvas.pngData())), "jpg")
