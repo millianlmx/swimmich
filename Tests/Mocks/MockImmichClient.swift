@@ -1152,13 +1152,30 @@ final class MockImmichClient: ImmichClient, @unchecked Sendable {
     /// tests hold a load in flight deterministically (statisticsGate).
     var statisticsGate: (() async -> Void)?
 
+    var serverStatisticsError: Error?
+    private(set) var serverStatisticsCallCount = 0
+
     func getServerStatistics() async throws -> ServerStatsResponseDto {
         bump()
+        serverStatisticsCallCount += 1
         if let gate = statisticsGate { await gate() }
-        if let e = globalError ?? sharedLinksError { throw e }
+        if let e = globalError ?? serverStatisticsError { throw e }
         return serverStatisticsResponse ?? ServerStatsResponseDto(
             photos: 0, videos: 0, usage: 0, usagePhotos: 0, usageVideos: 0, usageByUser: []
         )
+    }
+
+    var assetStatisticsResponse: AssetStatsResponseDto?
+    var assetStatisticsError: Error?
+    var assetStatisticsGate: (() async -> Void)?
+    private(set) var assetStatisticsCallCount = 0
+
+    func getAssetStatistics() async throws -> AssetStatsResponseDto {
+        bump()
+        assetStatisticsCallCount += 1
+        if let gate = assetStatisticsGate { await gate() }
+        if let e = globalError ?? assetStatisticsError { throw e }
+        return assetStatisticsResponse ?? AssetStatsResponseDto(images: 0, videos: 0, total: 0)
     }
 
     // MARK: - Bulk asset update (P0: archive via visibility)
@@ -1175,8 +1192,14 @@ final class MockImmichClient: ImmichClient, @unchecked Sendable {
         return getUsersResponse ?? []
     }
 
+    /// Suspension point BEFORE the canned response (reentrancy tests).
+    var getMyUserGate: (() async -> Void)?
+    private(set) var getMyUserCallCount = 0
+
     func getMyUser() async throws -> UserAdminResponseDto {
         bump()
+        getMyUserCallCount += 1
+        if let gate = getMyUserGate { await gate() }
         if let e = globalError ?? getMyUserError { throw e }
         return getMyUserResponse ?? UserAdminResponseDto(
             id: "me", name: "Me Myself", email: "me@example.com",

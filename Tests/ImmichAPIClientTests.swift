@@ -908,6 +908,23 @@ final class ImmichAPIClientTests: XCTestCase {
         XCTAssertEqual(captured.url?.path, "/api/server/statistics")
     }
 
+    func test_getAssetStatistics_hitsAccountStatisticsEndpoint() async throws {
+        let session = makeMockedSession()
+        let client = ImmichAPIClient(session: session)
+        client.configure(baseURL: URL(string: "https://example.com")!, token: "tok")
+        CapturingURLProtocol.nextData = #"{"images":128,"videos":7,"total":140}"#.data(using: .utf8)!
+
+        let stats = try await client.getAssetStatistics()
+
+        XCTAssertEqual(stats, AssetStatsResponseDto(images: 128, videos: 7, total: 140))
+        guard let captured = CapturingURLProtocol.lastRequest else {
+            return XCTFail("no request captured")
+        }
+        XCTAssertEqual(captured.httpMethod, "GET")
+        XCTAssertEqual(captured.url?.path, "/api/assets/statistics")
+        XCTAssertNil(captured.url?.query)
+    }
+
     /// `PATCH /api/shared-links/{id}` — the verb the server actually exposes
     /// (`@Patch(':id')`). The client sent `PUT` for months, which answered 404
     /// at runtime while the old test happily asserted the wrong verb.

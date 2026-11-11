@@ -54,16 +54,13 @@ struct LocalLibraryView: View {
                     summary: vm.localSummary,
                     identifier: "localLibrarySummary"
                 )
-                SummaryColumn(
-                    title: "Your server",
-                    symbol: "externaldrive.badge.icloud",
-                    summary: vm.remoteSummary,
-                    identifier: "localLibraryRemoteSummary"
-                )
+                ServerStorageColumn(storage: vm.storage) {
+                    Task { await vm.loadRemoteSummary() }
+                }
             }
             if let error = vm.errorMessage {
-                // Non-blocking: the device column stays true when the server
-                // cannot be reached.
+                // Non-blocking, and only the check's or the upload's: the server
+                // column carries its own unavailable state.
                 InlineErrorBadge(message: error)
             }
         }
@@ -240,14 +237,12 @@ struct LocalLibraryView: View {
     }
 }
 
-/// One column of the summary: what the device holds and what the server holds,
-/// side by side — the gap between the two numbers *is* the information.
+/// The device column of the summary: what the photo library holds. It carries no
+/// byte count — measuring one means reading every resource of every asset.
 private struct SummaryColumn: View {
     let title: LocalizedStringKey
     let symbol: String
-    /// nil == not known (the server was never reached): the column shows "—"
-    /// rather than a zero it cannot vouch for.
-    let summary: LocalLibraryViewModel.MediaSummary?
+    let summary: LocalLibraryViewModel.MediaSummary
     let identifier: String
 
     var body: some View {
@@ -255,24 +250,83 @@ private struct SummaryColumn: View {
             Label(title, systemImage: symbol)
                 .font(.pvHeadline)
                 .foregroundStyle(Color.textSecondaryPV)
-            Text(summary.map { "\($0.total)" } ?? "—")
+            Text("\(summary.total)")
                 .font(.pvNumeric)
                 .contentTransition(.numericText())
                 .accessibilityIdentifier(identifier)
-            if let summary {
-                Text("\(summary.photos) photos · \(summary.videos) videos")
-                    .font(.pvCaption)
-                    .foregroundStyle(Color.textSecondaryPV)
-                // The device column never has bytes: counting them means reading
-                // every resource, so only the server's `usage` is real here.
-                if summary.bytes > 0 {
-                    Text(StorageStatsViewModel.format(summary.bytes))
-                        .font(.pvCaption)
-                        .foregroundStyle(Color.textTertiaryPV)
-                }
-            }
+            Text("\(summary.photos) photos · \(summary.videos) videos")
+                .font(.pvCaption)
+                .foregroundStyle(Color.textSecondaryPV)
         }
         .frame(maxWidth: .infinity, alignment: .leading)
+    }
+}
+
+/// The server column of the summary: the *account's* storage. Each half of
+/// `StorageStatsViewModel` shows its value, "Unavailable" with Try Again, or
+/// nothing yet — never a zero it did not read. `retry` re-reads those two
+/// reads only, never a check or an upload.
+private struct ServerStorageColumn: View {
+    let storage: StorageStatsViewModel
+    let retry: () -> Void
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: PVSpacing.s4) {
+            Label("Your server", systemImage: "externaldrive.badge.icloud")
+                .font(.pvHeadline)
+                .foregroundStyle(Color.textSecondaryPV)
+            Text(total)
+                .font(.pvNumeric)
+                .contentTransition(.numericText())
+                .accessibilityIdentifier("localLibraryRemoteSummary")
+            if case .loaded(let counts) = storage.counts {
+                Text("\(counts.photos) photos · \(counts.videos) videos")
+                    .font(.pvCaption)
+                    .foregroundStyle(Color.textSecondaryPV)
+                    .accessibilityIdentifier("localLibraryServerCounts")
+            }
+            if case .unavailable(let message) = storage.counts {
+                InlineErrorBadge(message: message, retry: retry)
+                    .accessibilityIdentifier("localLibraryServerCountsError")
+            }
+            usageRows
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+    }
+
+    private var total: String {
+        switch storage.counts {
+        case .loaded(let counts): "\(counts.total)"
+        case .unavailable: String(localized: "Unavailable")
+        case .notLoaded: "—"
+        }
+    }
+
+    @ViewBuilder
+    private var usageRows: some View {
+        switch storage.usage {
+        case .loaded(let usage):
+            LabeledContent("Usage", value: StorageStatsViewModel.format(usage.usedBytes))
+                .font(.pvCaption)
+                .accessibilityIdentifier("localLibraryServerUsage")
+            LabeledContent(
+                "Quota",
+                value: usage.quotaBytes.map(StorageStatsViewModel.format) ?? String(localized: "Unlimited")
+            )
+            .font(.pvCaption)
+            .accessibilityIdentifier("localLibraryServerQuota")
+        case .unavailable(let message):
+            LabeledContent("Usage", value: String(localized: "Unavailable"))
+                .font(.pvCaption)
+                .accessibilityIdentifier("localLibraryServerUsage")
+            LabeledContent("Quota", value: String(localized: "Unavailable"))
+                .font(.pvCaption)
+                .accessibilityIdentifier("localLibraryServerQuota")
+            InlineErrorBadge(message: message, retry: retry)
+                .accessibilityIdentifier("localLibraryServerUsageError")
+        case .notLoaded:
+            EmptyView()
+        }
     }
 }
 

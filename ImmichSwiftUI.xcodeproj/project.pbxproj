@@ -23,6 +23,7 @@
 		0677921A3C54CB8BDE59DE0B /* UserApiKeysViewModelTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = DA925AEE6500059250BC7F87 /* UserApiKeysViewModelTests.swift */; };
 		07041123CAC97BCCBEB562EC /* BackupLiveActivityViews.swift in Sources */ = {isa = PBXBuildFile; fileRef = 725D3F5E5180F06E75E7B429 /* BackupLiveActivityViews.swift */; };
 		07337934F3A40C2673B6EF97 /* LocalLibraryViewModelTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4F01FAA3706DC786C277026D /* LocalLibraryViewModelTests.swift */; };
+		4B8D2F6A90C1E37354A8D1B2 /* immich_stub_account_storage.py in Resources */ = {isa = PBXBuildFile; fileRef = 7E3A91C4D2B5F60811A9C3E7 /* immich_stub_account_storage.py */; };
 		078AE5EE5A8BF75A6C92E947 /* immich_stub_app_utilities.py in Resources */ = {isa = PBXBuildFile; fileRef = E1CC7019BA3B4C01BC01F2B0 /* immich_stub_app_utilities.py */; };
 		07914DCB1519FAA42A0A9618 /* TrustEvaluatingURLSessionDelegate.swift in Sources */ = {isa = PBXBuildFile; fileRef = DCAE470CA70136D8F3AE85C5 /* TrustEvaluatingURLSessionDelegate.swift */; };
 		079B55DBDBAD0F58D94AFF9C /* AlbumDetailViewModelTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4D1D0D3443CFFD1BCEE6F042 /* AlbumDetailViewModelTests.swift */; };
@@ -32,6 +33,7 @@
 		098CAB464AE9EC30AB1FC1F5 /* FolderViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7FB6CA8A5ED9BE97FD3EA258 /* FolderViewModel.swift */; };
 		09DA908F7892B39C53475F79 /* MediaStatsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 50CEA9A5030B894B925B89E1 /* MediaStatsView.swift */; };
 		0A7919E235A4612EECF4A086 /* SyncStatusViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3D23B32B0944E1019580A8AE /* SyncStatusViewModel.swift */; };
+		2D6F8B1E4A7C93500B3E5F81 /* AccountStorageUITests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9C17E5A3B8D40F2661E4A7C9 /* AccountStorageUITests.swift */; };
 		0AFE2D96811EBD78DCBE78CC /* AppUtilitiesUITests.swift in Sources */ = {isa = PBXBuildFile; fileRef = F12E4D5D4AEA776F68BF61B6 /* AppUtilitiesUITests.swift */; };
 		0B037D2F7B63AF379A4519FF /* QRServerConfigParserTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 810ED37F0064772463A9C120 /* QRServerConfigParserTests.swift */; };
 		0B1E36D253FF5663C799F7D9 /* PVButtonStyle.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0C579043BE4F6A7E408B4907 /* PVButtonStyle.swift */; };
@@ -1092,6 +1094,7 @@
 		E0C5622078B43FA6711CE218 /* PeopleViewModelTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PeopleViewModelTests.swift; sourceTree = "<group>"; };
 		E1208877397F4626C85572F2 /* immich_stub_ocr_text.py */ = {isa = PBXFileReference; lastKnownFileType = text.script.python; path = immich_stub_ocr_text.py; sourceTree = "<group>"; };
 		E1AA87F48D62D60B47706199 /* RoadTripMapSegment.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RoadTripMapSegment.swift; sourceTree = "<group>"; };
+		7E3A91C4D2B5F60811A9C3E7 /* immich_stub_account_storage.py */ = {isa = PBXFileReference; lastKnownFileType = text.script.python; path = immich_stub_account_storage.py; sourceTree = "<group>"; };
 		E1CC7019BA3B4C01BC01F2B0 /* immich_stub_app_utilities.py */ = {isa = PBXFileReference; lastKnownFileType = text.script.python; path = immich_stub_app_utilities.py; sourceTree = "<group>"; };
 		E29CC6F1E097FB8CD0BB41CB /* ProfilePictureViewModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ProfilePictureViewModel.swift; sourceTree = "<group>"; };
 		E2F95250B0055E6099674D4D /* PhotoInfoPanel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PhotoInfoPanel.swift; sourceTree = "<group>"; };
@@ -1117,6 +1120,7 @@
 		EFAA3C714B2F0D7284D3FA95 /* Localizable.xcstrings */ = {isa = PBXFileReference; lastKnownFileType = text.json.xcstrings; path = Localizable.xcstrings; sourceTree = "<group>"; };
 		F0811A00478B347A7005063B /* WhatsNewUITests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WhatsNewUITests.swift; sourceTree = "<group>"; };
 		F0E30393E5D0F3117FF5809E /* CreateAlbumSheet.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CreateAlbumSheet.swift; sourceTree = "<group>"; };
+		9C17E5A3B8D40F2661E4A7C9 /* AccountStorageUITests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AccountStorageUITests.swift; sourceTree = "<group>"; };
 		F12E4D5D4AEA776F68BF61B6 /* AppUtilitiesUITests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppUtilitiesUITests.swift; sourceTree = "<group>"; };
 		F16A79F9A783199F79D584A3 /* AlbumSyncServicing.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AlbumSyncServicing.swift; sourceTree = "<group>"; };
 		F240124D8EA51284282B0685 /* CleanupSettingsStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CleanupSettingsStore.swift; sourceTree = "<group>"; };
@@ -1892,6 +1896,7 @@
 				155A75580B734AE221CD3AF3 /* immich_stub_album_pagination_three_pages.py */,
 				D2AA2B31DD2DDAA7AC961CC4 /* immich_stub_album_pagination.py */,
 				4FF1B91E9C4417E215CF8D26 /* immich_stub_album_sync.py */,
+				7E3A91C4D2B5F60811A9C3E7 /* immich_stub_account_storage.py */,
 				E1CC7019BA3B4C01BC01F2B0 /* immich_stub_app_utilities.py */,
 				BBF6CB2BADD7C5BABCD243EA /* immich_stub_archive.py */,
 				1B949AE38E1E59FD0B8922B1 /* immich_stub_base.py */,
@@ -2001,6 +2006,7 @@
 				0FEA7C783D9158AD24B26DAC /* AlbumPaginationUITests.swift */,
 				B9CF0B790615363896DCC617 /* AlbumSyncUITests.swift */,
 				3FC0D63F249A1B765BDEFDE1 /* AppLockUITests.swift */,
+				9C17E5A3B8D40F2661E4A7C9 /* AccountStorageUITests.swift */,
 				F12E4D5D4AEA776F68BF61B6 /* AppUtilitiesUITests.swift */,
 				2A1531C60F36C47F188E6197 /* ArchiveUITests.swift */,
 				A66EE0FA03EC9D631FC0795C /* ChangePasswordUITests.swift */,
@@ -2398,6 +2404,7 @@
 				502B0CD0B1EBD1416199E0DD /* immich_stub_album_pagination.py in Resources */,
 				8EE5B0DA7028F75A1265069C /* immich_stub_album_pagination_three_pages.py in Resources */,
 				D95AFA1D1289A6BD8EF5E2D7 /* immich_stub_album_sync.py in Resources */,
+				4B8D2F6A90C1E37354A8D1B2 /* immich_stub_account_storage.py in Resources */,
 				078AE5EE5A8BF75A6C92E947 /* immich_stub_app_utilities.py in Resources */,
 				EF937EDA299E4EC2A272D51B /* immich_stub_archive.py in Resources */,
 				BDCE810E91B275B20F82A24B /* immich_stub_base.py in Resources */,
@@ -2613,6 +2620,7 @@
 				F15E5A4EE0F95A36206DE8DB /* AlbumPaginationUITests.swift in Sources */,
 				8C135C7B90E587648F9339D1 /* AlbumSyncUITests.swift in Sources */,
 				68B39B89B2D5E1286E5757A0 /* AppLockUITests.swift in Sources */,
+				2D6F8B1E4A7C93500B3E5F81 /* AccountStorageUITests.swift in Sources */,
 				0AFE2D96811EBD78DCBE78CC /* AppUtilitiesUITests.swift in Sources */,
 				B7F3BF2B6D9A909739FCD271 /* ArchiveUITests.swift in Sources */,
 				D54B53807EAA96C47323C18F /* ChangePasswordUITests.swift in Sources */,

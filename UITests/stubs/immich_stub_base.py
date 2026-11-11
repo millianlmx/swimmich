@@ -143,9 +143,10 @@ LOGIN = {
     "shouldChangePassword": False, "isOnboarded": True,
 }
 
-# `GET /api/server/statistics` — the storage card of the "Me" hub, which is how a
-# scenario reaches a feature screen. Without it the card decodes `[]` into a DTO
-# and paints a red "typeMismatch" banner across every hub screenshot (measured).
+# `GET /api/server/statistics` — the instance totals, read by the Administration
+# screen only (without a route the shell's `[]` decodes into nothing there).
+# Kept for that screen: the Me hub, Media Stats and "On this device" read
+# `ASSET_STATS` and `/api/users/me` instead.
 STATS = {
     "photos": 128, "videos": 7,
     "usage": 3221225472, "usagePhotos": 2684354560, "usageVideos": 536870912,
@@ -155,6 +156,11 @@ STATS = {
         "quotaSizeInBytes": ME_USER["quotaSizeInBytes"],
     }],
 }
+
+# `GET /api/assets/statistics` — the calling account's own counts. `total` exceeds
+# `images + videos` on purpose (audio and other media): a screen that displayed it
+# would give itself away.
+ASSET_STATS = {"images": 128, "videos": 7, "total": 140}
 
 PROVIDER_HTML = """<!doctype html>
 <html><head><meta name="viewport" content="width=device-width,initial-scale=1">
@@ -401,10 +407,22 @@ class Router:
 # time and the handler consults it on every request.
 router = Router()
 
+
+@router.get("/api/assets/statistics")
+def asset_statistics(req):
+    """The account's own counts (Me hub, Media Stats, On this device).
+
+    On the ROUTER, not in `_shell`: the exact path is consulted before any
+    `prefix("GET", "/api/assets/")` of a feature stub, and before the shell's
+    `GET /api/assets/<x>` fallback, which would read `statistics` as an asset id
+    and answer an `AssetResponseDto`. A feature stub overrides it by registering
+    the same exact path."""
+    return Response(ASSET_STATS)
+
 BASE_ENDPOINTS = [
     "POST /api/oauth/authorize", "POST /api/oauth/callback", "POST /api/auth/logout",
     "GET /api/server/ping", "GET /api/server/version", "GET /api/server/config",
-    "GET /api/server/statistics",
+    "GET /api/server/statistics", "GET /api/assets/statistics",
     "GET /api/users/me", "GET /api/users",
     "GET /api/timeline/buckets", "GET /api/timeline/bucket",
     "GET /api/assets/{id}", "GET /api/assets/{id}/thumbnail", "GET /api/assets/{id}/original",

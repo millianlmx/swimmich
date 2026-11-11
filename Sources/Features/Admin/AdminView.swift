@@ -26,6 +26,7 @@ struct AdminView: View {
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
             } else {
                 List {
+                    instanceStatsSection
                     usersSection
                     jobsSection
                     librariesSection
@@ -36,7 +37,12 @@ struct AdminView: View {
         .navigationTitle("Admin")
         .navigationBarTitleDisplayMode(.inline)
         .task { await vm.load() }
-        .refreshable { await vm.load(force: true) }
+        .task { await vm.loadInstanceStats() }
+        .refreshable {
+            async let stats: Void = vm.loadInstanceStats()
+            await vm.load(force: true)
+            await stats
+        }
         .alert("New User", isPresented: $showCreateUser) {
             TextField("Name", text: $newUserName)
             TextField("Email", text: $newUserEmail)
@@ -68,6 +74,35 @@ struct AdminView: View {
                 if let l = pendingDeleteLibrary { Task { await vm.deleteLibrary(l) } }
             }
             Button("Cancel", role: .cancel) {}
+        }
+    }
+
+    // MARK: - Instance statistics
+
+    /// Instance-wide totals (`GET /api/server/statistics`, administrators only).
+    /// Read on its own: a failure here shows its badge and leaves users, jobs and
+    /// libraries untouched.
+    @ViewBuilder
+    private var instanceStatsSection: some View {
+        Section {
+            if vm.isLoadingInstanceStats && vm.instanceStats == nil {
+                ProgressView()
+                    .accessibilityIdentifier("adminInstanceStatsLoading")
+            }
+            if let stats = vm.instanceStats {
+                LabeledContent("Photos", value: stats.photos.formatted())
+                    .accessibilityIdentifier("adminInstancePhotos")
+                LabeledContent("Videos", value: stats.videos.formatted())
+                    .accessibilityIdentifier("adminInstanceVideos")
+                LabeledContent("Usage", value: StorageStatsViewModel.format(Int64(stats.usage)))
+                    .accessibilityIdentifier("adminInstanceUsage")
+            }
+            if let error = vm.instanceStatsError {
+                InlineErrorBadge(message: error) { Task { await vm.loadInstanceStats() } }
+                    .accessibilityIdentifier("adminInstanceStatsError")
+            }
+        } header: {
+            Text("Instance Statistics")
         }
     }
 

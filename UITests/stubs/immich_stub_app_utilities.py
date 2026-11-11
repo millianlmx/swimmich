@@ -20,9 +20,10 @@ THREE ADDITIONS, EACH CARRYING ONE ASSERTION
   noted on the wire, never the token itself, so the stub keeps no copy either.
   A diagnostic surface that showed it would be the leak the card's AC-5248
   forbids.
-* `GET /api/server/statistics` answers counters that exist nowhere else (4242
-  photos, 7317 videos, a 5 GiB quota): a Media Stats screen showing them read the
-  wire rather than printing a plausible constant.
+* `GET /api/assets/statistics` answers the account's counters, which exist nowhere
+  else (4242 photos, 7317 videos): a Media Stats screen showing them read the
+  wire rather than printing a plausible constant. (`/api/server/statistics`, the
+  instance totals, belongs to the Administration screen and is not served here.)
 * `GET /control/statistics?fail=1|0` arms a 500 on the route above, and that is
   the only way to get a second LEVEL into the log without inventing one: the
   transport maps a 5xx to `severe` (`entry(for:)`), so the level filter's
@@ -51,16 +52,8 @@ STATE.setdefault(FAILING, False)
 
 # Distinctive by construction: 4242 and 7317 come from this file and from
 # nowhere else, so a screen showing them is a screen that read the wire.
-STATS = {
-    "photos": 4242, "videos": 7317,
-    "usage": 5368709120, "usagePhotos": 4294967296, "usageVideos": 1073741824,
-    "usageByUser": [{
-        "userId": LOGIN["userId"], "userName": LOGIN["name"],
-        "photos": 4242, "videos": 7317,
-        "usage": 5368709120, "usagePhotos": 4294967296, "usageVideos": 1073741824,
-        "quotaSizeInBytes": 5368709120,
-    }],
-}
+# `total` exceeds the sum (audio and other media): it is never what is shown.
+ASSET_STATS = {"images": 4242, "videos": 7317, "total": 11559}
 
 
 @router.reset
@@ -82,15 +75,15 @@ def control_statistics(req):
     return Response({"statistics_failing": STATE[FAILING]})
 
 
-@router.get("/api/server/statistics")
+@router.get("/api/assets/statistics")
 def statistics(req):
-    """The counters — or the failure that gives the log its second level."""
+    """The account's counters — or the failure that gives the log its second level."""
     if STATE[FAILING]:
         return Response(
             {"error": "Internal Server Error", "message": "stub: statistics are down"},
             status=500)
     req.note(bearerMatches=req.headers.get("Authorization") == f"Bearer {TOKEN}")
-    return Response(STATS)
+    return Response(ASSET_STATS)
 
 
 if __name__ == "__main__":
