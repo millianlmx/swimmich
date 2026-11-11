@@ -11,6 +11,7 @@ struct TimelineFilterCapture: Equatable {
     let visibility: String?
     let withStacked: Bool?
     let orderBy: AssetOrderBy?
+    var tagId: String? = nil
 }
 
 /// One `getPeople` request, comparable in tests.
@@ -185,6 +186,10 @@ final class MockImmichClient: ImmichClient, @unchecked Sendable {
     var lastTimeBucketsFilters: TimelineFilterCapture?
     /// Every `getTimeBucket` call in order: the month and the filters sent.
     var timeBucketCalls: [(timeBucket: String, filters: TimelineFilterCapture)] = []
+    var lastTimeBucketsTagId: String?
+    /// Errors thrown, one per call and in order, by the matching route — before `globalError`.
+    var timeBucketsErrorQueue: [Error] = []
+    var timeBucketErrorQueue: [Error] = []
     var lastRestoreTrashAssetsIds: [String]?
     var restoreTrashAssetsResponse: TrashResponseDto?
     var restoreTrashAssetsError: Error?
@@ -489,7 +494,8 @@ final class MockImmichClient: ImmichClient, @unchecked Sendable {
         withPartners: Bool?,
         visibility: String?,
         withStacked: Bool?,
-        orderBy: AssetOrderBy?
+        orderBy: AssetOrderBy?,
+        tagId: String?
     ) async throws -> [TimeBucketsResponseDto] {
         bump()
         lastTimeBucketsIsTrashed = isTrashed
@@ -498,11 +504,13 @@ final class MockImmichClient: ImmichClient, @unchecked Sendable {
         lastTimeBucketsWithPartners = withPartners
         lastTimeBucketsWithStacked = withStacked
         lastTimeBucketsOrderBy = orderBy
+        lastTimeBucketsTagId = tagId
         lastTimeBucketsFilters = TimelineFilterCapture(
             isFavorite: isFavorite, isTrashed: isTrashed, personId: personId,
             withPartners: withPartners, visibility: visibility,
-            withStacked: withStacked, orderBy: orderBy
+            withStacked: withStacked, orderBy: orderBy, tagId: tagId
         )
+        if !timeBucketsErrorQueue.isEmpty { throw timeBucketsErrorQueue.removeFirst() }
         if let e = globalError { throw e }
         return bucketsResponse
     }
@@ -515,7 +523,8 @@ final class MockImmichClient: ImmichClient, @unchecked Sendable {
         withPartners: Bool?,
         visibility: String?,
         withStacked: Bool?,
-        orderBy: AssetOrderBy?
+        orderBy: AssetOrderBy?,
+        tagId: String?
     ) async throws -> TimeBucketAssetResponseDto {
         bump()
         lastTimeBucketIsFavorite = isFavorite
@@ -527,8 +536,9 @@ final class MockImmichClient: ImmichClient, @unchecked Sendable {
         timeBucketCalls.append((timeBucket: timeBucket, filters: TimelineFilterCapture(
             isFavorite: isFavorite, isTrashed: isTrashed, personId: personId,
             withPartners: withPartners, visibility: visibility,
-            withStacked: withStacked, orderBy: orderBy
+            withStacked: withStacked, orderBy: orderBy, tagId: tagId
         )))
+        if !timeBucketErrorQueue.isEmpty { throw timeBucketErrorQueue.removeFirst() }
         if let e = globalError { throw e }
         return bucketResponses[timeBucket] ?? TimeBucketAssetResponseDto(
             id: [], ownerId: [], ratio: [], isFavorite: [], visibility: [], isTrashed: [],
@@ -1356,6 +1366,12 @@ final class MockImmichClient: ImmichClient, @unchecked Sendable {
     var tagsResponse: [TagResponseDto]?
     var tagsError: Error?
     var lastCreateTagName: String?
+    /// Every `createTag` call, recorded before any error is thrown.
+    private(set) var createTagCalls: [(name: String, color: String?, parentId: String?)] = []
+    /// Fails `createTag` only (after `globalError ?? tagsError`).
+    var createTagError: Error?
+    var createTagResponse: TagResponseDto?
+    private(set) var getAllTagsCallCount = 0
     var lastUpdateTagId: String?
     var lastDeleteTagId: String?
     var lastTagAssetsTagId: String?
@@ -1365,15 +1381,17 @@ final class MockImmichClient: ImmichClient, @unchecked Sendable {
 
     func getAllTags() async throws -> [TagResponseDto] {
         bump()
+        lock.lock(); getAllTagsCallCount += 1; lock.unlock()
         if let e = globalError ?? tagsError { throw e }
         return tagsResponse ?? []
     }
 
-    func createTag(name: String, color: String?) async throws -> TagResponseDto {
+    func createTag(name: String, color: String?, parentId: String?) async throws -> TagResponseDto {
         bump()
         lastCreateTagName = name
-        if let e = globalError ?? tagsError { throw e }
-        return TagResponseDto(id: "tag-new", name: name, value: name, color: color)
+        lock.lock(); createTagCalls.append((name: name, color: color, parentId: parentId)); lock.unlock()
+        if let e = globalError ?? tagsError ?? createTagError { throw e }
+        return createTagResponse ?? TagResponseDto(id: "tag-new", name: name, value: name, color: color, parentId: parentId)
     }
 
     func updateTag(id: String, color: String?) async throws -> TagResponseDto {

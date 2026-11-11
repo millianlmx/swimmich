@@ -6110,6 +6110,34 @@
         }
       }
     },
+    "No parent" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Kein übergeordneter Tag"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Sin etiqueta principal"
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Aucun parent"
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Nessuna etichetta principale"
+          }
+        }
+      }
+    },
     "No photos match this filter" : {
       "localizations" : {
         "fr" : {
@@ -6134,6 +6162,34 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Nessuna foto corrisponde a questo filtro"
+          }
+        }
+      }
+    },
+    "No photos with this tag" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Keine Fotos mit diesem Tag"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "No hay fotos con esta etiqueta"
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Aucune photo avec ce tag"
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Nessuna foto con questa etichetta"
           }
         }
       }
@@ -6950,6 +7006,34 @@
         }
       }
     },
+    "Parent tag" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Übergeordneter Tag"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Etiqueta principal"
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Tag parent"
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Etichetta principale"
+          }
+        }
+      }
+    },
     "PIN" : {
       "localizations" : {
         "fr" : {
@@ -7226,6 +7310,34 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Le foto che aggiungi al server appariranno qui."
+          }
+        }
+      }
+    },
+    "Photos you add to this tag appear here." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Fotos, die du diesem Tag hinzufügst, erscheinen hier."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Las fotos que añadas a esta etiqueta aparecen aquí."
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Les photos ajoutées à ce tag apparaissent ici."
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Le foto che aggiungi a questa etichetta appaiono qui."
           }
         }
       }

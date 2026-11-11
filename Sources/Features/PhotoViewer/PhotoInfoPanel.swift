@@ -269,6 +269,7 @@ struct PhotoInfoPanel: View {
                     .font(.pvBody.weight(.medium))
                     .foregroundStyle(Color.textPrimaryPV)
                     .buttonStyle(.plain)
+                    .accessibilityIdentifier("editTagsButton")
                     .padding(.vertical, PVSpacing.s4)
                 }
             }

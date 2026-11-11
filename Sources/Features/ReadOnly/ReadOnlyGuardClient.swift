@@ -124,7 +124,8 @@ final class ReadOnlyGuardClient: ImmichClient {
         withPartners: Bool?,
         visibility: String?,
         withStacked: Bool?,
-        orderBy: AssetOrderBy?
+        orderBy: AssetOrderBy?,
+        tagId: String?
     ) async throws -> [TimeBucketsResponseDto] {
         try await inner.getTimeBuckets(
             isFavorite: isFavorite,
@@ -133,7 +134,8 @@ final class ReadOnlyGuardClient: ImmichClient {
             withPartners: withPartners,
             visibility: visibility,
             withStacked: withStacked,
-            orderBy: orderBy
+            orderBy: orderBy,
+            tagId: tagId
         )
     }
 
@@ -145,7 +147,8 @@ final class ReadOnlyGuardClient: ImmichClient {
         withPartners: Bool?,
         visibility: String?,
         withStacked: Bool?,
-        orderBy: AssetOrderBy?
+        orderBy: AssetOrderBy?,
+        tagId: String?
     ) async throws -> TimeBucketAssetResponseDto {
         try await inner.getTimeBucket(
             timeBucket: timeBucket,
@@ -155,7 +158,8 @@ final class ReadOnlyGuardClient: ImmichClient {
             withPartners: withPartners,
             visibility: visibility,
             withStacked: withStacked,
-            orderBy: orderBy
+            orderBy: orderBy,
+            tagId: tagId
         )
     }
 
@@ -354,9 +358,9 @@ final class ReadOnlyGuardClient: ImmichClient {
         try await inner.getAllTags()
     }
 
-    func createTag(name: String, color: String?) async throws -> TagResponseDto {
+    func createTag(name: String, color: String?, parentId: String?) async throws -> TagResponseDto {
         try assertWritable()
-        return try await inner.createTag(name: name, color: color)
+        return try await inner.createTag(name: name, color: color, parentId: parentId)
     }
 
     func updateTag(id: String, color: String?) async throws -> TagResponseDto {
