@@ -4,7 +4,7 @@ import XCTest
 
 /// Lot L-02 — albums: the real owner (v2.x and v3+), edition by editors
 /// depending on the server version, and the owner's sort order. Own
-/// numbering (parity feature AC-7…AC-11, AC-67…AC-70), kept apart from the
+/// numbering (parity feature AC-7…AC-11, AC-81…AC-84), kept apart from the
 /// older `AlbumDetailViewModelTests` numbering.
 @MainActor
 final class AlbumRolesAndOrderTests: XCTestCase {
@@ -197,9 +197,9 @@ final class AlbumRolesAndOrderTests: XCTestCase {
         XCTAssertEqual(mock2.getAlbumsSharedArgs, [nil], "the mirror keeps the unfiltered list")
     }
 
-    // MARK: - AC-67 (v3 owner sheet + sync, viewer never reused)
+    // MARK: - AC-81 (v3 owner sheet + sync, viewer never reused)
 
-    func test_AC_67_v3OwnerSheetAndSyncPickOwnedAlbum() async throws {
+    func test_AC_81_v3OwnerSheetAndSyncPickOwnedAlbum() async throws {
         let theirs = album(id: "srv-theirs", name: "Vacances", users: [entry("tom", .owner), entry(me, .editor)])
         let mine = album(id: "srv-mine", name: "Vacances", users: [entry(me, .owner), entry("eve", .editor)])
 
@@ -223,7 +223,7 @@ final class AlbumRolesAndOrderTests: XCTestCase {
         XCTAssertEqual(syncMock.addAssetsToAlbumCalls.map { $0.albumId }, ["srv-mine"])
     }
 
-    func test_AC_67_v3ViewerSameNameAlbumNotReused() async throws {
+    func test_AC_81_v3ViewerSameNameAlbumNotReused() async throws {
         let mock = MockImmichClient()
         mock.albumsResponse = [album(id: "srv-theirs", name: "Vacances", users: [entry("tom", .owner), entry(me, .viewer)])]
         mock.createAlbumResponse = album(id: "srv-created", name: "Vacances", users: [entry(me, .owner)])
@@ -232,7 +232,7 @@ final class AlbumRolesAndOrderTests: XCTestCase {
         XCTAssertEqual(map, ["dev-vac": "srv-created"])
     }
 
-    func test_AC_67_v3EditorSeatIsAFallbackWhenNothingIsOwned() async throws {
+    func test_AC_81_v3EditorSeatIsAFallbackWhenNothingIsOwned() async throws {
         let mock = MockImmichClient()
         mock.albumsResponse = [album(id: "srv-theirs", name: "Vacances", users: [entry("tom", .owner), entry(me, .editor)])]
         let map = try await resolve(makeSyncService(), mock: mock)
@@ -240,9 +240,9 @@ final class AlbumRolesAndOrderTests: XCTestCase {
         XCTAssertTrue(mock.createdAlbumNames.isEmpty)
     }
 
-    // MARK: - AC-68 (photo share picker)
+    // MARK: - AC-82 (photo share picker)
 
-    func test_AC_68_photoSharePickerExcludesSignedInUser() async {
+    func test_AC_82_photoSharePickerExcludesSignedInUser() async {
         let mock = MockImmichClient()
         mock.getUsersResponse = [user(me), user("partner"), user("other")]
         let item = AssetReactItem(
@@ -265,7 +265,7 @@ final class AlbumRolesAndOrderTests: XCTestCase {
         XCTAssertEqual(unknown.users.count, 3, "without a current user nothing is filtered")
     }
 
-    // MARK: - AC-9 / AC-10 / AC-69 (editing by role and server version)
+    // MARK: - AC-9 / AC-10 / AC-83 (editing by role and server version)
 
     func test_AC_9_editorOnV3SavesTitleAndDescription() async {
         let a = album(users: [entry("carol", .owner), entry(me, .editor)])
@@ -289,7 +289,7 @@ final class AlbumRolesAndOrderTests: XCTestCase {
         XCTAssertTrue(vm.allowedActions(on: .albumMenu, currentUserId: me, fallback: a).isEmpty)
     }
 
-    func test_AC_69_editMatrixByRoleAndVersion() async {
+    func test_AC_83_editMatrixByRoleAndVersion() async {
         let editorAlbum = album(ownerId: "carol", owner: user("carol"), users: [entry(me, .editor)])
         let viewerAlbum = album(users: [entry("carol", .owner), entry(me, .viewer)])
         let ownerAlbum = album(ownerId: me, owner: user(me), users: [entry("eve", .editor)])
@@ -336,12 +336,12 @@ final class AlbumRolesAndOrderTests: XCTestCase {
         XCTAssertEqual(ownerMock.lastUpdateAlbumDto?.isActivityEnabled, false)
     }
 
-    func test_AC_69_canToggleActivityIsFalseBeforeAlbumLoads() {
+    func test_AC_83_canToggleActivityIsFalseBeforeAlbumLoads() {
         let vm = AlbumDetailViewModel(client: MockImmichClient(), albumId: "alb")
         XCTAssertFalse(vm.canToggleActivity(currentUserId: me))
     }
 
-    func test_AC_69_versionComparison() {
+    func test_AC_83_versionComparison() {
         XCTAssertTrue(version(2, 6, 2).isAtLeast(major: 2, minor: 6, patch: 2))
         XCTAssertTrue(version(2, 7, 5).isAtLeast(major: 2, minor: 6, patch: 2))
         XCTAssertTrue(version(3, 0, 0).isAtLeast(major: 2, minor: 6, patch: 2))
@@ -350,7 +350,7 @@ final class AlbumRolesAndOrderTests: XCTestCase {
         XCTAssertFalse(version(1, 120, 9).isAtLeast(major: 2, minor: 6, patch: 2))
     }
 
-    func test_AC_69_v2ListIncludesSharedWithMe() async {
+    func test_AC_83_v2ListIncludesSharedWithMe() async {
         let mock = MockImmichClient()
         let owned = album(id: "A", name: "Mine", ownerId: me)
         let shared = album(id: "C", name: "Carol's", ownerId: "carol", users: [entry(me, .editor)])
@@ -371,7 +371,7 @@ final class AlbumRolesAndOrderTests: XCTestCase {
         XCTAssertNotNil(vm.loadErrorMessage)
     }
 
-    func test_AC_69_v3IdenticalListsYieldTheFirstListUnchanged() async {
+    func test_AC_83_v3IdenticalListsYieldTheFirstListUnchanged() async {
         let mock = MockImmichClient()
         let all = [album(id: "B", name: "B"), album(id: "A", name: "A")]
         mock.albumsResponse = all
@@ -381,7 +381,7 @@ final class AlbumRolesAndOrderTests: XCTestCase {
         XCTAssertEqual(vm.albums.map(\.id), ["B", "A"])
     }
 
-    // MARK: - AC-11 / AC-70 (sort order)
+    // MARK: - AC-11 / AC-84 (sort order)
 
     func test_AC_11_ownerSetsOldestFirstAndGridReloads() async {
         let a = album(ownerId: me, owner: user(me))
@@ -407,7 +407,7 @@ final class AlbumRolesAndOrderTests: XCTestCase {
         XCTAssertEqual(vm2.assets.map(\.id), ["old", "new"])
     }
 
-    func test_AC_70_orderDefaultFailureAndOwnerOnly() async {
+    func test_AC_84_orderDefaultFailureAndOwnerOnly() async {
         let a = album(ownerId: me, owner: user(me))
         let (vm, mock) = await loadedVM(a, userId: me, assets: ["x", "y"])
         XCTAssertEqual(vm.albumOrder, .desc, "a server that sends no order reads as newest first")
@@ -438,7 +438,7 @@ final class AlbumRolesAndOrderTests: XCTestCase {
         XCTAssertTrue(AlbumDetailPermissions(album: a, userId: me).allowedActions(on: .albumMenu).contains(.changeOrder))
     }
 
-    func test_AC_70_serverEchoWithoutOrderStillReflectsTheChoice() async {
+    func test_AC_84_serverEchoWithoutOrderStillReflectsTheChoice() async {
         let a = album(ownerId: me, owner: user(me))
         let (vm, mock) = await loadedVM(a, userId: me)
         mock.updateAlbumResponse = album(ownerId: me, owner: user(me), order: nil)
