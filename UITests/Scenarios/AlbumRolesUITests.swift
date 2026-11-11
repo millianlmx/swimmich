@@ -104,9 +104,9 @@ final class AlbumRolesUITests: XCTestCase {
         XCTAssertFalse(element("albumEditAction").exists, "an editor on 2.6.1 must not be offered the edit action")
     }
 
-    // MARK: - AC-83
+    // MARK: - AC-84
 
-    func test_AC_83() {
+    func test_AC_84() {
         startApp(version: "2.6.2")
         openAlbumsTab()
         openCard(carolEditable)   // listed through GET /api/albums?shared=true
