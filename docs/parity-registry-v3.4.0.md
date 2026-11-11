@@ -39,7 +39,7 @@ Vocabulaire. Statut d'une fonction : `présent`, `partiel`, `absent` ou `hors p�
 | F-04.2 | Pinch-to-zoom + double-tap zoom (zoom maximal fixe à 4×, non borné par les pixels) | partiel | docs §4 ; PR #32423 (v3.4.0) | Sources/Features/PhotoViewer/ZoomableImageView.swift:6-7 (MagnifyGesture 1–4×, double-tap 1×↔3×), Sources/Features/PhotoViewer/ZoomableImageView.swift:50-51 (bornes fixes) | B-10 |
 | F-04.3 | Filmstrip en bas pour navigation rapide | présent | docs §4 | Sources/Features/PhotoViewer/PhotoViewer.swift:868-921 (filmstrip), Sources/Features/PhotoViewer/PhotoViewer.swift:425 | — |
 | F-04.4 | Lecture vidéo avec contrôles (`video.page.dart`) | présent | docs §4 ; `VideoRoute` | Sources/Features/PhotoViewer/VideoPlayerView.swift:5-7 | — |
-| F-04.5 | Formats image HEIC, HEIF, AVIF, JPEG, PNG, RAW, BMP, WEBP, GIF, SVG, TIFF, JP2, MPO, PSD (JPEG XL manquant) | partiel | docs §4 ; PR #32592 (v3.4.0) | Aucune table de formats : décodage ImageIO natif + aperçu serveur (Sources/Services/ImageDownsampler.swift:16-27), sniff HEIC (Sources/Services/PhotoLibraryServiceImpl.swift:139-142) ; JPEG XL non décodé | B-9 |
+| F-04.5 | Formats image HEIC, HEIF, AVIF, JPEG, PNG, RAW, BMP, WEBP, GIF, SVG, TIFF, JP2, MPO, PSD | présent | docs §4 ; PR #32592 (v3.4.0) | Aucune table de formats : décodage ImageIO natif (JPEG XL compris, `public.jpeg-xl`) + aperçu serveur ; Sources/Services/AuthenticatedAsyncImage.swift:188 (copie hors ligne et URL décodées par ImageIO, état `loaded <w>x<h>`), Sources/Services/PhotoLibraryServiceImpl.swift:142-152 (signature `jxl` reconnue aux octets), Sources/Services/AssetFileTransfer.swift:21 (`image/jxl` → `.jxl`) ; décodage JPEG XL non vérifié à l'exécution par le run qui a livré L-05 (poste sans simulateur), prouvé par `JpegXLDecodingTests` et `JpegXLUITests` | — |
 | F-04.6 | Formats vidéo MP4, MOV, MKV, AVI, FLV, M4V, WebM, WMV, 3GP, M2TS (parité par transcodage serveur, non vérifié à l'exécution) | présent | docs §4 ; `mobile/lib/utils/image_url_builder.dart@v3.4.0` (`/video/playback`, transcodage serveur) | Sources/Features/PhotoViewer/VideoPlayerView.swift:46 (lecture AVFoundation de l'URL du serveur) | — |
 | F-04.7 | Exif affiché dans les détails | présent | docs §4 | Sources/Features/PhotoViewer/PhotoInfoPanel.swift:356-403 (ExifInfoPanel), Sources/Core/Utilities/ExifDisplayFormatter.swift:48-62 | — |
 | F-04.8 | Indicateur de statut cloud sur la tuile | présent | docs §4 | Sources/Features/Timeline/AssetThumbnailCell.swift:275-290 (cloudBadge) | — |
@@ -214,7 +214,7 @@ Vocabulaire. Statut d'une fonction : `présent`, `partiel`, `absent` ou `hors p�
 | R-ArchiveRoute | Archive | présent | `mobile/lib/routing/router.dart@v3.4.0` | Sources/Features/Timeline/TimelineViewModel.swift:631 | — |
 | R-AssetSelectionTimelineRoute | Timeline de sélection d'assets | présent | `mobile/lib/routing/router.dart@v3.4.0` | Sources/Features/Timeline/AssetMultiSelectGrid.swift:13 | — |
 | R-AssetTroubleshootRoute | Diagnostic d'un asset | présent | `mobile/lib/routing/router.dart@v3.4.0` | Sources/Features/AppUtilities/AssetTroubleshootView.swift:12 | — |
-| R-AssetViewerRoute | Visionneuse d'asset | partiel | `mobile/lib/routing/router.dart@v3.4.0` ; PR #32592, #32423, #31609 (v3.3.0 et v3.4.0) | Sources/Features/PhotoViewer/PhotoViewer.swift:236 (pas de JPEG XL, zoom fixe à 4×, ouverture sans zoom depuis la vignette : Sources/Features/PhotoViewer/PhotoViewer.swift:159) | B-9, B-10, B-18 |
+| R-AssetViewerRoute | Visionneuse d'asset | partiel | `mobile/lib/routing/router.dart@v3.4.0` ; PR #32592, #32423, #31609 (v3.3.0 et v3.4.0) | Sources/Features/PhotoViewer/PhotoViewer.swift:236 (JPEG XL décodé : Sources/Features/PhotoViewer/ZoomableImageView.swift:82 ; zoom fixe à 4× : Sources/Features/PhotoViewer/ZoomableImageView.swift:50-51 ; ouverture sans zoom depuis la vignette : Sources/Features/PhotoViewer/PhotoViewer.swift:159) | B-9, B-10, B-18 |
 | R-BackupAlbumSelectionRoute | Sélection des albums à sauvegarder | présent | `mobile/lib/routing/router.dart@v3.4.0` | Sources/Features/Upload/UploadViewModel.swift:828-831, Sources/Features/Upload/UploadViewModel.swift:1194-1199 | — |
 | R-BackupAssetDetailRoute | Photos de l'appareil qui restent à sauvegarder (`backup_asset_detail.page.dart`, router.dart:190) | partiel | `mobile/lib/pages/backup/backup_asset_detail.page.dart@v3.4.0` | Sources/Features/UploadDetail/UploadDetailView.swift:3-5, Sources/Features/UploadDetail/UploadDetailView.swift:141-161 (rapport du dernier passage : en cours, en attente, envoyés, échecs ; pas la liste du reste à sauvegarder) | B-37 |
 | R-BackupOptionsRoute | Options de sauvegarde | présent | `mobile/lib/routing/router.dart@v3.4.0` | Sources/Features/Upload/UploadViewModel.swift:616 | — |
@@ -302,7 +302,7 @@ Vocabulaire. Statut d'une fonction : `présent`, `partiel`, `absent` ou `hors p�
 | V-#32259 | Date des souvenirs dans la langue de l'app (sans « Invalid locale ») | hors périmètre | PR #32259 (v3.3.3–v3.3.6) | — | Exclu : non applicable — plantage de `intl` sur six langues absentes, propre à Flutter ; Swimmich n'expose que cinq langues : Sources/Features/Settings/AppLanguage.swift:28-34 |
 | V-#32485 | Traduction manquante « Manage access » | hors périmètre | PR #32485 (v3.3.3–v3.3.6) | — | Exclu : non applicable — web seulement : un seul fichier, web/src/lib/services/person.service.ts, aucun fichier mobile/ |
 | V-#32552 | Option de défilement fluide par curseur sur la timeline | présent | PR #32552 (v3.4.0) | Sources/Features/Timeline/TimelineScrubber.swift:98, Sources/Features/Settings/AppSettingsStore.swift:135 | — |
-| V-#32592 | Décodeur JPEG XL (cible JXL du serveur : PR #32732) | absent | PR #32592 (v3.4.0) | Sources/Services/ImageDownsampler.swift:16-30 (décodage ImageIO seul), Recherche locale : `jxl\|JXL\|JpegXL\|JPEG XL\|jpeg-xl` sur Sources ImmichWidgets ImmichShareExtension → 0 | B-9 |
+| V-#32592 | Décodeur JPEG XL (cible JXL du serveur : PR #32732) | présent | PR #32592 (v3.4.0) | Sources/Services/AuthenticatedAsyncImage.swift:188 (décodage ImageIO de la copie hors ligne et de l'URL), Sources/Services/AuthenticatedAsyncImage.swift:39-42 (sonde de test `-uiTestImageProbe`), Sources/Services/ImageDownsampler.swift:16-30 (sous-échantillonnage ImageIO d'un original `.jxl`) ; non vérifié à l'exécution par le run qui a livré L-05 | — |
 | V-#30753 | Tags sur mobile | présent | PR #30753 (v3.4.0) | Sources/Features/Tags/TagsView.swift:8-13, Sources/Features/Tags/TagsViewModel.swift:51-65, Sources/Features/PhotoViewer/AssetTagsSheet.swift:5-9 (hiérarchie parent / enfant, création sous un parent, photos d'un tag) | — |
 | V-#32423 | Zoom maximal borné par la taille de l'image en pixels | partiel | PR #32423 (v3.4.0) | Sources/Features/PhotoViewer/ZoomableImageView.swift:50-51 (4× fixe) | B-10 |
 | V-#32288 | Partager le journal depuis l'écran d'erreur de démarrage | partiel | PR #32288 (v3.4.0) | Sources/Features/AppUtilities/AppLogView.swift:52-55 (ShareLink du journal ; ni écran d'erreur de démarrage ni accès depuis la connexion) | B-32 |
@@ -463,9 +463,9 @@ Chaque écran principal a une ligne par aspect. « États » regroupe le chargem
 |---|---|---|---|---|---|
 | L-01 | Stockage du compte : chiffres propres à chaque utilisateur | B-3 | livré | 1b6a1767b38b | AC-5, AC-6, AC-67, AC-68, AC-69, AC-70, AC-71, AC-72, AC-73, AC-74, AC-75 |
 | L-02 | Albums : vrai propriétaire, édition par les éditeurs et ordre de tri | B-4, B-5, B-6 | planifié | — | — |
-| L-03 | Tags hiérarchiques | B-7 | livré | 9d9a7d4f015d | AC-12, AC-13, AC-76, AC-77, AC-78, AC-79, AC-80, AC-81 |
+| L-03 | Tags hiérarchiques | B-7 | livré | a5a5d8152e22 | AC-12, AC-13, AC-76, AC-77, AC-78, AC-79, AC-80, AC-81 |
 | L-04 | Timeline : curseur de défilement par date | B-8 | livré | 71b04a120142 | AC-14, AC-86, AC-87, AC-88, AC-89, AC-90, AC-91, AC-92, AC-93, AC-95, AC-96 |
-| L-05 | Affichage des photos JPEG XL | B-9 | planifié | — | — |
+| L-05 | Affichage des photos JPEG XL | B-9 | livré | 6866ff26de28 | AC-15, AC-97, AC-98, AC-99, AC-100, AC-101, AC-102, AC-103, AC-104, AC-105 |
 | L-06 | Visionneuse : zoom maximal selon la résolution de la photo | B-10 | planifié | — | — |
 | L-07 | Souvenirs : tous les types v3.3+, enchaînement et écran de fin | B-11, B-34 | planifié | — | — |
 | L-08 | Bibliothèque d'un partenaire | B-12 | planifié | — | — |
@@ -501,7 +501,7 @@ Chaque écran principal a une ligne par aspect. « États » regroupe le chargem
 - L-02 : AC-7, AC-8, AC-9, AC-10, AC-11
 - L-03 : AC-12, AC-13, AC-76, AC-77, AC-78, AC-79, AC-80, AC-81
 - L-04 : AC-14, AC-86, AC-87, AC-88, AC-89, AC-90, AC-91, AC-92, AC-93, AC-95, AC-96
-- L-05 : AC-15
+- L-05 : AC-15, AC-97, AC-98, AC-99, AC-100, AC-101, AC-102, AC-103, AC-104, AC-105
 - L-06 : AC-16
 - L-07 : AC-17, AC-60
 - L-08 : AC-18

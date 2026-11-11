@@ -416,7 +416,8 @@ final class ImmichAPIClient: ImmichClient, @unchecked Sendable {
         page: Int,
         size: Int
     ) async throws -> SearchResponseDto {
-        let dto = MetadataSearchDto(albumIds: [albumId], page: page, size: size)
+        // `withExif`: the viewer bounds its zoom by the photo's EXIF pixel size.
+        let dto = MetadataSearchDto(albumIds: [albumId], page: page, size: size, withExif: true)
         let response = try await sendSharedLinkRaw(
             .POST,
             path: ImmichAPI.search.path("/metadata"),

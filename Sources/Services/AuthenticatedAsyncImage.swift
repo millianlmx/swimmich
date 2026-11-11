@@ -1,5 +1,62 @@
 import SwiftUI
 
+/// What a loader has on screen, for tests (L-05). `placeholder` covers the
+/// shimmer, the thumbhash and a cached thumbnail shown while the real image
+/// is in flight; `loaded` carries the pixel size of the image actually decoded
+/// from the requested source.
+enum ImageLoadState: Equatable {
+    case placeholder
+    case loaded(pixelWidth: Int, pixelHeight: Int)
+    case failed
+
+    init(loaded image: UIImage) {
+        if let cg = image.cgImage {
+            self = .loaded(pixelWidth: cg.width, pixelHeight: cg.height)
+        } else {
+            self = .loaded(
+                pixelWidth: Int(image.size.width * image.scale),
+                pixelHeight: Int(image.size.height * image.scale)
+            )
+        }
+    }
+
+    /// `placeholder`, `failed` or `loaded <w>x<h>`, followed by ` <extra>` when
+    /// `extra` is neither nil nor empty.
+    func probeValue(extra: String?) -> String {
+        let base: String
+        switch self {
+        case .placeholder: base = "placeholder"
+        case .failed: base = "failed"
+        case let .loaded(w, h): base = "loaded \(w)x\(h)"
+        }
+        guard let extra, !extra.isEmpty else { return base }
+        return base + " " + extra
+    }
+}
+
+/// UI-test probe switch (`-uiTestImageProbe YES`). Off in production and in
+/// every existing scenario: the loader then adds no accessibility modifier.
+enum ImageLoadProbe {
+    static let defaultsKey = "uiTestImageProbe"
+    static let isEnabled = UserDefaults.standard.bool(forKey: defaultsKey)
+}
+
+private struct ImageLoadProbeModifier: ViewModifier {
+    let state: ImageLoadState
+    let extra: String?
+
+    @ViewBuilder
+    func body(content: Content) -> some View {
+        if ImageLoadProbe.isEnabled {
+            content
+                .accessibilityElement(children: .ignore)
+                .accessibilityValue(Text(verbatim: state.probeValue(extra: extra)))
+        } else {
+            content
+        }
+    }
+}
+
 /// Loads images from authenticated Immich endpoints (Bearer token in header).
 ///
 /// Premium pipeline (AC-200 integration):
@@ -30,9 +87,19 @@ struct AuthenticatedAsyncImage: View {
     /// ThumbHash string (base64) from server used as instant placeholder while loading.
     var thumbhash: String? = nil
 
+    /// Appended to the probe value (the viewer reports its zoom there).
+    var probeExtra: String? = nil
+
+    /// Called with the oriented size (`UIImage.size`, what `Image(uiImage:)`
+    /// draws — not the raw pixels of `ImageLoadState`) each time the real image
+    /// lands: offline copy, memory cache or network. Never for the thumbhash or
+    /// the provisional cached thumbnail. The viewer fits its zoom geometry to it.
+    var onImageSize: ((CGSize) -> Void)? = nil
+
     @State private var image: UIImage?
     @State private var placeholderImage: UIImage?
     @State private var didFail = false
+    @State private var loadState: ImageLoadState = .placeholder
 
     init(
         url: URL?,
@@ -41,7 +108,9 @@ struct AuthenticatedAsyncImage: View {
         localFileURL: URL? = nil,
         localMaxPixelSize: Int = 2048,
         thumbnailURL: URL? = nil,
-        thumbhash: String? = nil
+        thumbhash: String? = nil,
+        probeExtra: String? = nil,
+        onImageSize: ((CGSize) -> Void)? = nil
     ) {
         self.url = url
         self.token = token
@@ -50,6 +119,8 @@ struct AuthenticatedAsyncImage: View {
         self.localMaxPixelSize = localMaxPixelSize
         self.thumbnailURL = thumbnailURL
         self.thumbhash = thumbhash
+        self.probeExtra = probeExtra
+        self.onImageSize = onImageSize
         if let thumbhash, let cached = ThumbHashDecoder.shared.cachedImage(for: thumbhash) {
             _placeholderImage = State(initialValue: cached)
         }
@@ -81,6 +152,7 @@ struct AuthenticatedAsyncImage: View {
         .task(id: localFileURL?.path ?? url?.absoluteString) {
             await load()
         }
+        .modifier(ImageLoadProbeModifier(state: loadState, extra: probeExtra))
     }
 
     /// `UIImage` isn't `Sendable`, so the detached hop hands back a box.
@@ -92,6 +164,7 @@ struct AuthenticatedAsyncImage: View {
         // Reset state for the new URL (drives `.task(id:)` re-evals on URL change).
         if image != nil { image = nil }
         didFail = false
+        loadState = .placeholder
 
         if placeholderImage == nil, let thumbhash {
             if let cached = ThumbHashDecoder.shared.cachedImage(for: thumbhash) {
@@ -120,6 +193,8 @@ struct AuthenticatedAsyncImage: View {
             }.value
             if let local = box.image {
                 self.image = local
+                loadState = ImageLoadState(loaded: local)
+                onImageSize?(local.size)
                 return
             }
         }
@@ -134,6 +209,8 @@ struct AuthenticatedAsyncImage: View {
         // Tier 1 — in-memory cache. No await cost beyond actor hop.
         if let cached = await ImageCache.shared.image(for: url) {
             self.image = cached
+            loadState = ImageLoadState(loaded: cached)
+            onImageSize?(cached.size)
             return
         }
 
@@ -148,18 +225,20 @@ struct AuthenticatedAsyncImage: View {
             // Tiers 2+3 — URLCache dedup + network.
             let (data, response) = try await Self.imageSession.data(for: request)
             if let http = response as? HTTPURLResponse, !(200..<300).contains(http.statusCode) {
-                if self.image == nil { didFail = true }
+                if self.image == nil { didFail = true; loadState = .failed }
                 return
             }
             guard let img = UIImage(data: data) else {
-                if self.image == nil { didFail = true }
+                if self.image == nil { didFail = true; loadState = .failed }
                 return
             }
             // Populate both tiers for subsequent hits.
             await ImageCache.shared.store(img, for: url, epoch: epoch)
             self.image = img
+            loadState = ImageLoadState(loaded: img)
+            onImageSize?(img.size)
         } catch {
-            if self.image == nil { didFail = true }
+            if self.image == nil { didFail = true; loadState = .failed }
         }
     }
 
