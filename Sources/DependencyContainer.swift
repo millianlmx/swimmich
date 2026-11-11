@@ -376,6 +376,11 @@ final class DependencyContainer {
         PartnersViewModel(client: libraryClient)
     }
 
+    /// One partner's library (L-08). Each push gets its own instance.
+    func makePartnerLibraryViewModel(partnerId: String, partnerName: String) -> PartnerLibraryViewModel {
+        PartnerLibraryViewModel(client: libraryClient, partnerId: partnerId, partnerName: partnerName)
+    }
+
     /// Notification permission screen (issue #16). Holds no cache — it reads
     /// the system's answer on appear.
     func makeNotificationsViewModel() -> NotificationsViewModel {

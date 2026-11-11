@@ -22,6 +22,7 @@ struct PartnersView: View {
     @State private var partnerPendingRemoval: PartnerResponseDto?
     @State private var showPartnerRemoveConfirm = false
     @State private var presentingInvite = false
+    @State private var openedPartner: PartnerLibraryRoute?
 
     var body: some View {
         Form {
@@ -49,6 +50,14 @@ struct PartnersView: View {
         }
         .task { await vm.load() }
         .refreshable { await vm.load() }
+        .navigationDestination(item: $openedPartner) { route in
+            PartnerLibraryView(
+                vm: DependencyContainer.shared.makePartnerLibraryViewModel(
+                    partnerId: route.partnerId,
+                    partnerName: route.name
+                )
+            )
+        }
         .sheet(isPresented: $presentingInvite) {
             InvitePartnerSheet(vm: vm, currentUserId: auth.userId ?? "")
         }
@@ -86,7 +95,7 @@ struct PartnersView: View {
                 ForEach(vm.sharedWithMe, id: \.id) { partner in
                     PartnerRow(partner: partner, mode: .incoming, onToggle: { enabled in
                         Task { await vm.setInTimeline(partnerId: partner.id, enabled: enabled) }
-                    })
+                    }, onOpenLibrary: openLibraryAction(for: partner, direction: .sharedWith))
                 }
             }
         } header: {
@@ -108,7 +117,7 @@ struct PartnersView: View {
                     PartnerRow(partner: partner, mode: .outgoing, onRemove: {
                         withAnimation(PVMotion.snappy) { partnerPendingRemoval = partner }
                         showPartnerRemoveConfirm = true
-                    })
+                    }, onOpenLibrary: openLibraryAction(for: partner, direction: .sharedBy))
                 }
             }
         } header: {
@@ -116,5 +125,11 @@ struct PartnersView: View {
         } footer: {
             Text("People you share your library with. Sharing is one-way: to see their photos, they have to add you as well.")
         }
+    }
+
+    /// The row's way into the partner's library — decided by the view model,
+    /// `nil` for a row that opens nothing.
+    private func openLibraryAction(for partner: PartnerResponseDto, direction: PartnerDirection) -> (() -> Void)? {
+        vm.libraryRoute(for: partner, direction: direction).map { route in { openedPartner = route } }
     }
 }

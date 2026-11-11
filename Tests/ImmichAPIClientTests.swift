@@ -1421,6 +1421,49 @@ final class ImmichAPIClientTests: XCTestCase {
         XCTAssertEqual(plain.query, "timeBucket=2024-07-01")
     }
 
+    // MARK: - Partner library (L-08)
+
+    func test_AC_18_3_timelineRoutesSendUserId() async throws {
+        let client = ImmichAPIClient(session: makeMockedSession())
+        client.configure(baseURL: URL(string: "https://example.com")!, token: "tok")
+        CapturingURLProtocol.nextData = "[]".data(using: .utf8)!
+
+        _ = try await client.getTimeBuckets(
+            isFavorite: nil, isTrashed: nil, personId: nil, withPartners: nil,
+            visibility: "timeline", withStacked: nil, orderBy: nil, tagId: nil, userId: "partner-a"
+        )
+        var items = URLComponents(url: try XCTUnwrap(CapturingURLProtocol.lastRequest?.url), resolvingAgainstBaseURL: false)?.queryItems ?? []
+        XCTAssertEqual(CapturingURLProtocol.lastRequest?.url?.path, "/api/timeline/buckets")
+        XCTAssertEqual(items.first { $0.name == "userId" }?.value, "partner-a")
+        XCTAssertEqual(items.first { $0.name == "visibility" }?.value, "timeline")
+
+        let bucket = try await timeBucketQuery {
+            try await $0.getTimeBucket(
+                timeBucket: "2024-07-01", isFavorite: nil, isTrashed: nil, personId: nil, withPartners: nil,
+                visibility: "timeline", withStacked: nil, orderBy: nil, tagId: nil, userId: "partner-a"
+            )
+        }
+        XCTAssertEqual(bucket.path, "/api/timeline/bucket")
+        XCTAssertEqual(bucket.query, "timeBucket=2024-07-01&visibility=timeline&userId=partner-a")
+
+        // Through the overload that predates `userId`, the request is the one it always was.
+        CapturingURLProtocol.nextData = "[]".data(using: .utf8)!
+        _ = try await client.getTimeBuckets(
+            isFavorite: nil, isTrashed: nil, personId: nil, withPartners: true,
+            visibility: "timeline", withStacked: nil, orderBy: nil, tagId: nil
+        )
+        items = URLComponents(url: try XCTUnwrap(CapturingURLProtocol.lastRequest?.url), resolvingAgainstBaseURL: false)?.queryItems ?? []
+        XCTAssertNil(items.first { $0.name == "userId" })
+        XCTAssertEqual(items.first { $0.name == "withPartners" }?.value, "true")
+        let plain = try await timeBucketQuery {
+            try await $0.getTimeBucket(
+                timeBucket: "2024-07-01", isFavorite: nil, isTrashed: nil, personId: nil, withPartners: true,
+                visibility: "timeline", withStacked: nil, orderBy: nil, tagId: nil
+            )
+        }
+        XCTAssertEqual(plain.query, "timeBucket=2024-07-01&withPartners=true&visibility=timeline")
+    }
+
     private func createTagBody(parentId: String?) async throws -> [String: Any] {
         let client = ImmichAPIClient(session: makeMockedSession())
         client.configure(baseURL: URL(string: "https://example.com")!, token: "tok")

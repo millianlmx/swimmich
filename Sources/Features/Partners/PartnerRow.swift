@@ -23,35 +23,67 @@ struct PartnerRow: View {
     var onToggle: ((Bool) -> Void)?
     /// Required for `.outgoing`, ignored otherwise.
     var onRemove: (() -> Void)?
+    /// Opens the partner's library. Set only for rows that can: when `nil`
+    /// the identity zone is plain text.
+    var onOpenLibrary: (() -> Void)?
 
     init(
         partner: PartnerResponseDto,
         mode: Mode,
         onToggle: ((Bool) -> Void)? = nil,
-        onRemove: (() -> Void)? = nil
+        onRemove: (() -> Void)? = nil,
+        onOpenLibrary: (() -> Void)? = nil
     ) {
         self.partner = partner
         self.mode = mode
         self.onToggle = onToggle
         self.onRemove = onRemove
+        self.onOpenLibrary = onOpenLibrary
     }
 
     var body: some View {
+        HStack(spacing: PVSpacing.s12) {
+            if let onOpenLibrary {
+                Button(action: onOpenLibrary) {
+                    HStack(spacing: PVSpacing.s12) {
+                        identity
+                        Spacer(minLength: PVSpacing.s8)
+                        Image(systemName: "chevron.right")
+                            .font(.pvCaption)
+                            .foregroundStyle(Color.textTertiaryPV)
+                    }
+                    .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+                .accessibilityHint("Shows their photos")
+                .accessibilityIdentifier("partnerLibraryLink-\(partner.id)")
+            } else {
+                identity
+                Spacer(minLength: PVSpacing.s8)
+            }
+            action
+        }
+        .padding(.vertical, PVSpacing.s4)
+    }
+
+    /// Avatar, name and subtitle — the zone that opens the partner's library
+    /// when `onOpenLibrary` is set, plain text otherwise.
+    private var identity: some View {
         HStack(spacing: PVSpacing.s12) {
             PartnerAvatarCircle(partner: partner)
             VStack(alignment: .leading, spacing: PVSpacing.s2) {
                 Text(partner.name)
                     .font(.pvBody)
                     .foregroundStyle(Color.textPrimaryPV)
+                    // Inside the open-library button the text merges into the
+                    // button's own element, which carries its identifier.
+                    .accessibilityIdentifier(onOpenLibrary == nil ? "partnerName-\(partner.id)" : "")
                 Text(subtitle)
                     .font(.pvCaption)
                     .foregroundStyle(Color.textSecondaryPV)
                     .lineLimit(1)
             }
-            Spacer(minLength: PVSpacing.s8)
-            action
         }
-        .padding(.vertical, PVSpacing.s4)
     }
 
     private var subtitle: String {

@@ -234,4 +234,19 @@ final class PartnersViewModelTests: XCTestCase {
         XCTAssertNil(vm.selectedCandidateId, "tapping the selected row clears it")
         XCTAssertFalse(vm.canInvite)
     }
+
+    @MainActor
+    func test_AC_18_2_onlySharedWithMeRowsOpenLibrary() {
+        let vm = PartnersViewModel(client: MockImmichClient())
+        let a = partner(id: "a")
+        let o = partner(id: "o")
+        // A shares with me and I share with A (reciprocal); O only receives from me.
+        vm.sharedWithMe = [a]
+        vm.sharing = [a, o]
+
+        XCTAssertEqual(vm.libraryRoute(for: a, direction: .sharedWith), PartnerLibraryRoute(partnerId: "a", name: a.name))
+        XCTAssertNil(vm.libraryRoute(for: a, direction: .sharedBy), "the Sharing row of a reciprocal partner opens nothing")
+        XCTAssertNil(vm.libraryRoute(for: o, direction: .sharedBy))
+        XCTAssertNil(vm.libraryRoute(for: o, direction: .sharedWith), "nobody shares O's library with me")
+    }
 }

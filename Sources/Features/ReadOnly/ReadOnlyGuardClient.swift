@@ -125,7 +125,8 @@ final class ReadOnlyGuardClient: ImmichClient {
         visibility: String?,
         withStacked: Bool?,
         orderBy: AssetOrderBy?,
-        tagId: String?
+        tagId: String?,
+        userId: String?
     ) async throws -> [TimeBucketsResponseDto] {
         try await inner.getTimeBuckets(
             isFavorite: isFavorite,
@@ -135,7 +136,8 @@ final class ReadOnlyGuardClient: ImmichClient {
             visibility: visibility,
             withStacked: withStacked,
             orderBy: orderBy,
-            tagId: tagId
+            tagId: tagId,
+            userId: userId
         )
     }
 
@@ -148,7 +150,8 @@ final class ReadOnlyGuardClient: ImmichClient {
         visibility: String?,
         withStacked: Bool?,
         orderBy: AssetOrderBy?,
-        tagId: String?
+        tagId: String?,
+        userId: String?
     ) async throws -> TimeBucketAssetResponseDto {
         try await inner.getTimeBucket(
             timeBucket: timeBucket,
@@ -159,7 +162,8 @@ final class ReadOnlyGuardClient: ImmichClient {
             visibility: visibility,
             withStacked: withStacked,
             orderBy: orderBy,
-            tagId: tagId
+            tagId: tagId,
+            userId: userId
         )
     }
 
