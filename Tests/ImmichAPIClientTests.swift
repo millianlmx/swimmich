@@ -1379,6 +1379,71 @@ final class ImmichAPIClientTests: XCTestCase {
         XCTAssertEqual(legacy.query, "timeBucket=2024-07-01&withStacked=true")
     }
 
+    // MARK: - Tags hierarchy (L-03)
+
+    func test_AC_12_timelineRoutesSendTagId() async throws {
+        let client = ImmichAPIClient(session: makeMockedSession())
+        client.configure(baseURL: URL(string: "https://example.com")!, token: "tok")
+        CapturingURLProtocol.nextData = "[]".data(using: .utf8)!
+
+        _ = try await client.getTimeBuckets(
+            isFavorite: nil, isTrashed: nil, personId: nil, withPartners: nil,
+            visibility: "timeline", withStacked: nil, orderBy: nil, tagId: "tag-1"
+        )
+        var items = URLComponents(url: try XCTUnwrap(CapturingURLProtocol.lastRequest?.url), resolvingAgainstBaseURL: false)?.queryItems ?? []
+        XCTAssertEqual(CapturingURLProtocol.lastRequest?.url?.path, "/api/timeline/buckets")
+        XCTAssertEqual(items.first { $0.name == "tagId" }?.value, "tag-1")
+        XCTAssertEqual(items.first { $0.name == "visibility" }?.value, "timeline")
+
+        let bucket = try await timeBucketQuery {
+            try await $0.getTimeBucket(
+                timeBucket: "2024-07-01", isFavorite: nil, isTrashed: nil, personId: nil, withPartners: nil,
+                visibility: "timeline", withStacked: nil, orderBy: nil, tagId: "tag-1"
+            )
+        }
+        XCTAssertEqual(bucket.path, "/api/timeline/bucket")
+        XCTAssertEqual(bucket.query, "timeBucket=2024-07-01&visibility=timeline&tagId=tag-1")
+
+        // Without a tag the request is the one it always was.
+        CapturingURLProtocol.nextData = "[]".data(using: .utf8)!
+        _ = try await client.getTimeBuckets(
+            isFavorite: nil, isTrashed: nil, personId: nil, withPartners: nil,
+            visibility: "timeline", withStacked: nil, orderBy: nil, tagId: nil
+        )
+        items = URLComponents(url: try XCTUnwrap(CapturingURLProtocol.lastRequest?.url), resolvingAgainstBaseURL: false)?.queryItems ?? []
+        XCTAssertNil(items.first { $0.name == "tagId" })
+        let plain = try await timeBucketQuery {
+            try await $0.getTimeBucket(
+                timeBucket: "2024-07-01", isFavorite: nil, isTrashed: nil, personId: nil, withPartners: nil,
+                visibility: nil, withStacked: nil, orderBy: nil, tagId: nil
+            )
+        }
+        XCTAssertEqual(plain.query, "timeBucket=2024-07-01")
+    }
+
+    private func createTagBody(parentId: String?) async throws -> [String: Any] {
+        let client = ImmichAPIClient(session: makeMockedSession())
+        client.configure(baseURL: URL(string: "https://example.com")!, token: "tok")
+        CapturingURLProtocol.nextData = #"{"id":"new","name":"Italie","value":"Italie"}"#.data(using: .utf8)!
+        _ = try await client.createTag(name: "Italie", color: nil, parentId: parentId)
+        XCTAssertEqual(CapturingURLProtocol.lastRequest?.httpMethod, "POST")
+        XCTAssertEqual(CapturingURLProtocol.lastRequest?.url?.path, "/api/tags")
+        return try decodedBody()
+    }
+
+    func test_AC_13_createTagBodyCarriesParentId() async throws {
+        let body = try await createTagBody(parentId: "7a000000-0000-4000-8000-000000000001")
+        XCTAssertEqual(body["name"] as? String, "Italie")
+        XCTAssertEqual(body["parentId"] as? String, "7a000000-0000-4000-8000-000000000001")
+    }
+
+    func test_AC_77_createTagBodyOmitsParentId() async throws {
+        let body = try await createTagBody(parentId: nil)
+        XCTAssertEqual(body["name"] as? String, "Italie")
+        XCTAssertNil(body["parentId"])
+        XCTAssertFalse(body.keys.contains("parentId"))
+    }
+
     /// RFC 7636: S256 challenge is base64url(SHA256(verifier)) with no padding,
     /// and stays stable for a given verifier.
     func test_pkceChallengeIsS256OfVerifier() {

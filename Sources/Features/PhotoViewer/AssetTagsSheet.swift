@@ -70,7 +70,7 @@ struct AssetTagsSheet: View {
 
     private var tagList: some View {
         List {
-            ForEach(allTags, id: \.id) { tag in
+            ForEach(Self.displayTags(allTags), id: \.id) { tag in
                 Button {
                     Task { await toggle(tag) }
                 } label: {
@@ -78,7 +78,7 @@ struct AssetTagsSheet: View {
                         Image(systemName: "tag.fill")
                             .font(.pvBody)
                             .foregroundStyle((tag.color.flatMap { Color(hex: $0) }) ?? Color.immichPrimary)
-                        Text(tag.name)
+                        Text(verbatim: tag.path)
                             .font(.pvBody)
                             .foregroundStyle(Color.textPrimaryPV)
                         Spacer()
@@ -89,9 +89,20 @@ struct AssetTagsSheet: View {
                     }
                 }
                 .buttonStyle(.plain)
+                .accessibilityIdentifier("assetTagRow_\(tag.id)")
+                .accessibilityAddTraits(appliedTagIDs.contains(tag.id) ? .isSelected : [])
             }
         }
         .listStyle(.insetGrouped)
+    }
+
+    /// Tags in the order the sheet lists them: by full path, so homonyms
+    /// (`Voyages/Japon`, `Cuisine/Japon`) are told apart and sit beside their parent.
+    static func displayTags(_ tags: [TagResponseDto]) -> [TagResponseDto] {
+        tags.sorted {
+            let order = $0.path.localizedStandardCompare($1.path)
+            return order == .orderedSame ? $0.id < $1.id : order == .orderedAscending
+        }
     }
 
     private func toggle(_ tag: TagResponseDto) async {
@@ -114,7 +125,7 @@ struct AssetTagsSheet: View {
         let trimmed = name.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else { return }
         do {
-            let tag = try await client.createTag(name: trimmed, color: nil)
+            let tag = try await client.createTag(name: trimmed, color: nil, parentId: nil)
             try await client.tagAssets(tagId: tag.id, assetIds: [asset.id])
             appliedTagIDs.insert(tag.id)
             errorMessage = nil

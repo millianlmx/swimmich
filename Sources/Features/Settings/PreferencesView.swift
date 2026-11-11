@@ -19,7 +19,7 @@ struct PreferencesView: View {
 
     var body: some View {
         Form {
-            Section("Photos") {
+            Section {
                 Picker("Group By", selection: $vm.groupBy) {
                     ForEach(TimelineGroupBy.allCases) { grouping in
                         Text(grouping.label).tag(grouping)
@@ -35,6 +35,13 @@ struct PreferencesView: View {
                     }
                 }
                 .accessibilityIdentifier("preferencesColumnsStepper")
+
+                Toggle("Smooth Scrubbing", isOn: $vm.smoothScrubbing)
+                    .accessibilityIdentifier("preferencesSmoothScrubbingToggle")
+            } header: {
+                Text("Photos")
+            } footer: {
+                Text("When on, releasing the date scrubber stops at the exact spot in the month. When off, it snaps to the month's first photo.")
             }
 
             Section("Viewer") {

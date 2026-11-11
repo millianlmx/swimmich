@@ -56,7 +56,8 @@ protocol ImmichClient: AnyObject, Sendable {
         withPartners: Bool?,
         visibility: String?,
         withStacked: Bool?,
-        orderBy: AssetOrderBy?
+        orderBy: AssetOrderBy?,
+        tagId: String?
     ) async throws -> [TimeBucketsResponseDto]
     /// `GET /api/timeline/bucket` — every filter must be the value sent to
     /// `getTimeBuckets` for the same list of months, otherwise the server
@@ -70,7 +71,8 @@ protocol ImmichClient: AnyObject, Sendable {
         withPartners: Bool?,
         visibility: String?,
         withStacked: Bool?,
-        orderBy: AssetOrderBy?
+        orderBy: AssetOrderBy?,
+        tagId: String?
     ) async throws -> TimeBucketAssetResponseDto
 
     func getAsset(id: String) async throws -> AssetResponseDto
@@ -202,7 +204,7 @@ protocol ImmichClient: AnyObject, Sendable {
 
     // MARK: - Tags (gap #2)
     func getAllTags() async throws -> [TagResponseDto]
-    func createTag(name: String, color: String?) async throws -> TagResponseDto
+    func createTag(name: String, color: String?, parentId: String?) async throws -> TagResponseDto
     func updateTag(id: String, color: String?) async throws -> TagResponseDto
     func deleteTag(id: String) async throws
     /// `PUT /api/tags/{id}/assets` — add assets to a tag.
@@ -485,6 +487,55 @@ extension ImmichClient {
             visibility: visibility,
             withStacked: withStacked,
             orderBy: nil
+        )
+    }
+
+    /// Timeline buckets without a tag filter.
+    ///
+    /// `tagId` arrived with the tag screen (L-03): same overload convention as
+    /// above, so every caller that never filtered on a tag keeps compiling.
+    func getTimeBuckets(
+        isFavorite: Bool?,
+        isTrashed: Bool?,
+        personId: String?,
+        withPartners: Bool?,
+        visibility: String?,
+        withStacked: Bool?,
+        orderBy: AssetOrderBy?
+    ) async throws -> [TimeBucketsResponseDto] {
+        try await getTimeBuckets(
+            isFavorite: isFavorite,
+            isTrashed: isTrashed,
+            personId: personId,
+            withPartners: withPartners,
+            visibility: visibility,
+            withStacked: withStacked,
+            orderBy: orderBy,
+            tagId: nil
+        )
+    }
+
+    /// One timeline bucket without a tag filter — same convention as above.
+    func getTimeBucket(
+        timeBucket: String,
+        isFavorite: Bool?,
+        isTrashed: Bool?,
+        personId: String?,
+        withPartners: Bool?,
+        visibility: String?,
+        withStacked: Bool?,
+        orderBy: AssetOrderBy?
+    ) async throws -> TimeBucketAssetResponseDto {
+        try await getTimeBucket(
+            timeBucket: timeBucket,
+            isFavorite: isFavorite,
+            isTrashed: isTrashed,
+            personId: personId,
+            withPartners: withPartners,
+            visibility: visibility,
+            withStacked: withStacked,
+            orderBy: orderBy,
+            tagId: nil
         )
     }
 }

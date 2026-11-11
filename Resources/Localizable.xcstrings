@@ -6110,6 +6110,34 @@
         }
       }
     },
+    "No parent" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Kein übergeordneter Tag"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Sin etiqueta principal"
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Aucun parent"
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Nessuna etichetta principale"
+          }
+        }
+      }
+    },
     "No photos match this filter" : {
       "localizations" : {
         "fr" : {
@@ -6134,6 +6162,34 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Nessuna foto corrisponde a questo filtro"
+          }
+        }
+      }
+    },
+    "No photos with this tag" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Keine Fotos mit diesem Tag"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "No hay fotos con esta etiqueta"
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Aucune photo avec ce tag"
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Nessuna foto con questa etichetta"
           }
         }
       }
@@ -6950,6 +7006,34 @@
         }
       }
     },
+    "Parent tag" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Übergeordneter Tag"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Etiqueta principal"
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Tag parent"
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Etichetta principale"
+          }
+        }
+      }
+    },
     "PIN" : {
       "localizations" : {
         "fr" : {
@@ -7226,6 +7310,34 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Le foto che aggiungi al server appariranno qui."
+          }
+        }
+      }
+    },
+    "Photos you add to this tag appear here." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Fotos, die du diesem Tag hinzufügst, erscheinen hier."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Las fotos que añadas a esta etiqueta aparecen aquí."
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Les photos ajoutées à ce tag apparaissent ici."
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Le foto che aggiungi a questa etichetta appaiono qui."
           }
         }
       }
@@ -26853,6 +26965,90 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Diapositiva %lld di %lld: %@"
+          }
+        }
+      }
+    },
+    "Date scrubber" : {
+      "localizations" : {
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Curseur de date"
+          }
+        },
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Datumsregler"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Selector de fecha"
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Cursore della data"
+          }
+        }
+      }
+    },
+    "Smooth Scrubbing" : {
+      "localizations" : {
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Défilement fluide"
+          }
+        },
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Flüssiges Scrollen"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Desplazamiento fluido"
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Scorrimento fluido"
+          }
+        }
+      }
+    },
+    "When on, releasing the date scrubber stops at the exact spot in the month. When off, it snaps to the month's first photo." : {
+      "localizations" : {
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Activé, le curseur de date s'arrête à l'endroit exact du mois où vous le relâchez. Désactivé, il se cale sur la première photo du mois."
+          }
+        },
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Wenn aktiviert, hält der Datumsregler genau an der Stelle im Monat, an der Sie ihn loslassen. Wenn deaktiviert, springt er zum ersten Foto des Monats."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Si está activado, el selector de fecha se detiene en el punto exacto del mes donde lo sueltas. Si está desactivado, salta a la primera foto del mes."
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Se attivo, il cursore della data si ferma nel punto esatto del mese in cui lo rilasci. Se disattivo, si posiziona sulla prima foto del mese."
           }
         }
       }

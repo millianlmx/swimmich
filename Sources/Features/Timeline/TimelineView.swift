@@ -69,7 +69,10 @@ struct TimelineView: View {
     @State private var viewerOnScreen = false
     /// Stack opened from a stacked tile (grid → stack detail). Nil = no push.
     @State private var openedStackID: String?
-    @State private var scrollPosition = ScrollPosition()
+    /// A scroll the grid owes after a window change (a jump, a newer month
+    /// prepended): performed by `onChange` once the new items are drawn,
+    /// because `scrollTo` on an id that is not laid out yet does nothing.
+    @State private var scrollRequest: TimelineScrollRequest?
 
     init(
         vm: TimelineViewModel,
@@ -103,7 +106,12 @@ struct TimelineView: View {
 
                     content
                 }
-                .scrollPosition($scrollPosition)
+                .scrollIndicators(scrollIndicatorVisibility)
+                // Feeds the scrubber's resting position: the ids the scroll
+                // view reports on screen. Fires on threshold crossings only.
+                .onScrollTargetVisibilityChange(idType: String.self) { ids in
+                    vm.updateScrubPosition(visibleIds: ids)
+                }
                 .coordinateSpace(name: Self.scrollSpaceName)
                 .onPreferenceChange(PinnedDayPreferenceKey.self) { frames in
                     pinnedDay = PinnedHeaderResolver.currentDay(from: frames)
@@ -193,6 +201,11 @@ struct TimelineView: View {
                         .transition(.opacity.combined(with: .move(edge: .top)))
                     }
                 }
+                // Date scrubber: fast-scroll handle on the trailing edge. It
+                // reads `vm.scrubPosition` itself — never read it in this body.
+                .overlay(alignment: .trailing) {
+                    dateScrubber
+                }
                 .refreshable { await vm.refresh() }
                 .safeAreaInset(edge: .top, spacing: 0) {
                     loadErrorBanner
@@ -212,6 +225,9 @@ struct TimelineView: View {
                 }
                 .onChange(of: vm.items.count) { _, _ in
                     if scrollTargetID != nil { attemptTimelineScroll(proxy: proxy) }
+                }
+                .onChange(of: scrollRequest) { _, request in
+                    if let request { proxy.scrollTo(request.id, anchor: .top) }
                 }
                 .scrollDismissesKeyboard(.immediately)
                 // D7: Photos-style pinch-to-zoom grid. Simultaneous so it never
@@ -253,11 +269,9 @@ struct TimelineView: View {
                     if vm.selectionMode { vm.exitSelectionMode() }
                 }
                 .overlay(alignment: .bottomTrailing) {
-                    if showScrollToTop && !vm.selectionMode {
+                    if (showScrollToTop || !vm.windowStartsAtNewest) && !vm.selectionMode {
                         Button {
-                            withAnimation(PVMotion.adaptive(PVMotion.gentle, reduceMotion: reduceMotion)) {
-                                proxy.scrollTo("top", anchor: .top)
-                            }
+                            scrollToTopTapped(proxy: proxy)
                         } label: {
                             Image(systemName: "arrow.up")
                                 .font(.pvHeadline)
@@ -267,6 +281,7 @@ struct TimelineView: View {
                                 .pvFloatingShadow()
                         }
                         .accessibilityLabel(String(localized: "Scroll to top"))
+                        .accessibilityIdentifier("timelineScrollToTopButton")
                         .padding(.trailing, PVSpacing.s16)
                         .padding(.bottom, PVSpacing.s24)
                         .transition(.opacity.combined(with: .move(edge: .bottom)))
@@ -434,7 +449,11 @@ struct TimelineView: View {
     @ViewBuilder
     private var loadErrorBanner: some View {
         if !vm.items.isEmpty, let message = vm.loadErrorMessage {
-            InlineErrorBadge(message: message, retry: { Task { await vm.refresh() } })
+            InlineErrorBadge(message: message, retry: {
+                Task {
+                    if let id = await vm.retryLoad() { requestScroll(to: id) }
+                }
+            })
                 .padding(PVSpacing.s16)
                 .transition(.opacity)
         }
@@ -496,6 +515,7 @@ struct TimelineView: View {
                         }
                     }
                 }
+                .scrollTargetLayout()
                 .padding(.horizontal, PVSpacing.s4)
                 if vm.canLoadMore {
                     PVSkeletonGrid(rows: 1, columnCount: columnCount)
@@ -552,8 +572,11 @@ struct TimelineView: View {
                     if item.id == vm.items.first?.id {
                         let previousFirst = vm.items.first?.id
                         await vm.loadNewer()
-                        if let previousFirst {
-                            scrollPosition.scrollTo(id: previousFirst, anchor: .top)
+                        // Re-anchor on what the user was looking at (a fluid
+                        // jump lands mid-month), else on the old first cell —
+                        // only when a newer month really went on top.
+                        if vm.items.first?.id != previousFirst, let anchor = vm.topVisibleId ?? previousFirst {
+                            requestScroll(to: anchor)
                         }
                     }
                 }
@@ -663,6 +686,58 @@ struct TimelineView: View {
             proxy.scrollTo(target, anchor: .top)
         }
         scrollTargetID = nil
+    }
+
+    /// Asks the grid to scroll to `id` (top edge) once the current window has
+    /// been drawn; see `scrollRequest`.
+    private func requestScroll(to id: String) {
+        scrollRequest = TimelineScrollRequest(id: id, serial: (scrollRequest?.serial ?? 0) &+ 1)
+    }
+
+    /// The system indicator would sit under the scrubber handle.
+    private var scrollIndicatorVisibility: ScrollIndicatorVisibility {
+        let shown: Bool = TimelineScrubber.isShown(for: vm)
+        return shown ? ScrollIndicatorVisibility.hidden : ScrollIndicatorVisibility.automatic
+    }
+
+    /// Date scrubber: fast-scroll handle on the trailing edge. It reads
+    /// `vm.scrubPosition` itself — never read it in this body.
+    private var dateScrubber: some View {
+        TimelineScrubber(vm: vm, onRelease: scrubberReleased, onAdjust: scrubberAdjusted)
+    }
+
+    private func scrubberReleased(month: Int, fraction: Double) {
+        Task {
+            // Read at release, so a change in Preferences applies without a
+            // relaunch.
+            let anchorFraction: Double = appSettings.smoothScrubbing ? fraction : 0
+            if let id = await vm.jumpToMonth(at: month, fraction: anchorFraction) {
+                requestScroll(to: id)
+            }
+        }
+    }
+
+    private func scrubberAdjusted(month: Int) {
+        Task {
+            if let id = await vm.jumpToMonth(at: month, fraction: 0) {
+                requestScroll(to: id)
+            }
+        }
+    }
+
+    private func scrollToTopTapped(proxy: ScrollViewProxy) {
+        if vm.windowStartsAtNewest {
+            withAnimation(PVMotion.adaptive(PVMotion.gentle, reduceMotion: reduceMotion)) {
+                proxy.scrollTo("top", anchor: .top)
+            }
+        } else {
+            // After a jump the newest month is not loaded: reload it, then
+            // start over at the top.
+            Task {
+                let jumped: String? = await vm.jumpToMonth(at: 0, fraction: 0)
+                if jumped != nil { requestScroll(to: "top") }
+            }
+        }
     }
 
     // MARK: - Toolbar — swaps between normal + selection modes (SF Symbols, V03)

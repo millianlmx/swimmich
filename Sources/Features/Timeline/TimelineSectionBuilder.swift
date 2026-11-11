@@ -159,11 +159,18 @@ enum TimelineSectionBuilder {
     /// formatter, so a language change is picked up on the next render).
     /// Falls back to the raw key if parsing fails — never crashes the grid over
     /// malformed input.
-    private static func displayString(forMonthKey monthKey: String) -> String {
+    private static func displayString(forMonthKey monthKey: String, locale: Locale = .autoupdatingCurrent) -> String {
         // Parse as UTC noon (mid-month would also work; noon avoids DST edges).
         guard let date = utcParser.date(from: "\(monthKey)-15T12:00:00Z") else {
             return monthKey
         }
-        return AppDateFormat.string(from: date, style: .monthYear)
+        return AppDateFormat.string(from: date, style: .monthYear, locale: locale)
+    }
+
+    /// The label of a server bucket (`"YYYY-MM-01"`), e.g. "March 2023" — the
+    /// very string the month banners use, so the date scrubber never words a
+    /// month differently from the grid.
+    static func monthLabel(forTimeBucket timeBucket: String, locale: Locale = .autoupdatingCurrent) -> String {
+        displayString(forMonthKey: monthKey(for: timeBucket), locale: locale)
     }
 }
