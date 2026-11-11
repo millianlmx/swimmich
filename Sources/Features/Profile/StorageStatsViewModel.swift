@@ -55,9 +55,10 @@ final class StorageStatsViewModel {
         isLoading = true
         defer { isLoading = false }
 
-        async let userResult = Self.capture { try await self.client.getMyUser() }
-        async let statsResult = Self.capture { try await self.client.getAssetStatistics() }
-        let (user, stats) = await (userResult, statsResult)
+        async let userResult = readUser()
+        async let statsResult = readCounts()
+        let user = await userResult
+        let stats = await statsResult
 
         switch user {
         case .success(let user):
@@ -81,8 +82,12 @@ final class StorageStatsViewModel {
         ByteCountFormatter.string(fromByteCount: bytes, countStyle: .file)
     }
 
-    private static func capture<T>(_ read: @escaping () async throws -> T) async -> Result<T, Error> {
-        do { return .success(try await read()) } catch { return .failure(error) }
+    private func readUser() async -> Result<UserAdminResponseDto, Error> {
+        do { return .success(try await client.getMyUser()) } catch { return .failure(error) }
+    }
+
+    private func readCounts() async -> Result<AssetStatsResponseDto, Error> {
+        do { return .success(try await client.getAssetStatistics()) } catch { return .failure(error) }
     }
 
     /// Cancellation keeps the previous state; any other error is `.unavailable`.

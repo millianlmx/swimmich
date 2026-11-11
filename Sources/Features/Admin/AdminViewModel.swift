@@ -47,6 +47,14 @@ final class AdminViewModel {
         }
     }
 
+    /// Pull-to-refresh: the three admin lists and the instance totals, in
+    /// parallel. Each keeps its own outcome.
+    func refresh() async {
+        async let stats: Void = loadInstanceStats()
+        await load(force: true)
+        await stats
+    }
+
     // MARK: - Instance statistics
 
     /// Reads the instance totals on their own: `load(force:)` does not touch

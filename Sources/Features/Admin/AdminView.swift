@@ -38,11 +38,7 @@ struct AdminView: View {
         .navigationBarTitleDisplayMode(.inline)
         .task { await vm.load() }
         .task { await vm.loadInstanceStats() }
-        .refreshable {
-            async let stats: Void = vm.loadInstanceStats()
-            await vm.load(force: true)
-            await stats
-        }
+        .refreshable { await vm.refresh() }
         .alert("New User", isPresented: $showCreateUser) {
             TextField("Name", text: $newUserName)
             TextField("Email", text: $newUserEmail)
