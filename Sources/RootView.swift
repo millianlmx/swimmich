@@ -74,29 +74,6 @@ struct RootView: View {
     }
 }
 
-/// Relays one `.immichAssetsChanged` burst to every screen that refreshes on
-/// server events. Out of the view so tests drive the same code as the app.
-/// The timeline never calls `refresh()` here (it would leave selection mode and
-/// jump back to the first month): `handleRealtime` updates the loaded months in
-/// place, and ignores a burst made only of `on_person_thumbnail`.
-@MainActor
-enum RealtimeRelay {
-    static func handle(
-        _ note: Notification,
-        timeline: TimelineViewModel,
-        albums: AlbumsViewModel,
-        people: PeopleViewModel,
-        memories: MemoriesViewModel,
-        offline: OfflineDownloadViewModel
-    ) async {
-        await timeline.handleRealtime(RealtimeBatch(notification: note))
-        await albums.refresh()
-        await people.load(force: true)
-        await memories.load()
-        await offline.load()
-    }
-}
-
 /// 5-tab authenticated root (Photos/Memories/Albums/Shared) + a native iOS 26
 /// search tab (`role: .search`) rendered as a floating Liquid Glass bubble
 /// pinned to the tab bar's trailing edge, perfectly aligned by the system.
@@ -296,8 +273,14 @@ private struct AuthenticatedRoot: View {
         // reads the mode see the same store, and it survives a re-render.
         .environment(readOnly)
         .environment(offline)
-        .onReceive(NotificationCenter.default.publisher(for: .immichAssetsChanged)) { note in
-            Task { await RealtimeRelay.handle(note, timeline: timeline, albums: albums, people: people, memories: memories, offline: offline) }
+        .onReceive(NotificationCenter.default.publisher(for: .immichAssetsChanged)) { _ in
+            Task {
+                await timeline.refresh()
+                await albums.refresh()
+                await people.load(force: true)
+                await memories.load()
+                await offline.load()
+            }
         }
         // Widget deep links (issue #19), parsed by the shared framework so the
         // widget extension and this router cannot drift: an asset lands on the

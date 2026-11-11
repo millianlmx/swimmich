@@ -39,9 +39,9 @@ final class CustomHeadersRegistryTests: XCTestCase {
         let store = InMemoryCustomHeadersStore()
         let center = NotificationCenter()
         let registry = makeRegistry(store, center: center)
-        var received: [String] = []
+        let received = TestBox<[String]>([])
         let token = center.addObserver(forName: .immichCustomHeadersChanged, object: nil, queue: nil) {
-            received.append($0.userInfo?["serverKey"] as? String ?? "")
+            received.value.append($0.userInfo?["serverKey"] as? String ?? "")
         }
         defer { center.removeObserver(token) }
 
@@ -49,34 +49,35 @@ final class CustomHeadersRegistryTests: XCTestCase {
 
         XCTAssertEqual(store.stored[a], [StaticCustomHeaders.xAccess])
         XCTAssertEqual(registry.headers(for: a), [StaticCustomHeaders.xAccess])
-        XCTAssertEqual(received, [a.rawValue])
+        XCTAssertEqual(received.value, [a.rawValue])
     }
 
     func test_aNotificationObserverMayReadTheRegistry() throws {
         let center = NotificationCenter()
         let registry = makeRegistry(InMemoryCustomHeadersStore(), center: center)
-        var seen: [CustomHTTPHeader] = []
+        let seen = TestBox<[CustomHTTPHeader]>([])
+        let key = a
         let token = center.addObserver(forName: .immichCustomHeadersChanged, object: nil, queue: nil) { _ in
-            seen = registry.headers(for: self.a)
+            seen.value = registry.headers(for: key)
         }
         defer { center.removeObserver(token) }
         try registry.save([StaticCustomHeaders.xAccess], for: a)
-        XCTAssertEqual(seen, [StaticCustomHeaders.xAccess])
+        XCTAssertEqual(seen.value, [StaticCustomHeaders.xAccess])
     }
 
     func test_aFailedWriteLeavesMemoryAndObserversAlone() {
         let store = InMemoryCustomHeadersStore([a: [StaticCustomHeaders.xAccess]])
         let center = NotificationCenter()
         let registry = makeRegistry(store, center: center)
-        var notified = false
-        let token = center.addObserver(forName: .immichCustomHeadersChanged, object: nil, queue: nil) { _ in notified = true }
+        let notified = TestBox(false)
+        let token = center.addObserver(forName: .immichCustomHeadersChanged, object: nil, queue: nil) { _ in notified.value = true }
         defer { center.removeObserver(token) }
         store.failSaves = true
 
         XCTAssertThrowsError(try registry.save([], for: a))
 
         XCTAssertEqual(registry.headers(for: a), [StaticCustomHeaders.xAccess])
-        XCTAssertFalse(notified)
+        XCTAssertFalse(notified.value)
     }
 
     func test_savingAnEmptyListRemovesTheServer() throws {

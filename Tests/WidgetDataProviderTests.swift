@@ -657,7 +657,7 @@ final class WidgetDataProviderTests: XCTestCase {
     // MARK: - Custom HTTP headers (L-09)
 
     /// Answers every route a photo wall and a memory feed use.
-    private func wallSpy() -> TransportSpy {
+    private func headersWallSpy() -> TransportSpy {
         TransportSpy { request in
             switch request.url?.path ?? "" {
             case "/api/timeline/buckets":
@@ -723,7 +723,7 @@ final class WidgetDataProviderTests: XCTestCase {
         let session = try await publishedSession(headers: [StaticCustomHeaders.xAccess])
         XCTAssertEqual(session.customHeaders, [StaticCustomHeaders.xAccess])
 
-        let spy = wallSpy()
+        let spy = headersWallSpy()
         let requests = await requestsOfAFullRefresh(session, spy: spy)
 
         let paths = Set(requests.compactMap { $0.url?.path })
@@ -743,7 +743,7 @@ final class WidgetDataProviderTests: XCTestCase {
     func test_AC_119_refreshAfterRemovalCarriesNoHeader() async throws {
         let without = try await publishedSession(headers: [])
         XCTAssertNil(without.customHeaders, "no list: the key is absent, like before this feature")
-        let requests = await requestsOfAFullRefresh(without, spy: wallSpy())
+        let requests = await requestsOfAFullRefresh(without, spy: headersWallSpy())
         XCTAssertFalse(requests.isEmpty)
         XCTAssertTrue(requests.allSatisfy { $0.value(forHTTPHeaderField: "X-Access") == nil })
     }
@@ -753,7 +753,7 @@ final class WidgetDataProviderTests: XCTestCase {
         let session = try JSONDecoder().decode(WidgetSession.self, from: legacy)
         XCTAssertNil(session.customHeaders)
 
-        let requests = await requestsOfAFullRefresh(session, spy: wallSpy())
+        let requests = await requestsOfAFullRefresh(session, spy: headersWallSpy())
         XCTAssertFalse(requests.isEmpty)
         for request in requests {
             XCTAssertEqual(request.value(forHTTPHeaderField: "Authorization"), "Bearer widget-jwt")
@@ -766,7 +766,7 @@ final class WidgetDataProviderTests: XCTestCase {
         let session = WidgetSession(
             baseURL: "https://photos.example.com", token: "widget-jwt", customHeaders: [StaticCustomHeaders.basic]
         )
-        let requests = await requestsOfAFullRefresh(session, spy: wallSpy())
+        let requests = await requestsOfAFullRefresh(session, spy: headersWallSpy())
         XCTAssertFalse(requests.isEmpty)
         for request in requests {
             XCTAssertEqual(request.value(forHTTPHeaderField: "Authorization"), "Basic dXNlcjpwYXNz")

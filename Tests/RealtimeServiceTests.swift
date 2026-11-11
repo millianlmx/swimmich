@@ -11,14 +11,14 @@ final class RealtimeServiceTests: XCTestCase {
         let transport = MockRealtimeTransport()
         let service = RealtimeService(transport: transport, debounceInterval: .zero, notificationCenter: center)
         service.connect(baseURL: URL(string: "https://photos.example.com")!, token: "t")
-        var captured: Notification?
+        let captured = TestBox<Notification?>(nil)
         let burst = expectation(forNotification: .immichAssetsChanged, object: nil, notificationCenter: center) { note in
-            captured = note
+            captured.value = note
             return true
         }
         names.forEach(transport.emit)
         await fulfillment(of: [burst], timeout: 2)
-        return captured ?? Notification(name: .immichAssetsChanged)
+        return captured.value ?? Notification(name: .immichAssetsChanged)
     }
 
     // AC-14: a mixed burst is ONE notification carrying every event name.
@@ -28,8 +28,8 @@ final class RealtimeServiceTests: XCTestCase {
         let transport = MockRealtimeTransport()
         let service = RealtimeService(transport: transport, debounceInterval: .milliseconds(50), notificationCenter: center)
         service.connect(baseURL: URL(string: "https://photos.example.com")!, token: "t")
-        var received: [Notification] = []
-        let token = center.addObserver(forName: .immichAssetsChanged, object: nil, queue: nil) { received.append($0) }
+        let received = TestBox<[Notification]>([])
+        let token = center.addObserver(forName: .immichAssetsChanged, object: nil, queue: nil) { received.value.append($0) }
         defer { center.removeObserver(token) }
 
         transport.emit("on_person_thumbnail")
@@ -37,8 +37,8 @@ final class RealtimeServiceTests: XCTestCase {
         transport.emit("on_asset_trash")
         try? await Task.sleep(for: .milliseconds(400))
 
-        XCTAssertEqual(received.count, 1)
-        let batch = received.first.map(RealtimeBatch.init(notification:))
+        XCTAssertEqual(received.value.count, 1)
+        let batch = received.value.first.map(RealtimeBatch.init(notification:))
         XCTAssertEqual(batch?.events, ["on_person_thumbnail", "on_asset_trash"])
         XCTAssertEqual(batch?.touchesAssets, true)
         XCTAssertEqual(transport.events, RealtimeBatch.listenedEvents, "the service asks the transport for every listened event")
@@ -69,8 +69,8 @@ final class RealtimeServiceTests: XCTestCase {
         let transport = MockRealtimeTransport()
         let service = RealtimeService(transport: transport, debounceInterval: .milliseconds(50), notificationCenter: center)
         service.connect(baseURL: URL(string: "https://photos.example.com")!, token: "t")
-        var count = 0
-        let token = center.addObserver(forName: .immichAssetsChanged, object: nil, queue: nil) { _ in count += 1 }
+        let count = TestBox(0)
+        let token = center.addObserver(forName: .immichAssetsChanged, object: nil, queue: nil) { _ in count.value += 1 }
         defer { center.removeObserver(token) }
 
         transport.emit("on_asset_trash")
@@ -78,7 +78,7 @@ final class RealtimeServiceTests: XCTestCase {
         transport.emit("on_asset_trash")
         try? await Task.sleep(for: .milliseconds(300))
 
-        XCTAssertEqual(count, 0)
+        XCTAssertEqual(count.value, 0)
         XCTAssertFalse(transport.isConnected)
     }
 
