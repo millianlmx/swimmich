@@ -576,6 +576,28 @@ final class MemoriesChainUITests: XCTestCase {
         XCTAssertTrue(card(birthday).waitForExistence(timeout: 15), "closing the end screen did not come back to the list")
     }
 
+    /// A one-photo memory left by its passage shows its photo again, not the
+    /// passage, when the user comes back to it (S-7). Reads the horizontal pager
+    /// itself (`memoryPagerProbe_<id>`), not the model.
+    func test_AC_60_7_returningToAOnePhotoMemoryShowsItsPhoto() {
+        launchSignedIn()
+        openCard(otd2023)
+        let pager = element("memoryPagerProbe_\(otd2023)")
+        let photo = "bbbbbbbb-2222-4222-8222-000000000003"
+        XCTAssertTrue(pager.waitForExistence(timeout: 10), "no pager probe on the 2023 memory — \(screenText())")
+        XCTAssertEqual(pager.value as? String, photo)
+
+        app.swipeLeft() // its only photo, then the passage → the 2022 memory
+        waitForProbe(["page": otd2022, "photo": "0"])
+
+        app.swipeDown() // back to the 2023 memory
+        waitForProbe(["page": otd2023, "photo": "0"])
+        let deadline = Date().addingTimeInterval(10)
+        while (pager.value as? String) != photo && Date() < deadline { Thread.sleep(forTimeInterval: 0.3) }
+        XCTAssertEqual(pager.value as? String, photo,
+                       "the 2023 memory came back on its passage instead of its photo")
+    }
+
     func test_AC_60_4_hapticsOffEmitsNothing() {
         launchSignedIn()
         // Registered BEFORE the setting is touched, and run even when this test

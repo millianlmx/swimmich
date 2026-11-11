@@ -96,11 +96,40 @@ struct MemoryMomentView: View {
             }
         }
         .onChange(of: isCurrent) { _, nowCurrent in
+            // A page that becomes current rests on its photo 0 again (the
+            // playback went to photo 0). For a one-photo memory `heroIndex` is
+            // 0 before and after, so `heroAsset?.id` does not change and the
+            // pager would stay on the passage it was left on. Not done when the
+            // page stops being current: it is sliding out and must not jump.
             if nowCurrent {
+                resetPagerPosition()
                 restartKenBurns()
             } else {
                 kenBurns = false
             }
+        }
+        .overlay(alignment: .topLeading) { pagerProbe }
+    }
+
+    /// Puts the horizontal pager back on the hero photo, without animation.
+    private func resetPagerPosition() {
+        guard let id = heroAsset?.id, visibleItem != id else { return }
+        var jump = Transaction()
+        jump.disablesAnimations = true
+        withTransaction(jump) { visibleItem = id }
+    }
+
+    /// UI-test probe (same switch as `memoryPlaybackProbe`): what the horizontal
+    /// pager actually shows — an asset id, or `passage`.
+    @ViewBuilder
+    private var pagerProbe: some View {
+        if MemoryPlaybackProbe.isEnabled {
+            Color.clear
+                .frame(width: 1, height: 1)
+                .allowsHitTesting(false)
+                .accessibilityElement(children: .ignore)
+                .accessibilityIdentifier("memoryPagerProbe_\(memory.id)")
+                .accessibilityValue(Text(verbatim: visibleItem == Self.passageID ? "passage" : (visibleItem ?? "none")))
         }
     }
 
