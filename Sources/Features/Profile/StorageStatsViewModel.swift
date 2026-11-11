@@ -1,27 +1,30 @@
 import Foundation
 import Observation
 
+/// One half of the account storage: not read yet, read, or its read failed.
+/// Top level on purpose: a generic type nested in an `@Observable` class is the
+/// one construct the other view models do not use.
+enum StorageReading<Value: Equatable>: Equatable {
+    case notLoaded
+    case loaded(Value)
+    case unavailable(message: String)
+}
+
 /// Account storage shown on the Me hub, Media Stats and "On this device".
 ///
 /// Two independent reads of the *calling account* (never the instance):
 /// - `GET /api/users/me` → used bytes and quota (`usage`);
 /// - `GET /api/assets/statistics` → own photo / video counts (`counts`).
 ///
-/// Each half is a `Reading`: a number on screen is a number that was just read.
-/// A failed (re)read turns that half into `.unavailable` — never `0` — while the
-/// other half keeps its own outcome. A cancelled read (SwiftUI cancels the task
-/// of `.refreshable` / `.task`) is not a failure and leaves the half untouched.
-/// `GET /api/server/statistics` (instance totals, admins only) is read by the
-/// Administration screen alone.
+/// Each half is a `StorageReading`: a number on screen is a number that was just
+/// read. A failed (re)read turns that half into `.unavailable` — never `0` —
+/// while the other half keeps its own outcome. A cancelled read (SwiftUI cancels
+/// the task of `.refreshable` / `.task`) is not a failure and leaves the half
+/// untouched. `GET /api/server/statistics` (instance totals, admins only) is read
+/// by the Administration screen alone.
 @Observable
 @MainActor
 final class StorageStatsViewModel {
-    enum Reading<Value: Equatable>: Equatable {
-        case notLoaded
-        case loaded(Value)
-        case unavailable(message: String)
-    }
-
     struct Usage: Equatable {
         let usedBytes: Int64
         /// `nil` = unlimited (no quota, or quota 0).
@@ -40,8 +43,8 @@ final class StorageStatsViewModel {
 
     let client: any ImmichClient
 
-    private(set) var usage: Reading<Usage> = .notLoaded
-    private(set) var counts: Reading<Counts> = .notLoaded
+    private(set) var usage: StorageReading<Usage> = .notLoaded
+    private(set) var counts: StorageReading<Counts> = .notLoaded
     private(set) var isLoading = false
 
     init(client: any ImmichClient) {
@@ -91,7 +94,7 @@ final class StorageStatsViewModel {
     }
 
     /// Cancellation keeps the previous state; any other error is `.unavailable`.
-    private static func settle<V: Equatable>(_ previous: Reading<V>, after error: Error) -> Reading<V> {
+    private static func settle<V: Equatable>(_ previous: StorageReading<V>, after error: Error) -> StorageReading<V> {
         if UserFacingError.isCancellation(error) || Task.isCancelled { return previous }
         return .unavailable(message: error.userFacingMessage ?? UserFacingError.genericMessage)
     }

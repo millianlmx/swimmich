@@ -282,6 +282,19 @@ final class AdminInstanceStatsTests: XCTestCase {
         XCTAssertNil(vm.instanceStatsError)
     }
 
+    func test_AC_73_refresh_readsTotalsAndSectionsTogether() async {
+        let mock = MockImmichClient()
+        mock.serverStatisticsResponse = makeStats()
+        mock.adminUsersResponse = [UserAdminResponseDto(id: "u1", name: "Other User", email: "o@example.com")]
+        let vm = AdminViewModel(client: mock)
+
+        await vm.refresh()
+
+        XCTAssertEqual(vm.instanceStats, makeStats())
+        XCTAssertEqual(vm.users.count, 1)
+        XCTAssertEqual(mock.serverStatisticsCallCount, 1)
+    }
+
     func test_AC_73_cancellation_keepsPreviousStats() async {
         let mock = MockImmichClient()
         mock.serverStatisticsResponse = makeStats()
