@@ -1574,9 +1574,9 @@ final class AuthViewModelTests: XCTestCase {
     /// `X-Access: secret`, with the socket and the widget session observable.
     @MainActor
     private func makeHeadersFixture(
-        defaults: UserDefaults, keychain: MockKeychainStore = MockKeychainStore()
+        defaults: UserDefaults, keychain: MockKeychainStore = MockKeychainStore(), signedIn: Bool = true
     ) -> HeadersFixture {
-        makeStoredSession(defaults: defaults, keychain: keychain)
+        if signedIn { makeStoredSession(defaults: defaults, keychain: keychain) }
         let key = ServerKey.of("https://photos.example.com")
         let registry = CustomHeadersRegistry(
             store: InMemoryCustomHeadersStore([key: [StaticCustomHeaders.xAccess]]),
@@ -1630,13 +1630,17 @@ final class AuthViewModelTests: XCTestCase {
     func test_headersChangeForAnotherServerOrWithoutASessionDoesNothing() async throws {
         let (defaults, suite) = makeIsolatedDefaults()
         defer { defaults.removePersistentDomain(forName: suite) }
-        let fx = makeHeadersFixture(defaults: defaults)
+        let signedOut = makeHeadersFixture(defaults: defaults, signedIn: false)
 
         // Not signed in yet: the next request reads the registry, nothing to nudge.
-        fx.auth.customHeadersDidChange(for: fx.key)
-        XCTAssertTrue(fx.transport.connects.isEmpty)
-        XCTAssertNil(fx.published.load())
+        signedOut.auth.customHeadersDidChange(for: signedOut.key)
+        XCTAssertTrue(signedOut.transport.connects.isEmpty)
+        XCTAssertNil(signedOut.published.load())
 
+        // Signed in, but the list that changed belongs to another server.
+        let (otherDefaults, otherSuite) = makeIsolatedDefaults()
+        defer { otherDefaults.removePersistentDomain(forName: otherSuite) }
+        let fx = makeHeadersFixture(defaults: otherDefaults)
         await fx.auth.restoreSession()
         let connects = fx.transport.connects.count
         fx.auth.customHeadersDidChange(for: ServerKey.of("https://other.example.org"))
