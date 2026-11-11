@@ -168,6 +168,9 @@ private struct AuthenticatedRoot: View {
     @State private var appLog: AppLogViewModel
     @State private var mediaStats: MediaStatsViewModel
     @State private var downloadInfo: DownloadInfoViewModel
+    /// The client certificate screen of the Me hub (L-10), for the active
+    /// account's server.
+    @State private var clientCertificate: ClientCertificateViewModel
     @State private var selection: RootTab = .photos
     @State private var lastContentTab: RootTab = .photos
     @State private var pendingTimelineScrollID: String?
@@ -226,6 +229,7 @@ private struct AuthenticatedRoot: View {
         _appLog = State(initialValue: container.makeAppLogViewModel())
         _mediaStats = State(initialValue: container.makeMediaStatsViewModel(offline: container.makeOfflineDownloadViewModel(accountID: accountID)))
         _downloadInfo = State(initialValue: container.makeDownloadInfoViewModel(offline: container.makeOfflineDownloadViewModel(accountID: accountID)))
+        _clientCertificate = State(initialValue: container.makeClientCertificateViewModel(serverURL: session.baseURL))
     }
 
     var body: some View {
@@ -380,7 +384,8 @@ private struct AuthenticatedRoot: View {
                 whatsNew: whatsNew,
                 appLog: appLog,
                 mediaStats: mediaStats,
-                downloadInfo: downloadInfo
+                downloadInfo: downloadInfo,
+                clientCertificate: clientCertificate
             )
             // The Me hub re-states everything its own subtree needs. Measured
             // on 2026-09-15: what is injected on THIS view's modifier chain (the

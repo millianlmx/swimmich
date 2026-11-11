@@ -16,6 +16,9 @@ enum APIError: Error, LocalizedError, Equatable {
     /// the request (Immich never sets that header). The session is untouched —
     /// the fix is in the server's HTTP headers, not a new sign-in.
     case proxyRejected
+    /// The server asked for a TLS client certificate and none is installed for
+    /// it (L-10): the fix is to import one, not to retry.
+    case clientCertificateRequired
 
     var errorDescription: String? { UserFacingError.from(self)?.message }
 

@@ -94,6 +94,14 @@ public struct SharedUploadClient: ShareUploading {
         self.session = session
     }
 
+    /// Ends this client's session. The share extension builds one client per
+    /// share and calls this when it leaves, so a second share served by the same
+    /// process starts a fresh session — and a fresh TLS handshake, which
+    /// presents whatever client certificate is installed by then.
+    public func invalidate() {
+        session.invalidateAndCancel()
+    }
+
     // MARK: - Upload
 
     public func upload(

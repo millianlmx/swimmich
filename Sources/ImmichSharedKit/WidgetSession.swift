@@ -154,9 +154,14 @@ public struct WidgetSessionStore: WidgetSessionStoring {
 /// user explicitly trusted.
 public final class WidgetTrustDelegate: NSObject, URLSessionTaskDelegate, @unchecked Sendable {
     private let sessionStore: any WidgetSessionStoring
+    private let clientCertificates: ClientCertificateResponder
 
-    public init(sessionStore: any WidgetSessionStoring = WidgetSessionStore()) {
+    public init(
+        sessionStore: any WidgetSessionStoring = WidgetSessionStore(),
+        clientCertificates: ClientCertificateResponder = .live
+    ) {
         self.sessionStore = sessionStore
+        self.clientCertificates = clientCertificates
     }
 
     /// Same redirect rule as every other session (`ServerRedirectPolicy`): the
@@ -181,6 +186,10 @@ public final class WidgetTrustDelegate: NSObject, URLSessionTaskDelegate, @unche
         didReceive challenge: URLAuthenticationChallenge,
         completionHandler: @escaping (URLSession.AuthChallengeDisposition, URLCredential?) -> Void
     ) {
+        if let (disposition, credential) = clientCertificates.answer(challenge) {
+            completionHandler(disposition, credential)
+            return
+        }
         guard challenge.protectionSpace.authenticationMethod == NSURLAuthenticationMethodServerTrust,
               let serverTrust = challenge.protectionSpace.serverTrust
         else {

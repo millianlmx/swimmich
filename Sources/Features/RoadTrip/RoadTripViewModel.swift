@@ -49,7 +49,7 @@ final class RoadTripViewModel {
     private var assetScores: [String: Double] = [:]
     /// The process-wide road-trip session (`ServerSessions.roadTrip`): thumbnail
     /// pre-selection here and image preloading in the renderer share it.
-    private let session: URLSession
+    private let session: @Sendable () -> URLSession
 
     init(
         client: any ImmichClient,
@@ -59,7 +59,7 @@ final class RoadTripViewModel {
         baseURL: URL,
         token: String?,
         photos: PhotoLibraryService,
-        session: URLSession
+        session: @escaping @Sendable () -> URLSession
     ) {
         self.client = client
         self.albumId = albumId
@@ -222,11 +222,11 @@ final class RoadTripViewModel {
         _ asset: AssetReactItem,
         baseURL: URL,
         token: String?,
-        session: URLSession
+        session: @escaping @Sendable () -> URLSession
     ) async -> (String, UIImage?, Double?) {
         let url = ImmichAssetURL.thumbnail(assetId: asset.id, thumbhash: asset.thumbhash ?? "", baseURL: baseURL, size: .preview)
         do {
-            let (data, _) = try await AssetFileTransfer.fetchData(from: url, token: token, session: session)
+            let (data, _) = try await AssetFileTransfer.fetchData(from: url, token: token, session: session())
             guard let image = UIImage(data: data) else { return (asset.id, nil, nil) }
             let score = image.cgImage.map { RoadTripPhotoScore.score($0) }
             return (asset.id, image, score)

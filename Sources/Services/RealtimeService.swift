@@ -47,12 +47,20 @@ protocol RealtimeTransport: AnyObject {
 /// Socket.IO transport: connects to the Immich server's `/api/socket.io`
 /// gateway, authenticating through the websocket handshake headers (the session
 /// token and the server's custom headers, see `ServerRequestAuthorization`).
+///
+/// The WebSocket rides on `URLSessionSocketEngine`, on the session `session()`
+/// returns — in production `ServerSessions.realtime`, which applies the app's
+/// server-trust rule and presents the server's client certificate (L-10). The
+/// default `.shared` (system trust only, no certificate) is for tests.
 @MainActor
 final class SocketIORealtimeTransport: RealtimeTransport {
     private var manager: SocketManager?
     private var socket: SocketIOClient?
+    private let session: @Sendable () -> URLSession
 
-    nonisolated init() {}
+    nonisolated init(session: @escaping @Sendable () -> URLSession = { .shared }) {
+        self.session = session
+    }
 
     func connect(baseURL: URL, headers: [String: String], events: [String], onEvent: @escaping @MainActor (String) -> Void) {
         disconnect()
@@ -61,11 +69,12 @@ final class SocketIORealtimeTransport: RealtimeTransport {
             config: [
                 .path("/api/socket.io"),
                 .forceWebsockets(true),
-                .extraHeaders(headers),
                 .reconnects(true),
-                .compress,
             ]
         )
+        // Set BEFORE `connect()`: `SocketManager` only builds its own engine
+        // when it has none, and reuses this one on every reconnection.
+        manager.engine = URLSessionSocketEngine(client: manager, url: baseURL, session: session, extraHeaders: headers)
         let socket = manager.defaultSocket
 
         socket.on(clientEvent: .connect) { _, _ in
@@ -119,8 +128,13 @@ final class RealtimeService {
         self.customHeaders = customHeaders
     }
 
+    /// What `connect` was last given, kept until `disconnect`, so a certificate
+    /// change can reconnect the socket (`reconnectIfConnected`).
+    private var lastConnection: (baseURL: URL, token: String)?
+
     func connect(baseURL: URL, token: String) {
         disconnect()
+        lastConnection = (baseURL, token)
         let headers = ServerRequestAuthorization.dictionary(
             token: token, custom: customHeaders.headers(for: baseURL)
         )
@@ -129,9 +143,17 @@ final class RealtimeService {
         }
     }
 
+    /// New socket on the current session (and so the current client
+    /// certificate), if the service is connected; nothing otherwise.
+    func reconnectIfConnected() {
+        guard let last = lastConnection else { return }
+        connect(baseURL: last.baseURL, token: last.token)
+    }
+
     func disconnect() {
         debounceTask?.cancel()
         debounceTask = nil
+        lastConnection = nil
         pendingEvents.removeAll()
         transport.disconnect()
     }

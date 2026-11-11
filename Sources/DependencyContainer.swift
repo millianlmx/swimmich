@@ -1,5 +1,6 @@
 import Foundation
 import ImmichSharedKit
+import WidgetKit
 
 /// App-wide composition root. Provides pre-built service graph + view models.
 @MainActor
@@ -29,8 +30,14 @@ final class DependencyContainer {
     /// One per process: the trust-aware sessions for images, transfers and road
     /// trip. Built on the API client's own trust store and reset by the
     /// logout purge (`LocalDataPurger`).
-    let serverSessions: ServerSessions
+    nonisolated let serverSessions: ServerSessions
     let realtime: RealtimeService
+    /// The TLS client certificate of each server (L-10): the keychain-backed
+    /// store the TLS delegates, the widgets and the share extension all read,
+    /// and the service that imports, replaces and removes one.
+    nonisolated let clientIdentities: any ClientIdentityStoring
+    nonisolated let clientCertificateResponder: ClientCertificateResponder
+    let clientCertificates: ClientCertificateService
     /// Process-wide single instance so the BG handler, the settings toggle
     /// and `UploadViewModel` all submit through the same request slot —
     /// `submit()` cancels then re-submits, so concurrent independent
@@ -142,11 +149,25 @@ final class DependencyContainer {
 
     init() {
         self.keychain = KeychainStoreImpl()
+        let identities = KeychainClientIdentityStore()
+        self.clientIdentities = identities
+        // Test only (`-uiTestResetClientCertificates YES`): every UI scenario
+        // starts without a certificate, whatever the previous one left in the
+        // keychain of the simulator.
+        if UserDefaults.standard.bool(forKey: "uiTestResetClientCertificates") {
+            try? identities.removeAll()
+        }
+        let responder = ClientCertificateResponder(store: identities, log: .shared)
+        self.clientCertificateResponder = responder
         let trustStore = TrustedServerStoreImpl()
         self.trustedServers = trustStore
-        let serverSessions = ServerSessions(trustStore: trustStore, imageCache: AuthenticatedAsyncImage.imageDiskCache)
+        let serverSessions = ServerSessions(
+            trustStore: trustStore, clientCertificates: responder, imageCache: AuthenticatedAsyncImage.imageDiskCache
+        )
         self.serverSessions = serverSessions
-        self.client = ImmichAPIClient(trustStore: trustStore, log: appLog, customHeaders: customHeaders)
+        self.client = ImmichAPIClient(
+            trustStore: trustStore, log: appLog, customHeaders: customHeaders, clientCertificates: responder
+        )
         // Read-only mode: the store persists into `.standard` and the guard
         // reads the very same defaults at call time (never a captured value),
         // so the mode can be flipped without a relaunch and the next write
@@ -162,7 +183,18 @@ final class DependencyContainer {
         self.cleanupSource = photoLibrary
         self.appLock = AppLockViewModel()
         self.lockedFolderPINs = KeychainLockedFolderPINStore(keychain: keychain)
-        self.realtime = RealtimeService(customHeaders: customHeaders)
+        let realtime = RealtimeService(
+            transport: SocketIORealtimeTransport(session: { [serverSessions] in serverSessions.realtime }),
+            customHeaders: customHeaders
+        )
+        self.realtime = realtime
+        self.clientCertificates = ClientCertificateService(
+            store: identities,
+            log: .shared,
+            sessions: [client, serverSessions],
+            reconnectRealtime: { [realtime] in realtime.reconnectIfConnected() },
+            reloadWidgets: { WidgetCenter.shared.reloadAllTimelines() }
+        )
         self.backupScheduler = BGTaskBackupScheduler()
         self.backupLedger = BackupLedger.persistent()
         self.backupLiveActivity = LiveActivityBackupService()
@@ -241,8 +273,27 @@ final class DependencyContainer {
                 apiClient: client,
                 serverSessions: serverSessions
             ),
-            customHeaders: customHeaders
+            customHeaders: customHeaders,
+            identities: clientIdentities
         )
+    }
+
+    /// Client certificate screen of one server (L-10). `onChange` runs after an
+    /// import or a removal succeeded: the server step uses it to check the
+    /// server again.
+    func makeClientCertificateViewModel(
+        serverURL: URL?,
+        onChange: @escaping @MainActor () async -> Void = {}
+    ) -> ClientCertificateViewModel {
+        ClientCertificateViewModel(serverURL: serverURL, manager: clientCertificates, onChange: onChange)
+    }
+
+    /// How the video player reaches a server that has a client certificate:
+    /// the app's `video` session (read per request) and the identity store.
+    /// `nonisolated` on purpose: `VideoPlaybackViewModel` takes it as a default
+    /// argument, which is evaluated in the caller's (nonisolated) context.
+    nonisolated var videoTransport: VideoAppTransport {
+        VideoAppTransport(session: { [serverSessions] in serverSessions.video }, identities: clientIdentities)
     }
 
     func makeTimelineViewModel() -> TimelineViewModel {
@@ -430,7 +481,7 @@ final class DependencyContainer {
             baseURL: baseURL,
             token: token,
             photos: photos,
-            session: serverSessions.roadTrip
+            session: { [serverSessions] in serverSessions.roadTrip }
         )
     }
 
@@ -556,7 +607,8 @@ final class DependencyContainer {
     /// V1.5 polish (AC-718): wire 0.033s render debounce (≈30fps cap) for production.
     func makePhotoEditorViewModel(asset: AssetReactItem) -> PhotoEditorViewModel {
         let vm = PhotoEditorViewModel(
-            assetId: asset.id, client: libraryClient, appLog: appLog, photos: photos, customHeaders: customHeaders
+            assetId: asset.id, client: libraryClient, appLog: appLog, photos: photos,
+            urlSession: { [serverSessions] in serverSessions.transfers }, customHeaders: customHeaders
         )
         vm.renderDebounceInterval = 0.033
         return vm

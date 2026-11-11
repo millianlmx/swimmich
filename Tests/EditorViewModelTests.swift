@@ -47,7 +47,7 @@ final class EditorViewModelTests: XCTestCase {
         CapturingURLProtocol.nextData = onePixelPNG()
         CapturingURLProtocol.nextStatus = 200
 
-        let vm = PhotoEditorViewModel(assetId: "abc", client: MockImmichClient(), urlSession: session)
+        let vm = PhotoEditorViewModel(assetId: "abc", client: MockImmichClient(), urlSession: { session })
         await vm.loadOriginal(url: URL(string: "https://example.com/img")!, token: "tok")
 
         XCTAssertNotNil(vm.originalImage)
@@ -59,8 +59,9 @@ final class EditorViewModelTests: XCTestCase {
 
     func test_AC_118_originalCarriesHeaders() async {
         CapturingURLProtocol.nextData = onePixelPNG()
+        let mocked = makeMockedSession()
         let vm = PhotoEditorViewModel(
-            assetId: "abc", client: MockImmichClient(), urlSession: makeMockedSession(),
+            assetId: "abc", client: MockImmichClient(), urlSession: { mocked },
             customHeaders: StaticCustomHeaders([StaticCustomHeaders.xAccess], for: "https://example.com")
         )
         await vm.loadOriginal(url: URL(string: "https://example.com/api/assets/abc/original")!, token: "tok")
@@ -73,8 +74,9 @@ final class EditorViewModelTests: XCTestCase {
     // A blank token (the empty-string rule of `loadOriginal`) still means "no token".
     func test_AC_124_blankTokenSendsNoAuthorization() async {
         CapturingURLProtocol.nextData = onePixelPNG()
+        let mocked = makeMockedSession()
         let vm = PhotoEditorViewModel(
-            assetId: "abc", client: MockImmichClient(), urlSession: makeMockedSession(), customHeaders: NoCustomHeaders()
+            assetId: "abc", client: MockImmichClient(), urlSession: { mocked }, customHeaders: NoCustomHeaders()
         )
         await vm.loadOriginal(url: URL(string: "https://example.com/img")!, token: "")
         XCTAssertNil(CapturingURLProtocol.lastRequest?.value(forHTTPHeaderField: "Authorization"))
@@ -82,8 +84,9 @@ final class EditorViewModelTests: XCTestCase {
 
     func test_AC_120_loadOriginalDropsHeadersOnCrossHostRedirect() async throws {
         RedirectingURLProtocol.reset()
+        let redirecting = RedirectingURLProtocol.makeSession()
         let vm = PhotoEditorViewModel(
-            assetId: "abc", client: MockImmichClient(), urlSession: RedirectingURLProtocol.makeSession(),
+            assetId: "abc", client: MockImmichClient(), urlSession: { redirecting },
             customHeaders: StaticCustomHeaders([StaticCustomHeaders.xAccess], for: "https://a.proxy.test")
         )
         await vm.loadOriginal(url: URL(string: "https://a.proxy.test/api/assets/abc/original")!, token: "tok")
@@ -97,7 +100,7 @@ final class EditorViewModelTests: XCTestCase {
     }
 
     func test_AC_604_renderPreview_triggers_on_mutation() async {
-        let vm = PhotoEditorViewModel(assetId: "abc", client: MockImmichClient())
+        let vm = PhotoEditorViewModel(assetId: "abc", client: MockImmichClient(), urlSession: { .shared })
         // Pre-seed original image directly (no network) to isolate render logic.
         vm.originalImage = UIImage(cgImage: CIContext().createCGImage(
             CIImage(color: .red).cropped(to: CGRect(x: 0, y: 0, width: 100, height: 100)),
@@ -112,7 +115,7 @@ final class EditorViewModelTests: XCTestCase {
     // MARK: AC-605 (single test exercising all mutators)
 
     func test_AC_605_all_mutators_trigger_render() {
-        let vm = PhotoEditorViewModel(assetId: "abc", client: MockImmichClient())
+        let vm = PhotoEditorViewModel(assetId: "abc", client: MockImmichClient(), urlSession: { .shared })
         vm.originalImage = UIImage(cgImage: CIContext().createCGImage(
             CIImage(color: .blue).cropped(to: CGRect(x: 0, y: 0, width: 100, height: 100)),
             from: CGRect(x: 0, y: 0, width: 100, height: 100)
@@ -139,7 +142,7 @@ final class EditorViewModelTests: XCTestCase {
     // MARK: AC-606
 
     func test_AC_606_resetToOriginal() {
-        let vm = PhotoEditorViewModel(assetId: "abc", client: MockImmichClient())
+        let vm = PhotoEditorViewModel(assetId: "abc", client: MockImmichClient(), urlSession: { .shared })
         vm.setExposure(0.5)
         vm.setContrast(0.3)
         vm.setCropRect(CGRect(x: 0, y: 0, width: 0.5, height: 0.5))
@@ -155,7 +158,7 @@ final class EditorViewModelTests: XCTestCase {
     // MARK: AC-608 (isGridVisible)
 
     func test_AC_608_grid_visible_when_cropping() {
-        let vm = PhotoEditorViewModel(assetId: "abc", client: MockImmichClient())
+        let vm = PhotoEditorViewModel(assetId: "abc", client: MockImmichClient(), urlSession: { .shared })
         XCTAssertFalse(vm.isGridVisible)
         vm.setAspectRatio(.square)
         XCTAssertTrue(vm.isGridVisible)
@@ -169,7 +172,7 @@ final class EditorViewModelTests: XCTestCase {
     // MARK: AC-609 (rotate90 + straighten clamp + independence)
 
     func test_AC_609_rotate90_cw_cycles() {
-        let vm = PhotoEditorViewModel(assetId: "abc", client: MockImmichClient())
+        let vm = PhotoEditorViewModel(assetId: "abc", client: MockImmichClient(), urlSession: { .shared })
         XCTAssertEqual(vm.editState.orientationSteps, 0)
         vm.rotate90CW(); XCTAssertEqual(vm.editState.orientationSteps, 1)
         vm.rotate90CW(); XCTAssertEqual(vm.editState.orientationSteps, 2)
@@ -178,7 +181,7 @@ final class EditorViewModelTests: XCTestCase {
     }
 
     func test_AC_609_rotate90_ccw_cycles() {
-        let vm = PhotoEditorViewModel(assetId: "abc", client: MockImmichClient())
+        let vm = PhotoEditorViewModel(assetId: "abc", client: MockImmichClient(), urlSession: { .shared })
         XCTAssertEqual(vm.editState.orientationSteps, 0)
         vm.rotate90CCW(); XCTAssertEqual(vm.editState.orientationSteps, 3)
         vm.rotate90CCW(); XCTAssertEqual(vm.editState.orientationSteps, 2)
@@ -187,14 +190,14 @@ final class EditorViewModelTests: XCTestCase {
     }
 
     func test_AC_609_straighten_clamped() {
-        let vm = PhotoEditorViewModel(assetId: "abc", client: MockImmichClient())
+        let vm = PhotoEditorViewModel(assetId: "abc", client: MockImmichClient(), urlSession: { .shared })
         vm.setStraighten(100); XCTAssertEqual(vm.editState.straightenDeg, 45, accuracy: 0.001)
         vm.setStraighten(-100); XCTAssertEqual(vm.editState.straightenDeg, -45, accuracy: 0.001)
         vm.setStraighten(0); XCTAssertEqual(vm.editState.straightenDeg, 0, accuracy: 0.001)
     }
 
     func test_AC_609_independent_orientation_straighten() {
-        let vm = PhotoEditorViewModel(assetId: "abc", client: MockImmichClient())
+        let vm = PhotoEditorViewModel(assetId: "abc", client: MockImmichClient(), urlSession: { .shared })
         vm.rotate90CW()             // orientationSteps=1
         vm.setStraighten(10)        // straightenDeg=10
         XCTAssertEqual(vm.editState.orientationSteps, 1)
@@ -212,7 +215,7 @@ final class EditorViewModelTests: XCTestCase {
     // MARK: AC-610 (adjustment ranges clamp)
 
     func test_AC_610_adjustment_ranges() {
-        let vm = PhotoEditorViewModel(assetId: "abc", client: MockImmichClient())
+        let vm = PhotoEditorViewModel(assetId: "abc", client: MockImmichClient(), urlSession: { .shared })
         // Exposure ±2.
         vm.setExposure(10);  XCTAssertEqual(vm.editState.exposure, 2.0, accuracy: 0.0001)
         vm.setExposure(-10); XCTAssertEqual(vm.editState.exposure, -2.0, accuracy: 0.0001)
@@ -230,7 +233,7 @@ final class EditorViewModelTests: XCTestCase {
     // MARK: AC-611 (aspect ratio adjusts centered cropRect)
 
     func test_AC_611_setAspectRatio_adjusts_crop_center() {
-        let vm = PhotoEditorViewModel(assetId: "abc", client: MockImmichClient())
+        let vm = PhotoEditorViewModel(assetId: "abc", client: MockImmichClient(), urlSession: { .shared })
         vm.setAspectRatio(.square)
         // Square 1:1 → full 1×1 cropRect centered.
         XCTAssertEqual(vm.editState.cropRect?.origin.x ?? -1, 0, accuracy: 0.0001)
@@ -250,7 +253,7 @@ final class EditorViewModelTests: XCTestCase {
     // MARK: AC-612 (canRevert)
 
     func test_AC_612_canRevert_enabled_only_when_hasEdits() {
-        let vm = PhotoEditorViewModel(assetId: "abc", client: MockImmichClient())
+        let vm = PhotoEditorViewModel(assetId: "abc", client: MockImmichClient(), urlSession: { .shared })
         XCTAssertFalse(vm.canRevert)
         vm.setExposure(0.1)
         XCTAssertTrue(vm.canRevert)
@@ -265,7 +268,7 @@ final class EditorViewModelTests: XCTestCase {
         defer { cleanup(url) }
         let store = EditStateStore(folderURL: url)
 
-        let vm1 = PhotoEditorViewModel(assetId: "asset-persist", client: MockImmichClient(), store: store)
+        let vm1 = PhotoEditorViewModel(assetId: "asset-persist", client: MockImmichClient(), store: store, urlSession: { .shared })
         vm1.setExposure(0.5)
         vm1.setContrast(0.3)
         vm1.saveState()
@@ -273,7 +276,7 @@ final class EditorViewModelTests: XCTestCase {
         // Spin runloop briefly so the Task inside saveState() runs.
         try await Task.sleep(nanoseconds: 100_000_000)
 
-        let vm2 = PhotoEditorViewModel(assetId: "asset-persist", client: MockImmichClient(), store: store)
+        let vm2 = PhotoEditorViewModel(assetId: "asset-persist", client: MockImmichClient(), store: store, urlSession: { .shared })
         await vm2.loadState()
         XCTAssertEqual(vm2.editState.exposure, 0.5, accuracy: 0.0001)
         XCTAssertEqual(vm2.editState.contrast, 0.3, accuracy: 0.0001)
@@ -285,7 +288,7 @@ final class EditorViewModelTests: XCTestCase {
         let store = EditStateStore(folderURL: url)
 
         // Step 1: save edits.
-        let vm1 = PhotoEditorViewModel(assetId: "asset-delete", client: MockImmichClient(), store: store)
+        let vm1 = PhotoEditorViewModel(assetId: "asset-delete", client: MockImmichClient(), store: store, urlSession: { .shared })
         vm1.setExposure(0.5)
         vm1.saveState()
         try await Task.sleep(nanoseconds: 100_000_000)
@@ -307,7 +310,7 @@ final class EditorViewModelTests: XCTestCase {
         let url = tempStoreURL()
         defer { cleanup(url) }
         let store = EditStateStore(folderURL: url)
-        let vm = PhotoEditorViewModel(assetId: "never-persisted", client: MockImmichClient(), store: store)
+        let vm = PhotoEditorViewModel(assetId: "never-persisted", client: MockImmichClient(), store: store, urlSession: { .shared })
         await vm.loadState()
         XCTAssertEqual(vm.editState, .neutral)
     }
@@ -319,7 +322,7 @@ final class EditorViewModelTests: XCTestCase {
         CapturingURLProtocol.nextData = Data("unauthorized".utf8)
         CapturingURLProtocol.nextStatus = 401
 
-        let vm = PhotoEditorViewModel(assetId: "abc", client: MockImmichClient(), urlSession: session)
+        let vm = PhotoEditorViewModel(assetId: "abc", client: MockImmichClient(), urlSession: { session })
         await vm.loadOriginal(url: URL(string: "https://example.com/img")!, token: "tok")
 
         XCTAssertNil(vm.originalImage)
@@ -332,7 +335,7 @@ final class EditorViewModelTests: XCTestCase {
         CapturingURLProtocol.nextData = Data("not-an-image".utf8)
         CapturingURLProtocol.nextStatus = 200
 
-        let vm = PhotoEditorViewModel(assetId: "abc", client: MockImmichClient(), urlSession: session)
+        let vm = PhotoEditorViewModel(assetId: "abc", client: MockImmichClient(), urlSession: { session })
         await vm.loadOriginal(url: URL(string: "https://example.com/img")!, token: "tok")
 
         XCTAssertNil(vm.originalImage)
@@ -342,7 +345,7 @@ final class EditorViewModelTests: XCTestCase {
 
     func test_AC_617_loadOriginal_transport_error() async {
         // No URLProtocol installed on .shared → real network → fails immediately for localhost:1.
-        let vm = PhotoEditorViewModel(assetId: "abc", client: MockImmichClient(), urlSession: .shared)
+        let vm = PhotoEditorViewModel(assetId: "abc", client: MockImmichClient(), urlSession: { .shared })
         await vm.loadOriginal(url: URL(string: "http://127.0.0.1:1/nope")!, token: "tok")
 
         XCTAssertNil(vm.originalImage)
@@ -380,7 +383,7 @@ final class EditorViewModelTests: XCTestCase {
                         photos: any PhotoLibraryService = MockPhotoLibraryService(),
                         exportDirectory: URL) -> PhotoEditorViewModel {
         PhotoEditorViewModel(assetId: "asset-1", client: client, appLog: appLog, photos: photos,
-                             store: store ?? makeStore(), exportDirectory: exportDirectory)
+                             store: store ?? makeStore(), urlSession: { .shared }, exportDirectory: exportDirectory)
     }
 
     /// VM with a small loaded original and one exposure edit: `canSave` is true.

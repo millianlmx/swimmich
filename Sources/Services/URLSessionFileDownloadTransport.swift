@@ -17,9 +17,12 @@ import Foundation
 /// normally. Hence this shape, and the continuation below to keep the `async`
 /// signature the callers already use.
 struct URLSessionFileDownloadTransport: FileDownloadTransport {
-    let session: URLSession
+    /// Read at every download: a certificate change replaces the app's
+    /// sessions (`SessionRenewing`), and a task created on an invalidated
+    /// session crashes.
+    let session: @Sendable () -> URLSession
 
-    init(session: URLSession) {
+    init(session: @escaping @Sendable () -> URLSession) {
         self.session = session
     }
 
@@ -30,7 +33,7 @@ struct URLSessionFileDownloadTransport: FileDownloadTransport {
         let delegate = DownloadDelegate(onProgress: onProgress)
         return try await withTaskCancellationHandler {
             try await withCheckedThrowingContinuation { continuation in
-                delegate.start(request, in: session, continuation: continuation)
+                delegate.start(request, in: session(), continuation: continuation)
             }
         } onCancel: {
             delegate.cancel()

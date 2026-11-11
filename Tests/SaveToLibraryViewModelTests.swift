@@ -40,7 +40,7 @@ final class SaveToLibraryViewModelTests: XCTestCase {
         let session = makeMockedSession()
         let vm = SaveToLibraryViewModel(
             asset: asset, client: client, baseURL: URL(string: "https://example.com")!,
-            token: token, photoLibrary: photoLibrary, session: session, presentShare: onPresent
+            token: token, photoLibrary: photoLibrary, session: { session }, presentShare: onPresent
         )
         return (vm, client, photoLibrary, session)
     }

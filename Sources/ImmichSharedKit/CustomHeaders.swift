@@ -21,16 +21,40 @@ extension Notification.Name {
 /// not count, so `https://Photos.Example.org/` and
 /// `https://photos.example.org:443/api` are one server — and `localhost:8421`
 /// and `127.0.0.1:8421` are two.
-public struct ServerKey: Hashable, Sendable, Codable {
+public struct ServerKey: Hashable, Sendable, Codable, CustomStringConvertible {
     public let rawValue: String
 
+    /// `http`/`ws` default to port 80, `https`/`wss` to 443 (the realtime socket
+    /// and the video loader name the same server as the API); any other scheme
+    /// is not a server.
     public init?(url: URL) {
-        guard let scheme = url.scheme?.lowercased(), scheme == "http" || scheme == "https",
+        guard let scheme = url.scheme?.lowercased(),
+              ["http", "https", "ws", "wss"].contains(scheme),
               let host = url.host?.lowercased(), !host.isEmpty
         else { return nil }
-        let port = url.port ?? (scheme == "http" ? 80 : 443)
-        rawValue = host.contains(":") ? "[\(host)]:\(port)" : "\(host):\(port)"
+        let secure = scheme == "https" || scheme == "wss"
+        let port = url.port ?? (secure ? 443 : 80)
+        rawValue = Self.rawValue(host: host, port: port)
     }
+
+    /// The server a TLS challenge comes from. A protection space without a port
+    /// (0) takes the default of its protocol.
+    public init(protectionSpace: URLProtectionSpace) {
+        let port = protectionSpace.port > 0
+            ? protectionSpace.port
+            : (protectionSpace.protocol == NSURLProtectionSpaceHTTPS ? 443 : 80)
+        rawValue = Self.rawValue(host: protectionSpace.host.lowercased(), port: port)
+    }
+
+    private static func rawValue(host: String, port: Int) -> String {
+        host.contains(":") ? "[\(host)]:\(port)" : "\(host):\(port)"
+    }
+
+    /// `host:port`: the keychain account of this server's client certificate
+    /// mapping, and what the certificate screen shows.
+    public var account: String { rawValue }
+
+    public var description: String { rawValue }
 
     /// The text the editor shows: the host alone for a default port (80 or 443),
     /// `host:port` otherwise. The origin scheme is not kept, so both default

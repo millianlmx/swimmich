@@ -59,6 +59,8 @@ struct ProfileView: View {
     @State var appLog: AppLogViewModel
     @State var mediaStats: MediaStatsViewModel
     @State var downloadInfo: DownloadInfoViewModel
+    /// The client certificate of the active server (L-10), pushed from Advanced.
+    @State var clientCertificate: ClientCertificateViewModel
     /// Drives the logout confirmation dialog (SP-4).
     @State private var showLogoutConfirm = false
     /// An activation prompt is on screen: the toggle shows "on" and ignores taps.
@@ -324,6 +326,13 @@ struct ProfileView: View {
                         Label("Download Info", systemImage: "arrow.down.doc")
                     }
                     .accessibilityIdentifier("downloadInfoRow")
+
+                    NavigationLink {
+                        ClientCertificateView(vm: clientCertificate)
+                    } label: {
+                        Label("Client Certificate", systemImage: "lock.shield")
+                    }
+                    .accessibilityIdentifier("clientCertificateRow")
                 } header: {
                     Text("Advanced")
                 }

@@ -78,7 +78,7 @@ final class WidgetDataProviderTests: XCTestCase {
         _ spy: TransportSpy,
         session: WidgetSession? = WidgetSession(baseURL: "https://photos.example.com", token: "widget-jwt")
     ) -> WidgetDataProvider {
-        WidgetDataProvider(sessionStore: StubSessionStore(session: session), transport: spy)
+        WidgetDataProvider(sessionStore: StubSessionStore(session: session), transport: { spy })
     }
     private func url(_ request: URLRequest) -> String {
         request.url?.absoluteString ?? ""
@@ -429,7 +429,7 @@ final class WidgetDataProviderTests: XCTestCase {
     func test_aServerThatNeverAnswers_stillYieldsATimeline() async {
         let provider = WidgetDataProvider(
             sessionStore: StubSessionStore(session: WidgetSession(baseURL: "https://photos.example.com", token: "jwt")),
-            transport: HangingTransport(),
+            transport: { HangingTransport() },
             deadline: .milliseconds(80)
         )
 

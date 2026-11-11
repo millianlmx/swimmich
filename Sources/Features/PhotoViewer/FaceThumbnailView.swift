@@ -61,7 +61,7 @@ struct FaceThumbnailView: View {
                 image = cached
             } else {
                 let epoch = await ImageCache.shared.epoch
-                let (data, _) = try await AssetFileTransfer.fetchData(from: url, token: token, session: .shared)
+                let (data, _) = try await AssetFileTransfer.fetchData(from: url, token: token, session: DependencyContainer.shared.serverSessions.images)
                 guard let downloaded = UIImage(data: data) else { return }
                 await ImageCache.shared.store(downloaded, for: url, epoch: epoch)
                 image = downloaded

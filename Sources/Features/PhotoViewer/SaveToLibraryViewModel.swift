@@ -12,7 +12,7 @@ import UIKit
 /// All infrastructure is injectable so unit tests never touch
 /// `PHPhotoLibrary`, `URLSession` or the system presenter:
 /// - `photoLibrary` — `PhotoLibraryService` (default `PhotoLibraryServiceImpl`)
-/// - `session` — `URLSession` (default `.shared`, tests use `CapturingURLProtocol`)
+/// - `session` — provider of the `URLSession` to use, read at each fetch (tests use `CapturingURLProtocol`)
 /// - `presentShare` — presenter closure (default `ActivityPresenter.present`)
 @MainActor
 @Observable
@@ -22,7 +22,7 @@ final class SaveToLibraryViewModel {
     let baseURL: URL
     let token: String?
     let photoLibrary: any PhotoLibraryService
-    let session: URLSession
+    let session: @Sendable () -> URLSession
     var presentShare: ([Any], (() -> Void)?) -> Void
 
     var isSaving = false
@@ -41,7 +41,7 @@ final class SaveToLibraryViewModel {
         baseURL: URL,
         token: String?,
         photoLibrary: any PhotoLibraryService = PhotoLibraryServiceImpl(),
-        session: URLSession = .shared,
+        session: @escaping @Sendable () -> URLSession,
         presentShare: @escaping ([Any], (() -> Void)?) -> Void = { items, completion in
             MainActor.assumeIsolated {
                 ActivityPresenter.present(items: items, completion: completion)
@@ -117,7 +117,7 @@ final class SaveToLibraryViewModel {
             originalName = (try? await client.getAsset(id: asset.id))?.originalFileName
         }
         let url = ImmichAssetURL.original(assetId: asset.id, baseURL: baseURL)
-        return try await AssetFileTransfer.fetchData(from: url, token: token, session: session)
+        return try await AssetFileTransfer.fetchData(from: url, token: token, session: session())
     }
 
     private var datePrefix: String {

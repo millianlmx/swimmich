@@ -35,8 +35,8 @@ final class PhotoEditorViewModel {
     private let photos: any PhotoLibraryService
     private let exportDirectory: URL
 
-    /// Injectable for tests (CapturingURLProtocol pattern). AC-604 / AC-617.
-    var urlSession: URLSession = .shared
+    /// Provider of the session to fetch through, read at each fetch (a certificate change replaces the app's sessions). Injectable for tests (CapturingURLProtocol pattern). AC-604 / AC-617.
+    var urlSession: @Sendable () -> URLSession
     private let customHeaders: any CustomHeadersProviding
 
     // MARK: Observable state
@@ -105,7 +105,7 @@ final class PhotoEditorViewModel {
          appLog: any AppLogSink = NoopAppLogSink(),
          photos: any PhotoLibraryService = PhotoLibraryServiceImpl(),
          store: EditStateStore = EditStateStore(),
-         urlSession: URLSession = .shared,
+         urlSession: @escaping @Sendable () -> URLSession,
          customHeaders: any CustomHeadersProviding = CustomHeadersRegistry.shared,
          exportDirectory: URL = FileManager.default.temporaryDirectory.appendingPathComponent("immich-editor", isDirectory: true)) {
         self.assetId = assetId
@@ -134,7 +134,7 @@ final class PhotoEditorViewModel {
         let data: Data
         let response: URLResponse
         do {
-            (data, response) = try await ServerRedirectTaskDelegate.data(for: request, on: urlSession)
+            (data, response) = try await ServerRedirectTaskDelegate.data(for: request, on: urlSession())
         } catch {
             errorMessage = error.userFacingMessage
             return

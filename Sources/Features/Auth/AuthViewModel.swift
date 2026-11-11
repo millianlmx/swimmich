@@ -19,6 +19,9 @@ final class AuthViewModel: AuthSessionDelegate {
         case checking
         case reachable(version: ServerVersionResponseDto?)
         case unreachable
+        /// The server asked for a TLS client certificate and none is installed
+        /// for it (L-10).
+        case clientCertificateRequired
     }
 
     // UserDefaults keys (internal so tests can seed/assert).
@@ -41,8 +44,15 @@ final class AuthViewModel: AuthSessionDelegate {
 
     // Server connection
     var serverURLString: String = "" {
-        didSet { _cachedBaseURL = nil }
+        didSet {
+            _cachedBaseURL = nil
+            refreshClientCertificateState()
+        }
     }
+    /// Whether a client certificate is installed for the server typed above
+    /// (host + effective port). Recomputed on every change of the address, at
+    /// the end of `connectServer()` and by `clientCertificateDidChange()`.
+    private(set) var serverHasClientCertificate = false
     var serverStatus: ServerStatus = .idle
     var serverConfig: ServerConfigDto?
 
@@ -103,6 +113,10 @@ final class AuthViewModel: AuthSessionDelegate {
     private let localData: LocalDataPurger?
     /// The server's custom HTTP headers (L-09): copied into the widget session.
     private let customHeaders: any CustomHeadersProviding
+    /// What the TLS delegates saw: tells a missing client certificate and a
+    /// refused server trust from a plain network failure (L-10).
+    private let challengeLog: TLSChallengeLog
+    private let identities: any ClientIdentityStoring
 
     init(
         client: any ImmichClient,
@@ -113,7 +127,9 @@ final class AuthViewModel: AuthSessionDelegate {
         widgetSession: any WidgetSessionStoring = WidgetSessionStore(),
         reloadWidgets: @escaping () -> Void = { WidgetCenter.shared.reloadAllTimelines() },
         localData: LocalDataPurger? = nil,
-        customHeaders: any CustomHeadersProviding = NoCustomHeaders()
+        customHeaders: any CustomHeadersProviding = NoCustomHeaders(),
+        challengeLog: TLSChallengeLog = .shared,
+        identities: any ClientIdentityStoring = KeychainClientIdentityStore()
     ) {
         self.client = client
         self.keychain = keychain
@@ -124,6 +140,8 @@ final class AuthViewModel: AuthSessionDelegate {
         self.reloadWidgets = reloadWidgets
         self.localData = localData
         self.customHeaders = customHeaders
+        self.challengeLog = challengeLog
+        self.identities = identities
         self.serverURLString = defaults.string(forKey: Self.serverURLDefaultsKey) ?? ""
         self.userEmail = defaults.string(forKey: Self.userEmailDefaultsKey)
         self.userName = defaults.string(forKey: Self.userNameDefaultsKey)
@@ -132,6 +150,7 @@ final class AuthViewModel: AuthSessionDelegate {
         self.accessToken = keychain.getToken()
         self.savedAccounts = Self.loadSavedAccounts(from: defaults)
         self.client.authDelegate = self
+        refreshClientCertificateState()
     }
 
     // MARK: - Session restore (relaunch)
@@ -269,15 +288,51 @@ final class AuthViewModel: AuthSessionDelegate {
             } else {
                 serverStatus = .unreachable
             }
-        } catch let e as URLError where Self.isTLSError(e) {
-            // P5 selfsigned-cert: surface the host so the UI can offer to
-            // trust it explicitly.
-            serverStatus = .unreachable
-            errorMessage = String(localized: "This server’s certificate can’t be verified.")
-            pendingUntrustedHost = url.host
         } catch {
-            serverStatus = .unreachable
+            // The client wraps URLSession failures in `APIError.network`, so the
+            // `URLError` is read out of either shape.
+            let urlError = Self.urlError(in: error)
+            if let urlError, Self.isTLSError(urlError)
+                || (urlError.code == .cancelled && challengeLog.trustWasRefused(host: url.host ?? "")) {
+                // P5 selfsigned-cert: surface the host so the UI can offer to
+                // trust it explicitly. A refused trust wins over any other
+                // reading: the client certificate is only asked for once the
+                // server is trusted, and a challenge the delegate cancelled
+                // surfaces as `.cancelled`, not as a TLS error code.
+                serverStatus = .unreachable
+                errorMessage = String(localized: "This server’s certificate can’t be verified.")
+                pendingUntrustedHost = url.host
+            } else if (error as? APIError) == .clientCertificateRequired
+                        || urlError.map({ MissingClientCertificate.matches($0, url: url, log: challengeLog) }) == true {
+                serverStatus = .clientCertificateRequired
+                errorMessage = UserFacingError.clientCertificateRequiredMessage
+            } else {
+                serverStatus = .unreachable
+            }
         }
+        refreshClientCertificateState()
+    }
+
+    private static func urlError(in error: Error) -> URLError? {
+        if let urlError = error as? URLError { return urlError }
+        if case .network(let urlError)? = error as? APIError { return urlError }
+        return nil
+    }
+
+    /// Re-reads whether the typed server has a client certificate.
+    func refreshClientCertificateState() {
+        guard let url = baseURL, let key = ServerKey(url: url) else {
+            serverHasClientCertificate = false
+            return
+        }
+        serverHasClientCertificate = identities.hasIdentity(for: key)
+    }
+
+    /// A certificate was imported or removed for the typed server: re-read the
+    /// state and check the server again, so the status follows without a tap.
+    func clientCertificateDidChange() async {
+        refreshClientCertificateState()
+        if baseURL != nil { await connectServer() }
     }
 
     /// Host whose TLS certificate failed validation (P5 selfsigned-cert).

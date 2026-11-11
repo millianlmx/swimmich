@@ -113,7 +113,7 @@ final class EditedImageRendererTests: XCTestCase {
 
     /// Preview of `raw` through the real VM render path, after an exposure-only edit.
     private func renderPreview(of raw: UIImage, configure: (PhotoEditorViewModel) -> Void) -> (UIImage, EditState) {
-        let vm = PhotoEditorViewModel(assetId: "asset-1", client: MockImmichClient())
+        let vm = PhotoEditorViewModel(assetId: "asset-1", client: MockImmichClient(), urlSession: { .shared })
         vm.originalImage = raw
         configure(vm)
         return (vm.previewImage!, vm.editState)

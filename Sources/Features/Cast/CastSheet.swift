@@ -12,6 +12,10 @@ import SwiftUI
 struct CastSheet: View {
     let asset: AssetReactItem
     let service: any CastService
+    /// A TLS client certificate is installed for the account's server: AirPlay
+    /// plays a video by fetching it itself, so it cannot present the certificate
+    /// (L-10).
+    let clientCertificateActive: Bool
 
     /// The ViewModel is built here, from the injected service, so the sheet
     /// stays presentable with a mock in tests and the viewer never constructs
@@ -19,9 +23,10 @@ struct CastSheet: View {
     @State private var vm: CastViewModel
     @Environment(\.dismiss) private var dismiss
 
-    init(asset: AssetReactItem, service: any CastService) {
+    init(asset: AssetReactItem, service: any CastService, clientCertificateActive: Bool = false) {
         self.asset = asset
         self.service = service
+        self.clientCertificateActive = clientCertificateActive
         _vm = State(initialValue: CastViewModel(service: service))
     }
 
@@ -36,6 +41,11 @@ struct CastSheet: View {
 
             if !vm.canCast(asset) {
                 castImageHint
+                    .transition(.opacity)
+            }
+
+            if vm.showsClientCertificateHint(for: asset, clientCertificateActive: clientCertificateActive) {
+                castClientCertificateHint
                     .transition(.opacity)
             }
 
@@ -94,5 +104,22 @@ struct CastSheet: View {
         .background(Color.bgSecondary)
         .clipShape(RoundedRectangle(cornerRadius: PVRadius.md, style: .continuous))
         .accessibilityIdentifier("castImageHint")
+    }
+
+    /// The video half of the same honesty: with a client certificate installed,
+    /// AirPlay cannot play the stream; mirroring the screen still works.
+    private var castClientCertificateHint: some View {
+        Label(
+            "AirPlay can’t play videos from a server that requires a client certificate. Use Screen Mirroring from Control Center.",
+            systemImage: "info.circle"
+        )
+        .font(.pvCaption)
+        .foregroundStyle(Color.textSecondaryPV)
+        .multilineTextAlignment(.leading)
+        .padding(PVSpacing.s12)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(Color.bgSecondary)
+        .clipShape(RoundedRectangle(cornerRadius: PVRadius.md, style: .continuous))
+        .accessibilityIdentifier("castClientCertificateHint")
     }
 }

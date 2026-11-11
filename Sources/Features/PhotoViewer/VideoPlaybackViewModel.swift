@@ -30,7 +30,7 @@ final class VideoPlaybackViewModel {
     private var loopWhenEnded = false
 
     init(
-        engine: any VideoPlaybackEngine = AVVideoPlaybackEngine(),
+        engine: any VideoPlaybackEngine = AVVideoPlaybackEngine(appTransport: DependencyContainer.shared.videoTransport),
         appSettings: AppSettingsStore = .shared,
         loopsVideo: Bool? = nil
     ) {

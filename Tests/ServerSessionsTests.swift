@@ -137,12 +137,12 @@ final class ServerSessionsTests: XCTestCase {
 
     func test_AC3_downloadTransport_trustsASelfSignedHostInTheStore() throws {
         let (made, _) = makeSessions(trusting: [Self.host])
-        try assertTrusted(made.makeDownloadTransport().session)
+        try assertTrusted(made.makeDownloadTransport().session())
     }
 
     func test_AC4_downloadTransport_refusesASelfSignedHostOutsideTheStore() throws {
         let (made, _) = makeSessions(trusting: [])
-        try assertRefused(made.makeDownloadTransport().session)
+        try assertRefused(made.makeDownloadTransport().session())
     }
 
     func test_AC14_roadTripSession_appliesTheTrustStore() throws {
@@ -234,6 +234,27 @@ final class ServerSessionsTests: XCTestCase {
         _ = try await session.data(for: .proxiedServerRequest(path: "/same"))
         let same = try XCTUnwrap(RedirectingURLProtocol.requests(toHost: "a.proxy.test").first)
         same.assertSecretsKept()
+    }
+
+    // MARK: - Client certificate (L-10): the trust rule is untouched
+
+    /// A refused server trust is noted, so the server step can tell "untrusted
+    /// server" (the alert) from "unreachable" when the cancelled challenge
+    /// surfaces as a plain `.cancelled`.
+    func test_AC_21_2_refusedTrustIsNoted() throws {
+        let (made, _) = makeSessions(trusting: [])
+        try assertRefused(made.images)
+        XCTAssertTrue(TLSChallengeLog.shared.trustWasRefused(host: Self.host))
+    }
+
+    /// The same refusal, same answer: approving the host still lets the
+    /// self-signed certificate through, with or without a client certificate
+    /// answer in front of the trust rule.
+    func test_AC_21_2_trustedSelfSignedHostStillPasses() throws {
+        let (made, _) = makeSessions(trusting: [Self.host])
+        try assertTrusted(made.images)
+        try assertTrusted(made.video)
+        try assertTrusted(made.realtime)
     }
 
     // MARK: - Configuration (AC-11)
