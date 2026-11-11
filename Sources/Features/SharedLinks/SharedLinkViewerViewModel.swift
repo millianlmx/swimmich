@@ -169,7 +169,9 @@ final class SharedLinkViewerViewModel {
         // An INDIVIDUAL link inlines its assets in the DTO — no second call. An
         // ALBUM link cannot: `AlbumResponseDto` carries no assets, the count on
         // it is server-side metadata only.
-        assets = fetched.assets.map(AssetReactItem.init(from:))
+        // Photos of a link arrive reduced when it hides metadata (`SharedLinkAssetDto`):
+        // the item carries neutral values for what the server withheld.
+        assets = fetched.assets.map { AssetReactItem(sharedLinkAsset: $0, linkShowsMetadata: fetched.showMetadata) }
         loadedIds = Set(assets.map(\.id))
         nextPage = fetched.album == nil ? nil : 1
         hasMore = fetched.album != nil
@@ -192,7 +194,8 @@ final class SharedLinkViewerViewModel {
             )
             let fresh = response.assets.items
                 .filter { loadedIds.insert($0.id).inserted }
-                .map(AssetReactItem.init(from:))
+                // An unknown link counts as hiding: never show more than the link grants.
+                .map { AssetReactItem(sharedLinkAsset: $0, linkShowsMetadata: link?.showMetadata == true) }
             assets.append(contentsOf: fresh)
             nextPage = response.assets.nextPage.flatMap(Int.init)
             hasMore = nextPage != nil

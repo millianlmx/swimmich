@@ -224,6 +224,7 @@
 		8BCB1EB0FD75B0663FB20EC9 /* immich_stub_tags.py in Resources */ = {isa = PBXBuildFile; fileRef = 49F7DE298F938AB088649B2F /* immich_stub_tags.py */; };
 		8973F18C5E6902775393DF0A /* immich_stub_jpeg_xl.py in Resources */ = {isa = PBXBuildFile; fileRef = C6EF3FBADADD912F4D40D221 /* immich_stub_jpeg_xl.py */; };
 		515D399E0A1E81854F948CD8 /* immich_stub_zoom_limit.py in Resources */ = {isa = PBXBuildFile; fileRef = 17A26BA538298111BD9E90C9 /* immich_stub_zoom_limit.py */; };
+		B4A5968778695A4B3C2D1E0F /* immich_stub_shared_link_masked.py in Resources */ = {isa = PBXBuildFile; fileRef = 0F1E2D3C4B5A69788796A5B4 /* immich_stub_shared_link_masked.py */; };
 		5E4689D6F2D16D97A3851F71 /* BackupActivityAttributes.swift in Sources */ = {isa = PBXBuildFile; fileRef = CE912093BAAB79EC778D1B0B /* BackupActivityAttributes.swift */; };
 		5EA3F72E1EB77933DFCA8921 /* CastViewModelTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6D4FDE48AB8B4456F638D773 /* CastViewModelTests.swift */; };
 		5F24D1856415AA5733E6C53E /* CleanupReviewView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 87364FB9CFE43BCB1B23E505 /* CleanupReviewView.swift */; };
@@ -319,6 +320,7 @@
 		8989BF9F9ADC64D8701D72F4 /* OcrOverlayViewModelTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 964DFB89A91796DADE22870B /* OcrOverlayViewModelTests.swift */; };
 		C08241E384DB266D906AEAF8 /* AssetPixelSizeViewModelTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = D10DBB74127A94DBEFD3E9E5 /* AssetPixelSizeViewModelTests.swift */; };
 		A4AC5EB1D553285F37C82E31 /* ZoomLimitTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A575DACCD9F03BDE214AFD61 /* ZoomLimitTests.swift */; };
+		5C4B3A2918076F5E4D3C2B1A /* SharedLinkMaskedMetadataTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F60718293A4B5C /* SharedLinkMaskedMetadataTests.swift */; };
 		8A91C57C6944A15ECD9BD44F /* WelcomeScreen.swift in Sources */ = {isa = PBXBuildFile; fileRef = 130BE9D32671473FA29EB7A9 /* WelcomeScreen.swift */; };
 		8ADC94FD072D8246B34162B9 /* LicensesView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 13223BC759A7E6C47187AB0E /* LicensesView.swift */; };
 		8B01EBFBFDBA6D0393361BAF /* PrivacyInfo.xcprivacy in Resources */ = {isa = PBXBuildFile; fileRef = 90B8F6365D4ED0D74A34245A /* PrivacyInfo.xcprivacy */; };
@@ -385,6 +387,7 @@
 		E116BC561A9B12C075EE3FC4 /* JpegXLUITests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 015AFA9B8FB29B9D22E154E5 /* JpegXLUITests.swift */; };
 		49DFBC53F36FF72A2BC5C818 /* MemoriesChainUITests.swift in Sources */ = {isa = PBXBuildFile; fileRef = CF2E00E28DED0DACC0847D55 /* MemoriesChainUITests.swift */; };
 		D3C4EC085DAC08EFE8C78DF8 /* ZoomLimitUITests.swift in Sources */ = {isa = PBXBuildFile; fileRef = C9DEE7F58DD18194ECEC3BDB /* ZoomLimitUITests.swift */; };
+		83726150F4E3D2C1B0A99887 /* SharedLinkMaskedMetadataUITests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7E8F9A0B1C2D3E4F50617283 /* SharedLinkMaskedMetadataUITests.swift */; };
 		ACCF382D86C6CBA5831FF9C0 /* PhotoLibraryChangeMonitor.swift in Sources */ = {isa = PBXBuildFile; fileRef = E312F86B9F5AF422DB743B1B /* PhotoLibraryChangeMonitor.swift */; };
 		AD37DE25A2020AF9419421E9 /* SharedLinkSheet.swift in Sources */ = {isa = PBXBuildFile; fileRef = CAC538A722DBF17EF78BA473 /* SharedLinkSheet.swift */; };
 		AD3A4903F3E63C47324D282B /* UserApiKeysUITests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6FA470C3C036E0918556DE7F /* UserApiKeysUITests.swift */; };
@@ -964,6 +967,7 @@
 		964DFB89A91796DADE22870B /* OcrOverlayViewModelTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OcrOverlayViewModelTests.swift; sourceTree = "<group>"; };
 		D10DBB74127A94DBEFD3E9E5 /* AssetPixelSizeViewModelTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AssetPixelSizeViewModelTests.swift; sourceTree = "<group>"; };
 		A575DACCD9F03BDE214AFD61 /* ZoomLimitTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ZoomLimitTests.swift; sourceTree = "<group>"; };
+		A1B2C3D4E5F60718293A4B5C /* SharedLinkMaskedMetadataTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SharedLinkMaskedMetadataTests.swift; sourceTree = "<group>"; };
 		96FD1A133774F823AD435983 /* LoginScreen.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LoginScreen.swift; sourceTree = "<group>"; };
 		977A7A56CEB688B08C7591B1 /* SharedLinkURL.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SharedLinkURL.swift; sourceTree = "<group>"; };
 		983D0095F908FD57DE3E6A66 /* LocalAssetCell.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LocalAssetCell.swift; sourceTree = "<group>"; };
@@ -1085,6 +1089,7 @@
 		015AFA9B8FB29B9D22E154E5 /* JpegXLUITests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = JpegXLUITests.swift; sourceTree = "<group>"; };
 		CF2E00E28DED0DACC0847D55 /* MemoriesChainUITests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MemoriesChainUITests.swift; sourceTree = "<group>"; };
 		C9DEE7F58DD18194ECEC3BDB /* ZoomLimitUITests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ZoomLimitUITests.swift; sourceTree = "<group>"; };
+		7E8F9A0B1C2D3E4F50617283 /* SharedLinkMaskedMetadataUITests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SharedLinkMaskedMetadataUITests.swift; sourceTree = "<group>"; };
 		C201244125639A1389AA8C38 /* QRScannerView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = QRScannerView.swift; sourceTree = "<group>"; };
 		C2298E0389CE0826F8764FCE /* immich_stub_offline.py */ = {isa = PBXFileReference; lastKnownFileType = text.script.python; path = immich_stub_offline.py; sourceTree = "<group>"; };
 		C2B18628F4D6A34775AFD449 /* AboutLinksTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AboutLinksTests.swift; sourceTree = "<group>"; };
@@ -1150,6 +1155,7 @@
 		49F7DE298F938AB088649B2F /* immich_stub_tags.py */ = {isa = PBXFileReference; lastKnownFileType = text.script.python; path = immich_stub_tags.py; sourceTree = "<group>"; };
 		C6EF3FBADADD912F4D40D221 /* immich_stub_jpeg_xl.py */ = {isa = PBXFileReference; lastKnownFileType = text.script.python; path = immich_stub_jpeg_xl.py; sourceTree = "<group>"; };
 		17A26BA538298111BD9E90C9 /* immich_stub_zoom_limit.py */ = {isa = PBXFileReference; lastKnownFileType = text.script.python; path = immich_stub_zoom_limit.py; sourceTree = "<group>"; };
+		0F1E2D3C4B5A69788796A5B4 /* immich_stub_shared_link_masked.py */ = {isa = PBXFileReference; lastKnownFileType = text.script.python; path = immich_stub_shared_link_masked.py; sourceTree = "<group>"; };
 		E02D88A25EDFEF470DE465AB /* PhotoViewer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PhotoViewer.swift; sourceTree = "<group>"; };
 		E0C5622078B43FA6711CE218 /* PeopleViewModelTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PeopleViewModelTests.swift; sourceTree = "<group>"; };
 		E1208877397F4626C85572F2 /* immich_stub_ocr_text.py */ = {isa = PBXFileReference; lastKnownFileType = text.script.python; path = immich_stub_ocr_text.py; sourceTree = "<group>"; };
@@ -1669,6 +1675,7 @@
 				964DFB89A91796DADE22870B /* OcrOverlayViewModelTests.swift */,
 				D10DBB74127A94DBEFD3E9E5 /* AssetPixelSizeViewModelTests.swift */,
 				A575DACCD9F03BDE214AFD61 /* ZoomLimitTests.swift */,
+				A1B2C3D4E5F60718293A4B5C /* SharedLinkMaskedMetadataTests.swift */,
 				F7ECF5A3A973746D8433FC3C /* OfflineAssetStoreTests.swift */,
 				9AC51306B7EA0416674A8C71 /* OfflineDownloadViewModelTests.swift */,
 				E62748D785DD118A00EB2A90 /* PartnersViewModelTests.swift */,
@@ -1997,6 +2004,7 @@
 				49F7DE298F938AB088649B2F /* immich_stub_tags.py */,
 				C6EF3FBADADD912F4D40D221 /* immich_stub_jpeg_xl.py */,
 				17A26BA538298111BD9E90C9 /* immich_stub_zoom_limit.py */,
+				0F1E2D3C4B5A69788796A5B4 /* immich_stub_shared_link_masked.py */,
 				28FA8E2BDDFA7D112FF30F16 /* immich_stub_search_filters.py */,
 				C785B9212763FE139F871AFF /* immich_stub_selfsigned.py */,
 				0E20A4FDA552E6EEA34A5570 /* immich_stub_settings.py */,
@@ -2108,6 +2116,7 @@
 				015AFA9B8FB29B9D22E154E5 /* JpegXLUITests.swift */,
 				CF2E00E28DED0DACC0847D55 /* MemoriesChainUITests.swift */,
 				C9DEE7F58DD18194ECEC3BDB /* ZoomLimitUITests.swift */,
+				7E8F9A0B1C2D3E4F50617283 /* SharedLinkMaskedMetadataUITests.swift */,
 				0E1157A1B2E58119402D0017 /* SearchFiltersUITests.swift */,
 				800794CDFBCC9FA9194D2933 /* SelfSignedTrustUITests.swift */,
 				25D6809BF3157BB947463A50 /* SettingsParityUITests.swift */,
@@ -2521,6 +2530,7 @@
 				8BCB1EB0FD75B0663FB20EC9 /* immich_stub_tags.py in Resources */,
 				8973F18C5E6902775393DF0A /* immich_stub_jpeg_xl.py in Resources */,
 				515D399E0A1E81854F948CD8 /* immich_stub_zoom_limit.py in Resources */,
+				B4A5968778695A4B3C2D1E0F /* immich_stub_shared_link_masked.py in Resources */,
 				A645FEF10A5E130DD4D31B4B /* immich_stub_search_filters.py in Resources */,
 				1BEEF9D3B3431932AF2C92B3 /* immich_stub_selfsigned.py in Resources */,
 				1404E6E42AD9BF0F5D6160DA /* immich_stub_settings.py in Resources */,
@@ -2658,6 +2668,7 @@
 				8989BF9F9ADC64D8701D72F4 /* OcrOverlayViewModelTests.swift in Sources */,
 				C08241E384DB266D906AEAF8 /* AssetPixelSizeViewModelTests.swift in Sources */,
 				A4AC5EB1D553285F37C82E31 /* ZoomLimitTests.swift in Sources */,
+				5C4B3A2918076F5E4D3C2B1A /* SharedLinkMaskedMetadataTests.swift in Sources */,
 				E13939991C311CCF0F44D727 /* OfflineAssetStoreTests.swift in Sources */,
 				11797783E090A6FCBBD8016B /* OfflineDownloadViewModelTests.swift in Sources */,
 				4FA0DA4EE4DAB9FCEFA3DE00 /* PartnersViewModelTests.swift in Sources */,
@@ -2749,6 +2760,7 @@
 				E116BC561A9B12C075EE3FC4 /* JpegXLUITests.swift in Sources */,
 				49DFBC53F36FF72A2BC5C818 /* MemoriesChainUITests.swift in Sources */,
 				D3C4EC085DAC08EFE8C78DF8 /* ZoomLimitUITests.swift in Sources */,
+				83726150F4E3D2C1B0A99887 /* SharedLinkMaskedMetadataUITests.swift in Sources */,
 				54458D16DEBEF6B70BDC9265 /* SearchFiltersUITests.swift in Sources */,
 				4845F6C3CB85D09F6B1B0CE9 /* SelfSignedTrustUITests.swift in Sources */,
 				536F02CADD00C2197C649D8C /* SettingsParityUITests.swift in Sources */,

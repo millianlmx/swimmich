@@ -67,7 +67,7 @@ struct SharedLinkResponseDto: Codable, Equatable {
     let type: SharedLinkType
     let createdAt: String
     let expiresAt: String?
-    let assets: [AssetResponseDto]
+    let assets: [SharedLinkAssetDto]
     let album: AlbumResponseDto?
     let allowUpload: Bool
     let allowDownload: Bool
@@ -137,4 +137,122 @@ enum SharedLinkCredential: Equatable, Sendable, Hashable {
 /// `SharedLinkLoginDto` — body of `POST /api/shared-links/login`.
 struct SharedLinkLoginDto: Codable, Equatable {
     let password: String
+}
+
+// MARK: - Visitor side: photos as a link hands them out
+
+/// Duration of a photo of a shared link, in milliseconds.
+///
+/// Wire format by server version (checked on `server/src/dtos/asset-response.dto.ts`):
+/// v3.x sends an int32 of milliseconds (null for a still); v2.x sends a *string*
+/// (`"0:00:00.00000"` for a still, never null, or the raw string of the EXIF
+/// tool). Decoding **never throws on the content**: a value that cannot be read
+/// is "no duration" — a link must not fail to open over a badge label.
+struct SharedLinkAssetDuration: Codable, Equatable {
+    let milliseconds: Int?
+
+    init(milliseconds: Int?) {
+        self.milliseconds = milliseconds
+    }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.singleValueContainer()
+        if let value = try? container.decode(Int.self) {
+            milliseconds = value >= 0 ? value : nil
+        } else if let value = try? container.decode(Double.self) {
+            milliseconds = value.isFinite && value >= 0 && value <= Double(Int32.max)
+                ? Int(value.rounded()) : nil
+        } else if let text = try? container.decode(String.self) {
+            milliseconds = Self.milliseconds(fromServerText: text)
+        } else {
+            milliseconds = nil
+        }
+    }
+
+    func encode(to encoder: Encoder) throws {
+        var container = encoder.singleValueContainer()
+        if let milliseconds {
+            try container.encode(milliseconds)
+        } else {
+            try container.encodeNil()
+        }
+    }
+
+    /// `"H:MM:SS[.fff]"` (hours and minutes digits only, seconds digits with an
+    /// optional fraction, no sign) → milliseconds; nil for anything else or above
+    /// `Int32.max` (the v3 bound).
+    static func milliseconds(fromServerText text: String) -> Int? {
+        let parts = text.trimmingCharacters(in: .whitespaces).split(separator: ":", omittingEmptySubsequences: false)
+        guard parts.count == 3 else { return nil }
+        func digits(_ part: Substring) -> Bool {
+            !part.isEmpty && part.allSatisfy { $0.isASCII && $0.isNumber }
+        }
+        let secondParts = parts[2].split(separator: ".", omittingEmptySubsequences: false)
+        guard digits(parts[0]), digits(parts[1]),
+              secondParts.count <= 2, digits(secondParts[0]),
+              secondParts.count == 1 || digits(secondParts[1]),
+              let hours = Double(parts[0]), let minutes = Double(parts[1]),
+              let seconds = Double(parts[2])
+        else { return nil }
+        let total = ((hours * 3600 + minutes * 60) + seconds) * 1000
+        guard total.isFinite, total <= Double(Int32.max) else { return nil }
+        return Int(total.rounded())
+    }
+}
+
+/// A photo as a shared link hands it to the visitor — full or reduced form, any
+/// server version. Serves **only** the photos of a link (`SharedLinkResponseDto.assets`,
+/// the album search of a link): `AssetResponseDto` keeps its required fields and
+/// every other screen keeps refusing an incomplete record.
+///
+/// - v2.0.0: reduced = `id, type, thumbhash, originalMimeType, localDateTime,
+///   duration (string), livePhotoVideoId, hasMetadata`; no `width`/`height`.
+/// - v2.7.5: same with `width`/`height` (nullable). The album search of a v2.x
+///   server answers the **full** form even for a link that hides metadata.
+/// - v3.x: reduced = the ten keys of `SanitizedAssetResponseDto`, duration in ms.
+///
+/// The fields a link may hide are optional here and read as absent: no stand-in
+/// value is made up at this level.
+struct SharedLinkAssetDto: Codable, Equatable {
+    let id: String
+    let type: String
+    // Sent in both forms.
+    var thumbhash: String?
+    var duration: SharedLinkAssetDuration?
+    var hasMetadata: Bool?
+    var livePhotoVideoId: String?
+    /// Absent from the reduced form and before v2.5.0.
+    var isEdited: Bool?
+    // Hidden by the server when the link hides metadata.
+    var originalFileName: String?
+    var originalPath: String?
+    var ownerId: String?
+    var createdAt: String?
+    var fileCreatedAt: String?
+    var fileModifiedAt: String?
+    var updatedAt: String?
+    var isFavorite: Bool?
+    var isArchived: Bool?
+    var isTrashed: Bool?
+    var isOffline: Bool?
+    var visibility: String?
+    var checksum: String?
+    var exifInfo: ExifResponseDto?
+
+    var durationMilliseconds: Int? { duration?.milliseconds }
+}
+
+/// `POST /api/search/metadata` as a link visitor uses it (photos of an album
+/// link): only `assets.items` and `assets.nextPage` are read.
+struct SharedLinkAlbumAssetsResponseDto: Codable, Equatable {
+    let assets: Page
+
+    struct Page: Codable, Equatable {
+        let items: [SharedLinkAssetDto]
+        let nextPage: String?
+
+        enum CodingKeys: String, CodingKey { case items, nextPage }
+    }
+
+    enum CodingKeys: String, CodingKey { case assets }
 }
