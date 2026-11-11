@@ -461,7 +461,7 @@ Chaque écran principal a une ligne par aspect. « États » regroupe le chargem
 
 | Lot | Titre | Besoins | Statut | SHA | AC prouvés |
 |---|---|---|---|---|---|
-| L-01 | Stockage du compte : chiffres propres à chaque utilisateur | B-3 | livré | 908646997a2f | AC-5, AC-6, AC-67, AC-68, AC-69, AC-70, AC-71, AC-72, AC-73, AC-74, AC-75 |
+| L-01 | Stockage du compte : chiffres propres à chaque utilisateur | B-3 | livré | c5250b8baa59 | AC-5, AC-6, AC-67, AC-68, AC-69, AC-70, AC-71, AC-72, AC-73, AC-74, AC-75 |
 | L-02 | Albums : vrai propriétaire, édition par les éditeurs et ordre de tri | B-4, B-5, B-6 | planifié | — | — |
 | L-03 | Tags hiérarchiques | B-7 | planifié | — | — |
 | L-04 | Timeline : curseur de défilement par date | B-8 | planifié | — | — |
