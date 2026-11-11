@@ -2,7 +2,7 @@ import SwiftUI
 
 /// Interface-language picker (issue #21) — reached from the "Me" hub.
 ///
-/// Immich follows the device language by default; this screen pins one instead.
+/// Swimmich follows the device language by default; this screen pins one instead.
 /// `AppLanguageStore` owns the choice, the picker only renders it — plus the one
 /// consequence worth spelling out: iOS resolves a bundle's localizations at
 /// launch, so part of the text follows only after a reopen, which is what the
@@ -24,7 +24,7 @@ struct LanguageSettingsView: View {
             } header: {
                 Text("App Language")
             } footer: {
-                Text("The language Immich's interface uses. A change takes effect the next time you open the app.")
+                Text("The language Swimmich's interface uses. A change takes effect the next time you open the app.")
             }
 
             Section {

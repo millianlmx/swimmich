@@ -145,7 +145,7 @@ struct LocalLibraryView: View {
         ContentUnavailableView {
             Label("Photo library access is off", systemImage: "lock")
         } description: {
-            Text("Immich needs access to this device's photos to list them.")
+            Text("Swimmich needs access to this device's photos to list them.")
         } actions: {
             if vm.authorization == .notDetermined {
                 Button("Allow access") { Task { await vm.requestAccess() } }

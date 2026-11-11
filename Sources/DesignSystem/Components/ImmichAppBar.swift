@@ -3,11 +3,11 @@ import SwiftUI
 // MARK: - ImmichAppBar
 //
 // Immich-flavored app bar identity, placed in `ToolbarItem(placement: .principal)`.
-// Renders the app's own mark + "Immich" wordmark inline — the recognizable
-// immich top-of-screen identity. The upstream Flutter `ImmichSliverAppBar`
+// Renders the app's own mark + "Swimmich" wordmark inline — the recognizable
+// top-of-screen identity. The upstream Flutter `ImmichSliverAppBar`
 // draws `immich-logo-inline-light.svg` / `-dark.svg`: a logo plus a wordmark PNG
 // that differs only by appearance. This app draws its own mark instead
-// (`ImmichMark`: a lens whose opening is the petal motif, in immich's five),
+// (`ImmichMark`: a lens whose opening is the petal motif, in the app's accent pair),
 // and native text follows the system appearance on its own, so the lockup here
 // is the mark + a `Text`, in every app state, from one code path.
 //
@@ -15,14 +15,14 @@ import SwiftUI
 // safe-area insets remain iOS-native (no Material elevation), per the
 // "Immich-flavored native SwiftUI" approach.
 
-/// Immich top app bar identity: logo glyph + wordmark.
+/// Swimmich top app bar identity: logo glyph + wordmark.
 /// Drop into `ToolbarItem(placement: .principal)` on top-level screens.
 struct ImmichAppBar: View {
     /// A key, not a `String`: a literal passed to a `String` property is never
     /// extracted by the compiler and never translated (it rendered verbatim).
     let title: LocalizedStringKey
 
-    init(title: LocalizedStringKey = "Immich") {
+    init(title: LocalizedStringKey = "Swimmich") {
         self.title = title
     }
 
@@ -33,7 +33,7 @@ struct ImmichAppBar: View {
     }
 }
 
-/// Standalone immich mark + wordmark — also reusable outside toolbars
+/// Standalone Swimmich mark + wordmark — also reusable outside toolbars
 /// (auth screens, launch, empty-state headers).
 struct ImmichLogo: View {
     let title: LocalizedStringKey

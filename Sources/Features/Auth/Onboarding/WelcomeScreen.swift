@@ -37,13 +37,18 @@ struct WelcomeScreen: View {
                 ImmichMark()
                     .frame(width: 40, height: 40)
             }
-            Text("Welcome to Immich")
+            Text("Welcome to Swimmich")
                 .font(.pvH2)
                 .multilineTextAlignment(.center)
             Text("Set up your server and sign in.")
                 .font(.pvSubhead)
                 .foregroundStyle(Color.textSecondaryPV)
                 .multilineTextAlignment(.center)
+            Text("Compatible with Immich servers.")
+                .font(.pvCaption)
+                .foregroundStyle(Color.textSecondaryPV)
+                .multilineTextAlignment(.center)
+                .accessibilityIdentifier("welcomeCompatibilityNote")
         }
         .padding(.top, PVSpacing.s8)
     }

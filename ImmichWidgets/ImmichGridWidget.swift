@@ -14,7 +14,7 @@ struct ImmichGridWidget: Widget {
             WidgetPhotosView(wall: entry.wall)
                 .widgetCanvas()
         }
-        .configurationDisplayName("Immich Photos")
+        .configurationDisplayName("Swimmich Photos")
         .description("Your newest photos, with the heart to keep one.")
         .supportedFamilies([
             .systemSmall, .systemMedium, .systemLarge,

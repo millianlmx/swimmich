@@ -82,6 +82,70 @@ final class AppStringsTests: XCTestCase {
         }
     }
 
+    /// AC-7 / AC-11: "Immich" names the compatible server and nothing else.
+    /// Every catalog key or value that still carries the word must be a server
+    /// reference (or the one welcome-screen compatibility line); the app is
+    /// "Swimmich", and the new keys ship in every language.
+    func test_catalog_immichOnlyNamesTheServer_AC7() throws {
+        let catalog = try Self.loadCatalog()
+        let strings = try XCTUnwrap(catalog["strings"] as? [String: Any])
+        let serverReferences: Set<String> = [
+            "Compatible with Immich servers.",
+            "Detected text search requires Immich 3.2 or later.",
+            "If you forget this password, an administrator has to reset it from the Immich web interface.",
+            "Photos in the locked folder are hidden everywhere else and open with your Immich PIN — a separate code from this app lock.",
+            "%lld photos safe on Immich",
+            "Add or remove a photo from the Immich favorites.",
+            "Enter the URL of your Immich instance.",
+            "Photos you upload to Immich will appear here.",
+            "Sign in to Immich",
+            "Uploads new photos from the photo library to Immich.",
+            "Use your Immich account to access your photo library.",
+            "%@ of originals taken on or before %@. They go to the system Recently Deleted album and stay available in Immich: only the copy on this device is removed.",
+            "%lld items moved to the system Recently Deleted album. Emptying it is what actually reclaims the space, and they stay available in Immich.",
+            "Removed items go to the system Recently Deleted album, which only you can empty — that is what reclaims the space. They stay available in Immich. Items in an iCloud Shared Album are never offered, because iOS cannot remove them from the album.",
+            "Forgets every photo Swimmich has recorded as backed up — the tracked count goes to zero. The next backup then re-checks the whole library against the server. Nothing is deleted from Immich or from Photos, and already-uploaded photos are skipped again, but on an iCloud-optimized library the re-check reads a lot of metadata and can take a long time. Prefer \"Check server now\" when only a few photos are missing."
+        ]
+
+        var offenders: [String] = []
+        for (key, value) in strings {
+            let entry = value as? [String: Any] ?? [:]
+            let localizations = entry["localizations"] as? [String: Any] ?? [:]
+            let values = localizations.values.compactMap {
+                (($0 as? [String: Any])?["stringUnit"] as? [String: Any])?["value"] as? String
+            }
+            if (key.contains("Immich") || values.contains { $0.contains("Immich") }) && !serverReferences.contains(key) {
+                offenders.append(key)
+            }
+        }
+        XCTAssertEqual(offenders.sorted(), [], "Immich must only name the server")
+
+        // Every whitelisted key names the server as many times as its English
+        // source does: a translation must not rebrand a server mention
+        // ("supprimé d'Swimmich") or drop one.
+        for key in serverReferences {
+            let entry = try XCTUnwrap(strings[key] as? [String: Any], "Missing key \(key)")
+            let localizations = try XCTUnwrap(entry["localizations"] as? [String: Any])
+            let expected = key.components(separatedBy: "Immich").count - 1
+            for language in Self.shippedTranslations {
+                let unit = (localizations[language] as? [String: Any])?["stringUnit"] as? [String: Any]
+                let value = try XCTUnwrap(unit?["value"] as? String, "\(key): missing \(language)")
+                let actual = value.components(separatedBy: "Immich").count - 1
+                XCTAssertEqual(actual, expected, "\(language) value of \"\(key.prefix(40))…\" must name Immich \(expected)× as the key does")
+            }
+        }
+
+        for key in ["Welcome to Swimmich", "Compatible with Immich servers.", "Swimmich"] {
+            let entry = try XCTUnwrap(strings[key] as? [String: Any], "Missing key \(key)")
+            let localizations = try XCTUnwrap(entry["localizations"] as? [String: Any])
+            for language in Self.shippedTranslations {
+                XCTAssertNotNil(localizations[language], "\(key): missing \(language)")
+            }
+        }
+        XCTAssertNil(strings["Welcome to Immich"], "the old welcome key must be gone")
+        XCTAssertNil(strings["Immich"], "the app is not called Immich")
+    }
+
     /// True when a key carries something a translator can act on: format
     /// specifiers and punctuation alone do not.
     private static func hasWords(_ key: String) -> Bool {
