@@ -468,7 +468,7 @@ Chaque écran principal a une ligne par aspect. « États » regroupe le chargem
 | L-05 | Affichage des photos JPEG XL | B-9 | livré | eceb43f488cd | AC-15, AC-97, AC-98, AC-99, AC-100, AC-101, AC-102, AC-103, AC-104, AC-105 |
 | L-06 | Visionneuse : zoom maximal selon la résolution de la photo | B-10 | livré | 3f5f33d267df | AC-16, AC-106, AC-107, AC-108, AC-109, AC-110, AC-111, AC-112, AC-113, AC-114 |
 | L-07 | Souvenirs : tous les types v3.3+, enchaînement et écran de fin | B-11, B-34 | livré | c5cbeebd854a | AC-17, AC-60 |
-| L-08 | Bibliothèque d'un partenaire | B-12 | livré | d974294b00a7 | AC-18 |
+| L-08 | Bibliothèque d'un partenaire | B-12 | livré | 00c63c47e251 | AC-18 |
 | L-09 | En-têtes HTTP personnalisés pour les proxys | B-13 | planifié | — | — |
 | L-10 | Certificat client (TLS mutuel) | B-14 | planifié | — | — |
 | L-11 | Journal applicatif partagé sans secrets | B-15 | planifié | — | — |
