@@ -475,7 +475,7 @@ Chaque écran principal a une ligne par aspect. « États » regroupe le chargem
 | L-12 | Collections de contenu accessibles hors du hub « Me » | B-16 | livré | 3780fbb1916b | AC-24, AC-25, AC-133, AC-134, AC-135, AC-136, AC-137, AC-138, AC-139, AC-140, AC-141 |
 | L-13 | Texte lisible à toutes les tailles Dynamic Type | B-17 | planifié | — | — |
 | L-14 | Visionneuse : ouverture et fermeture par zoom depuis la vignette | B-18 | livré | 23d8069 | AC-27 (non vérifié à l'exécution), AC-27.1 (non vérifié à l'exécution), AC-27.2 (non vérifié à l'exécution), AC-27.3 (non vérifié à l'exécution), AC-27.4 (non vérifié à l'exécution), AC-27.5 (non vérifié à l'exécution), AC-27.6 (non vérifié à l'exécution), AC-27.7 (non vérifié à l'exécution), AC-27.8 (non vérifié à l'exécution), AC-28 (non vérifié à l'exécution), AC-28.1 (non vérifié à l'exécution), AC-28.2 (non vérifié à l'exécution) |
-| L-15 | Identité Swimmich et matériau unique des commandes flottantes | B-19 | livré | 4db92c9108e8 | AC-29 (non vérifié à l'exécution), AC-29.1, AC-29.2, AC-29.3, AC-30, AC-30.1, AC-30.2, AC-30.3, AC-30.4, AC-30.5 |
+| L-15 | Identité Swimmich et matériau unique des commandes flottantes | B-19 | livré | 713b00543e52 | AC-29 (non vérifié à l'exécution), AC-29.1, AC-29.2, AC-29.3, AC-30, AC-30.1, AC-30.2, AC-30.3, AC-30.4, AC-30.5 |
 | L-16 | États de chargement, vide, erreur et rafraîchissement sur chaque liste | B-20 | planifié | — | — |
 | L-17 | Pluriels et traductions complètes | B-21 | planifié | — | — |
 | L-18 | Réduire les animations : fondus à la place des mouvements | B-22 | planifié | — | — |
