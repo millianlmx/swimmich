@@ -259,6 +259,7 @@ public struct WidgetHeartButton: View {
         }
         .buttonStyle(.plain)
         .accessibilityLabel(isFavorite ? "Remove from favorites" : "Add to favorites")
+        .accessibilityIdentifier("widgetFavoriteButton")
         .padding(7)
     }
 }
@@ -278,6 +279,7 @@ public struct WidgetShuffleButton: View {
         }
         .buttonStyle(.plain)
         .accessibilityLabel("Shuffle memories")
+        .accessibilityIdentifier("widgetShuffleButton")
         .padding(7)
     }
 }
@@ -569,12 +571,15 @@ public struct WidgetMemoriesView: View {
                         }
                         .padding(8)
                     }
+                    // The combined element covers the tile and its texts only: the
+                    // shuffle button is applied AFTER it, so it stays an element of
+                    // its own instead of being absorbed by the combined label.
+                    .accessibilityElement(children: .combine)
+                    .accessibilityLabel(verbatimAccessibilityLabel(card))
                     .overlay(alignment: .topTrailing) { WidgetShuffleButton() }
                     .frame(maxWidth: fill ? .infinity : nil, maxHeight: fill ? .infinity : nil)
             }
         }
-        .accessibilityElement(children: .combine)
-        .accessibilityLabel(verbatimAccessibilityLabel(card))
     }
 
     private var accessoryCircle: some View {

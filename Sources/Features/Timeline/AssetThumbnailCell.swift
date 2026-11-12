@@ -34,7 +34,9 @@ struct AssetThumbnailCell: View {
     var isCompact: Bool? = nil
     var selectionMode: Bool = false
     var isSelected: Bool = false
-    var onTap: () -> Void = {}
+    /// Nil for a thumbnail that opens nothing (the read-only "recent" galleries):
+    /// it is then read as an image, without the button trait.
+    var onTap: (() -> Void)? = nil
     var onToggleFavorite: () -> Void = {}
     var onDelete: () -> Void = {}
     var onArchive: (() -> Void)? = nil
@@ -81,7 +83,13 @@ struct AssetThumbnailCell: View {
                     // Identifier on the image LAYER, never on the whole cell: an
                     // identifier on a container replaces its descendants', which
                     // would hide `stackBadge` / `offlineBadge` — the very
-                    // elements the UI scenarios assert on.
+                    // elements the UI scenarios assert on. The same goes for the
+                    // VoiceOver label and the button trait: the badges stay
+                    // elements of their own.
+                    .accessibilityElement(children: .ignore)
+                    .accessibilityLabel(Self.accessibilityLabel(for: asset))
+                    .accessibilityAddTraits(onTap == nil ? [] : .isButton)
+                    .accessibilityAddTraits(selectionMode && isSelected ? .isSelected : [])
                     .accessibilityIdentifier("assetTile_\(asset.id)")
                     // Parallax: scale + fade slightly as the cell exits viewport (still under
                     // Reduce Motion). Applied to image CONTENT only (FM-3), never the Section.
@@ -109,7 +117,7 @@ struct AssetThumbnailCell: View {
             .animation(PVMotion.movement(PVMotion.snappy, reduceMotion: reduceMotion), value: isSelected)
             .animation(PVMotion.movement(PVMotion.snappy, reduceMotion: reduceMotion), value: selectionMode)
             .contentShape(Rectangle())
-            .onTapGesture(perform: onTap)
+            .onTapGesture { onTap?() }
 
         // Context menu suppressed in selection mode: it would compete with the
         // long-press toggle gesture and its actions (delete/restore) make no
@@ -353,6 +361,18 @@ struct AssetThumbnailCell: View {
         return String(localized: "\(count) photos in a stack", bundle: bundle, locale: locale)
     }
 
+    /// Spoken form of the tile: the media type, then the capture date when it
+    /// is known ("Photo, July 29, 2024"). A Live Photo is a photo.
+    static func accessibilityLabel(for asset: AssetReactItem, bundle: Bundle = .main, locale: Locale = .current) -> String {
+        let date = LongDateFormatter.date(isoPrefix: asset.fileCreatedAt)
+            .map { AppDateFormat.string(from: $0, style: .longDate, locale: locale) }
+        if asset.isVideo {
+            guard let date else { return String(localized: "Video", bundle: bundle, locale: locale) }
+            return String(localized: "Video, \(date)", bundle: bundle, locale: locale)
+        }
+        guard let date else { return String(localized: "Photo", bundle: bundle, locale: locale) }
+        return String(localized: "Photo, \(date)", bundle: bundle, locale: locale)
+    }
 
     // MARK: - Selection (V5)
 

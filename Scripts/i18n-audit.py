@@ -128,6 +128,7 @@ PLURAL_EXCEPTIONS: dict[str, str] = {
             "Slide %lld of %lld: %@",
             "Swimmich backup, %lld of %lld, %@",
             "Uploading %lld/%lld",
+            "Video %lld of %lld",
         )
     },
     **{

@@ -285,6 +285,7 @@ struct MapPhotosSheet: View {
                                 .foregroundStyle(Color.textSecondaryPV)
                         }
                         .accessibilityLabel("Clear marker filter")
+                        .accessibilityIdentifier("mapClearMarkerButton")
                     }
                 }
                 .padding(.horizontal)
@@ -324,7 +325,6 @@ struct MapPhotosSheet: View {
                             ForEach(shownPhotos) { photo in
                                 MapThumb(photo: photo)
                                     .onTapGesture { openViewer(for: photo.asAssetItem) }
-                                    .accessibilityLabel(photo.placeName.isEmpty ? "Photo" : "Photo at \(photo.placeName)")
                                     .onAppear {
                                         // Grow the window as the last shown
                                         // photo appears — thumbnails fetch
@@ -415,6 +415,10 @@ private struct MapThumb: View {
                     url: photo.asAssetItem.thumbnailURL(base: auth.baseURL ?? URL(string: "https://example.com")!),
                     token: auth.accessToken
                 )
+                .accessibilityElement(children: .ignore)
+                .accessibilityLabel(photo.accessibilityLabel())
+                .accessibilityAddTraits(.isButton)
+                .accessibilityIdentifier("mapPhotoThumb_\(photo.id)")
             }
             .clipShape(RoundedRectangle(cornerRadius: PVRadius.md, style: .continuous))
     }
@@ -582,6 +586,10 @@ struct ClusteredMapView: UIViewRepresentable {
                 view.glyphText = "\(total)"
                 view.displayPriority = .required
                 view.canShowCallout = true
+                view.isAccessibilityElement = true
+                view.accessibilityTraits = .button
+                view.accessibilityLabel = MapPhoto.groupAccessibilityLabel(count: total)
+                view.accessibilityIdentifier = "mapMarkerCluster"
                 return view
             }
             if let photoAnno = annotation as? PhotoAnnotation {
@@ -602,6 +610,15 @@ struct ClusteredMapView: UIViewRepresentable {
                     view.glyphImage = UIImage(systemName: "photo")
                 }
                 view.canShowCallout = true
+                // Built by the app, outside SwiftUI: the marker is a button that
+                // filters the sheet or zooms, and says so without naming a media type.
+                let represented = photoAnno.marker.representedCount
+                view.isAccessibilityElement = true
+                view.accessibilityTraits = .button
+                view.accessibilityLabel = represented > 1
+                    ? MapPhoto.groupAccessibilityLabel(count: represented)
+                    : photoAnno.marker.photo.accessibilityLabel()
+                view.accessibilityIdentifier = "mapMarker_\(photoAnno.marker.photo.id)"
                 return view
             }
             return nil
