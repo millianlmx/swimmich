@@ -129,7 +129,7 @@ final class DuplicatesViewModelTests: XCTestCase {
     }
 
     @MainActor
-    func test_AC_149_duplicates_loadingUntilFirstAnswer() async {
+    func test_AC_142_duplicates_loadingUntilFirstAnswer() async {
         let mock = MockImmichClient()
         mock.duplicatesResponse = [makeGroup(id: "g1", ids: ["a1", "a2"], suggested: ["a1"])]
         let latch = TestLatch()
@@ -161,7 +161,7 @@ final class DuplicatesViewModelTests: XCTestCase {
     }
 
     @MainActor
-    func test_AC_149_duplicates_successfulEmptyReadIsEmpty() async {
+    func test_AC_147_duplicates_successfulEmptyReadIsEmptyState() async {
         let vm = DuplicatesViewModel(client: MockImmichClient())
 
         await vm.load()

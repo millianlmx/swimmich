@@ -1340,7 +1340,7 @@ final class PeopleViewModelTests: XCTestCase {
     }
 
     @MainActor
-    func test_AC_149_people_loadingUntilFirstAnswer() async {
+    func test_AC_142_people_loadingUntilFirstAnswer() async {
         let mock = MockImmichClient()
         mock.peopleResponse = peoplePage(["p1"], hasNext: nil)
         let latch = TestLatch()
@@ -1372,7 +1372,7 @@ final class PeopleViewModelTests: XCTestCase {
     }
 
     @MainActor
-    func test_AC_149_people_successfulEmptyReadIsEmpty() async {
+    func test_AC_147_people_successfulEmptyReadIsEmptyState() async {
         let vm = makeVM(MockImmichClient())
 
         await vm.load()
@@ -1507,7 +1507,7 @@ final class PeopleViewModelTests: XCTestCase {
     // MARK: - Person detail states (L-16)
 
     @MainActor
-    func test_AC_149_personAssets_loadingUntilFirstAnswer() async {
+    func test_AC_142_personAssets_loadingUntilFirstAnswer() async {
         let mock = MockImmichClient()
         mock.searchMetadataResponse = assetPage(["a1"], next: nil)
         let latch = TestLatch()
@@ -1538,7 +1538,7 @@ final class PeopleViewModelTests: XCTestCase {
     }
 
     @MainActor
-    func test_AC_149_personAssets_successfulEmptyReadIsEmpty() async {
+    func test_AC_147_personAssets_successfulEmptyReadIsEmptyState() async {
         let vm = makeVM(MockImmichClient())
 
         await vm.select(makePerson(id: "p1"))
@@ -1701,5 +1701,82 @@ final class PeopleViewModelTests: XCTestCase {
         // Loaded: the next `select` keeps the grid and asks nothing.
         await vm.select(person)
         XCTAssertEqual(mock.searchMetadataCalls.count, 2)
+    }
+
+    /// Regression: A loaded, B's first read fails, A reopened. `assetsLoadedForID`
+    /// still named A, so `select(A)` emptied the grid and then skipped the read:
+    /// the indicator stayed up with no request in flight.
+    @MainActor
+    func test_AC_158_personAssets_reopeningLoadedPersonAfterNeighbourFailureReadsAgain() async {
+        let mock = MockImmichClient()
+        mock.searchMetadataResponse = assetPage(["a1"], next: nil)
+        let vm = makeVM(mock)
+        let a = makePerson(id: "pA")
+        let b = makePerson(id: "pB")
+        await vm.select(a)
+        XCTAssertEqual(vm.assetsState, .data(.idle))
+
+        mock.searchMetadataError = serverError
+        await vm.select(b)
+        XCTAssertEqual(vm.assetsState, .error(UserFacingError.serverErrorMessage))
+
+        mock.searchMetadataError = nil
+        let before = mock.searchMetadataCalls.count
+        await vm.select(a)
+
+        XCTAssertEqual(mock.searchMetadataCalls.count, before + 1, "reopening A reads its first page")
+        XCTAssertEqual(vm.personAssets.map(\.id), ["a1"])
+        XCTAssertEqual(vm.assetsState, .data(.idle))
+    }
+
+    /// A cancelled read of B (the view left before the answer) leaves no stale "loaded" id behind either.
+    @MainActor
+    func test_AC_158_personAssets_reopeningAfterCancelledNeighbourReadReadsAgain() async {
+        let mock = MockImmichClient()
+        mock.searchMetadataResponse = assetPage(["a1"], next: nil)
+        let vm = makeVM(mock)
+        let a = makePerson(id: "pA")
+        await vm.select(a)
+
+        mock.searchMetadataGate = { _ in throw CancellationError() }
+        await vm.select(makePerson(id: "pB"))
+
+        mock.searchMetadataGate = nil
+        let before = mock.searchMetadataCalls.count
+        await vm.select(a)
+
+        XCTAssertEqual(mock.searchMetadataCalls.count, before + 1)
+        XCTAssertEqual(vm.assetsState, .data(.idle))
+    }
+
+    @MainActor
+    func test_AC_143_personAssets_dataKeptDuringRefresh() async {
+        let mock = MockImmichClient()
+        mock.searchMetadataResponse = assetPage(["a1"], next: nil)
+        let vm = makeVM(mock)
+        await vm.select(makePerson(id: "p1"))
+
+        // Pull: the photos stay, the system control is the indicator.
+        let pullLatch = TestLatch()
+        mock.searchMetadataGate = { _ in try await pullLatch.wait() }
+        var before = mock.searchMetadataCalls.count
+        let pull = Task { @MainActor in await vm.refreshPerson() }
+        await pollUntil("pull in flight") { mock.searchMetadataCalls.count == before + 1 }
+        XCTAssertEqual(vm.personAssets.map(\.id), ["a1"])
+        XCTAssertEqual(vm.assetsState, .data(.idle))
+        pullLatch.open()
+        await pull.value
+
+        // "Try Again" with data: the photos stay, an indicator replaces the banner.
+        let retryLatch = TestLatch()
+        mock.searchMetadataGate = { _ in try await retryLatch.wait() }
+        before = mock.searchMetadataCalls.count
+        let retry = Task { @MainActor in await vm.reloadPerson() }
+        await pollUntil("retry in flight") { mock.searchMetadataCalls.count == before + 1 }
+        XCTAssertEqual(vm.personAssets.map(\.id), ["a1"])
+        XCTAssertEqual(vm.assetsState, .data(.reloading))
+        retryLatch.open()
+        await retry.value
+        XCTAssertEqual(vm.assetsState, .data(.idle))
     }
 }
