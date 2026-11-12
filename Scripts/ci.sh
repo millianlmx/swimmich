@@ -16,6 +16,8 @@
 #    compiled, not run), several at a time on a pool of simulators of their own
 #    (`SWIMMICH_CI_UI_WORKERS`, 3 by default). A scenario that skips itself fails
 #    the CI: a skip only means its stub was unreachable, which proves nothing.
+#    A line's `--stub-version <X.Y.Z>` starts its stub with
+#    `IMMICH_STUB_VERSION=<X.Y.Z>`, the server version the stub shell announces.
 #
 # DerivedData and SwiftPM checkouts live in a persistent cache: on the
 # self-hosted runner, a run only rebuilds what the commit changed.
@@ -195,7 +197,7 @@ fi
 # UI scenarios. One line of Scripts/ci-ui-scenarios.txt per xcodebuild run:
 #
 #   <stub.py> <Class>[/<test>] [--content-size <simctl category>]
-#             [--media <file name>]... [--skip <test>]...
+#             [--media <file name>]... [--skip <test>]... [--stub-version <X.Y.Z>]
 #
 # The lines run several at a time, one per worker of a pool of
 # `SWIMMICH_CI_UI_WORKERS` simulators (3 by default): worker k is
@@ -208,7 +210,9 @@ fi
 # scenario reaches it through `IMMICH_STUB_URL` (`TEST_RUNNER_IMMICH_STUB_URL`).
 # `--content-size` sets the SYSTEM text size, which an app extension follows
 # (the app itself takes it as a launch argument); `--media` seeds a generated
-# PNG under that file name into Photos. A test that fails, or skips, fails the
+# PNG under that file name into Photos; `--stub-version` starts the stub with
+# `IMMICH_STUB_VERSION=<X.Y.Z>` (the version immich_stub_base.py announces, and
+# the routes it serves, L-20). A test that fails, or skips, fails the
 # CI; every line still runs, so one run reports every broken scenario. A free
 # worker takes the next line: put the longest lines first.
 UI_LIST="Scripts/ci-ui-scenarios.txt"
@@ -239,7 +243,7 @@ if skipped or not passed:
 run_scenario() {
   local index="$1" sim="$2" port="$3" stub="$4" selector="$5"
   shift 5
-  local content_size="" media=() skips=() status=0 name file
+  local content_size="" media=() skips=() stub_version="" status=0 name file
   # Not local: the EXIT trap of the line's subshell reads it after the return.
   stub_pid=""
   trap '[[ -z "$stub_pid" ]] || kill "$stub_pid" 2>/dev/null || true' EXIT
@@ -248,11 +252,13 @@ run_scenario() {
       --content-size) content_size="$2"; shift ;;
       --media) media+=("$2"); shift ;;
       --skip) skips+=("-skip-testing:ImmichSwiftUIUITests/${selector%%/*}/$2"); shift ;;
+      --stub-version) stub_version="$2"; shift ;;
       *) echo "::error::$UI_LIST: unknown option $1"; return 2 ;;
     esac
     shift
   done
-  local label="$selector" result="build/ci/ui-$index.xcresult" stub_log="build/ci/ui-$index-stub.log"
+  local label="$selector${stub_version:+ (IMMICH_STUB_VERSION=$stub_version)}"
+  local result="build/ci/ui-$index.xcresult" stub_log="build/ci/ui-$index-stub.log"
   local media_here="$media_dir/$index"
   echo "ci.sh: UI scenario $label (stub $stub, simulator $sim, port $port)"
 
@@ -281,7 +287,9 @@ open(sys.argv[1], "wb").write(png(sys.argv[2], size=64))
     return 1
   fi
 
-  python3 -u "UITests/stubs/$stub" "$port" >"$stub_log" 2>&1 &
+  # `env` execs python3: `$!` is the stub's own pid, which `/__whoami` must answer.
+  env ${stub_version:+"IMMICH_STUB_VERSION=$stub_version"} \
+    python3 -u "UITests/stubs/$stub" "$port" >"$stub_log" 2>&1 &
   stub_pid=$!
   local ready=0 attempt
   for attempt in $(seq 1 30); do
