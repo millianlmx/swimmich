@@ -85,6 +85,9 @@ final class RecentAssetsViewModel {
         loadGeneration += 1
         let generation = loadGeneration
         isLoading = true
+        // A page still in flight is dropped by the generation guard; its own
+        // `defer` no longer clears the flag, so a failing read would leave it set.
+        isLoadingMore = false
         defer { if generation == loadGeneration { isLoading = false } }
         do {
             let fetched = try await client.getTimeBuckets(

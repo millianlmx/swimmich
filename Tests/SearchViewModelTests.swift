@@ -933,7 +933,9 @@ final class SearchViewModelTests: XCTestCase {
         await pollUntil("first search in flight") { mock.requestCount == 1 }
         await vm.refreshResults()
         XCTAssertEqual(mock.requestCount, 2, "a pull during a read is a request of its own")
-        XCTAssertEqual(vm.resultsState, .data(.idle))
+        XCTAssertEqual(vm.results.map(\.id), ["a"], "the pull's answer is on screen")
+        // `isLoading` stays up while the superseded read is still in flight.
+        XCTAssertEqual(vm.resultsState, .data(.reloading))
 
         // The superseded read fails late: it must not write.
         mock.searchMetadataError = serverError

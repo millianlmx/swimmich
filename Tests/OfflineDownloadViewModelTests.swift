@@ -354,19 +354,21 @@ final class OfflineDownloadViewModelTests: XCTestCase {
         _ model: OfflineDownloadViewModel,
         during body: () async -> Void
     ) async -> (states: [ListRenderState], pulled: Bool) {
-        var seen: [ListRenderState] = [model.listingState]
-        var pulled = false
+        // Boxes, not local vars: the observer task is `@Sendable`, which may not
+        // mutate a captured `var`.
+        let seen = TestBox<[ListRenderState]>([model.listingState])
+        let pulled = TestBox(false)
         let observer = Task { @MainActor in
             while !Task.isCancelled {
-                if seen.last != model.listingState { seen.append(model.listingState) }
-                if model.isRefreshingListing { pulled = true }
+                if seen.value.last != model.listingState { seen.value.append(model.listingState) }
+                if model.isRefreshingListing { pulled.value = true }
                 await Task.yield()
             }
         }
         await body()
         observer.cancel()
-        if seen.last != model.listingState { seen.append(model.listingState) }
-        return (seen, pulled)
+        if seen.value.last != model.listingState { seen.value.append(model.listingState) }
+        return (seen.value, pulled.value)
     }
 
     private func isError(_ state: ListRenderState) -> Bool {
@@ -379,7 +381,10 @@ final class OfflineDownloadViewModelTests: XCTestCase {
 
         let states = await record(vm) { await vm.load() }.states
 
-        XCTAssertFalse(states.contains(.empty) || states.contains(where: isError),
+        // The last recorded state is the answer itself (empty): only the ones
+        // before it must not be empty or error.
+        let before = states.dropLast()
+        XCTAssertFalse(before.contains(.empty) || before.contains(where: isError),
                        "no empty or error state before the answer: \(states)")
         XCTAssertEqual(vm.listingState, .empty)
     }
@@ -638,17 +643,19 @@ final class DownloadInfoViewModelTests: XCTestCase {
         let fresh = DownloadInfoViewModel(offline: freshOffline)
         XCTAssertEqual(fresh.renderState, .loading, "the cache has files: no empty state before the first listing")
 
-        var seen: [ListRenderState] = [fresh.renderState]
+        // Boxes, not local vars: the observer task is `@Sendable`, which may not
+        // mutate a captured `var`.
+        let seen = TestBox<[ListRenderState]>([fresh.renderState])
         let observer = Task { @MainActor in
             while !Task.isCancelled {
-                if seen.last != fresh.renderState { seen.append(fresh.renderState) }
+                if seen.value.last != fresh.renderState { seen.value.append(fresh.renderState) }
                 await Task.yield()
             }
         }
         await fresh.load()
         observer.cancel()
 
-        XCTAssertFalse(seen.contains(.empty), "\(seen)")
+        XCTAssertFalse(seen.value.contains(.empty), "\(seen.value)")
         XCTAssertEqual(fresh.renderState, .data(.idle))
         XCTAssertEqual(fresh.files.map(\.id), ["asset-1"])
     }
@@ -699,20 +706,20 @@ final class DownloadInfoViewModelTests: XCTestCase {
         XCTAssertTrue(isError(fresh.renderState), "\(fresh.renderState)")
         try unblockRoot()
 
-        var seen: [ListRenderState] = [fresh.renderState]
-        var pulled = false
+        let seen = TestBox<[ListRenderState]>([fresh.renderState])
+        let pulled = TestBox(false)
         let observer = Task { @MainActor in
             while !Task.isCancelled {
-                if seen.last != fresh.renderState { seen.append(fresh.renderState) }
-                if fresh.isRefreshingListing { pulled = true }
+                if seen.value.last != fresh.renderState { seen.value.append(fresh.renderState) }
+                if fresh.isRefreshingListing { pulled.value = true }
                 await Task.yield()
             }
         }
         await fresh.load()
         observer.cancel()
 
-        XCTAssertFalse(seen.contains(.empty), "\(seen)")
-        XCTAssertFalse(pulled, "Try Again is not a pull")
+        XCTAssertFalse(seen.value.contains(.empty), "\(seen.value)")
+        XCTAssertFalse(pulled.value, "Try Again is not a pull")
         XCTAssertEqual(fresh.renderState, .data(.idle))
     }
 
@@ -742,16 +749,16 @@ final class DownloadInfoViewModelTests: XCTestCase {
         await other.downloadAsset(makeAsset(id: "asset-1"), baseURL: baseURL, token: "tok")
         XCTAssertEqual(vm.renderState, .empty, "this screen has not read since")
 
-        var emptySeen: [ListRenderState] = [vm.renderState]
+        let emptySeen = TestBox<[ListRenderState]>([vm.renderState])
         let emptyObserver = Task { @MainActor in
             while !Task.isCancelled {
-                if emptySeen.last != vm.renderState { emptySeen.append(vm.renderState) }
+                if emptySeen.value.last != vm.renderState { emptySeen.value.append(vm.renderState) }
                 await Task.yield()
             }
         }
         await vm.refresh()
         emptyObserver.cancel()
-        XCTAssertFalse(emptySeen.contains(.loading), "\(emptySeen)")
+        XCTAssertFalse(emptySeen.value.contains(.loading), "\(emptySeen.value)")
         XCTAssertEqual(vm.renderState, .data(.idle))
         XCTAssertEqual(vm.files.map(\.id), ["asset-1"])
 
@@ -765,17 +772,17 @@ final class DownloadInfoViewModelTests: XCTestCase {
         XCTAssertTrue(isError(failing.renderState))
         try unblockRoot()
 
-        var seen: [ListRenderState] = [failing.renderState]
+        let seen = TestBox<[ListRenderState]>([failing.renderState])
         let observer = Task { @MainActor in
             while !Task.isCancelled {
-                if seen.last != failing.renderState { seen.append(failing.renderState) }
+                if seen.value.last != failing.renderState { seen.value.append(failing.renderState) }
                 await Task.yield()
             }
         }
         await failing.refresh()
         observer.cancel()
 
-        XCTAssertFalse(seen.contains(.loading), "a pull keeps the error on screen: \(seen)")
+        XCTAssertFalse(seen.value.contains(.loading), "a pull keeps the error on screen: \(seen.value)")
         XCTAssertFalse(failing.isRefreshingListing)
         XCTAssertEqual(failing.renderState, .data(.idle))
     }

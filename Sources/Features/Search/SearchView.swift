@@ -427,6 +427,7 @@ struct SearchView: View {
             case .empty:
                 ContentUnavailableView {
                     Label("No results", systemImage: "magnifyingglass")
+                        .accessibilityIdentifier("searchEmptyState")
                 } description: {
                     Text("Try a different search term.")
                 } actions: {
@@ -439,7 +440,6 @@ struct SearchView: View {
                         .accessibilityIdentifier("searchNoResultsReset")
                     }
                 }
-                .accessibilityIdentifier("searchEmptyState")
                 .frame(maxWidth: .infinity)
                 .containerRelativeFrame(.vertical)
             case .data(let status):

@@ -136,6 +136,10 @@ final class AdminViewModelTests: XCTestCase {
         let errorLatch = TestLatch()
         mock.adminUsersGate = { try await errorLatch.wait() }
         mock.adminUsersResponse = [alice]
+        // Jobs and libraries are not gated: the pull must find the server
+        // healthy again when it starts, or they would fail it before the
+        // users answer.
+        mock.adminError = nil
         let errorBefore = mock.requestCount
         let errorPull = Task { @MainActor in await failing.refresh() }
         await pollUntil("pull from error in flight") {
@@ -144,7 +148,6 @@ final class AdminViewModelTests: XCTestCase {
         XCTAssertTrue(failing.isRefreshing)
         XCTAssertEqual(failing.renderState, .error(UserFacingError.serverErrorMessage),
                        "the error stays while the pull reads")
-        mock.adminError = nil
         errorLatch.open()
         await errorPull.value
         XCTAssertEqual(failing.renderState, .data(.idle))

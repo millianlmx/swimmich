@@ -297,6 +297,8 @@ final class LockedFolderViewModel {
         // A read still in flight must not write locked photos back.
         readGeneration += 1
         isLoading = false
+        // The superseded read's `defer` no longer clears the door's busy flag.
+        isBusy = false
         resetGrid()
         pinEntry = ""
         errorMessage = nil
