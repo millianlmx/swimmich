@@ -386,7 +386,8 @@ final class EditorViewModelTests: XCTestCase {
                              store: store ?? makeStore(), urlSession: { .shared }, exportDirectory: exportDirectory)
     }
 
-    /// VM with a small loaded original and one exposure edit: `canSave` is true.
+    /// VM with a small loaded original and one exposure edit: `canSaveToPhotos` is true (`canSave`
+    /// also needs `loadState()`).
     private func editedVM(client: any ImmichClient = MockImmichClient(),
                           store: EditStateStore? = nil,
                           appLog: any AppLogSink = NoopAppLogSink(),
@@ -1037,6 +1038,9 @@ final class EditorViewModelTests: XCTestCase {
         await draftVM.saveState().value
         let stored = await store.load(assetId: "asset-1")
         XCTAssertEqual(stored, draftVM.editState)
+        // Reopening reads the draft back; the context is then loaded, so Save is available (copy mode).
+        await draftVM.loadState()
+        XCTAssertEqual(draftVM.editState, stored)
         XCTAssertTrue(draftVM.canSave)
     }
 
