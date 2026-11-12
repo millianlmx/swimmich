@@ -160,6 +160,14 @@ final class DynamicTypeUITests: XCTestCase {
         app.descendants(matching: .any).matching(identifier: identifier).firstMatch
     }
 
+    /// The element `identifier` that shows inside the window, when several carry
+    /// that id (the pages of a pager laid out above and below the visible one).
+    private func onScreen(_ identifier: String) -> XCUIElement? {
+        let window = windowFrame
+        return app.descendants(matching: .any).matching(identifier: identifier).allElementsBoundByIndex
+            .first { $0.exists && window.intersects($0.frame) }
+    }
+
     private var windowFrame: CGRect { app.windows.firstMatch.frame }
 
     // MARK: - Measuring text
@@ -1252,24 +1260,32 @@ final class DynamicTypeUITests: XCTestCase {
             openMemory(memory)
             XCTAssertTrue(element("memoryMomentBadge").waitForExistence(timeout: 20), "no type badge — \(screenText())")
             let chips = ["memoryChipLocation", "memoryChipCamera", "memoryChipPeople", "memoryChipTags", "memoryChipSaved"]
-            // The bottom panel scrolls when it does not fit.
-            for chip in chips where element(chip).exists { _ = reveal(chip, timeout: 1) }
-            for identifier in ["memoryMomentBadge"] + chips where element(identifier).exists {
-                let frame = element(identifier).frame
+            // The pager keeps its neighbour pages in the tree, with the same identifiers:
+            // only the page on screen is measured.
+            let close = onScreen("memoryMomentClose"), viewInTimeline = onScreen("memoryMomentViewInTimeline")
+            for identifier in ["memoryMomentBadge"] + chips {
+                guard let item = onScreen(identifier) else { continue }
+                let frame = item.frame
                 XCTAssertGreaterThanOrEqual(frame.minX, 0, "\(identifier) of \(memory) starts left of the window")
                 XCTAssertLessThanOrEqual(frame.maxX, windowFrame.width + 0.5, "\(identifier) of \(memory) runs past the window")
-                assertDisjoint(identifier, "memoryMomentClose")
-                assertDisjoint(identifier, "memoryMomentViewInTimeline")
+                for (name, button) in [("memoryMomentClose", close), ("memoryMomentViewInTimeline", viewInTimeline)] {
+                    guard let button else { continue }
+                    XCTAssertLessThanOrEqual(overlapArea(frame, button.frame), 1,
+                                             "\(identifier) \(frame) overlaps \(name) \(button.frame)")
+                }
             }
-            for button in ["memoryMomentClose", "memoryMomentViewInTimeline"] {
-                let frame = element(button).frame
-                XCTAssertEqual(frame.width, 44, accuracy: 1, "\(button) is not 44 pt wide")
-                XCTAssertEqual(frame.height, 44, accuracy: 1, "\(button) is not 44 pt tall")
-                XCTAssertTrue(windowFrame.contains(frame), "\(button) leaves the window")
+            for (name, button) in [("memoryMomentClose", close), ("memoryMomentViewInTimeline", viewInTimeline)] {
+                guard let frame = button?.frame else {
+                    XCTFail("no \(name) on screen — \(screenText())")
+                    continue
+                }
+                XCTAssertEqual(frame.width, 44, accuracy: 1, "\(name) is not 44 pt wide")
+                XCTAssertEqual(frame.height, 44, accuracy: 1, "\(name) is not 44 pt tall")
+                XCTAssertTrue(windowFrame.contains(frame), "\(name) leaves the window")
             }
             // `isHittable` read false here although the button showed in place: the proof
             // that it is reachable is a tap that closes the memory.
-            element("memoryMomentClose").tap()
+            close?.tap()
             XCTAssertTrue(element("memoryMomentClose").waitForNonExistence(timeout: 10),
                           "a tap on memoryMomentClose did not close \(memory)")
         }
