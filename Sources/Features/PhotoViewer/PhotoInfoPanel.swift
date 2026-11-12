@@ -110,9 +110,8 @@ struct PhotoInfoPanel: View {
             Button(action: onClose) {
                 Image(systemName: "chevron.down")
                     .font(.pvHeadline)
-                    .foregroundStyle(Color.textPrimaryPV)
                     .frame(width: 40, height: 40)
-                    .glassEffect(.regular.tint(.black.opacity(0.6)), in: Circle())
+                    .pvFloating(.circle)
             }
             .buttonStyle(.plain)
             .accessibilityLabel("Close details")

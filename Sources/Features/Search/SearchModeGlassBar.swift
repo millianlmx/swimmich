@@ -29,13 +29,9 @@ struct SearchModeGlassBar: View {
     private var showsTitleOnly: Bool { dynamicTypeSize >= .xxLarge }
 
     var body: some View {
-        let shape: AnyShape = stacksSegments
-            ? AnyShape(RoundedRectangle(cornerRadius: PVRadius.lg, style: .continuous))
-            : AnyShape(Capsule())
-        return GlassEffectContainer {
+        GlassEffectContainer {
             segmentLayout
-                .glassEffect(.regular, in: shape)
-                .overlay(shape.stroke(Color.primary.opacity(0.1), lineWidth: 0.5))
+                .pvFloating(.bar)
         }
         .appSensoryFeedback(.selection, trigger: modeChangeTick)
         .onChange(of: mode) { _, _ in
@@ -66,7 +62,7 @@ struct SearchModeGlassBar: View {
             segmentLabel(segment)
                 .font(.pvSubhead)
                 .fontWeight(isSelected ? .semibold : .regular)
-                .foregroundStyle(isSelected ? Color.immichPrimary : Color.textSecondaryPV)
+                .foregroundStyle(isSelected ? PVFloating.content : PVFloating.secondaryContent)
                 .multilineTextAlignment(.center)
                 .padding(.horizontal, PVSpacing.s8)
                 .frame(maxWidth: .infinity, minHeight: height)
@@ -75,10 +71,7 @@ struct SearchModeGlassBar: View {
                     // it does not slide.
                     if isSelected {
                         Capsule()
-                            .fill(Color.primary.opacity(0.12))
-                            .overlay(
-                                Capsule().stroke(Color.primary.opacity(0.08), lineWidth: 0.5)
-                            )
+                            .fill(PVFloating.selection)
                             .padding(PVSpacing.s4)
                     }
                 }

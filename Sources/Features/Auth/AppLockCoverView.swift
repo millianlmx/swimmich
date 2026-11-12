@@ -20,6 +20,8 @@ struct AppLockCoverRoot: View {
 /// shown while the app is `.inactive`. Anything but `.lock` — `.none` during
 /// the window's fade-out included — renders the mask.
 struct AppLockCoverView: View {
+    /// The lock screen's title. A resource, so tests can check its catalog key.
+    static let title: LocalizedStringResource = "Swimmich Locked"
     let appLock: AppLockViewModel
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
@@ -62,14 +64,12 @@ private struct AppLockGlyph: View {
 
 /// The lock's content: glyph, title, Unlock. The title wraps at large text sizes.
 struct AppLockPrompt: View {
-    static let title: LocalizedStringResource = "PhotoVault Locked"
-
     let onUnlock: () -> Void
 
     var body: some View {
         VStack(spacing: PVSpacing.s24) {
             AppLockGlyph()
-            Text(Self.title)
+            Text(AppLockCoverView.title)
                 .font(.pvTitle)
                 .multilineTextAlignment(.center)
                 .fixedSize(horizontal: false, vertical: true)

@@ -25,11 +25,9 @@ struct LanguageToast: View {
                 HStack(alignment: .top, spacing: PVSpacing.s12) {
                     Image(systemName: "globe")
                         .font(.pvH5)
-                        .foregroundStyle(Color.immichPrimary)
 
                     Text("Language changed. Some text updates after you reopen the app.")
                         .font(.pvSubhead)
-                        .foregroundStyle(Color.textPrimaryPV)
                         .multilineTextAlignment(.leading)
                         .fixedSize(horizontal: false, vertical: true)
                         .frame(maxWidth: .infinity, alignment: .leading)
@@ -41,14 +39,13 @@ struct LanguageToast: View {
                 } label: {
                     Text("Got It")
                         .font(.pvSubhead.weight(.semibold))
-                        .foregroundStyle(Color.immichPrimary)
                         .frame(minWidth: 44, minHeight: 44)
                 }
                 .buttonStyle(.plain)
                 .accessibilityIdentifier("languageToastDismiss")
             }
             .padding(PVSpacing.s16)
-            .glassEffect(.regular, in: RoundedRectangle(cornerRadius: PVRadius.lg, style: .continuous))
+            .pvFloating(.bar)
         }
         .padding(.horizontal, PVSpacing.s16)
         .opacity(isVisible ? 1 : 0)

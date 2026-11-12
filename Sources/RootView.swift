@@ -451,7 +451,6 @@ private struct AuthenticatedRoot: View {
             MapPhotosSheet(vm: map)
                 .presentationDetents([.fraction(1.0 / 3.0), .medium])
                 .presentationBackgroundInteraction(.enabled)
-                .presentationBackground(.regularMaterial)
         }
     }
 

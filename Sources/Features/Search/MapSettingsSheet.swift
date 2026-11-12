@@ -150,7 +150,9 @@ struct MapSettingsSheet: View {
             .accessibilityIdentifier("mapSettingsDoneButton")
             .padding(.horizontal, PVSpacing.s16)
             .padding(.vertical, PVSpacing.s12)
-            .background(.bar)
+            .pvFloating(.bar)
+            .padding(.horizontal, PVSpacing.s16)
+            .padding(.bottom, PVSpacing.s8)
     }
 
     // MARK: - Rows

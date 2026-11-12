@@ -289,7 +289,7 @@ final class DynamicTypeTests: XCTestCase {
 
     func test_AC_26_4_appLockPromptWrapsAtAX5() {
         let titleFont = PVFontMetrics.uiFont(.pvTitle, at: .accessibility5)
-        let title = String(localized: AppLockPrompt.title)
+        let title = String(localized: AppLockCoverView.title)
         let oneLineWidth = (title as NSString).size(withAttributes: [.font: titleFont]).width
         XCTAssertGreaterThan(
             oneLineWidth, Self.screenWidth - 2 * PVSpacing.s24,

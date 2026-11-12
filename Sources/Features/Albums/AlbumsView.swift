@@ -206,7 +206,7 @@ struct AlbumsView: View {
                                 .font(.system(size: 11, weight: .semibold))
                                 .foregroundStyle(.white)
                                 .padding(PVSpacing.s4)
-                                .glassEffect(.regular.tint(.black.opacity(0.6)), in: Capsule())
+                                .pvFloating(.pill)
                                 .padding(PVSpacing.s4)
                         }
                         .accessibilityLabel("Shared album")

@@ -100,13 +100,13 @@ final class ImmichWidgetHomeScreen: XCTestCase {
             return XCTFail("widget gallery never appeared")
         }
         gallerySearch.tap()
-        gallerySearch.typeText("Immich")
+        gallerySearch.typeText("Swimmich")
         sleep(3)
         shot("wg-04-search")
 
-        let result = springboard.cells.containing(NSPredicate(format: "label CONTAINS 'Immich'")).firstMatch
+        let result = springboard.cells.containing(NSPredicate(format: "label CONTAINS 'Swimmich'")).firstMatch
         guard result.waitForExistence(timeout: 10) else {
-            return XCTFail("the gallery lists no Immich widget")
+            return XCTFail("the gallery lists no Swimmich widget")
         }
         result.tap()
         sleep(3)
@@ -120,7 +120,7 @@ final class ImmichWidgetHomeScreen: XCTestCase {
         let preview = springboard.buttons.matching(NSPredicate(format: "value CONTAINS 'Widget'")).firstMatch
         XCTAssertTrue(preview.waitForExistence(timeout: 8), "the sheet shows no widget preview")
         // The sheet title is the widget's `configurationDisplayName`, localized
-        // ("Photos Immich" here) — match on the word, not on the English order.
+        // ("Photos Swimmich" here) — match on the word, not on the English order.
         let photosTitle = springboard.staticTexts
             .matching(NSPredicate(format: "label CONTAINS 'Photos'")).firstMatch
         for page in 0..<8 where !photosTitle.exists {

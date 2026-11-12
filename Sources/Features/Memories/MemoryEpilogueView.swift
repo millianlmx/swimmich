@@ -49,7 +49,7 @@ struct MemoryEpilogueView: View {
                         .foregroundStyle(.white)
                         .frame(width: 44, height: 44)
                         .contentShape(Rectangle())
-                        .glassEffect(.regular.tint(.black.opacity(0.6)), in: Circle())
+                        .pvFloating(.circle)
                 }
                 .buttonStyle(.plain)
                 .accessibilityLabel(String(localized: "Close memory"))

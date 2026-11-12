@@ -53,6 +53,24 @@ final class LocalizationTests: XCTestCase {
         }
     }
 
+    /// AC-29.1: the lock screen's title and the Face ID prompt reason name the
+    /// app in every shipped language, and the code asks for exactly those keys.
+    func test_AC_29_1_lockTitleAndReasonResolveToSwimmich() throws {
+        XCTAssertEqual(String(describing: AppLockCoverView.title.key), "Swimmich Locked")
+        XCTAssertEqual(String(describing: AppLockViewModel.unlockReason.key), "Unlock Swimmich")
+
+        let expected: [String: (title: String, reason: String)] = [
+            "fr": ("Swimmich verrouillé", "Déverrouiller Swimmich"),
+            "de": ("Swimmich gesperrt", "Swimmich entsperren"),
+            "es": ("Swimmich bloqueado", "Desbloquear Swimmich"),
+            "it": ("Swimmich bloccato", "Sblocca Swimmich")
+        ]
+        for (language, values) in expected {
+            XCTAssertEqual(try localized("Swimmich Locked", language: language), values.title, language)
+            XCTAssertEqual(try localized("Unlock Swimmich", language: language), values.reason, language)
+        }
+    }
+
     /// L-12: every entry that leads to a content collection (the 12 tiles of
     /// the Albums tab's Library section, its title and the Photos filter button)
     /// has a catalog entry in each shipped language. Presence, not difference
@@ -166,7 +184,7 @@ final class LocalizationTests: XCTestCase {
             (AppTheme.system.label, "System"),
             (AppTheme.light.label, "Light"),
             (AppTheme.dark.label, "Dark"),
-            (AppAccent.immich.label, "Immich"),
+            (AppAccent.immich.label, "Swimmich"),
             (AppAccent.blue.label, "Blue"),
             (AppAccent.green.label, "Green"),
             (AppAccent.orange.label, "Orange"),

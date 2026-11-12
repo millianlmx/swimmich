@@ -4,19 +4,18 @@ import SwiftUI
 //
 // The app's mark: a lens. A barrel band cut into five arcs, five iris slits,
 // and an opening whose *negative space* is the petal motif — five rounded
-// lobes with crisp valleys. It is the family the mark lives in (five-fold
-// rotation, five colours, photography) without being anyone's flower: the
-// petals are a pupil, the colour is one sweep, and the blades are cut where the
-// petal valleys meet the barrel.
+// lobes with crisp valleys. Five-fold rotation and photography are the family
+// it lives in; the petals are a pupil, the colour is one sweep, and the blades
+// are cut where the petal valleys meet the barrel.
 //
 // Every contour is a formula — circles, radial wedges, and one sampled polar
 // curve — not traced data, so the mark is retuned by editing the numbers in
 // `ImmichMarkGeometry` and nothing else. No Apple asset, no upstream logo, and
 // nothing that has to be licensed: the shape is ours, and the palette is
-// `ImmichLogoColors`.
+// `ImmichLogoColors`, two colours derived from the app's accent.
 //
 // Read it at the two sizes it ships at: 24 pt beside the wordmark in
-// `ImmichLogo` (the app bar of eight screens) and 40 pt in the onboarding
+// `ImmichLogo` (the app bar of nine screens) and 40 pt in the onboarding
 // badge. The barrel and the slits fade below 40 pt — deliberately: at 24 pt the
 // mark is a disc with a petal-shaped pupil, which is legible; the blades appear
 // as it grows, which is what keeps the 1024 pt icon interesting.
@@ -139,7 +138,7 @@ struct ImmichMarkShape: Shape {
     }
 }
 
-/// The mark: the lens, filled with the immich sweep.
+/// The mark: the lens, filled with the Swimmich sweep.
 ///
 /// ```swift
 /// ImmichMark().frame(width: 24, height: 24)   // app bar glyph

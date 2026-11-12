@@ -208,7 +208,7 @@ struct SlideshowView: View {
                     .font(.pvHeadline)
                     .foregroundStyle(Color.white)
                     .frame(width: 40, height: 40)
-                    .glassEffect(.regular.tint(.black.opacity(0.6)), in: Circle())
+                    .pvFloating(.circle)
             }
             .buttonStyle(.plain)
             .accessibilityLabel("Close Slideshow")
@@ -278,7 +278,7 @@ struct SlideshowView: View {
                 .font(.pvTitle)
                 .foregroundStyle(Color.white)
                 .frame(width: 48, height: 48)
-                .glassEffect(.regular.tint(.black.opacity(0.6)), in: Circle())
+                .pvFloating(.circle)
         }
         .buttonStyle(.plain)
         .accessibilityLabel(vm.isPlaying ? "Pause" : "Play")
@@ -312,7 +312,7 @@ struct SlideshowView: View {
                 .font(.pvHeadline)
                 .foregroundStyle(Color.white)
                 .frame(width: 40, height: 40)
-                .glassEffect(.regular.tint(.black.opacity(0.6)), in: Circle())
+                .pvFloating(.circle)
         }
         .accessibilityLabel("Transition")
         .accessibilityIdentifier("slideshowTransition")
@@ -326,7 +326,7 @@ struct SlideshowView: View {
                 .font(.pvHeadline)
                 .foregroundStyle(Color.white)
                 .frame(width: 40, height: 40)
-                .glassEffect(.regular.tint(.black.opacity(0.6)), in: Circle())
+                .pvFloating(.circle)
         }
         .buttonStyle(.plain)
         .accessibilityLabel(label)
@@ -347,7 +347,7 @@ struct SlideshowCounterLabel: View {
             .foregroundStyle(Color.white)
             .padding(.horizontal, PVSpacing.s12)
             .padding(.vertical, PVSpacing.s4)
-            .glassEffect(.regular.tint(.black.opacity(0.6)), in: Capsule())
+            .pvFloating(.pill)
             .accessibilityLabel("Slide \(index + 1) of \(count): \(isVideo ? "Video" : "Photo")")
             .accessibilityIdentifier("slideshowCounter")
             .pvFullscreenChromeTextCap()
@@ -365,7 +365,7 @@ struct SlideshowSpeedLabel: View {
             .foregroundStyle(Color.white)
             .padding(.vertical, PVSpacing.s8)
             .frame(minWidth: 44, minHeight: 40)
-            .glassEffect(.regular.tint(.black.opacity(0.6)), in: Capsule())
+            .pvFloating(.pill)
             .pvFullscreenChromeTextCap()
     }
 }

@@ -58,13 +58,18 @@ struct ActivityFeedSheet: View {
 
     private var composer: some View {
         HStack(spacing: PVSpacing.s12) {
-            TextField("Add a comment…", text: $draft, axis: .vertical)
+            TextField(
+                "Add a comment…",
+                text: $draft,
+                prompt: Text("Add a comment…").foregroundStyle(PVFloating.secondaryContent),
+                axis: .vertical
+            )
                 .lineLimit(1...4)
                 .font(.pvBody)
                 .focused($composerFocused)
                 .padding(.horizontal, PVSpacing.s16)
                 .padding(.vertical, PVSpacing.s8)
-                .background(Color.bgSecondary.opacity(0.7), in: Capsule())
+                .tint(PVFloating.accent)
 
             Button {
                 let text = draft
@@ -81,8 +86,8 @@ struct ActivityFeedSheet: View {
                     .font(.system(size: 32))
                     .foregroundStyle(
                         draft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || vm.isSending
-                            ? Color.textSecondaryPV
-                            : Color.immichPrimary
+                            ? PVFloating.secondaryContent
+                            : PVFloating.accent
                     )
             }
             .disabled(draft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || vm.isSending)
@@ -90,7 +95,9 @@ struct ActivityFeedSheet: View {
         }
         .padding(.horizontal, PVSpacing.s16)
         .padding(.vertical, PVSpacing.s8)
-        .background(.regularMaterial)
+        .pvFloating(.bar)
+        .padding(.horizontal, PVSpacing.s12)
+        .padding(.bottom, PVSpacing.s8)
     }
 }
 

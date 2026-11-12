@@ -239,7 +239,7 @@ struct MemoryCard: View {
                 .foregroundStyle(.white)
                 .frame(width: 34, height: 34)
                 .contentShape(Rectangle())
-                .glassEffect(.regular.tint(.black.opacity(0.55)), in: Circle())
+                .pvFloating(.circle)
         }
         .buttonStyle(.plain)
         .accessibilityIdentifier("memoryBookmark_\(memory.id)")
@@ -320,7 +320,7 @@ struct MemoryCard: View {
         .lineLimit(1)
         .padding(.horizontal, PVSpacing.s12)
         .padding(.vertical, PVSpacing.s8)
-        .glassEffect(.regular.tint(.black.opacity(0.6)), in: Capsule())
+        .pvFloating(.pill)
     }
 }
 

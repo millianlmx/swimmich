@@ -41,6 +41,10 @@
 		0AFE2D96811EBD78DCBE78CC /* AppUtilitiesUITests.swift in Sources */ = {isa = PBXBuildFile; fileRef = F12E4D5D4AEA776F68BF61B6 /* AppUtilitiesUITests.swift */; };
 		0B037D2F7B63AF379A4519FF /* QRServerConfigParserTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 810ED37F0064772463A9C120 /* QRServerConfigParserTests.swift */; };
 		0B1E36D253FF5663C799F7D9 /* PVButtonStyle.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0C579043BE4F6A7E408B4907 /* PVButtonStyle.swift */; };
+		F100A71C0000000000000001 /* PVFloatingControl.swift in Sources */ = {isa = PBXBuildFile; fileRef = F100A71C0000000000000002 /* PVFloatingControl.swift */; };
+		F100A71C0000000000000003 /* FloatingControlStyleTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = F100A71C0000000000000004 /* FloatingControlStyleTests.swift */; };
+		F100A71C0000000000000005 /* FloatingControlsUITests.swift in Sources */ = {isa = PBXBuildFile; fileRef = F100A71C0000000000000006 /* FloatingControlsUITests.swift */; };
+		F100A71C0000000000000007 /* immich_stub_floating_controls.py in Resources */ = {isa = PBXBuildFile; fileRef = F100A71C0000000000000008 /* immich_stub_floating_controls.py */; };
 		0B40968A93265EC1DCDFE0DF /* ShareConfirmationView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0382F4AB250DCB3826D6C3D7 /* ShareConfirmationView.swift */; };
 		0BF60200AC1DDD96537ABB14 /* View+Shadow.swift in Sources */ = {isa = PBXBuildFile; fileRef = D4A67C215509CC4179DD4F57 /* View+Shadow.swift */; };
 		0C23D558924FE6BFA7B1E509 /* DependencyContainer.swift in Sources */ = {isa = PBXBuildFile; fileRef = DBEDC83F921DAE79D323E3CC /* DependencyContainer.swift */; };
@@ -780,6 +784,10 @@
 		0B68BE1A771592CC297965EA /* WidgetImageEncoder.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WidgetImageEncoder.swift; sourceTree = "<group>"; };
 		0B951CDF4C6CA41ADFC0E2DF /* StackDetailView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StackDetailView.swift; sourceTree = "<group>"; };
 		0C579043BE4F6A7E408B4907 /* PVButtonStyle.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PVButtonStyle.swift; sourceTree = "<group>"; };
+		F100A71C0000000000000002 /* PVFloatingControl.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PVFloatingControl.swift; sourceTree = "<group>"; };
+		F100A71C0000000000000004 /* FloatingControlStyleTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FloatingControlStyleTests.swift; sourceTree = "<group>"; };
+		F100A71C0000000000000006 /* FloatingControlsUITests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FloatingControlsUITests.swift; sourceTree = "<group>"; };
+		F100A71C0000000000000008 /* immich_stub_floating_controls.py */ = {isa = PBXFileReference; lastKnownFileType = text.script.python; path = immich_stub_floating_controls.py; sourceTree = "<group>"; };
 		0E1157A1B2E58119402D0017 /* SearchFiltersUITests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SearchFiltersUITests.swift; sourceTree = "<group>"; };
 		0E20A4FDA552E6EEA34A5570 /* immich_stub_settings.py */ = {isa = PBXFileReference; lastKnownFileType = text.script.python; path = immich_stub_settings.py; sourceTree = "<group>"; };
 		0E3F725CF1DAB9C1E71FED8C /* RootView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RootView.swift; sourceTree = "<group>"; };
@@ -1607,6 +1615,7 @@
 				B6A5DD4030705D4121BD6F6D /* ImmichMark.swift */,
 				94B3265764BD3709CAC94AD6 /* InlineErrorBadge.swift */,
 				0C579043BE4F6A7E408B4907 /* PVButtonStyle.swift */,
+				F100A71C0000000000000002 /* PVFloatingControl.swift */,
 				BE8B4D0F9245406D86D0C633 /* PVFieldSurface.swift */,
 				CABE70476A4B4CECA5E54C3F /* PVGridCell.swift */,
 				FDF9477BF83A0859F5128F11 /* PVHeaderBadge.swift */,
@@ -1804,6 +1813,7 @@
 				026D6636036A1A6072A04908 /* DateHeaderFormatterTests.swift */,
 				2C4437087CAD37EE42393F50 /* DesignSystemTokensTests.swift */,
 				DD1300000000000000000A04 /* DynamicTypeTests.swift */,
+				F100A71C0000000000000004 /* FloatingControlStyleTests.swift */,
 				C74C745B1778711A5866A2A1 /* DeviceSessionsViewModelTests.swift */,
 				41964E7C0DF3D2F99BBDF72C /* DownloadQueueViewModelTests.swift */,
 				5894E2DA334D7213B1F4D76B /* DTOEncodingTests.swift */,
@@ -2208,6 +2218,7 @@
 				8FD4678BF9AC2355AC59D544 /* immich_stub_local_library.py */,
 				B032F8E8A997D00D932B511E /* immich_stub_locked_folder.py */,
 				28BA3D71DA9D6130CE81A744 /* immich_stub_map_settings.py */,
+				F100A71C0000000000000008 /* immich_stub_floating_controls.py */,
 				CFAA656D3A00CC43F26BF6B2 /* immich_stub_memories.py */,
 				E1208877397F4626C85572F2 /* immich_stub_ocr_text.py */,
 				C2298E0389CE0826F8764FCE /* immich_stub_offline.py */,
@@ -2331,6 +2342,7 @@
 				B2BE58A959176290845E8EF8 /* LocalLibraryUITests.swift */,
 				86533554A77DF5D2D61EA1FF /* LockedFolderUITests.swift */,
 				2FB9BAD82791075DF5D3C684 /* MapSettingsUITests.swift */,
+				F100A71C0000000000000006 /* FloatingControlsUITests.swift */,
 				A50A0311861667157DDF8D9F /* OcrTextUITests.swift */,
 				5CEC6044418C5C3C5698B524 /* PeopleSearchUITests.swift */,
 				9D055C9014100C28323874C7 /* PersonBirthdayUITests.swift */,
@@ -2753,6 +2765,7 @@
 				79D68068E03737251E7BBB4B /* immich_stub_local_library.py in Resources */,
 				555B79A8AFFA156A3DE49FF8 /* immich_stub_locked_folder.py in Resources */,
 				8C0E8E68CED4E6CC313819C6 /* immich_stub_map_settings.py in Resources */,
+				F100A71C0000000000000007 /* immich_stub_floating_controls.py in Resources */,
 				BAB66B7B11651448F6CC4648 /* immich_stub_memories.py in Resources */,
 				59D319B0F93796330C3C8291 /* immich_stub_ocr_text.py in Resources */,
 				F45D52140BD74B3E459888A1 /* immich_stub_offline.py in Resources */,
@@ -2896,6 +2909,7 @@
 				0E0FBF4810A1C25C257F8E56 /* DateHeaderFormatterTests.swift in Sources */,
 				06488109EBBCB8B19E53ED88 /* DesignSystemTokensTests.swift in Sources */,
 				DD1300000000000000000A05 /* DynamicTypeTests.swift in Sources */,
+				F100A71C0000000000000003 /* FloatingControlStyleTests.swift in Sources */,
 				7AE99C569DA26A22B1E5994E /* DeviceSessionsViewModelTests.swift in Sources */,
 				541B0578BD2153E4ACC66B63 /* DownloadQueueViewModelTests.swift in Sources */,
 				253319A5F227F3EC76D62CB6 /* DuplicatesViewModelTests.swift in Sources */,
@@ -3030,6 +3044,7 @@
 				502DC18906500F6B062B2016 /* LocalLibraryUITests.swift in Sources */,
 				DF56AF55F4C25922114C4396 /* LockedFolderUITests.swift in Sources */,
 				9D9DBEB55D87F92C8EAE8184 /* MapSettingsUITests.swift in Sources */,
+				F100A71C0000000000000005 /* FloatingControlsUITests.swift in Sources */,
 				E540263F8E2067910F19C3FE /* OcrTextUITests.swift in Sources */,
 				4A844012602937002B949A35 /* PeopleSearchUITests.swift in Sources */,
 				DA5E697C110B675058301506 /* PersonBirthdayUITests.swift in Sources */,
@@ -3274,6 +3289,7 @@
 				56CB29F2F2CD1C07007D1CA8 /* OfflineDownloadViewModel.swift in Sources */,
 				293808534AFF743E31D0610C /* OnboardingFlowView.swift in Sources */,
 				0B1E36D253FF5663C799F7D9 /* PVButtonStyle.swift in Sources */,
+				F100A71C0000000000000001 /* PVFloatingControl.swift in Sources */,
 				E223ADADD07A290B16E1A603 /* PVFieldSurface.swift in Sources */,
 				292430486336389B855407C7 /* PVGridCell.swift in Sources */,
 				A31CE425B83CA29591349184 /* PVHeaderBadge.swift in Sources */,
