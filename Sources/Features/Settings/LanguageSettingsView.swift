@@ -13,7 +13,7 @@ import SwiftUI
 struct LanguageSettingsView: View {
     @Bindable var vm: LanguageSettingsViewModel
 
-    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @PVReduceMotion private var reduceMotion
 
     var body: some View {
         List {
@@ -43,10 +43,10 @@ struct LanguageSettingsView: View {
             if vm.requiresRelaunch {
                 LanguageToast(onDismiss: { vm.dismissRelaunchPrompt() })
                     .padding(.bottom, PVSpacing.s16)
-                    .transition(.opacity.combined(with: .move(edge: .bottom)))
+                    .transition(PVMotion.appearance(.opacityAndMove(.bottom), reduceMotion: reduceMotion).anyTransition)
             }
         }
-        .animation(PVMotion.adaptive(PVMotion.gentle, reduceMotion: reduceMotion), value: vm.requiresRelaunch)
+        .animation(PVMotion.movement(PVMotion.gentle, reduceMotion: reduceMotion), value: vm.requiresRelaunch)
     }
 
     /// The picker row: the language named as this device would write it, the

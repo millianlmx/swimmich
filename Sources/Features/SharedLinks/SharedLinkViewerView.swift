@@ -58,7 +58,7 @@ struct SharedLinkViewerView: View {
                 pickerItem = nil
                 Task { await uploadPicked(item) }
             }
-            .fullScreenCover(item: $openPage) { page in
+            .pvFullScreenCover(item: $openPage) { page in
                 SharedLinkAssetPager(
                     assets: vm.assets,
                     baseURL: vm.baseURL,

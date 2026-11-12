@@ -9,6 +9,7 @@ import UIKit
 /// one this screen is pushed into, and a second stack would draw two navigation
 /// bars (the `LanguageSettingsView` trap). Same contract as `OfflineAssetsView`.
 struct LocalLibraryView: View {
+    @PVReduceMotion private var reduceMotion
     @Bindable var vm: LocalLibraryViewModel
     @Environment(\.openURL) private var openURL
 
@@ -233,7 +234,7 @@ struct LocalLibraryView: View {
                 Rectangle().fill(Color.separatorPV).frame(height: 1)
             }
             .transition(.opacity)
-            .animation(PVMotion.standard, value: vm.hasSelection)
+            .animation(PVMotion.movement(PVMotion.standard, reduceMotion: reduceMotion), value: vm.hasSelection)
         }
     }
 }
@@ -241,6 +242,7 @@ struct LocalLibraryView: View {
 /// The device column of the summary: what the photo library holds. It carries no
 /// byte count — measuring one means reading every resource of every asset.
 private struct SummaryColumn: View {
+    @PVReduceMotion private var reduceMotion
     let title: LocalizedStringKey
     let symbol: String
     let summary: LocalLibraryViewModel.MediaSummary
@@ -253,7 +255,7 @@ private struct SummaryColumn: View {
                 .foregroundStyle(Color.textSecondaryPV)
             Text("\(summary.total)")
                 .font(.pvNumeric)
-                .contentTransition(.numericText())
+                .contentTransition(PVMotion.contentChange(.numericText(), reduceMotion: reduceMotion))
                 .accessibilityIdentifier(identifier)
             Text("\(summary.photos) photos · \(summary.videos) videos")
                 .font(.pvCaption)
@@ -268,6 +270,7 @@ private struct SummaryColumn: View {
 /// nothing yet — never a zero it did not read. `retry` re-reads those two
 /// reads only, never a check or an upload.
 private struct ServerStorageColumn: View {
+    @PVReduceMotion private var reduceMotion
     let storage: StorageStatsViewModel
     let retry: () -> Void
 
@@ -278,7 +281,7 @@ private struct ServerStorageColumn: View {
                 .foregroundStyle(Color.textSecondaryPV)
             Text(total)
                 .font(.pvNumeric)
-                .contentTransition(.numericText())
+                .contentTransition(PVMotion.contentChange(.numericText(), reduceMotion: reduceMotion))
                 .accessibilityIdentifier("localLibraryRemoteSummary")
             if case .loaded(let counts) = storage.counts {
                 Text("\(counts.photos) photos · \(counts.videos) videos")

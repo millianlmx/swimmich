@@ -10,6 +10,7 @@ import SwiftUI
 /// Nothing on this screen deletes anything. The destructive call lives behind
 /// the review's confirmation dialog, on a list the user has looked at.
 struct FreeUpSpaceView: View {
+    @PVReduceMotion private var reduceMotion
     @Bindable var vm: FreeUpSpaceViewModel
     @State private var showSuccess = false
 
@@ -229,7 +230,7 @@ struct FreeUpSpaceView: View {
         LabeledContent {
             Text("\(value)")
                 .font(.pvNumeric)
-                .contentTransition(.numericText())
+                .contentTransition(PVMotion.contentChange(.numericText(), reduceMotion: reduceMotion))
         } label: {
             Text(title)
         }
@@ -240,7 +241,7 @@ struct FreeUpSpaceView: View {
         LabeledContent {
             Text(StorageStatsViewModel.format(bytes))
                 .font(.pvNumeric)
-                .contentTransition(.numericText())
+                .contentTransition(PVMotion.contentChange(.numericText(), reduceMotion: reduceMotion))
         } label: {
             Text(title)
         }
@@ -252,6 +253,7 @@ struct FreeUpSpaceView: View {
 /// relative cutoffs, and its "selected" state is a date comparison rather than
 /// a stored flag.
 private struct CutoffPresetChip: View {
+    @PVReduceMotion private var reduceMotion
     let title: LocalizedStringKey
     let isSelected: Bool
     let action: () -> Void
@@ -269,6 +271,6 @@ private struct CutoffPresetChip: View {
                 )
         }
         .buttonStyle(.plain)
-        .animation(PVMotion.snappy, value: isSelected)
+        .animation(PVMotion.movement(PVMotion.snappy, reduceMotion: reduceMotion), value: isSelected)
     }
 }

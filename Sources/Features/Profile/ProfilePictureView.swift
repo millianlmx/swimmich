@@ -16,7 +16,7 @@ struct ProfilePictureView: View {
     @Bindable var vm: ProfilePictureViewModel
 
     @Environment(AuthViewModel.self) private var auth
-    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @PVReduceMotion private var reduceMotion
 
     @State private var pickerItem: PhotosPickerItem?
     @State private var isConfirmingRemoval = false
@@ -41,13 +41,13 @@ struct ProfilePictureView: View {
                 chooser
                 if let pending = vm.pendingImage {
                     cropBlock(pending)
-                        .transition(.opacity.combined(with: .scale(scale: 0.98)))
+                        .transition(PVMotion.appearance(.opacityAndScale(0.98), reduceMotion: reduceMotion).anyTransition)
                 }
                 actions
             }
             .padding(PVSpacing.s16)
             .animation(
-                PVMotion.adaptive(.easeInOut(duration: 0.2), reduceMotion: reduceMotion),
+                PVMotion.movement(.easeInOut(duration: 0.2), reduceMotion: reduceMotion),
                 value: vm.pendingImage != nil
             )
         }
@@ -215,7 +215,7 @@ struct ProfilePictureView: View {
                     .foregroundStyle(Color.textSecondaryPV)
                 Spacer(minLength: PVSpacing.s8)
                 Button("Reset") {
-                    withAnimation(PVMotion.adaptive(.easeInOut(duration: 0.25), reduceMotion: reduceMotion)) {
+                    withAnimation(PVMotion.movement(.easeInOut(duration: 0.25), reduceMotion: reduceMotion)) {
                         vm.resetCrop()
                     }
                 }
@@ -298,7 +298,7 @@ struct ProfilePictureView: View {
                 .foregroundStyle(Color.textSecondaryPV)
         }
         .animation(
-            PVMotion.adaptive(.easeInOut(duration: 0.2), reduceMotion: reduceMotion),
+            PVMotion.movement(.easeInOut(duration: 0.2), reduceMotion: reduceMotion),
             value: vm.cropRect
         )
     }

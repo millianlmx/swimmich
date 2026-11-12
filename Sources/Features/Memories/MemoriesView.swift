@@ -92,7 +92,7 @@ struct MemoriesView: View {
             } message: {
                 Text("The photos stay in your library — only this memory is removed.")
             }
-            .fullScreenCover(item: $playback) { playback in
+            .pvFullScreenCover(item: $playback) { playback in
                 MemoryPlaybackView(playback: playback, vm: vm, baseURL: baseURL, token: auth.accessToken)
             }
         }

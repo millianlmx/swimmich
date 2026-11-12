@@ -65,9 +65,6 @@ enum ViewerZoomPlan {
     static let posterTolerance: CGFloat = 1
     /// Seconds after which a transition that never reported its end is forced.
     static let safetyTimeout: Double = 1.5
-    /// Launch-argument switch (`-uiTestReduceMotion YES`) a UI test uses to get
-    /// the reduced-motion transition: the system flag cannot be injected.
-    static let uiTestReduceMotionKey = "uiTestReduceMotion"
 
     // MARK: - Style
 
@@ -80,10 +77,6 @@ enum ViewerZoomPlan {
     static func closeStyle(route: ViewerCloseRoute, hasHeroImage: Bool, reduceMotion: Bool) -> ViewerTransitionStyle {
         if case .reduce = route, hasHeroImage, !reduceMotion { return .zoom }
         return .fade
-    }
-
-    static func reduceMotion(system: Bool) -> Bool {
-        system || UserDefaults.standard.bool(forKey: uiTestReduceMotionKey)
     }
 
     // MARK: - Close route

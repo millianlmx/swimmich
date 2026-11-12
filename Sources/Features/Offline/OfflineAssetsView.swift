@@ -8,6 +8,7 @@ import SwiftUI
 /// original from its local file, which is also what makes this screen the
 /// proof that the cache works when the server is unreachable.
 struct OfflineAssetsView: View {
+    @PVReduceMotion private var reduceMotion
     @Bindable var vm: OfflineDownloadViewModel
     @Environment(AuthViewModel.self) private var auth
 
@@ -87,7 +88,7 @@ struct OfflineAssetsView: View {
         } message: {
             Text("\(vm.formattedUsage(vm.cacheUsage)) will be freed. Downloaded files will need to be downloaded again.")
         }
-        .fullScreenCover(item: $page) { page in
+        .pvFullScreenCover(item: $page) { page in
             PhotoViewer(
                 assets: assets,
                 index: page.index,
@@ -150,7 +151,7 @@ struct OfflineAssetsView: View {
                     .trim(from: 0, to: max(0.001, fraction))
                     .stroke(ringColor.gradient, style: StrokeStyle(lineWidth: 8, lineCap: .round))
                     .rotationEffect(.degrees(-90))
-                    .animation(PVMotion.snappy, value: fraction)
+                    .animation(PVMotion.movement(PVMotion.snappy, reduceMotion: reduceMotion), value: fraction)
             }
             Text(usagePercentLabel)
                 .font(.pvCaption.weight(.semibold))

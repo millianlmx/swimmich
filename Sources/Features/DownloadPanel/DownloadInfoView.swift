@@ -8,6 +8,7 @@ import SwiftUI
 /// navigation bar (the `LanguageSettingsView` rule). "Done" only closes the
 /// screen: the queue keeps running, which is the whole point of the feature.
 struct DownloadInfoView: View {
+    @PVReduceMotion private var reduceMotion
     @Bindable var vm: DownloadQueueViewModel
     @Environment(\.dismiss) private var dismiss
     @Environment(\.scenePhase) private var scenePhase
@@ -122,7 +123,7 @@ struct DownloadInfoView: View {
                 .font(.pvHeadline)
                 .foregroundStyle(Color.textSecondaryPV)
                 .frame(width: 24)
-                .contentTransition(.symbolEffect(.replace))
+                .contentTransition(PVMotion.contentChange(.symbolEffect(.replace), reduceMotion: reduceMotion))
 
             // The identifier sits on the row's text block, never on the row:
             // an identifier on a container replaces its descendants', which

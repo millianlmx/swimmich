@@ -6,7 +6,7 @@ import SwiftUI
 struct RoadTripView: View {
     @Bindable var vm: RoadTripViewModel
     @Environment(\.dismiss) private var dismiss
-    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @PVReduceMotion private var reduceMotion
 
     @State private var startDate = Date()
 

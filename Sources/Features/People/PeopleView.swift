@@ -264,6 +264,7 @@ struct PeopleView: View {
 /// toolbar (favorite / rename / hide / birthday / merge) + 3-column faces grid
 /// with full viewer.
 private struct PersonDetailView: View {
+    @PVReduceMotion private var reduceMotion
     @Bindable var vm: PeopleViewModel
     /// The row the navigation pushed, captured once. `let`, not `private let`:
     /// a private stored property makes the synthesized initializer private too.
@@ -318,7 +319,7 @@ private struct PersonDetailView: View {
                                 .accessibilityIdentifier("personBirthdayValue")
                         }
                     }
-                    .animation(.default, value: person.birthDate)
+                    .animation(PVMotion.movement(.default, reduceMotion: reduceMotion), value: person.birthDate)
 
                     HStack(spacing: PVSpacing.s8) {
                         actionButton("star.fill", person.isFavorite == true ? Color.immichPrimary : Color.textSecondaryPV, "Favorite") {

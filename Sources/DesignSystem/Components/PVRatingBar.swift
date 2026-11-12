@@ -16,6 +16,7 @@ struct PVRatingBar: View {
     var isEnabled: Bool = true
     var onRate: (Int) -> Void
     var onClear: () -> Void
+    @PVReduceMotion private var reduceMotion
 
     var body: some View {
         HStack(spacing: PVSpacing.s4) {
@@ -29,7 +30,7 @@ struct PVRatingBar: View {
                         .font(.system(size: 28))
                         .foregroundStyle(value <= (rating ?? 0) ? Color.immichPrimary : Color.textSecondaryPV)
                         .frame(width: 44, height: 44)
-                        .contentTransition(.symbolEffect(.replace))
+                        .contentTransition(PVMotion.contentChange(.symbolEffect(.replace), reduceMotion: reduceMotion))
                 }
                 .buttonStyle(.plain)
                 .accessibilityIdentifier("assetRatingStar_\(value)")
@@ -44,7 +45,7 @@ struct PVRatingBar: View {
         // a bare identifier on the container would swallow theirs.
         .accessibilityElement(children: .contain)
         .accessibilityIdentifier("assetRatingBar")
-        .animation(PVMotion.snappy, value: isEnabled)
+        .animation(PVMotion.fading(PVMotion.snappy, reduceMotion: reduceMotion), value: isEnabled)
         .appSensoryFeedback(.selection, trigger: rating)
     }
 }

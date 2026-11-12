@@ -12,6 +12,7 @@ import SwiftUI
 /// cached asset is a fact about this device, and the server has no endpoint
 /// that would report a backup's progress anyway.
 struct SyncStatusView: View {
+    @PVReduceMotion private var reduceMotion
     @Bindable var vm: SyncStatusViewModel
 
     @Environment(\.dismiss) private var dismiss
@@ -217,7 +218,7 @@ struct SyncStatusView: View {
                 Text(vm.progressFraction, format: .percent)
                     .font(.pvCaption)
                     .foregroundStyle(Color.textSecondaryPV)
-                    .contentTransition(.numericText())
+                    .contentTransition(PVMotion.contentChange(.numericText(), reduceMotion: reduceMotion))
             }
         }
         .padding(PVSpacing.s12)
@@ -342,6 +343,7 @@ struct SyncStatusView: View {
 /// (counts by `FormatStyle`, bytes by the download view model), so two screens
 /// can never disagree about how the same number reads.
 private struct StatTile: View {
+    @PVReduceMotion private var reduceMotion
     let title: LocalizedStringKey
     let value: Text
     let systemImage: String
@@ -357,7 +359,7 @@ private struct StatTile: View {
             value
                 .font(.pvNumeric)
                 .foregroundStyle(Color.textPrimaryPV)
-                .contentTransition(.numericText())
+                .contentTransition(PVMotion.contentChange(.numericText(), reduceMotion: reduceMotion))
 
             if let badge {
                 PVStatusBadge(text: badge.text, color: badge.color, symbol: badge.symbol)

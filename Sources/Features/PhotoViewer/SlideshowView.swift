@@ -21,7 +21,7 @@ struct SlideshowView: View {
     /// Reads each photo's pixel size for its zoom ceiling when the item has none.
     var client: (any ImmichClient)? = nil
 
-    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @PVReduceMotion private var reduceMotion
     @Environment(\.accessibilityReduceTransparency) private var reduceTransparency
     /// Offline cache mirror (issue #18): a slideshow over downloaded assets must
     /// keep running with no server, so every slide gets its local copy.
@@ -146,13 +146,13 @@ struct SlideshowView: View {
         guard vm.isPlaying, showControls else { return }
         try? await Task.sleep(for: .seconds(3))
         guard !Task.isCancelled, vm.isPlaying else { return }
-        withAnimation(PVMotion.adaptive(PVMotion.snappy, reduceMotion: reduceMotion)) {
+        withAnimation(PVMotion.movement(PVMotion.snappy, reduceMotion: reduceMotion)) {
             showControls = false
         }
     }
 
     private func toggleControls() {
-        withAnimation(PVMotion.adaptive(PVMotion.snappy, reduceMotion: reduceMotion)) {
+        withAnimation(PVMotion.movement(PVMotion.snappy, reduceMotion: reduceMotion)) {
             showControls.toggle()
         }
     }
@@ -177,9 +177,9 @@ struct SlideshowView: View {
     private var transitionAnimation: Animation {
         switch vm.transition {
         case .dissolve, .kenBurns:
-            return PVMotion.adaptive(.easeInOut(duration: 0.4), reduceMotion: reduceMotion)
+            return PVMotion.fading(.easeInOut(duration: 0.4), reduceMotion: reduceMotion)
         case .slide:
-            return PVMotion.adaptive(.spring(duration: 0.35, bounce: 0), reduceMotion: reduceMotion)
+            return PVMotion.fading(.spring(duration: 0.35, bounce: 0), reduceMotion: reduceMotion)
         }
     }
 

@@ -10,6 +10,7 @@ import SwiftUI
 /// taller control (44 pt), an icon + label per segment, and an indicator that
 /// **snaps instantly** — no slide animation on segment change.
 struct SearchModeGlassBar: View {
+    @PVReduceMotion private var reduceMotion
     @Binding var mode: SearchViewModel.ViewMode
 
     /// Bumped on each mode change so `.sensoryFeedback` re-fires. Mirrors the
@@ -38,7 +39,7 @@ struct SearchModeGlassBar: View {
                             height: Self.height - PVSpacing.s8
                         )
                         .offset(x: PVSpacing.s4 + CGFloat(selectedIndex) * segmentWidth)
-                        .animation(.easeOut(duration: 0.2), value: selectedIndex)
+                        .animation(PVMotion.movement(.easeOut(duration: 0.2), reduceMotion: reduceMotion), value: selectedIndex)
 
                     // Segments.
                     HStack(spacing: 0) {

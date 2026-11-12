@@ -98,7 +98,7 @@ final class AppLockWindowController {
         case .none:
             restoreAccessibility()
             guard !window.isHidden else { return }
-            if UIAccessibility.isReduceMotionEnabled {
+            if PVMotion.isReduced(system: UIAccessibility.isReduceMotionEnabled) {
                 window.isHidden = true
             } else {
                 UIView.animate(withDuration: 0.25) {

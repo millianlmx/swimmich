@@ -29,6 +29,7 @@ import UIKit
 /// displayed the ceiling follows the original's EXIF; when L-21 shows the edited
 /// version here, `AssetPixelSizeViewModel` must apply the `isEdited` rule too.
 struct ZoomableImageView: View {
+    @PVReduceMotion private var reduceMotion
     let asset: AssetReactItem
     let baseURL: URL
     let token: String?
@@ -152,7 +153,7 @@ struct ZoomableImageView: View {
                         lastScale = scale
                         if scale < ZoomGeometry.snapBackThreshold {
                             // Photos never rests between 1x and the zoom threshold.
-                            withAnimation(PVMotion.snappy) {
+                            withAnimation(PVMotion.movement(PVMotion.snappy, reduceMotion: reduceMotion)) {
                                 scale = 1
                                 offset = .zero
                             }
@@ -160,7 +161,7 @@ struct ZoomableImageView: View {
                             lastOffset = .zero
                         } else {
                             // Zooming out shrinks the image under the pan: re-bound it.
-                            withAnimation(PVMotion.snappy) {
+                            withAnimation(PVMotion.movement(PVMotion.snappy, reduceMotion: reduceMotion)) {
                                 offset = ZoomGeometry.clampedOffset(
                                     offset, scale: scale, fitted: fitted.size, viewport: proxy.size
                                 )
@@ -240,7 +241,7 @@ struct ZoomableImageView: View {
             .onEnded { _ in
                 guard isZoomed else { return }
                 lastOffset = offset
-                withAnimation(PVMotion.snappy) {
+                withAnimation(PVMotion.movement(PVMotion.snappy, reduceMotion: reduceMotion)) {
                     offset = ZoomGeometry.clampedOffset(offset, scale: scale, fitted: fitted, viewport: viewport)
                 }
                 lastOffset = offset
@@ -248,7 +249,7 @@ struct ZoomableImageView: View {
     }
 
     private func toggleZoom(maxScale: CGFloat) {
-        withAnimation(PVMotion.snappy) {
+        withAnimation(PVMotion.movement(PVMotion.snappy, reduceMotion: reduceMotion)) {
             if isZoomed {
                 scale = 1
             } else {
@@ -272,7 +273,7 @@ struct ZoomableImageView: View {
             scale: scale, offset: offset, maxScale: maxScale, fitted: fitted, viewport: viewport
         )
         guard next.scale != scale || next.offset != offset else { return }
-        withAnimation(PVMotion.snappy) {
+        withAnimation(PVMotion.movement(PVMotion.snappy, reduceMotion: reduceMotion)) {
             scale = next.scale
             offset = next.offset
         }

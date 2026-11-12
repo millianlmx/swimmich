@@ -33,32 +33,45 @@ struct PVSkeletonGrid: View {
 /// crisp sweep rather than a whole-cell brighten/dim (D4).
 struct PVSkeletonCell: View {
     @State private var phase: CGFloat = -1.2
+    @PVReduceMotion private var reduceMotion
 
     var body: some View {
         RoundedRectangle(cornerRadius: PVRadius.xs, style: .continuous)
             .fill(Color.bgTertiary)
             .aspectRatio(1, contentMode: .fit)
             .overlay {
-                LinearGradient(
-                    stops: [
-                        .init(color: .clear, location: 0.0),
-                        .init(color: .clear, location: 0.4),
-                        .init(color: Color.white.opacity(0.4), location: 0.5),
-                        .init(color: .clear, location: 0.6),
-                        .init(color: .clear, location: 1.0),
-                    ],
-                    startPoint: .leading,
-                    endPoint: .trailing
-                )
-                .offset(x: phase * 240)
-                .mask(RoundedRectangle(cornerRadius: PVRadius.xs, style: .continuous))
-            }
-            .clipped()
-            .onAppear {
-                // DS-exempt: infinite shimmer animation, not interactive.
-                withAnimation(.linear(duration: 1.5).repeatForever(autoreverses: false)) {
-                    phase = 1.2
+                if PVMotion.shimmerVisible(reduceMotion: reduceMotion) {
+                    LinearGradient(
+                        stops: [
+                            .init(color: .clear, location: 0.0),
+                            .init(color: .clear, location: 0.4),
+                            .init(color: Color.white.opacity(0.4), location: 0.5),
+                            .init(color: .clear, location: 0.6),
+                            .init(color: .clear, location: 1.0),
+                        ],
+                        startPoint: .leading,
+                        endPoint: .trailing
+                    )
+                    .offset(x: phase * 240)
+                    .mask(RoundedRectangle(cornerRadius: PVRadius.xs, style: .continuous))
                 }
             }
+            .clipped()
+            .onAppear { startShimmer() }
+            .onChange(of: reduceMotion) { _, reduced in
+                // Back to the start without animating, then loop again once motion is allowed.
+                var transaction = Transaction()
+                transaction.disablesAnimations = true
+                withTransaction(transaction) { phase = -1.2 }
+                if !reduced { startShimmer() }
+            }
+    }
+
+    /// Infinite shimmer loop; never started under Reduce Motion.
+    private func startShimmer() {
+        guard !reduceMotion else { return }
+        withAnimation(PVMotion.shimmerLoop(duration: 1.5, reduceMotion: reduceMotion)) {
+            phase = 1.2
+        }
     }
 }
