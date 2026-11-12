@@ -81,6 +81,26 @@ final class ImmichRenderScreenshots: XCTestCase {
         resetStacks()
     }
 
+    /// Selects the Albums tab and returns the Library tile `identifier`, scrolling
+    /// the Albums ScrollView only when the tile is not hittable. Matched by
+    /// identifier: the labels are translated.
+    private func openAlbumsLibraryRow(_ identifier: String, missingShot: String) -> XCUIElement {
+        let albums = app.tabBars.buttons["Albums"]
+        XCTAssertTrue(albums.waitForExistence(timeout: 15), "Albums tab missing")
+        albums.tap()
+        sleep(3)
+        let row = app.buttons.matching(identifier: identifier).firstMatch
+        for _ in 0..<6 where !row.isHittable {
+            app.swipeUp()
+            sleep(1)
+        }
+        if !row.waitForExistence(timeout: 10) {
+            shot(missingShot)
+            XCTFail("\(identifier) tile missing in the Albums library:\n\(app.debugDescription)")
+        }
+        return row
+    }
+
     /// Waits for any button whose label contains `text` and taps it.
     ///
     /// Case-sensitive on purpose: the software keyboard's return key is
@@ -241,8 +261,8 @@ final class ImmichRenderScreenshots: XCTestCase {
 
     /// Stacks (gap #1) against a stub that returns one 3-photo stack: the
     /// timeline tile must show the stack badge, tapping it must open the stack
-    /// detail (the bucket carries only the cover), and the «Me» hub must list
-    /// the same stack.
+    /// detail (the bucket carries only the cover), and the Albums tab's Library
+    /// section must open the same stack.
     ///
     /// Needs the stacks stub, which also serves the timeline bucket:
     ///
@@ -289,20 +309,8 @@ final class ImmichRenderScreenshots: XCTestCase {
         }
         sleep(2)
 
-        let profile = app.buttons.matching(identifier: "profileAvatar").firstMatch
-        XCTAssertTrue(profile.waitForExistence(timeout: 15), "Profile avatar missing")
-        profile.tap()
-        sleep(4)
-
-        // The Management section sits below Storage, past the first screenful —
-        // a Form only publishes what it has rendered.
-        let stacksRow = app.buttons["Stacks"]
-        for _ in 0..<4 where !stacksRow.exists {
-            app.swipeUp()
-            sleep(1)
-        }
-        shot("14-profile-me")
-        XCTAssertTrue(stacksRow.waitForExistence(timeout: 10), "Stacks row missing in the Me hub")
+        let stacksRow = openAlbumsLibraryRow("stacksRow", missingShot: "14b-albums-no-stacks-row")
+        shot("14-albums-library")
         stacksRow.tap()
         sleep(3)
         shot("15-stacks-hub")
@@ -386,16 +394,7 @@ final class ImmichRenderScreenshots: XCTestCase {
         back.tap()
         sleep(2)
 
-        let profile = app.buttons.matching(identifier: "profileAvatar").firstMatch
-        XCTAssertTrue(profile.waitForExistence(timeout: 15), "Profile avatar missing")
-        profile.tap()
-        sleep(4)
-        let stacksRow = app.buttons["Stacks"]
-        for _ in 0..<4 where !stacksRow.exists {
-            app.swipeUp()
-            sleep(1)
-        }
-        XCTAssertTrue(stacksRow.waitForExistence(timeout: 10), "Stacks row missing in the Me hub")
+        let stacksRow = openAlbumsLibraryRow("stacksRow", missingShot: "20b-albums-no-stacks-row")
         stacksRow.tap()
         sleep(3)
         shot("20-stacks-hub-after-add")
@@ -404,7 +403,7 @@ final class ImmichRenderScreenshots: XCTestCase {
                       "the hub still shows the stack it had before the add")
     }
 
-    /// Creating a stack from the hub. Kept as its own flow because the picker is
+    /// Creating a stack from the Albums library. Kept as its own flow because the picker is
     /// where a silent regression hides: `AssetThumbnailCell` carries its own
     /// `onTapGesture`, so wrapping it in a `Button` swallows every tap — the
     /// grid then renders perfectly and selects nothing.
@@ -424,16 +423,7 @@ final class ImmichRenderScreenshots: XCTestCase {
                       "Authorized shell missing")
         sleep(4)
 
-        let profile = app.buttons.matching(identifier: "profileAvatar").firstMatch
-        XCTAssertTrue(profile.waitForExistence(timeout: 15), "Profile avatar missing")
-        profile.tap()
-        sleep(4)
-        let stacksRow = app.buttons["Stacks"]
-        for _ in 0..<4 where !stacksRow.exists {
-            app.swipeUp()
-            sleep(1)
-        }
-        XCTAssertTrue(stacksRow.waitForExistence(timeout: 10), "Stacks row missing in the Me hub")
+        let stacksRow = openAlbumsLibraryRow("stacksRow", missingShot: "21b-albums-no-stacks-row")
         stacksRow.tap()
         sleep(3)
 
@@ -498,18 +488,7 @@ final class ImmichRenderScreenshots: XCTestCase {
                       "Authorized shell missing")
         sleep(4)
 
-        let profile = app.buttons.matching(identifier: "profileAvatar").firstMatch
-        XCTAssertTrue(profile.waitForExistence(timeout: 15), "Profile avatar missing")
-        profile.tap()
-        sleep(3)
-
-        // The Me hub is a lazy Form: rows below the fold do not exist yet.
-        let partnersRow = app.buttons["Partners"]
-        for _ in 0..<5 where !partnersRow.exists {
-            app.swipeUp()
-            sleep(1)
-        }
-        XCTAssertTrue(partnersRow.waitForExistence(timeout: 10), "Partners row missing in the Me hub")
+        let partnersRow = openAlbumsLibraryRow("partnersRow", missingShot: "23b-albums-no-partners-row")
         partnersRow.tap()
         sleep(3)
         shot("23-partners")
@@ -1180,23 +1159,10 @@ final class ImmichRenderScreenshots: XCTestCase {
         // turns "the cache holds a file" into "the app is usable offline".
         setStubNetwork(down: true)
 
-        let profile = app.buttons.matching(identifier: "profileAvatar").firstMatch
-        XCTAssertTrue(profile.waitForExistence(timeout: 15), "Profile avatar missing")
-        profile.tap()
-        sleep(4)
-
-        // The Management section sits below the fold: a Form only publishes what
-        // it has rendered. Matched by identifier — the label is translated
-        // ("Stockage hors ligne"), so a literal would depend on the locale.
-        let offlineRow = app.buttons.matching(identifier: "offlineStorageRow").firstMatch
-        for _ in 0..<6 where !offlineRow.exists {
-            app.swipeUp()
-            sleep(1)
-        }
-        if !offlineRow.waitForExistence(timeout: 10) {
-            shot("44-profile-me-no-offline-row")
-            XCTFail("Offline Storage row missing in the Me hub:\n\(app.debugDescription)")
-        }
+        // The Library section of the Albums tab. Matched by identifier — the label
+        // is translated ("Stockage hors ligne"), so a literal would depend on the
+        // locale.
+        let offlineRow = openAlbumsLibraryRow("offlineStorageRow", missingShot: "44-albums-no-offline-row")
         offlineRow.tap()
         sleep(4)
         shot("44-offline-storage")

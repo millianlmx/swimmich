@@ -232,6 +232,21 @@ final class AppLockUITests: XCTestCase {
         return target
     }
 
+    /// Selects the Albums tab and returns the Library tile `identifier`, scrolling
+    /// the Albums ScrollView only when the tile is not hittable.
+    private func openLibraryRow(_ identifier: String) -> XCUIElement {
+        let albums = app.tabBars.buttons["Albums"]
+        XCTAssertTrue(albums.waitForExistence(timeout: 20), "Albums tab missing — \(screenText())")
+        albums.tap()
+        let tile = app.buttons.matching(identifier: identifier).firstMatch
+        XCTAssertTrue(tile.waitForExistence(timeout: 15), "no '\(identifier)' in the Albums library — \(screenText())")
+        for _ in 0..<4 where !tile.isHittable {
+            app.swipeUp()
+            sleep(1)
+        }
+        return tile
+    }
+
     /// The Me sheet's bar: the lowest one on screen (the timeline's sits under it).
     private func sheetNavigationBar() -> XCUIElement {
         let bars = app.navigationBars.allElementsBoundByIndex
@@ -464,8 +479,8 @@ final class AppLockUITests: XCTestCase {
     func test_AC_3_lockedFolderCoveredThenPinDoor() throws {
         launchSignedIn()
         enableAppLock()
-        let row = openMe(scrollingTo: "lockedFolderRow")
-        row.tap()
+        closeMeSheet()
+        openLibraryRow("lockedFolderRow").tap()
         let create = element("lockedFolderCreatePINButton")
         XCTAssertTrue(create.waitForExistence(timeout: 25), "no create-PIN door — \(screenText())")
         for field in ["lockedFolderPINField", "lockedFolderConfirmPINField"] {

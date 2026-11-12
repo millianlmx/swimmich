@@ -239,6 +239,15 @@ final class LockedFolderViewModel {
         try? await client.lockAuthSession()
     }
 
+    /// Backgrounding closes an OPEN folder only (the scene-phase rule, driven by
+    /// `AuthenticatedRoot`). A folder that is still `.locked` or has no PIN yet
+    /// keeps its gate and costs no request: `relock()` would flip `.needsSetup`
+    /// to `.locked` and call the server for nothing.
+    func relockIfUnlocked() async {
+        guard gate == .unlocked else { return }
+        await relock()
+    }
+
     // MARK: - Grid
 
     /// The folder's first page: the bucket list, then its newest bucket. Both

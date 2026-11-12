@@ -53,6 +53,27 @@ final class LocalizationTests: XCTestCase {
         }
     }
 
+    /// L-12: every entry that leads to a content collection (the 12 tiles of
+    /// the Albums tab's Library section, its title and the Photos filter button)
+    /// has a catalog entry in each shipped language. Presence, not difference
+    /// from English: "Tags" is spelled the same in several of them.
+    func test_AC_139_libraryEntriesTranslated() throws {
+        let missing = "\u{0}MISSING"
+        let keys = LibraryCollection.allCases.map(\.title.key) + ["Library", "Filter"]
+        XCTAssertEqual(Set(keys).count, 14, "twelve distinct tiles plus the section title and the filter")
+        for code in ["fr", "de", "es", "it"] {
+            let path = try XCTUnwrap(bundle.path(forResource: code, ofType: "lproj"))
+            let languageBundle = try XCTUnwrap(Bundle(path: path))
+            for key in keys {
+                XCTAssertNotEqual(
+                    languageBundle.localizedString(forKey: key, value: missing, table: nil),
+                    missing,
+                    "\(key) has no \(code) translation"
+                )
+            }
+        }
+    }
+
     /// The regression this whole card exists for: onboarding copy used to be
     /// hardcoded French, and half the catalog had no translation at all. A key
     /// that resolves to itself means the lookup fell through to English.

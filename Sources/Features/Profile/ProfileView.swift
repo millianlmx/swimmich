@@ -1,25 +1,17 @@
 import SwiftUI
 
-/// Profile identity + relocation hub for the features that lost their top-level
-/// tab in the PRD §4 restructure (Trash, Backup) + logout. Since P1
-/// storage-stats, also shows the server's storage usage + quota.
+/// Account, settings and tools hub (PRD §4 restructure): the account row,
+/// saved servers, storage usage + quota, preferences, backup, administration,
+/// diagnostics, security and logout. Content collections live in the Albums
+/// tab's Library section (L-12), never here.
 struct ProfileView: View {
     @Environment(AuthViewModel.self) private var auth
     @Environment(AppLockViewModel.self) private var appLock
     @Environment(\.openURL) private var openURL
-    @State var trash: TrashViewModel
     @State var storage: StorageStatsViewModel
     @State var upload: UploadViewModel
     @State var uploadDetail: UploadDetailViewModel
-    @State var duplicates: DuplicatesViewModel
-    @State var people: PeopleViewModel
-    @State var tags: TagsViewModel
-    @State var stacks: StacksViewModel
-    @State var partners: PartnersViewModel
     @State var admin: AdminViewModel
-    @State var offline: OfflineDownloadViewModel
-    @State var recentTaken: RecentAssetsViewModel
-    @State var recentAdded: RecentAssetsViewModel
     @State var notifications: NotificationsViewModel
     @State var language: LanguageSettingsViewModel
     /// Connected devices (gap G19). Built by the composition root and owned by
@@ -32,16 +24,10 @@ struct ProfileView: View {
     /// switch below, the avatar's badge and the client guard are three readers
     /// of the same boolean.
     @State var readOnly: ReadOnlyModeStore
-    @State var localLibrary: LocalLibraryViewModel
     @State var freeUpSpace: FreeUpSpaceViewModel
-    @State var folders: FolderViewModel
     /// Profile picture screen (gap G16). Built by the composition root and owned
     /// by `RootView`, so the row below and the pushed screen show one photo.
     @State var profilePicture: ProfilePictureViewModel
-    /// Locked folder (gap G12). A plain `let`, not a `@State`: the ViewModel's
-    /// lifetime is the Me sheet's (`AuthenticatedRoot` owns it), so re-entering
-    /// the row does not reset a folder the user is working in.
-    let lockedFolder: LockedFolderViewModel
     /// Change-password screen (gap G18). Built by the composition root: the
     /// screen is pushed, so the row and the form must show one instance.
     @State var changePassword: ChangePasswordViewModel
@@ -132,35 +118,7 @@ struct ProfileView: View {
                     Text("General")
                 }
 
-                // Consultation, not configuration: two read-only grids over the
-                // library sit above Management, which carries settings. Pushed
-                // without a stack — this view already owns one.
                 Section {
-                    NavigationLink {
-                        RecentAssetsView(vm: recentTaken)
-                    } label: {
-                        Label("Recently Taken", systemImage: "clock.arrow.circlepath")
-                    }
-                    .accessibilityIdentifier("recentTakenRow")
-
-                    NavigationLink {
-                        RecentAssetsView(vm: recentAdded)
-                    } label: {
-                        Label("Recently Added", systemImage: "arrow.up.circle")
-                    }
-                    .accessibilityIdentifier("recentAddedRow")
-                } header: {
-                    Text("Recently")
-                }
-
-                Section {
-                    NavigationLink {
-                        TrashView(vm: trash)
-                    } label: {
-                        Label("Trash", systemImage: "trash")
-                    }
-                .accessibilityIdentifier("trashRow")
-
                     NavigationLink {
                         BackupSettingsView(vm: upload, detail: uploadDetail)
                     } label: {
@@ -177,69 +135,9 @@ struct ProfileView: View {
                     }
                     .accessibilityIdentifier("notificationsRow")
 
-                    NavigationLink {
-                        DuplicatesView(vm: duplicates)
-                    } label: {
-                        Label("Duplicates", systemImage: "rectangle.on.rectangle.angled")
-                    }
-                .accessibilityIdentifier("duplicatesRow")
-
-                    NavigationLink {
-                        PeopleView(vm: people)
-                    } label: {
-                        Label("People", systemImage: "person.2")
-                    }
-                .accessibilityIdentifier("peopleRow")
-
-                    NavigationLink {
-                        TagsView(vm: tags)
-                    } label: {
-                        Label("Tags", systemImage: "tag")
-                    }
-                .accessibilityIdentifier("tagsRow")
-
-                    NavigationLink {
-                        StackView(vm: stacks)
-                    } label: {
-                        Label("Stacks", systemImage: "square.stack.3d.down.right")
-                    }
-                .accessibilityIdentifier("stacksRow")
-
-                    NavigationLink {
-                        PartnersView(vm: partners)
-                    } label: {
-                        Label("Partners", systemImage: "person.badge.plus")
-                    }
-                .accessibilityIdentifier("partnersRow")
-
-                    NavigationLink {
-                        OfflineAssetsView(vm: offline)
-                    } label: {
-                        Label("Offline Storage", systemImage: "arrow.down.circle")
-                    }
-                    .accessibilityIdentifier("offlineStorageRow")
-
-                    // Next to Offline Storage on purpose: the two lines read the
-                    // same library from its two sides — what the device keeps in
-                    // cache, and the tree the server sees on its disk.
-                    NavigationLink {
-                        FolderView(vm: folders, node: nil)
-                    } label: {
-                        Label("Folders", systemImage: "folder")
-                    }
-                    .accessibilityIdentifier("foldersRow")
-
-                    // Next to Offline Storage on purpose: both lines read the
-                    // device, not the server.
-                    NavigationLink {
-                        LocalLibraryView(vm: localLibrary)
-                    } label: {
-                        Label("On this device", systemImage: "iphone")
-                    }
-                    .accessibilityIdentifier("localLibraryRow")
                     // Last in Management on purpose: it acts on what the DEVICE
-                    // holds, like the Offline Storage row right above, and keeps
-                    // the Backup / Sync cluster (what goes up) intact.
+                    // holds and keeps the Backup / Sync cluster (what goes up)
+                    // intact.
                     NavigationLink {
                         FreeUpSpaceView(vm: freeUpSpace)
                     } label: {
@@ -340,16 +238,6 @@ struct ProfileView: View {
                 // App lock lives here rather than on the Backup screen: it
                 // guards the whole app, not the backup run.
                 Section {
-                    // The locked folder is a place, the toggle below is a
-                    // setting: a row, not a switch — and it comes first because
-                    // it is the narrower protection (one folder vs the app).
-                    NavigationLink {
-                        LockedFolderView(vm: lockedFolder)
-                    } label: {
-                        Label("Locked Folder", systemImage: "lock")
-                    }
-                    .accessibilityIdentifier("lockedFolderRow")
-
                     // Above the toggle on purpose: this row answers a
                     // server-side request about the account itself, where the
                     // toggle below is a setting of this device.
@@ -433,6 +321,7 @@ struct ProfileView: View {
                     .accessibilityIdentifier("logoutButton")
                 }
             }
+            .accessibilityIdentifier("profileList")
             .navigationTitle("Me")
             // Logging out purges offline photos, caches and saved servers
             // (deconnexion-laisse-donnees): nothing is erased before this is
@@ -501,6 +390,7 @@ struct ProfileView: View {
                         }
                     }
                 }
+                .accessibilityIdentifier("savedAccountRow_\(account.id)")
             }
             .onDelete { offsets in
                 for index in offsets {
@@ -513,6 +403,7 @@ struct ProfileView: View {
             } label: {
                 Label("Add Account", systemImage: "plus")
             }
+            .accessibilityIdentifier("addAccountButton")
         } header: {
             Text("Servers")
         }
@@ -528,6 +419,7 @@ struct ProfileView: View {
                 Label("Open in Browser", systemImage: "safari")
             }
             .disabled(auth.baseURL == nil)
+            .accessibilityIdentifier("openInBrowserButton")
         } header: {
             Text("Server")
         }

@@ -65,6 +65,8 @@ struct PeopleView: View {
             token: auth.accessToken,
             onDataChanged: { Task { await vm.refreshAssets() } }
         )
+        .accessibilityElement(children: .contain)
+        .accessibilityIdentifier("peopleScreen")
     }
 
     // MARK: - List
@@ -397,6 +399,8 @@ private struct PersonDetailView: View {
                 }
             )
         }
+        .accessibilityElement(children: .contain)
+        .accessibilityIdentifier("personScreen_\(pushed.id)")
     }
 
     @State private var renamePerson: PersonResponseDto?

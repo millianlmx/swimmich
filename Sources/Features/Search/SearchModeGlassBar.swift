@@ -78,6 +78,16 @@ struct SearchModeGlassBar: View {
         }
         .buttonStyle(.plain)
         .accessibilityAddTraits(isSelected ? .isSelected : [])
+        .accessibilityIdentifier(Self.identifier(for: segment.mode))
+    }
+
+    /// Non-localized handle of a segment, for UI scenarios.
+    private static func identifier(for mode: SearchViewModel.ViewMode) -> String {
+        switch mode {
+        case .results: "searchModeSegment_results"
+        case .explore: "searchModeSegment_explore"
+        case .map: "searchModeSegment_map"
+        }
     }
 }
 

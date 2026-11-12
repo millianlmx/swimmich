@@ -309,6 +309,22 @@ final class LockedFolderViewModelTests: XCTestCase {
         XCTAssertTrue(vm.buckets.isEmpty)
         XCTAssertTrue(vm.selectedIds.isEmpty)
     }
+
+    func test_AC_137_relockIfUnlocked_locksOnlyAnOpenFolder() async {
+        vm.gate = .unlocked
+        await vm.relockIfUnlocked()
+        XCTAssertEqual(client.lockSessionCallCount, 1)
+        XCTAssertEqual(vm.gate, .locked)
+
+        await vm.relockIfUnlocked()
+        XCTAssertEqual(client.lockSessionCallCount, 1, "a folder that is already locked costs no request")
+        XCTAssertEqual(vm.gate, .locked)
+
+        vm.gate = .needsSetup
+        await vm.relockIfUnlocked()
+        XCTAssertEqual(client.lockSessionCallCount, 1, "a folder without a PIN keeps its setup door")
+        XCTAssertEqual(vm.gate, .needsSetup)
+    }
 }
 
 // MARK: - Doubles

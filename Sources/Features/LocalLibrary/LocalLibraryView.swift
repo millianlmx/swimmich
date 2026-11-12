@@ -2,11 +2,10 @@ import Photos
 import SwiftUI
 import UIKit
 
-/// "On this device" — the local library inventory, pushed from the Me hub's
-/// Management section right after "Offline Storage" (both read the *device*, not
-/// the server).
+/// "On this device" — the local library inventory, pushed from the Albums tab's
+/// Library section (L-12) (it reads the *device*, not the server).
 ///
-/// No `NavigationStack` of its own on purpose: `ProfileView` already carries the
+/// No `NavigationStack` of its own on purpose: the Albums tab already carries the
 /// one this screen is pushed into, and a second stack would draw two navigation
 /// bars (the `LanguageSettingsView` trap). Same contract as `OfflineAssetsView`.
 struct LocalLibraryView: View {
@@ -31,6 +30,8 @@ struct LocalLibraryView: View {
         .safeAreaInset(edge: .bottom) { selectionBar }
         .task { await reload() }
         .refreshable { await reload() }
+        .accessibilityElement(children: .contain)
+        .accessibilityIdentifier("localLibraryScreen")
     }
 
     /// Re-reads the device and the server. The album the user is scoped to is

@@ -4,7 +4,7 @@ import XCTest
 /// action button of a person card opens a date sheet whose Save and Clear both
 /// write through ONE route, `PUT /api/people/{id}`.
 ///
-/// It drives the real app (onboarding → SSO → Me hub → People → a person) and
+/// It drives the real app (onboarding → SSO → Albums tab → People → a person) and
 /// asserts on BOTH surfaces, because a screen cannot tell the three write
 /// shapes apart: set, erase, and the silent do-nothing this card was raised for
 /// (`PersonUpdateDto(birthDate: nil)` omits the key instead of sending an
@@ -262,6 +262,19 @@ final class PersonBirthdayUITests: XCTestCase {
         return row
     }
 
+    /// A tile of the Albums tab's Library section, by IDENTIFIER (its label is
+    /// localized: "People" / "Personnes" / "Personen"). The Albums ScrollView is
+    /// scrolled only when the tile is not hittable.
+    private func libraryRow(_ identifier: String) -> XCUIElement {
+        let row = app.buttons.matching(identifier: identifier).firstMatch
+        _ = row.waitForExistence(timeout: 10)
+        for _ in 0..<6 where !row.isHittable {
+            app.swipeUp()
+            sleep(1)
+        }
+        return row
+    }
+
     /// A person row of the list, by the identifier `PeopleView` gives it
     /// (`personRow_<id>` — added for this scenario, since the row is interactive
     /// and the harness puts identifiers on interactive elements).
@@ -282,31 +295,25 @@ final class PersonBirthdayUITests: XCTestCase {
         sheetButton("personBirthdayAction").waitForExistence(timeout: timeout)
     }
 
-    /// Timeline → Me hub → People, all by identifier. Used to enter the list the
-    /// first time and again after a relaunch.
+    /// Timeline → Albums tab → People, all by identifier. Used to enter the list
+    /// the first time and again after a relaunch.
     private func enterPeopleList(expecting id: String) {
         XCTAssertTrue(app.tabBars.buttons["Photos"].waitForExistence(timeout: 30),
                       "the app is not on the authenticated shell")
         // A fresh install presents "What's New" over the shell, and a modal
-        // swallows every tap: the hub would never open under it.
+        // swallows every tap: the tab would never be selected under it.
         let whatsNewDone = app.buttons.matching(identifier: "whatsNewDoneButton").firstMatch
         if whatsNewDone.waitForExistence(timeout: 5) {
             shot("pb02-whats-new")
             whatsNewDone.tap()
         }
-        let hub = app.buttons.matching(identifier: "profileAvatar").firstMatch
-        XCTAssertTrue(hub.waitForExistence(timeout: 20), "Profile avatar missing")
-        hub.tap()
-        // The hub is a sheet that animates in; its first row is the anchor that it
-        // is up, since a `Form` publishes only what it rendered.
-        XCTAssertTrue(app.buttons.matching(identifier: "profilePictureRow").firstMatch.waitForExistence(timeout: 20),
-                      "the Me hub never opened:\n\(app.debugDescription)")
-        let peopleRow = hubRow("peopleRow")
+        app.tabBars.buttons["Albums"].tap()
+        let peopleRow = libraryRow("peopleRow")
         if !peopleRow.waitForExistence(timeout: 15) {
-            shot("pb03b-me-hub-without-people-row")
-            XCTFail("People row missing in the Me hub:\n\(app.debugDescription)")
+            shot("pb03b-albums-without-people-row")
+            XCTFail("People tile missing in the Albums library:\n\(app.debugDescription)")
         }
-        shot("pb03-me-hub")
+        shot("pb03-albums-library")
         peopleRow.tap()
         XCTAssertTrue(personRow(id).waitForExistence(timeout: 30),
                       "the people list never rendered `personRow_\(id)`:\n\(app.debugDescription)")
@@ -404,11 +411,9 @@ final class PersonBirthdayUITests: XCTestCase {
     /// Back to the people list, from a card, with the list waited for.
     ///
     /// Scoped to the card's OWN navigation bar, by its title — the person's name,
-    /// not a translated string. `app.navigationBars.firstMatch` is NOT it: at this
-    /// depth (Me sheet → People → card) its first button was the sheet's own
-    /// control, and tapping it closed the whole hub. And the pop is measured to
-    /// settle on the list OR on the hub, so the hub is a second real step — never
-    /// an assumption: whichever way it went, the list is entered through its row
+    /// not a translated string. And the pop is measured to settle on the list OR
+    /// on the Albums library, so the library is a second real step — never an
+    /// assumption: whichever way it went, the list is entered through its tile
     /// and its rows are asserted back.
     private func backToPeopleList(from person: String, expecting id: String) {
         let bar = app.navigationBars[person]
@@ -421,9 +426,9 @@ final class PersonBirthdayUITests: XCTestCase {
         print("backToPeopleList(\(person)): the pop did not land on the list — nav bars "
               + "\(app.navigationBars.allElementsBoundByIndex.map(\.identifier)), screen reads: "
               + "\(app.staticTexts.allElementsBoundByIndex.map(\.label))")
-        let peopleRow = hubRow("peopleRow")
+        let peopleRow = libraryRow("peopleRow")
         XCTAssertTrue(peopleRow.waitForExistence(timeout: 20),
-                      "neither the people list nor the hub came back after leaving \(person)'s card")
+                      "neither the people list nor the Albums library came back after leaving \(person)'s card")
         peopleRow.tap()
         XCTAssertTrue(personRow(id).waitForExistence(timeout: 30),
                       "the people list is on screen but has no row `personRow_\(id)`: "
@@ -716,22 +721,18 @@ final class PersonBirthdayUITests: XCTestCase {
         backToPeopleList(from: adaName, expecting: adaId)
         XCTAssertTrue(personRow(adaId).exists, "the list lost \(adaName) after the refused write")
 
+        // People is pushed on the Albums tab's stack: one back tap lands on the
+        // Albums library, and the avatar (an identifier) is the way into the Me
+        // sheet, which owns the App Logs row.
         let back = app.buttons.matching(identifier: "BackButton").firstMatch
         if back.waitForExistence(timeout: 15) { back.tap() }
-        var logsRow = hubRow("appLogsRow")
-        if !logsRow.exists {
-            // One back tap can leave the whole Me sheet (measured elsewhere in
-            // this wave): the avatar is then the way back in. Both are
-            // identifiers, and the covered timeline's own avatar is never
-            // tapped — it would send the touch to whatever covers it.
-            let avatar = app.buttons.matching(identifier: "profileAvatar").firstMatch
-            XCTAssertTrue(avatar.waitForExistence(timeout: 20),
-                          "neither the Me hub nor the timeline is on screen:\n\(app.debugDescription)")
-            avatar.tap()
-            XCTAssertTrue(app.buttons.matching(identifier: "profilePictureRow").firstMatch
-                .waitForExistence(timeout: 20), "the Me hub never opened after touching the avatar")
-            logsRow = hubRow("appLogsRow")
-        }
+        let avatar = app.buttons.matching(identifier: "profileAvatar").firstMatch
+        XCTAssertTrue(avatar.waitForExistence(timeout: 20),
+                      "the avatar is missing after leaving People:\n\(app.debugDescription)")
+        avatar.tap()
+        XCTAssertTrue(app.buttons.matching(identifier: "profilePictureRow").firstMatch
+            .waitForExistence(timeout: 20), "the Me hub never opened after touching the avatar")
+        let logsRow = hubRow("appLogsRow")
         XCTAssertTrue(logsRow.waitForExistence(timeout: 20),
                       "the App Logs row is missing in the Me hub:\n\(app.debugDescription)")
         logsRow.tap()

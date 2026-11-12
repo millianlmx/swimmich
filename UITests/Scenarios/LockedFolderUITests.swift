@@ -267,28 +267,28 @@ final class LockedFolderUITests: XCTestCase {
 
     // MARK: - Navigating in and out of the folder
 
-    /// The Me hub → Security → Locked Folder. The row sits under the fold (a
-    /// `Form` only publishes what it has rendered), so it is scrolled into
-    /// view; matched by IDENTIFIER, never by its localized label.
+    /// The Albums tab → its Library section → Locked Folder. The tile is matched
+    /// by IDENTIFIER, never by its localized label; it is a plain button, closed
+    /// or not.
     private func openLockedFolder() {
-        let hub = app.buttons.matching(identifier: "profileAvatar").firstMatch
-        XCTAssertTrue(hub.waitForExistence(timeout: 20), "Profile avatar missing")
-        hub.tap()
-        sleep(4) // the sheet animates in; the Form is not hittable before it does
-        let row = hubRow("lockedFolderRow")
+        let albums = app.tabBars.buttons["Albums"]
+        XCTAssertTrue(albums.waitForExistence(timeout: 20), "Albums tab missing")
+        albums.tap()
+        let row = libraryRow("lockedFolderRow")
         if !row.waitForExistence(timeout: 10) {
-            shot("lf05b-me-hub-without-locked-row")
-            XCTFail("Locked Folder row missing in the Me hub:\n\(app.debugDescription)")
+            shot("lf05b-albums-without-locked-row")
+            XCTFail("Locked Folder tile missing in the Albums library:\n\(app.debugDescription)")
         }
         row.tap()
     }
 
-    /// A row of the "Me" hub, by IDENTIFIER (its label is localized). A `Form`
-    /// only publishes what it rendered, so the row is scrolled into view first,
-    /// letting each swipe settle.
-    private func hubRow(_ identifier: String) -> XCUIElement {
+    /// A tile of the Albums tab's Library section, by IDENTIFIER (its label is
+    /// localized). The Albums ScrollView is scrolled only when the tile is not
+    /// hittable.
+    private func libraryRow(_ identifier: String) -> XCUIElement {
         let row = app.buttons.matching(identifier: identifier).firstMatch
-        for _ in 0..<8 where !row.exists {
+        _ = row.waitForExistence(timeout: 10)
+        for _ in 0..<6 where !row.isHittable {
             app.swipeUp()
             sleep(1)
         }
@@ -318,9 +318,9 @@ final class LockedFolderUITests: XCTestCase {
     /// which is exactly what the elevation-expiry step below refuses to accept.
     private func leaveAndReopenFolder() {
         XCTAssertTrue(goBack(), "no back button on the locked folder's navigation bar")
-        let row = hubRow("lockedFolderRow")
+        let row = libraryRow("lockedFolderRow")
         XCTAssertTrue(row.waitForExistence(timeout: 10),
-                      "the Locked Folder row is gone from the Me hub: \(screenText())")
+                      "the Locked Folder tile is gone from the Albums library: \(screenText())")
         row.tap()
     }
 

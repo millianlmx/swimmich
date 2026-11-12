@@ -1,9 +1,8 @@
 import SwiftUI
 
 /// Stack list — the hub surface for `/api/stacks` (gap #1). Pushed from
-/// `ProfileView`'s Management section, so it declares **no** `NavigationStack`
-/// of its own (TagsView / PeopleView pattern; the sheet from the root already
-/// owns one).
+/// the Albums tab's Library section (L-12), so it declares **no** `NavigationStack`
+/// of its own (TagsView / PeopleView pattern; the tab already owns one).
 struct StackView: View {
     @Bindable var vm: StacksViewModel
     @Environment(AuthViewModel.self) private var auth
@@ -38,6 +37,7 @@ struct StackView: View {
                         } label: {
                             StackRowView(stack: stack)
                         }
+                        .accessibilityIdentifier("stackRow_\(stack.id)")
                         .swipeActions(edge: .trailing) {
                             Button(role: .destructive) {
                                 Task { await vm.deleteStack(id: stack.id) }
@@ -67,6 +67,8 @@ struct StackView: View {
         .sheet(isPresented: $vm.showCreate) {
             CreateStackSheet(vm: vm)
         }
+        .accessibilityElement(children: .contain)
+        .accessibilityIdentifier("stacksScreen")
     }
 }
 

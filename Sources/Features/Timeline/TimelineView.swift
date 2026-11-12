@@ -187,6 +187,12 @@ struct TimelineView: View {
                                 }
                                 .accessibilityIdentifier("selectButton")
                             }
+                            // The filter (All / Favorites / Archived) lives in
+                            // this row: the navigation bar is hidden outside
+                            // selection, so a toolbar menu was never reachable.
+                            // Visible whether or not the grid is empty: under a
+                            // filter with no match it is the way back to "All".
+                            filterMenu
                             // No bar to draw the chrome, so the button brings its
                             // own disc — the gesture of the glass pill next to it.
                             // The run's live ring rides THIS button, not the
@@ -866,27 +872,36 @@ struct TimelineView: View {
                 }
                 .disabled(vm.selectedIds.isEmpty)
                 .accessibilityIdentifier("downloadSelectionButton")
-            } else {
-                // AC-1010 — timeline filter menu (All / Favorites / Archived).
-                Menu {
-                    ForEach(TimelineFilter.allCases, id: \.self) { f in
-                        Button {
-                            Task { await vm.setFilter(f) }
-                        } label: {
-                            if vm.filter == f {
-                                Label(f.title, systemImage: "checkmark")
-                            } else {
-                                Text(f.title)
-                            }
-                        }
-                    }
-                } label: {
-                    Label("Filter", systemImage: "line.3.horizontal.decrease.circle")
-                        .labelStyle(.iconOnly)
-                }
-                .accessibilityIdentifier("filterMenu")
             }
         }
+    }
+
+    /// Timeline filter (AC-1010, L-12): All / Favorites / Archived. A glass disc
+    /// like `SyncStatusButton`'s, filled once a filter other than "All" is set.
+    private var filterMenu: some View {
+        Menu {
+            ForEach(TimelineFilter.allCases, id: \.self) { f in
+                Button {
+                    Task { await vm.setFilter(f) }
+                } label: {
+                    if vm.filter == f {
+                        Label(f.title, systemImage: "checkmark")
+                    } else {
+                        Text(f.title)
+                    }
+                }
+                .accessibilityIdentifier("timelineFilter_\(f.rawValue)")
+            }
+        } label: {
+            Image(systemName: vm.filter == .all ? "line.3.horizontal.decrease.circle" : "line.3.horizontal.decrease.circle.fill")
+                .font(.system(size: 17, weight: .semibold)) // DS-exempt: glyph of the 44 pt disc, as SyncStatusButton
+                .frame(width: 44, height: 44)
+                .contentShape(Circle())
+        }
+        .glassEffect(.regular, in: Circle())
+        .accessibilityLabel("Filter")
+        .accessibilityValue(Text(vm.filter.title))
+        .accessibilityIdentifier("filterMenu")
     }
 }
 

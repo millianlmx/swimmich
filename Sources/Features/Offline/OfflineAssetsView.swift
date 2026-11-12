@@ -1,8 +1,8 @@
 import SwiftUI
 
-/// Offline storage screen (issue #18) — pushed from `ProfileView`'s Management
-/// section, so it declares **no** `NavigationStack` of its own (StackView /
-/// TagsView pattern; the hub sheet already owns one).
+/// Offline storage screen (issue #18) — pushed from the Albums tab's Library
+/// section (L-12), so it declares **no** `NavigationStack` of its own (StackView /
+/// TagsView pattern; the tab already owns one).
 ///
 /// Everything shown here is read from disk: the grid renders each cached
 /// original from its local file, which is also what makes this screen the
@@ -68,6 +68,8 @@ struct OfflineAssetsView: View {
                 token: auth.accessToken
             )
         }
+        .accessibilityElement(children: .contain)
+        .accessibilityIdentifier("offlineStorageScreen")
     }
 
     // MARK: - Storage

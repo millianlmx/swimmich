@@ -24,6 +24,7 @@
 		07041123CAC97BCCBEB562EC /* BackupLiveActivityViews.swift in Sources */ = {isa = PBXBuildFile; fileRef = 725D3F5E5180F06E75E7B429 /* BackupLiveActivityViews.swift */; };
 		07337934F3A40C2673B6EF97 /* LocalLibraryViewModelTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4F01FAA3706DC786C277026D /* LocalLibraryViewModelTests.swift */; };
 		4B8D2F6A90C1E37354A8D1B2 /* immich_stub_account_storage.py in Resources */ = {isa = PBXBuildFile; fileRef = 7E3A91C4D2B5F60811A9C3E7 /* immich_stub_account_storage.py */; };
+		12C01A0000000000000000B4 /* immich_stub_collections.py in Resources */ = {isa = PBXBuildFile; fileRef = 12C01A0000000000000000A4 /* immich_stub_collections.py */; };
 		078AE5EE5A8BF75A6C92E947 /* immich_stub_app_utilities.py in Resources */ = {isa = PBXBuildFile; fileRef = E1CC7019BA3B4C01BC01F2B0 /* immich_stub_app_utilities.py */; };
 		20DEB45231D98E5F1FD379B7 /* immich_stub_app_log.py in Resources */ = {isa = PBXBuildFile; fileRef = 5AFCA7C77F5D1A64ACCBB1F2 /* immich_stub_app_log.py */; };
 		07914DCB1519FAA42A0A9618 /* TrustEvaluatingURLSessionDelegate.swift in Sources */ = {isa = PBXBuildFile; fileRef = DCAE470CA70136D8F3AE85C5 /* TrustEvaluatingURLSessionDelegate.swift */; };
@@ -35,6 +36,7 @@
 		09DA908F7892B39C53475F79 /* MediaStatsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 50CEA9A5030B894B925B89E1 /* MediaStatsView.swift */; };
 		0A7919E235A4612EECF4A086 /* SyncStatusViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3D23B32B0944E1019580A8AE /* SyncStatusViewModel.swift */; };
 		2D6F8B1E4A7C93500B3E5F81 /* AccountStorageUITests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9C17E5A3B8D40F2661E4A7C9 /* AccountStorageUITests.swift */; };
+		12C01A0000000000000000B3 /* ContentCollectionsUITests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 12C01A0000000000000000A3 /* ContentCollectionsUITests.swift */; };
 		0AFE2D96811EBD78DCBE78CC /* AppUtilitiesUITests.swift in Sources */ = {isa = PBXBuildFile; fileRef = F12E4D5D4AEA776F68BF61B6 /* AppUtilitiesUITests.swift */; };
 		0B037D2F7B63AF379A4519FF /* QRServerConfigParserTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 810ED37F0064772463A9C120 /* QRServerConfigParserTests.swift */; };
 		0B1E36D253FF5663C799F7D9 /* PVButtonStyle.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0C579043BE4F6A7E408B4907 /* PVButtonStyle.swift */; };
@@ -126,6 +128,8 @@
 		2A29772FBD6556CF1869BE80 /* SlideshowViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5BE8BEC914EE70FCBF4E62CC /* SlideshowViewModel.swift */; };
 		2A570A2C7E816EF056681D2E /* AlbumSyncServicing.swift in Sources */ = {isa = PBXBuildFile; fileRef = F16A79F9A783199F79D584A3 /* AlbumSyncServicing.swift */; };
 		2A5C842057BE8AE2F0055401 /* AlbumsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0E5D67A446823B12453ADAEE /* AlbumsView.swift */; };
+		12C01A0000000000000000B1 /* LibraryCollection.swift in Sources */ = {isa = PBXBuildFile; fileRef = 12C01A0000000000000000A1 /* LibraryCollection.swift */; };
+		12C01A0000000000000000B2 /* LibraryCollectionsSection.swift in Sources */ = {isa = PBXBuildFile; fileRef = 12C01A0000000000000000A2 /* LibraryCollectionsSection.swift */; };
 		2AD9509697C5557D06BA5633 /* AddToAlbumPickerSheet.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7020759F71A6236EF0FDE5A3 /* AddToAlbumPickerSheet.swift */; };
 		2C8E2BF0A04550A6CCF8D1C5 /* FreeUpSpaceViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5919FFA04663962D6E523A84 /* FreeUpSpaceViewModel.swift */; };
 		2CB8BA7C7852B39C59516663 /* DTOs+Session.swift in Sources */ = {isa = PBXBuildFile; fileRef = 13F5EB05778FEB21523D4A53 /* DTOs+Session.swift */; };
@@ -770,6 +774,8 @@
 		0E20A4FDA552E6EEA34A5570 /* immich_stub_settings.py */ = {isa = PBXFileReference; lastKnownFileType = text.script.python; path = immich_stub_settings.py; sourceTree = "<group>"; };
 		0E3F725CF1DAB9C1E71FED8C /* RootView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RootView.swift; sourceTree = "<group>"; };
 		0E5D67A446823B12453ADAEE /* AlbumsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AlbumsView.swift; sourceTree = "<group>"; };
+		12C01A0000000000000000A1 /* LibraryCollection.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LibraryCollection.swift; sourceTree = "<group>"; };
+		12C01A0000000000000000A2 /* LibraryCollectionsSection.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LibraryCollectionsSection.swift; sourceTree = "<group>"; };
 		0E9AEEEBEDC9BE359C150261 /* AppLogEntry.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppLogEntry.swift; sourceTree = "<group>"; };
 		DE0ABF933124E30F424D1621 /* AppLogRedactor.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppLogRedactor.swift; sourceTree = "<group>"; };
 		10D69C2A77A2B63F9C39936F /* PublicLogText.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PublicLogText.swift; sourceTree = "<group>"; };
@@ -1237,6 +1243,7 @@
 		E1208877397F4626C85572F2 /* immich_stub_ocr_text.py */ = {isa = PBXFileReference; lastKnownFileType = text.script.python; path = immich_stub_ocr_text.py; sourceTree = "<group>"; };
 		E1AA87F48D62D60B47706199 /* RoadTripMapSegment.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RoadTripMapSegment.swift; sourceTree = "<group>"; };
 		7E3A91C4D2B5F60811A9C3E7 /* immich_stub_account_storage.py */ = {isa = PBXFileReference; lastKnownFileType = text.script.python; path = immich_stub_account_storage.py; sourceTree = "<group>"; };
+		12C01A0000000000000000A4 /* immich_stub_collections.py */ = {isa = PBXFileReference; lastKnownFileType = text.script.python; path = immich_stub_collections.py; sourceTree = "<group>"; };
 		E1CC7019BA3B4C01BC01F2B0 /* immich_stub_app_utilities.py */ = {isa = PBXFileReference; lastKnownFileType = text.script.python; path = immich_stub_app_utilities.py; sourceTree = "<group>"; };
 		5AFCA7C77F5D1A64ACCBB1F2 /* immich_stub_app_log.py */ = {isa = PBXFileReference; lastKnownFileType = text.script.python; path = immich_stub_app_log.py; sourceTree = "<group>"; };
 		E29CC6F1E097FB8CD0BB41CB /* ProfilePictureViewModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ProfilePictureViewModel.swift; sourceTree = "<group>"; };
@@ -1265,6 +1272,7 @@
 		F0811A00478B347A7005063B /* WhatsNewUITests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WhatsNewUITests.swift; sourceTree = "<group>"; };
 		F0E30393E5D0F3117FF5809E /* CreateAlbumSheet.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CreateAlbumSheet.swift; sourceTree = "<group>"; };
 		9C17E5A3B8D40F2661E4A7C9 /* AccountStorageUITests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AccountStorageUITests.swift; sourceTree = "<group>"; };
+		12C01A0000000000000000A3 /* ContentCollectionsUITests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ContentCollectionsUITests.swift; sourceTree = "<group>"; };
 		F12E4D5D4AEA776F68BF61B6 /* AppUtilitiesUITests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppUtilitiesUITests.swift; sourceTree = "<group>"; };
 		09D345762E990EFD50346F30 /* AppLogRedactionUITests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppLogRedactionUITests.swift; sourceTree = "<group>"; };
 		F16A79F9A783199F79D584A3 /* AlbumSyncServicing.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AlbumSyncServicing.swift; sourceTree = "<group>"; };
@@ -2162,6 +2170,7 @@
 				7C1A0E5B2D4F6A8091B3C5D6 /* immich_stub_album_roles.py */,
 				4FF1B91E9C4417E215CF8D26 /* immich_stub_album_sync.py */,
 				7E3A91C4D2B5F60811A9C3E7 /* immich_stub_account_storage.py */,
+				12C01A0000000000000000A4 /* immich_stub_collections.py */,
 				E1CC7019BA3B4C01BC01F2B0 /* immich_stub_app_utilities.py */,
 				5AFCA7C77F5D1A64ACCBB1F2 /* immich_stub_app_log.py */,
 				BBF6CB2BADD7C5BABCD243EA /* immich_stub_archive.py */,
@@ -2231,6 +2240,8 @@
 				922AA6F900C9DFD8F696050E /* AlbumShareSheet.swift */,
 				A322597C0C9ED21D0C0717E9 /* AlbumShareViewModel.swift */,
 				0E5D67A446823B12453ADAEE /* AlbumsView.swift */,
+				12C01A0000000000000000A1 /* LibraryCollection.swift */,
+				12C01A0000000000000000A2 /* LibraryCollectionsSection.swift */,
 				2DB6F76D9F4BCD25D7212B68 /* AlbumsViewModel.swift */,
 				F0E30393E5D0F3117FF5809E /* CreateAlbumSheet.swift */,
 				7F535694DFA565D257D69FE2 /* EditAlbumSheet.swift */,
@@ -2281,6 +2292,7 @@
 				B9CF0B790615363896DCC617 /* AlbumSyncUITests.swift */,
 				3FC0D63F249A1B765BDEFDE1 /* AppLockUITests.swift */,
 				9C17E5A3B8D40F2661E4A7C9 /* AccountStorageUITests.swift */,
+				12C01A0000000000000000A3 /* ContentCollectionsUITests.swift */,
 				F12E4D5D4AEA776F68BF61B6 /* AppUtilitiesUITests.swift */,
 				09D345762E990EFD50346F30 /* AppLogRedactionUITests.swift */,
 				2A1531C60F36C47F188E6197 /* ArchiveUITests.swift */,
@@ -2697,6 +2709,7 @@
 				7C1A0E5B2D4F6A8091B3C5D5 /* immich_stub_album_roles.py in Resources */,
 				D95AFA1D1289A6BD8EF5E2D7 /* immich_stub_album_sync.py in Resources */,
 				4B8D2F6A90C1E37354A8D1B2 /* immich_stub_account_storage.py in Resources */,
+				12C01A0000000000000000B4 /* immich_stub_collections.py in Resources */,
 				078AE5EE5A8BF75A6C92E947 /* immich_stub_app_utilities.py in Resources */,
 				20DEB45231D98E5F1FD379B7 /* immich_stub_app_log.py in Resources */,
 				EF937EDA299E4EC2A272D51B /* immich_stub_archive.py in Resources */,
@@ -2967,6 +2980,7 @@
 				8C135C7B90E587648F9339D1 /* AlbumSyncUITests.swift in Sources */,
 				68B39B89B2D5E1286E5757A0 /* AppLockUITests.swift in Sources */,
 				2D6F8B1E4A7C93500B3E5F81 /* AccountStorageUITests.swift in Sources */,
+				12C01A0000000000000000B3 /* ContentCollectionsUITests.swift in Sources */,
 				0AFE2D96811EBD78DCBE78CC /* AppUtilitiesUITests.swift in Sources */,
 				B09924C7D03B1491D90D0076 /* AppLogRedactionUITests.swift in Sources */,
 				B7F3BF2B6D9A909739FCD271 /* ArchiveUITests.swift in Sources */,
@@ -3056,6 +3070,8 @@
 				2A570A2C7E816EF056681D2E /* AlbumSyncServicing.swift in Sources */,
 				1FD4B34F4267ECEEAF168CDC /* AlbumSyncStore.swift in Sources */,
 				2A5C842057BE8AE2F0055401 /* AlbumsView.swift in Sources */,
+				12C01A0000000000000000B1 /* LibraryCollection.swift in Sources */,
+				12C01A0000000000000000B2 /* LibraryCollectionsSection.swift in Sources */,
 				E9A7741CE094CBD1F4773024 /* AlbumsViewModel.swift in Sources */,
 				5CC183A81FECD0A95A5E15C6 /* AnyEncodable.swift in Sources */,
 				17AEBCC8C450942F6F0D9BF6 /* AppDateFormat.swift in Sources */,
