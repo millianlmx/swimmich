@@ -301,7 +301,8 @@ final class FloatingControlStyleTests: XCTestCase {
         let white = RGBA(r: 1, g: 1, b: 1, a: 1)
         let black = RGBA(r: 0, g: 0, b: 0, a: 1)
 
-        for (styleName, style) in [("light", UIUserInterfaceStyle.light), ("dark", .dark)] {
+        let styles: [(String, UIUserInterfaceStyle)] = [("light", .light), ("dark", .dark)]
+        for (styleName, style) in styles {
             for (photoName, photo) in [("white photo", white), ("black photo", black)] {
                 let glass = Self.composite(Self.rgba(PVFloating.tint, style), over: photo)
                 let selection = Self.composite(Self.rgba(PVFloating.selection, style), over: glass)

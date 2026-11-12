@@ -173,7 +173,8 @@ final class FloatingControlsUITests: XCTestCase {
     /// controls and identifiers, in both appearances; captures are attached.
     func test_AC_30_4_controlsOnWhitePhotoAndLightMapKeepTheirIdentifiers() throws {
         reachTimeline()
-        for (name, appearance) in [("light", XCUIDevice.Appearance.light), ("dark", .dark)] {
+        let appearances: [(String, XCUIDevice.Appearance)] = [("light", .light), ("dark", .dark)]
+        for (name, appearance) in appearances {
             XCUIDevice.shared.appearance = appearance
             let context = "(\(name) appearance)"
 
