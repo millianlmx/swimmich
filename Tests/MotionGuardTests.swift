@@ -25,11 +25,14 @@ final class MotionGuardTests: XCTestCase {
         "PhotoViewer.swift|route|animate": 1,
         // `performClose`: opacity only (`backdropOpacity`, 0.1 s).
         "PhotoViewer.swift|route|withAnimation": 1,
-        // Fade of the video poster: `posterOpacity`, opacity only.
-        "VideoPlayerView.swift|handOffPoster|withAnimation": 1,
-        // The `.fade` page change of the memory player: `fadeOpacity`, opacity only,
-        // chosen under Reduce Motion.
-        "MemoryPlaybackView.swift|showModelPage|withAnimation": 2,
+        // Fade of the video poster (`posterOpacity`, opacity only); the nearest declaration
+        // above it is the `var transaction` of the `.instant` branch.
+        "VideoPlayerView.swift|transaction|withAnimation": 1,
+        // The `.fade` page change of the memory player: `fadeOpacity`, opacity only, chosen
+        // under Reduce Motion. The first `withAnimation` sits under `showModelPage`, the
+        // second under the `var jump` above it (nearest declaration).
+        "MemoryPlaybackView.swift|showModelPage|withAnimation": 1,
+        "MemoryPlaybackView.swift|jump|withAnimation": 1,
         // Slideshow, already conformant: `slideTransition` is `.opacity` under the setting and
         // `transitionAnimation` goes through `PVMotion.fading`.
         "SlideshowView.swift|body|transition": 1,
