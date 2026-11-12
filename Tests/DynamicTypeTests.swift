@@ -96,6 +96,21 @@ final class DynamicTypeTests: XCTestCase {
     /// 65 characters.
     private static let longPersonName = "Maximiliana Wilhelmina Konstantinopoulou-Featherstonehaugh Junior"
 
+    /// `Font.Weight` keeps its numeric value private; a resolved font stores it
+    /// as a `Float` (bold resolves to 0.4000000059604645), so weights compare
+    /// with a tolerance through their reflected `value` field.
+    private func weightValue(_ w: Font.Weight, file: StaticString = #filePath, line: UInt = #line) -> Double {
+        let raw = Mirror(reflecting: w).children.first { $0.label == "value" }?.value
+        switch raw {
+        case let value as CGFloat: return Double(value)
+        case let value as Double: return value
+        case let value as Float: return Double(value)
+        default:
+            XCTFail("Font.Weight has no readable `value` field: \(String(describing: raw))", file: file, line: line)
+            return .nan
+        }
+    }
+
     // MARK: - AC-26.1 / AC-26.2
 
     func test_AC_26_1_tokensKeepDefaultSizeAndFollowSetting() {
@@ -119,7 +134,7 @@ final class DynamicTypeTests: XCTestCase {
         for token in tokens {
             let regular = PVFontMetrics.resolved(token.font, at: .large)
             XCTAssertEqual(regular.pointSize, token.size, accuracy: 0.01, "\(token.name) default size")
-            XCTAssertEqual(regular.weight, token.weight, "\(token.name) weight")
+            XCTAssertEqual(weightValue(regular.weight), weightValue(token.weight), accuracy: 0.001, "\(token.name) weight")
             XCTAssertLessThan(
                 PVFontMetrics.resolved(token.font, at: .xSmall).pointSize, regular.pointSize,
                 "\(token.name) must shrink at xSmall"
