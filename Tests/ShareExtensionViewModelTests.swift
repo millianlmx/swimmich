@@ -184,4 +184,26 @@ final class ShareExtensionViewModelTests: XCTestCase {
 
         XCTAssertTrue(model.items[0].isSelected)
     }
+
+    /// B-21: the header, the send button and the failure message are plural
+    /// entries of the catalog, so they follow the count in every language.
+    func test_AC_32_4_headerButtonAndFailureFollowTheCount() async {
+        for count in [1, 2] {
+            let items = (0..<count).map { makeItem("a\($0).jpg") }
+            let uploader = RecordingUploader()
+            let model = makeViewModel(uploader, items: items)
+
+            XCTAssertEqual(model.headerTitle, localizedString("Upload %lld items", count))
+            XCTAssertEqual(model.primaryActionTitle, localizedString("Upload %lld items", count))
+
+            for item in items { uploader.fail(item.filename) }
+            await model.uploadAll()
+
+            XCTAssertEqual(model.errorMessage, localizedString("%lld items could not be uploaded.", count))
+        }
+        // The two counts do not collapse into one text.
+        XCTAssertNotEqual(
+            localizedString("Upload %lld items", 1), localizedString("Upload %lld items", 2)
+        )
+    }
 }

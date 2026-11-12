@@ -65,17 +65,32 @@ final class NotificationService: NotificationServicing, Sendable {
         return await permission()
     }
 
+    /// Body of the "backup finished" notification: "3 photos uploaded, 0 failed."
+    /// on success, "3 uploaded, 2 failed." otherwise. Each count is a catalog
+    /// plural, so every language agrees each word with its number. Pure, so each
+    /// shipped language is testable.
+    static func backupCompleteBody(
+        uploaded: Int,
+        failed: Int,
+        success: Bool,
+        bundle: Bundle = .main,
+        locale: Locale = .current
+    ) -> String {
+        success
+            ? String(localized: "\(uploaded) photos uploaded, \(failed) failed.", bundle: bundle, locale: locale)
+            : String(localized: "\(uploaded) uploaded, \(failed) failed.", bundle: bundle, locale: locale)
+    }
+
     /// Posts a single local notification when a backup run finishes, so a
     /// background backup still surfaces its result.
     func notifyBackupComplete(uploaded: Int, total: Int, failed: Int, success: Bool) async {
         let content = UNMutableNotificationContent()
         if success {
             content.title = String(localized: "Backup complete")
-            content.body = "\(uploaded) photos uploaded, \(failed) failed."
         } else {
             content.title = String(localized: "Backup finished with errors")
-            content.body = "\(uploaded) uploaded, \(failed) failed."
         }
+        content.body = Self.backupCompleteBody(uploaded: uploaded, failed: failed, success: success)
         content.sound = .default
         let request = UNNotificationRequest(identifier: UUID().uuidString, content: content, trigger: nil)
         try? await UNUserNotificationCenter.current().add(request)

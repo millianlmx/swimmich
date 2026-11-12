@@ -102,9 +102,7 @@ struct OfflineAssetsView: View {
     /// Says how many files are held and, when the budget is meaningful, how
     /// much of it is used — the two numbers the user acts on.
     private var subtitleForBudget: String {
-        let files = vm.cachedAssets.count == 1
-            ? String(localized: "1 file")
-            : String(localized: "\(vm.cachedAssets.count) files")
+        let files = String(localized: "\(vm.cachedAssets.count) files")
         guard let fraction = vm.usageFraction else {
             return String(localized: "\(files) • No size limit")
         }

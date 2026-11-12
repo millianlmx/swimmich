@@ -245,11 +245,9 @@ struct SharedLinkRow: View {
             return album.albumName
         }
         if let desc = link.description, !desc.isEmpty { return desc }
-        // "1 photo" / "%lld photos" are the catalog's existing plural pair; a
-        // hand-rolled "photo\(s)" suffix only pluralizes in English.
+        // "%lld photos" is a plural entry of the catalog: the language picks the form.
         if !link.assets.isEmpty {
-            let count = link.assets.count
-            return count == 1 ? String(localized: "1 photo") : String(localized: "\(count) photos")
+            return String(localized: "\(link.assets.count) photos")
         }
         return String(localized: "Untitled link")
     }

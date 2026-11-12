@@ -168,7 +168,7 @@ struct AlbumsView: View {
                         .font(.pvHeadline)
                         .foregroundStyle(Color.textPrimaryPV)
                         .lineLimit(1)
-                    Text("\(album.assetCount) Photos")
+                    Text("\(album.assetCount) photos")
                         .font(.pvCaption)
                         .foregroundStyle(Color.textSecondaryPV)
                 }

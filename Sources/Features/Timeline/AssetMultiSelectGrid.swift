@@ -121,9 +121,7 @@ struct AssetMultiSelectGrid: View {
 
     private var selectionSummary: some View {
         VStack(alignment: .leading, spacing: PVSpacing.s2) {
-            Text(selectedIds.count == 1
-                 ? "1 selected"
-                 : "\(selectedIds.count) selected")
+            Text("\(selectedIds.count) selected")
                 .font(.pvSubhead.weight(.semibold))
                 .foregroundStyle(Color.textPrimaryPV)
             Text(selectionHint)

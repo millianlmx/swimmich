@@ -19,7 +19,7 @@ struct AddToAlbumPickerSheet: View {
         NavigationStack {
             List {
                 Section("Selected") {
-                    Label("\(selectedAssetIds.count) photo\(selectedAssetIds.count == 1 ? "" : "s")", systemImage: "checkmark.circle.fill")
+                    Label("\(selectedAssetIds.count) photos", systemImage: "checkmark.circle.fill")
                         .foregroundStyle(Color.textSecondaryPV)
                 }
                 Section("Albums") {
@@ -88,7 +88,7 @@ struct AddToAlbumPickerSheet: View {
                     .font(.pvBody)
                     .foregroundStyle(Color.textPrimaryPV)
                     .lineLimit(1)
-                Text("\(album.assetCount) item\(album.assetCount == 1 ? "" : "s")")
+                Text("\(album.assetCount) items")
                     .font(.pvCaption)
                     .foregroundStyle(Color.textSecondaryPV)
             }

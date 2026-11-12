@@ -49,7 +49,7 @@ struct DuplicatesView: View {
         .navigationBarTitleDisplayMode(.inline)
         .task { await vm.load() }
         .confirmationDialog(
-            deletePrompt,
+            Self.deletePrompt(count: pendingCount),
             isPresented: Binding(
                 get: { pendingDeleteId != nil },
                 set: { if !$0 { pendingDeleteId = nil } }
@@ -76,8 +76,10 @@ struct DuplicatesView: View {
         return vm.deletableIds(for: group).count
     }
 
-    private var deletePrompt: String {
-        pendingCount == 1 ? "Delete 1 duplicate?" : "Delete \(pendingCount) duplicates?"
+    /// Title of the delete confirmation. Pure and bundle/locale-injectable so the
+    /// plural forms of the catalog can be tested in every shipped language.
+    static func deletePrompt(count: Int, bundle: Bundle = .main, locale: Locale = .current) -> String {
+        String(localized: "Delete \(count) duplicates?", bundle: bundle, locale: locale)
     }
 
     @ViewBuilder

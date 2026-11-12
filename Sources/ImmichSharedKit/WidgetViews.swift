@@ -61,14 +61,26 @@ public enum WidgetCopy {
         count.formatted(.number.grouping(.automatic).locale(locale))
     }
 
-    /// "12 483 photos" — the library size chip.
-    public static func photosText(_ count: Int) -> String {
-        count == 1 ? String(localized: "1 photo") : String(localized: "\(grouped(count)) photos")
+    /// "12 483 photos" — the library size chip. The count picks the catalog plural
+    /// form (0 and 1 are singular in French), and keeps its grouped digits.
+    public static func photosText(_ count: Int, bundle: Bundle = .main, locale: Locale = .current) -> String {
+        withGroupedCount(String(localized: "\(count) photos", bundle: bundle, locale: locale), count: count, locale: locale)
     }
 
     /// "247 favorites" — the favorites chip.
-    public static func favoritesText(_ count: Int) -> String {
-        count == 1 ? String(localized: "1 favorite") : String(localized: "\(grouped(count)) favorites")
+    public static func favoritesText(_ count: Int, bundle: Bundle = .main, locale: Locale = .current) -> String {
+        withGroupedCount(String(localized: "\(count) favorites", bundle: bundle, locale: locale), count: count, locale: locale)
+    }
+
+    /// A plural catalog entry takes an `Int`, so the language chooses the form
+    /// from the integer; it renders the bare digits. The widget's chips have
+    /// always shown grouped digits, so the first run of digits is swapped for
+    /// the locale's grouped form.
+    private static func withGroupedCount(_ text: String, count: Int, locale: Locale) -> String {
+        let plain = String(count)
+        let withSeparators = grouped(count, locale: locale)
+        guard plain != withSeparators, let range = text.range(of: plain) else { return text }
+        return text.replacingCharacters(in: range, with: withSeparators)
     }
 
     /// "42 today" / "42 yesterday" / "42 on 1 Jul" — the newest day's haul.
@@ -84,12 +96,10 @@ public enum WidgetCopy {
     }
 
     /// "5 years ago" / "1 year ago" / "This year" — a memory's headline.
-    public static func yearsAgoText(_ years: Int) -> String {
-        switch years {
-        case 0: String(localized: "This year")
-        case 1: String(localized: "1 year ago")
-        default: String(localized: "\(years) years ago")
-        }
+    public static func yearsAgoText(_ years: Int, bundle: Bundle = .main, locale: Locale = .current) -> String {
+        years == 0
+            ? String(localized: "This year", bundle: bundle, locale: locale)
+            : String(localized: "\(years) years ago", bundle: bundle, locale: locale)
     }
 
     /// "5y" — the circular Lock Screen badge, where one word fits.

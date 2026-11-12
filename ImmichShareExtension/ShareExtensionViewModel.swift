@@ -40,9 +40,9 @@ final class ShareExtensionViewModel {
     /// sheet instead.
     var isFinished: Bool { !isUploading && !canUpload }
 
-    /// "Upload 3 item(s)" — the count is the VM's job, the view only draws it.
+    /// "Upload 3 items" (a catalog plural: "Upload 1 item") — the count is the VM's job, the view only draws it.
     var headerTitle: String {
-        String(localized: "Upload \(selectedItems.count) item(s)")
+        String(localized: "Upload \(selectedItems.count) items")
     }
 
     var primaryActionTitle: String {
@@ -50,7 +50,7 @@ final class ShareExtensionViewModel {
             return String(localized: "Uploading \(completedCount)/\(selectedItems.count)")
         }
         if canUpload {
-            return String(localized: "Upload \(pendingCount) item(s)")
+            return String(localized: "Upload \(pendingCount) items")
         }
         return String(localized: "Done")
     }
@@ -127,7 +127,7 @@ final class ShareExtensionViewModel {
 
         guard let albumId = selectedAlbumId, !uploadedIds.isEmpty else {
             if failures > 0 && errorMessage == nil {
-                errorMessage = String(localized: "\(failures) item(s) could not be uploaded.")
+                errorMessage = String(localized: "\(failures) items could not be uploaded.")
             }
             return
         }
@@ -140,7 +140,7 @@ final class ShareExtensionViewModel {
             return
         }
         if failures > 0 {
-            errorMessage = String(localized: "\(failures) item(s) could not be uploaded.")
+            errorMessage = String(localized: "\(failures) items could not be uploaded.")
         }
     }
 

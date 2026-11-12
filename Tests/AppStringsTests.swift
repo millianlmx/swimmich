@@ -73,22 +73,57 @@ final class AppStringsTests: XCTestCase {
         let strings = try XCTUnwrap(catalog["strings"] as? [String: Any])
         let keys = [
             "Couldn't load memories", "Last year", "%lld years ago",
-            "1 photo", "%lld photos", "1 video", "%lld videos"
+            "%lld photos", "%lld videos"
         ]
         for key in keys {
             let entry = try XCTUnwrap(strings[key] as? [String: Any], "Missing memory key \(key)")
             let localizations = try XCTUnwrap(entry["localizations"] as? [String: Any], "No localizations for \(key)")
             XCTAssertNotNil(localizations["fr"], "Missing French translation for \(key)")
         }
+        // "1 photo" and "1 video" are the singular forms of the plural entries:
+        // the French localization of both carries `one` and `other`.
+        for key in ["%lld photos", "%lld videos"] {
+            let entry = try XCTUnwrap(strings[key] as? [String: Any])
+            let localizations = try XCTUnwrap(entry["localizations"] as? [String: Any])
+            let french = try XCTUnwrap(localizations["fr"] as? [String: Any])
+            let plural = try XCTUnwrap(
+                ((french["variations"] as? [String: Any])?["plural"]) as? [String: Any],
+                "\(key): the French localization must be a plural"
+            )
+            XCTAssertNotNil(plural["one"], "\(key): fr one")
+            XCTAssertNotNil(plural["other"], "\(key): fr other")
+        }
     }
 
     // MARK: - Identity (AC-29.1, AC-29.2)
 
+    /// Every text of one entry, all languages: the `stringUnit`, each plural
+    /// form and each form of each substitution.
     private static func values(of entry: Any?) -> [String] {
         let localizations = ((entry as? [String: Any])?["localizations"] as? [String: Any]) ?? [:]
-        return localizations.values.compactMap {
-            (($0 as? [String: Any])?["stringUnit"] as? [String: Any])?["value"] as? String
+        return localizations.values.flatMap { texts(of: $0) }
+    }
+
+    /// Every text of one entry in one language (same sources as `values(of:)`).
+    private static func texts(of entry: Any?, language: String) -> [String] {
+        let localizations = ((entry as? [String: Any])?["localizations"] as? [String: Any]) ?? [:]
+        return texts(of: localizations[language])
+    }
+
+    private static func texts(of localization: Any?) -> [String] {
+        guard let localization = localization as? [String: Any] else { return [] }
+        var result: [String] = []
+        if let value = (localization["stringUnit"] as? [String: Any])?["value"] as? String { result.append(value) }
+        result += pluralTexts(of: localization)
+        for substitution in (localization["substitutions"] as? [String: Any] ?? [:]).values {
+            result += pluralTexts(of: substitution)
         }
+        return result
+    }
+
+    private static func pluralTexts(of holder: Any?) -> [String] {
+        let plural = (((holder as? [String: Any])?["variations"] as? [String: Any])?["plural"] as? [String: Any]) ?? [:]
+        return plural.values.compactMap { (($0 as? [String: Any])?["stringUnit"] as? [String: Any])?["value"] as? String }
     }
 
     func test_AC_29_1_lockKeysNameSwimmich() throws {
@@ -130,7 +165,7 @@ final class AppStringsTests: XCTestCase {
     /// translation names the server as often as its English key does.
     static let serverReferences: Set<String> = [
         "Compatible with Immich servers.",
-        "Detected text search requires Immich 3.2 or later.",
+        "Detected text search requires Immich %@ or later.",
         "If you forget this password, an administrator has to reset it from the Immich web interface.",
         "Photos in the locked folder are hidden everywhere else and open with your Immich PIN — a separate code from this app lock.",
         "%lld photos safe on Immich",
@@ -171,13 +206,15 @@ final class AppStringsTests: XCTestCase {
         // or drop one.
         for key in Self.serverReferences {
             let entry = try XCTUnwrap(strings[key] as? [String: Any], "Missing key \(key)")
-            let localizations = try XCTUnwrap(entry["localizations"] as? [String: Any])
             let expected = key.components(separatedBy: "Immich").count - 1
             for language in Self.shippedTranslations {
-                let unit = (localizations[language] as? [String: Any])?["stringUnit"] as? [String: Any]
-                let value = try XCTUnwrap(unit?["value"] as? String, "\(key): missing \(language)")
-                let actual = value.components(separatedBy: "Immich").count - 1
-                XCTAssertEqual(actual, expected, "\(language) value of \"\(key.prefix(40))…\" must name Immich \(expected)× as the key does")
+                // A plural entry has one text per form: every form names the server.
+                let texts = Self.texts(of: entry, language: language)
+                XCTAssertFalse(texts.isEmpty, "\(key): missing \(language)")
+                for value in texts {
+                    let actual = value.components(separatedBy: "Immich").count - 1
+                    XCTAssertEqual(actual, expected, "\(language) value of \"\(key.prefix(40))…\" must name Immich \(expected)× as the key does")
+                }
             }
         }
 

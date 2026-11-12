@@ -612,6 +612,17 @@ final class UploadViewModel {
     }
 }
 
+/// Which album scope a count describes (the three rows of the Albums section).
+enum BackupAlbumCountKind {
+    case selected, excluded, mirrored
+}
+
+/// A bucket of the backup progress legend.
+enum BackupLegendKind {
+    case uploaded, onServer, failed
+    case waiting(wifi: Bool, icloud: Bool)
+}
+
 /// Backup settings screen — the real backup UI (was a scaffold).
 struct BackupSettingsView: View {
     @Environment(AuthViewModel.self) private var auth
@@ -842,7 +853,7 @@ struct BackupSettingsView: View {
                     )
                 } label: {
                     LabeledContent("Albums to back up",
-                                   value: albumCount(vm.settings.selectedAlbumIDs, "selected"))
+                                   value: Self.albumCountText(vm.settings.selectedAlbumIDs.count, kind: .selected))
                 }
             case .excluded:
                 NavigationLink {
@@ -853,7 +864,7 @@ struct BackupSettingsView: View {
                     )
                 } label: {
                     LabeledContent("Albums to skip",
-                                   value: albumCount(vm.settings.excludedAlbumIDs, "excluded"))
+                                   value: Self.albumCountText(vm.settings.excludedAlbumIDs.count, kind: .excluded))
                 }
             }
             // The mirror is not part of the scope above: it is the same
@@ -869,7 +880,7 @@ struct BackupSettingsView: View {
                 )
             } label: {
                 LabeledContent("Mirror into albums",
-                               value: albumCount(vm.settings.syncedAlbumIDs, "mirrored"))
+                               value: Self.albumCountText(vm.settings.syncedAlbumIDs.count, kind: .mirrored))
             }
             .accessibilityIdentifier("backupMirrorAlbumsRow")
         } header: {
@@ -879,8 +890,21 @@ struct BackupSettingsView: View {
         }
     }
 
-    private func albumCount(_ ids: Set<String>, _ verb: String) -> String {
-        ids.isEmpty ? "None" : "\(ids.count) \(verb)"
+    /// "None", or "N albums selected / excluded / mirrored" — a catalog plural, so
+    /// every language agrees the noun and the participle with N. Pure, so each
+    /// shipped language is testable.
+    static func albumCountText(
+        _ count: Int,
+        kind: BackupAlbumCountKind,
+        bundle: Bundle = .main,
+        locale: Locale = .current
+    ) -> String {
+        if count == 0 { return String(localized: "None", bundle: bundle, locale: locale) }
+        switch kind {
+        case .selected: return String(localized: "\(count) albums selected", bundle: bundle, locale: locale)
+        case .excluded: return String(localized: "\(count) albums excluded", bundle: bundle, locale: locale)
+        case .mirrored: return String(localized: "\(count) albums mirrored", bundle: bundle, locale: locale)
+        }
     }
 
     private var albumSectionFooter: String {
@@ -1007,7 +1031,15 @@ struct BackupSettingsView: View {
             segmentBar
         }
         .accessibilityElement(children: .combine)
-        .accessibilityLabel(activeAccessibilityLabel)
+        .accessibilityLabel(
+            Self.activeAccessibilityLabel(
+                phase: vm.engine.phase,
+                total: vm.engine.total,
+                examined: vm.engine.examinedCount,
+                percent: vm.engine.progressPercent,
+                status: vm.engine.statusMessage
+            )
+        )
     }
 
     /// Thumbnail + name of the asset in flight, plus any iCloud status note.
@@ -1063,13 +1095,13 @@ struct BackupSettingsView: View {
             .background(Color.secondary.opacity(0.15))
             .clipShape(Capsule())
             HStack(spacing: PVSpacing.s12) {
-                legendDot(Color.immichSuccess, "Uploaded \(engine.uploadedCount)")
-                legendDot(Color.secondary, "On server \(engine.rejectedCount)")
+                legendDot(Color.immichSuccess, Self.legendText(.uploaded, count: engine.uploadedCount))
+                legendDot(Color.secondary, Self.legendText(.onServer, count: engine.rejectedCount))
                 if engine.failedCount > 0 {
-                    legendDot(Color.immichError, "Failed \(engine.failedCount)")
+                    legendDot(Color.immichError, Self.legendText(.failed, count: engine.failedCount))
                 }
                 if engine.deferredCount > 0 {
-                    legendDot(Color.immichWarning, "\(waitingLabel) \(engine.deferredCount)")
+                    legendDot(Color.immichWarning, Self.legendText(waitingKind, count: engine.deferredCount))
                 }
             }
             .font(.pvCaption)
@@ -1080,18 +1112,37 @@ struct BackupSettingsView: View {
     /// Names what the deferred assets are waiting for. Both cases are
     /// non-failures, but "waiting for Wi-Fi" and "waiting for iCloud" are
     /// different stories for the user — an unlabeled counter reads as a stall.
-    private var waitingLabel: String {
+    private var waitingKind: BackupLegendKind {
         let reason = vm.engine.deferralReason
-        let wifi = reason.contains(.waitingForWiFi)
-        let icloud = reason.contains(.waitingForICloud)
-        return switch (wifi, icloud) {
-        case (true, true): "Waiting for"
-        case (true, false): "Waiting for Wi-Fi"
-        default: "Waiting for iCloud"
+        return .waiting(wifi: reason.contains(.waitingForWiFi), icloud: reason.contains(.waitingForICloud))
+    }
+
+    /// One legend entry: the count comes first and the catalog plural agrees the
+    /// wording with it ("1 uploaded" / "3 uploaded", "1 envoyée" / "3 envoyées").
+    /// Pure, so each shipped language is testable.
+    static func legendText(
+        _ kind: BackupLegendKind,
+        count: Int,
+        bundle: Bundle = .main,
+        locale: Locale = .current
+    ) -> String {
+        switch kind {
+        case .uploaded:
+            return String(localized: "\(count) uploaded", bundle: bundle, locale: locale)
+        case .onServer:
+            return String(localized: "\(count) on server", bundle: bundle, locale: locale)
+        case .failed:
+            return String(localized: "\(count) failed", bundle: bundle, locale: locale)
+        case .waiting(let wifi, let icloud):
+            switch (wifi, icloud) {
+            case (true, true): return String(localized: "\(count) waiting", bundle: bundle, locale: locale)
+            case (true, false): return String(localized: "\(count) waiting for Wi-Fi", bundle: bundle, locale: locale)
+            default: return String(localized: "\(count) waiting for iCloud", bundle: bundle, locale: locale)
+            }
         }
     }
 
-    /// Footer line for the deferred bucket, matching `waitingLabel`.
+    /// Footer line for the deferred bucket, matching `waitingKind`.
     private var waitingFooter: String {
         let reason = vm.engine.deferralReason
         let wifi = reason.contains(.waitingForWiFi)
@@ -1178,11 +1229,28 @@ struct BackupSettingsView: View {
         return "about \(mins) min left"
     }
 
-    private var activeAccessibilityLabel: String {
-        let engine = vm.engine
-        if engine.phase == .checking && engine.total == 0 { return "Scanning your library" }
-        var parts = ["Backing up", "\(engine.examinedCount) of \(engine.total)", "\(engine.progressPercent) percent"]
-        if let status = engine.statusMessage { parts.append(status) }
+    /// What VoiceOver reads for the progress group: "Backing up, 3 of 10, 30
+    /// percent" plus the engine's status line. `status` is already localized by
+    /// the engine and is not translated again. Pure, so each shipped language is
+    /// testable.
+    static func activeAccessibilityLabel(
+        phase: BackupEngine.Phase,
+        total: Int,
+        examined: Int,
+        percent: Int,
+        status: String?,
+        bundle: Bundle = .main,
+        locale: Locale = .current
+    ) -> String {
+        if phase == .checking && total == 0 {
+            return String(localized: "Scanning your library", bundle: bundle, locale: locale)
+        }
+        var parts = [
+            String(localized: "Backing up", bundle: bundle, locale: locale),
+            String(localized: "\(examined) of \(total)", bundle: bundle, locale: locale),
+            String(localized: "\(percent) percent", bundle: bundle, locale: locale),
+        ]
+        if let status { parts.append(status) }
         return parts.joined(separator: ", ")
     }
 }

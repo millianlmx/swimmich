@@ -156,7 +156,20 @@ final class SearchViewModel {
     /// it, never to a body only a new server accepts.
     var supportsStructuredSearch: Bool {
         guard let serverVersion else { return false }
-        return serverVersion.major > 3 || (serverVersion.major == 3 && serverVersion.minor >= 2)
+        let minimum = Self.structuredSearchMinimum
+        return serverVersion.isAtLeast(major: minimum.major, minor: minimum.minor, patch: minimum.patch)
+    }
+
+    /// The first server version with the structured search. The one place the
+    /// threshold is written: the guard above and the "requires Immich X or
+    /// later" notice of the Filters sheet both read it.
+    static let structuredSearchMinimum = ServerVersionResponseDto(major: 3, minor: 2, patch: 0, prerelease: nil)
+
+    /// "3.2" for the threshold above; the patch is only written when non-zero.
+    static var structuredSearchMinimumLabel: String {
+        let minimum = structuredSearchMinimum
+        let base = "\(minimum.major).\(minimum.minor)"
+        return minimum.patch == 0 ? base : "\(base).\(minimum.patch)"
     }
 
     /// Asks the server for its version once, and remembers the answer.
