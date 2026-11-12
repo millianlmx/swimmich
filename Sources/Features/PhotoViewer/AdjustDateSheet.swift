@@ -19,18 +19,21 @@ struct AdjustDateSheet: View {
     }
 
     var body: some View {
-        VStack(spacing: PVSpacing.s16) {
-            header
-            DatePicker(
-                "Date",
-                selection: $date,
-                displayedComponents: [.date, .hourAndMinute]
-            )
-            .datePickerStyle(.graphical)
-            .tint(Color.immichPrimary)
-            footer
+        ScrollView {
+            VStack(spacing: PVSpacing.s16) {
+                header
+                DatePicker(
+                    "Date",
+                    selection: $date,
+                    displayedComponents: [.date, .hourAndMinute]
+                )
+                .datePickerStyle(.graphical)
+                .tint(Color.immichPrimary)
+                footer
+            }
+            .padding(PVSpacing.s16)
         }
-        .padding(PVSpacing.s16)
+        .scrollBounceBehavior(.basedOnSize)
     }
 
     private var header: some View {

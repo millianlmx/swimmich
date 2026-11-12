@@ -123,7 +123,7 @@ struct TimelineScrubber: View {
         if Self.isShown(for: vm) {
             let count = vm.buckets.count
             GeometryReader { geo in
-                track(height: geo.size.height, monthCount: count)
+                track(width: geo.size.width, height: geo.size.height, monthCount: count)
             }
             .coordinateSpace(name: Self.spaceName)
             .accessibilityElement(children: .contain)
@@ -147,7 +147,7 @@ struct TimelineScrubber: View {
     }
 
     @ViewBuilder
-    private func track(height: CGFloat, monthCount n: Int) -> some View {
+    private func track(width: CGFloat, height: CGFloat, monthCount n: Int) -> some View {
         // While the finger is down, and while the bubble lingers after the
         // release, the handle stays where the finger left it; the jump that
         // follows moves the resting position under it.
@@ -163,8 +163,11 @@ struct TimelineScrubber: View {
                 Text(verbatim: labelText)
                     .font(.pvHeadline)
                     .foregroundStyle(.white)
+                    .multilineTextAlignment(.center)
+                    .fixedSize(horizontal: false, vertical: true)
                     .padding(.horizontal, PVSpacing.s12)
                     .padding(.vertical, PVSpacing.s8)
+                    .frame(maxWidth: max(width - 44 - PVSpacing.s8, 0))
                     .glassEffect(.regular, in: Capsule())
                     .allowsHitTesting(false)
                     .accessibilityIdentifier("timelineScrubberLabel")
@@ -172,7 +175,7 @@ struct TimelineScrubber: View {
             }
             handle(height: height, monthCount: n, rest: rest)
         }
-        .frame(maxWidth: .infinity, minHeight: Self.handleHeight, maxHeight: Self.handleHeight, alignment: .trailing)
+        .frame(maxWidth: .infinity, minHeight: Self.handleHeight, alignment: .trailing)
         .offset(y: CGFloat(fraction) * height - Self.handleHeight / 2)
         .onChange(of: gesture.labelMonthIndex, initial: true) { _, month in
             if let month { labelText = monthLabel(month) }
@@ -184,7 +187,9 @@ struct TimelineScrubber: View {
         return Image(systemName: "chevron.up.chevron.down")
             .font(.pvCaption.weight(.semibold))
             .foregroundStyle(.white)
-            .frame(width: 28, height: Self.handleHeight)
+            .pvGlyphControlCap()
+            .frame(minWidth: 28)
+            .frame(height: Self.handleHeight)
             .glassEffect(.regular, in: Capsule())
             .frame(width: 44, height: Self.handleHeight)
             .contentShape(Rectangle())

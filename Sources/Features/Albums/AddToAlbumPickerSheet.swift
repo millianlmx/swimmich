@@ -34,6 +34,7 @@ struct AddToAlbumPickerSheet: View {
                             albumRow(album)
                         }
                         .disabled(albumsVM.isLoading)
+                        .accessibilityIdentifier("addToAlbumRow_\(album.id)")
                     }
                 }
             }
@@ -87,7 +88,7 @@ struct AddToAlbumPickerSheet: View {
                 Text(album.albumName)
                     .font(.pvBody)
                     .foregroundStyle(Color.textPrimaryPV)
-                    .lineLimit(1)
+                    .accessibilityIdentifier("addToAlbumName_\(album.id)")
                 Text("\(album.assetCount) item\(album.assetCount == 1 ? "" : "s")")
                     .font(.pvCaption)
                     .foregroundStyle(Color.textSecondaryPV)

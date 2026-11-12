@@ -24,6 +24,10 @@ struct ActivityFeedSheet: View {
                     )
                 } else {
                     List {
+                        if let error = vm.errorMessage {
+                            InlineErrorBadge(message: error)
+                                .listRowSeparator(.hidden)
+                        }
                         Section {
                             ForEach(vm.activities, id: \.id) { activity in
                                 ActivityRow(
@@ -43,15 +47,6 @@ struct ActivityFeedSheet: View {
             }
             .navigationTitle("Activity")
             .navigationBarTitleDisplayMode(.inline)
-            .toolbar {
-                ToolbarItem(placement: .topBarLeading) {
-                    if let error = vm.errorMessage, !vm.activities.isEmpty {
-                        Text(error)
-                            .font(.pvCaption)
-                            .foregroundStyle(Color.immichError)
-                    }
-                }
-            }
             .safeAreaInset(edge: .bottom) {
                 composer
             }
@@ -113,60 +108,64 @@ private struct ActivityRow: View {
         HStack(spacing: PVSpacing.s12) {
             UserAvatarCircle(user: activity.user, size: 36, baseURL: auth.baseURL, token: auth.accessToken)
 
-            VStack(alignment: .leading, spacing: PVSpacing.s2) {
-                Text(activity.user.name)
-                    .font(.pvBody.weight(.medium))
-                    .foregroundStyle(Color.textPrimaryPV)
-                if case .comment = activity.type {
-                    Text(activity.comment ?? "")
-                        .font(.pvCaption)
+            PVAdaptiveStack(hAlignment: .center, vAlignment: .leading, spacing: PVSpacing.s8) {
+                VStack(alignment: .leading, spacing: PVSpacing.s2) {
+                    Text(activity.user.name)
+                        .font(.pvBody.weight(.medium))
                         .foregroundStyle(Color.textPrimaryPV)
-                        .fixedSize(horizontal: false, vertical: true)
-                } else {
-                    Label("Liked this photo", systemImage: "heart.fill")
+                    if case .comment = activity.type {
+                        Text(activity.comment ?? "")
+                            .font(.pvCaption)
+                            .foregroundStyle(Color.textPrimaryPV)
+                            .fixedSize(horizontal: false, vertical: true)
+                    } else {
+                        Label("Liked this photo", systemImage: "heart.fill")
+                            .font(.pvCaption)
+                            .foregroundStyle(Color.textSecondaryPV)
+                    }
+                    Text(relativeTime)
                         .font(.pvCaption)
                         .foregroundStyle(Color.textSecondaryPV)
                 }
-                Text(relativeTime)
-                    .font(.pvCaption)
-                    .foregroundStyle(Color.textSecondaryPV)
-            }
 
-            Spacer()
+                Spacer()
 
-            if let assetId = activity.assetId {
-                AuthenticatedAsyncImage(
-                    url: ImmichAssetURL.thumbnail(
-                        assetId: assetId,
-                        thumbhash: "",
-                        baseURL: authBaseURL
-                    ),
-                    token: authToken
-                )
-                .frame(width: 28, height: 28)
-                .clipShape(RoundedRectangle(cornerRadius: PVRadius.sm, style: .continuous))
-            }
+                HStack(spacing: PVSpacing.s12) {
+                    if let assetId = activity.assetId {
+                        AuthenticatedAsyncImage(
+                            url: ImmichAssetURL.thumbnail(
+                                assetId: assetId,
+                                thumbhash: "",
+                                baseURL: authBaseURL
+                            ),
+                            token: authToken
+                        )
+                        .frame(width: 28, height: 28)
+                        .clipShape(RoundedRectangle(cornerRadius: PVRadius.sm, style: .continuous))
+                    }
 
-            if canToggleLike {
-                Button(action: onToggleLike) {
-                    Image(systemName: hasMyLike ? "heart.fill" : "heart")
-                        .font(.pvBody)
-                        .foregroundStyle(hasMyLike ? Color.immichPrimary : Color.textSecondaryPV)
+                    if canToggleLike {
+                        Button(action: onToggleLike) {
+                            Image(systemName: hasMyLike ? "heart.fill" : "heart")
+                                .font(.pvBody)
+                                .foregroundStyle(hasMyLike ? Color.immichPrimary : Color.textSecondaryPV)
+                        }
+                        .accessibilityLabel(hasMyLike ? "Unlike" : "Like")
+                        .accessibilityIdentifier("activityLikeToggle-\(activity.id)")
+                        .buttonStyle(.plain)
+                    }
+
+                    if canDelete {
+                        Button(role: .destructive, action: onDelete) {
+                            Image(systemName: "trash")
+                                .font(.pvCaption)
+                                .foregroundStyle(Color.immichError)
+                        }
+                        .accessibilityLabel("Delete activity")
+                        .accessibilityIdentifier("activityDelete-\(activity.id)")
+                        .buttonStyle(.plain)
+                    }
                 }
-                .accessibilityLabel(hasMyLike ? "Unlike" : "Like")
-                .accessibilityIdentifier("activityLikeToggle-\(activity.id)")
-                .buttonStyle(.plain)
-            }
-
-            if canDelete {
-                Button(role: .destructive, action: onDelete) {
-                    Image(systemName: "trash")
-                        .font(.pvCaption)
-                        .foregroundStyle(Color.immichError)
-                }
-                .accessibilityLabel("Delete activity")
-                .accessibilityIdentifier("activityDelete-\(activity.id)")
-                .buttonStyle(.plain)
             }
         }
         .padding(.vertical, PVSpacing.s4)

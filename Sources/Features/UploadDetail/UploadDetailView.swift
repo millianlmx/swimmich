@@ -25,6 +25,7 @@ struct UploadDetailView: View {
             }
             .padding(PVSpacing.s16)
         }
+        .labeledContentStyle(.pvAdaptive)
         .background(Color.bgPrimary)
         .navigationTitle("Upload details")
         .navigationBarTitleDisplayMode(.inline)
@@ -33,6 +34,7 @@ struct UploadDetailView: View {
                 ImmichAppBar(title: "Upload details")
             }
         }
+        .immichAppBarTitleHeader("Upload details")
     }
 
     // MARK: - Run header
@@ -53,7 +55,7 @@ struct UploadDetailView: View {
                     .animation(PVMotion.snappy, value: vm.progressFraction)
                     .accessibilityIdentifier("uploadDetailProgress")
             }
-            HStack(spacing: PVSpacing.s12) {
+            PVAdaptiveStack(hAlignment: .center, spacing: PVSpacing.s12) {
                 if let id = vm.currentAssetID {
                     BackupThumbnailView(localIdentifier: id)
                         .frame(width: 44, height: 44)
@@ -67,7 +69,7 @@ struct UploadDetailView: View {
                             Text(name)
                                 .font(.pvCaption)
                                 .foregroundStyle(Color.textSecondaryPV)
-                                .lineLimit(1)
+                                .fixedSize(horizontal: false, vertical: true)
                                 .accessibilityIdentifier("uploadDetailCurrentName")
                         }
                     } else if vm.isRunning {
@@ -151,7 +153,8 @@ struct UploadDetailView: View {
                         size: UploadDetailViewModel.formattedBytes(deferral.fileSize),
                         detailIcon: UploadDetailViewModel.deferralIcon(deferral.reason),
                         footnote: String(localized: "Retried automatically on the next run"),
-                        rowIdentifier: "uploadDetailDeferralRow_\(deferral.id)"
+                        rowIdentifier: "uploadDetailDeferralRow_\(deferral.id)",
+                        nameIdentifier: "uploadDetailRowName_\(deferral.id)"
                     ) {
                         EmptyView()
                     }
@@ -216,7 +219,8 @@ struct UploadDetailView: View {
                         detail: failure.reason,
                         detailColor: Color.immichError,
                         size: UploadDetailViewModel.formattedBytes(failure.fileSize),
-                        rowIdentifier: "uploadDetailFailureRow_\(failure.assetID)"
+                        rowIdentifier: "uploadDetailFailureRow_\(failure.assetID)",
+                        nameIdentifier: "uploadDetailRowName_\(failure.assetID)"
                     ) {
                         Button {
                             Task { await vm.retry(id: failure.assetID) }
@@ -251,7 +255,7 @@ struct UploadDetailView: View {
 /// the right, whatever action the row offers (the failures' Retry; nothing on a
 /// deferral). Local to this screen: no other screen renders a per-asset backup
 /// row, and the design tokens come from the catalog, not from a new component.
-private struct UploadAssetRow<Trailing: View>: View {
+struct UploadAssetRow<Trailing: View>: View {
     let thumbnailID: String?
     let name: String
     let detail: String
@@ -266,31 +270,36 @@ private struct UploadAssetRow<Trailing: View>: View {
     /// combined text block, never on the row container: an identifier on a
     /// container that holds a button shadows the button's own.
     var rowIdentifier: String? = nil
+    /// Identifier of the file name's own `Text`.
+    var nameIdentifier: String? = nil
     let trailing: () -> Trailing
 
     var body: some View {
-        HStack(spacing: PVSpacing.s12) {
-            BackupThumbnailView(localIdentifier: thumbnailID)
-                .frame(width: 44, height: 44)
-                .clipShape(RoundedRectangle(cornerRadius: PVRadius.sm, style: .continuous))
-            VStack(alignment: .leading, spacing: PVSpacing.s4) {
-                Text(name)
-                    .font(.pvBody)
-                    .foregroundStyle(Color.textPrimaryPV)
-                    .lineLimit(1)
-                detailLine
-                Text(size)
-                    .font(.pvNumeric)
-                    .foregroundStyle(Color.textSecondaryPV)
-                if let footnote {
-                    Text(footnote)
-                        .font(.pvCaption)
+        PVAdaptiveStack(hAlignment: .center, spacing: PVSpacing.s12) {
+            HStack(spacing: PVSpacing.s12) {
+                BackupThumbnailView(localIdentifier: thumbnailID)
+                    .frame(width: 44, height: 44)
+                    .clipShape(RoundedRectangle(cornerRadius: PVRadius.sm, style: .continuous))
+                VStack(alignment: .leading, spacing: PVSpacing.s4) {
+                    Text(name)
+                        .font(.pvBody)
+                        .foregroundStyle(Color.textPrimaryPV)
+                        .fixedSize(horizontal: false, vertical: true)
+                        .accessibilityIdentifier(nameIdentifier ?? "")
+                    detailLine
+                    Text(size)
+                        .font(.pvNumeric)
                         .foregroundStyle(Color.textSecondaryPV)
-                        .lineLimit(2)
+                    if let footnote {
+                        Text(footnote)
+                            .font(.pvCaption)
+                            .foregroundStyle(Color.textSecondaryPV)
+                            .fixedSize(horizontal: false, vertical: true)
+                    }
                 }
+                .accessibilityElement(children: .combine)
+                .accessibilityIdentifier(rowIdentifier ?? "")
             }
-            .accessibilityElement(children: .combine)
-            .accessibilityIdentifier(rowIdentifier ?? "")
             Spacer(minLength: PVSpacing.s8)
             trailing()
         }
@@ -307,12 +316,12 @@ private struct UploadAssetRow<Trailing: View>: View {
             Label(detail, systemImage: detailIcon)
                 .font(.pvCaption)
                 .foregroundStyle(detailColor)
-                .lineLimit(2)
+                .fixedSize(horizontal: false, vertical: true)
         } else {
             Text(detail)
                 .font(.pvCaption)
                 .foregroundStyle(detailColor)
-                .lineLimit(2)
+                .fixedSize(horizontal: false, vertical: true)
         }
     }
 }

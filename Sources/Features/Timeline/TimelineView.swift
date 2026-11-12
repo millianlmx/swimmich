@@ -56,6 +56,11 @@ struct TimelineView: View {
     // Pinned header shows the day group whose grid currently owns the top
     // edge; month-year derives from it (flips only on month change).
     @State private var pinnedDay: String?
+    // Measurements for `TimelinePinnedHeaderPlacement`.
+    @State private var pinnedHeaderWidth: CGFloat = 0
+    @State private var topGroupSize: CGSize = .zero
+    @State private var containerWidth: CGFloat = 0
+    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
     @State private var showScrollToTop = false
     @State private var lastFavoriteTick = 0
     @State private var lastDeleteTick = 0
@@ -113,6 +118,7 @@ struct TimelineView: View {
                     vm.updateScrubPosition(visibleIds: ids)
                 }
                 .coordinateSpace(name: Self.scrollSpaceName)
+                .onGeometryChange(for: CGFloat.self) { $0.size.width } action: { containerWidth = $0 }
                 .onPreferenceChange(PinnedDayPreferenceKey.self) { frames in
                     pinnedDay = PinnedHeaderResolver.currentDay(from: frames)
                 }
@@ -153,10 +159,15 @@ struct TimelineView: View {
                                     .accessibilityIdentifier("timelinePinnedDayHeader")
                             }
                         }
+                        .onGeometryChange(for: CGFloat.self) { $0.size.width } action: { pinnedHeaderWidth = $0 }
                         .frame(maxWidth: .infinity, alignment: .leading)
                         .padding(.leading, PVSpacing.s16)
                         .padding(.trailing, PVSpacing.s4)
-                        .padding(.top, PVSpacing.s8)
+                        .padding(.top, TimelinePinnedHeaderPlacement.topPadding(
+                            containerWidth: containerWidth,
+                            headerWidth: pinnedHeaderWidth,
+                            group: vm.selectionMode ? .zero : topGroupSize
+                        ))
                         .padding(.bottom, PVSpacing.s4)
                         .shadow(color: .black.opacity(0.35), radius: 2, y: 1) // DS-exempt: contrast over photos
                         .accessibilityAddTraits(.isHeader)
@@ -170,7 +181,7 @@ struct TimelineView: View {
                     // actions. Hidden once selection mode is active (toolbar
                     // takes over).
                     if !vm.selectionMode {
-                        HStack(spacing: PVSpacing.s8) {
+                        PVAdaptiveStack(vAlignment: .trailing, spacing: PVSpacing.s8) {
                             if !vm.items.isEmpty {
                                 GlassEffectContainer {
                                     Button {
@@ -179,23 +190,35 @@ struct TimelineView: View {
                                         Text("Select")
                                             .font(.pvHeadline)
                                             .foregroundStyle(.white)
+                                            .multilineTextAlignment(.center)
+                                            .fixedSize(horizontal: false, vertical: true)
                                             .padding(.horizontal, PVSpacing.s16)
                                             .padding(.vertical, PVSpacing.s8)
+                                            .frame(maxWidth: selectMaxWidth)
                                             .glassEffect(.regular, in: Capsule())
                                     }
                                     .buttonStyle(.plain)
                                 }
                                 .accessibilityIdentifier("selectButton")
                             }
-                            // No bar to draw the chrome, so the button brings its
-                            // own disc — the gesture of the glass pill next to it.
-                            // The run's live ring rides THIS button, not the
-                            // avatar: the profile button carries no sync state.
-                            SyncStatusButton { openSyncStatus() }
-                                .glassEffect(.regular, in: Circle())
-                                .overlay { backupProgressRing }
-                            ProfileAvatarButton { openProfile() }
+                            HStack(spacing: PVSpacing.s8) {
+                                // The filter (All / Favorites / Archived) lives in
+                                // this row: the navigation bar is hidden outside
+                                // selection, so a toolbar menu was never reachable.
+                                // Visible whether or not the grid is empty: under a
+                                // filter with no match it is the way back to "All".
+                                filterMenu
+                                // No bar to draw the chrome, so the button brings its
+                                // own disc — the gesture of the glass pill next to it.
+                                // The run's live ring rides THIS button, not the
+                                // avatar: the profile button carries no sync state.
+                                SyncStatusButton { openSyncStatus() }
+                                    .glassEffect(.regular, in: Circle())
+                                    .overlay { backupProgressRing }
+                                ProfileAvatarButton { openProfile() }
+                            }
                         }
+                        .onGeometryChange(for: CGSize.self) { $0.size } action: { topGroupSize = $0 }
                         .padding(.trailing, PVSpacing.s16)
                         .padding(.top, PVSpacing.s8)
                         .transition(.opacity.combined(with: .move(edge: .top)))
@@ -276,6 +299,7 @@ struct TimelineView: View {
                             Image(systemName: "arrow.up")
                                 .font(.pvHeadline)
                                 .foregroundStyle(Color.immichPrimary)
+                                .pvGlyphControlCap()
                                 .frame(width: 44, height: 44)
                                 .background(.regularMaterial, in: Circle())
                                 .pvFloatingShadow()
@@ -866,27 +890,56 @@ struct TimelineView: View {
                 }
                 .disabled(vm.selectedIds.isEmpty)
                 .accessibilityIdentifier("downloadSelectionButton")
-            } else {
-                // AC-1010 — timeline filter menu (All / Favorites / Archived).
-                Menu {
-                    ForEach(TimelineFilter.allCases, id: \.self) { f in
-                        Button {
-                            Task { await vm.setFilter(f) }
-                        } label: {
-                            if vm.filter == f {
-                                Label(f.title, systemImage: "checkmark")
-                            } else {
-                                Text(f.title)
-                            }
-                        }
-                    }
-                } label: {
-                    Label("Filter", systemImage: "line.3.horizontal.decrease.circle")
-                        .labelStyle(.iconOnly)
-                }
-                .accessibilityIdentifier("filterMenu")
             }
         }
+    }
+
+    /// Timeline filter (AC-1010, L-12): All / Favorites / Archived. A glass disc
+    /// like `SyncStatusButton`'s, filled once a filter other than "All" is set.
+    private var filterMenu: some View {
+        Menu {
+            ForEach(TimelineFilter.allCases, id: \.self) { f in
+                Button {
+                    Task { await vm.setFilter(f) }
+                } label: {
+                    if vm.filter == f {
+                        Label(f.title, systemImage: "checkmark")
+                    } else {
+                        Text(f.title)
+                    }
+                }
+                .accessibilityIdentifier("timelineFilter_\(f.rawValue)")
+            }
+        } label: {
+            Image(systemName: vm.filter == .all ? "line.3.horizontal.decrease.circle" : "line.3.horizontal.decrease.circle.fill")
+                .font(.system(size: 17, weight: .semibold)) // DS-exempt: glyph of the 44 pt disc, as SyncStatusButton
+                .frame(width: 44, height: 44)
+                .contentShape(Circle())
+        }
+        .glassEffect(.regular, in: Circle())
+        .accessibilityLabel("Filter")
+        .accessibilityValue(Text(vm.filter.title))
+        .accessibilityIdentifier("filterMenu")
+    }
+
+    /// At accessibility sizes "Select" may take the screen width minus its
+    /// margins and wraps inside; otherwise it keeps its natural width.
+    private var selectMaxWidth: CGFloat? {
+        guard dynamicTypeSize.isAccessibilitySize, containerWidth > 0 else { return nil }
+        return containerWidth - 2 * PVSpacing.s16
+    }
+}
+
+/// Where the pinned date header sits vertically: right under the top-right
+/// group when the two no longer fit side by side, at the top otherwise. A pure
+/// function of three measurements, whatever the text size.
+struct TimelinePinnedHeaderPlacement {
+    static func topPadding(containerWidth: CGFloat, headerWidth: CGFloat, group: CGSize) -> CGFloat {
+        // No group (selection mode, or not measured yet): nothing to avoid.
+        if group.width == 0 && group.height == 0 { return PVSpacing.s8 }
+        let sideBySide = PVSpacing.s16 + headerWidth + PVSpacing.s8 + group.width + PVSpacing.s16
+        if sideBySide <= containerWidth { return PVSpacing.s8 }
+        return PVSpacing.s8 + group.height + PVSpacing.s8
     }
 }
 

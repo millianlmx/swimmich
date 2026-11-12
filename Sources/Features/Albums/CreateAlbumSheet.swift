@@ -25,10 +25,14 @@ struct CreateAlbumSheet: View {
                         .listRowInsets(EdgeInsets())
                         .listRowBackground(Color.clear)
                 }
-                Section("Album") {
+                Section {
                     TextField("Name", text: $name)
+                        .accessibilityIdentifier("createAlbumNameField")
                     TextField("Description", text: $description, axis: .vertical)
                         .lineLimit(2...4)
+                } header: {
+                    Text("Album")
+                        .accessibilityIdentifier("createAlbumNameHeader")
                 }
             }
             .navigationTitle("New Album")
@@ -36,6 +40,7 @@ struct CreateAlbumSheet: View {
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
                     Button("Cancel") { dismiss() }
+                        .accessibilityIdentifier("createAlbumCancel")
                 }
                 ToolbarItem(placement: .confirmationAction) {
                     Button("Create") {
@@ -52,6 +57,7 @@ struct CreateAlbumSheet: View {
                         }
                     }
                     .disabled(name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || vm.isCreating)
+                    .accessibilityIdentifier("createAlbumConfirm")
                     .fontWeight(.semibold)
                 }
             }

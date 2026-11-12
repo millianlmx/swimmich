@@ -49,19 +49,20 @@ enum PhotoViewerTopBarLayout {
         return Plan(collapsedActions: actionCount, badge: .singleLineTruncated)
     }
 
-    /// Badge width = widest line (place at 15 semibold, date at 13) + 32 pt.
-    /// No place ⇒ the date alone decides.
-    static func badgeWidth(place: String?, date: String) -> CGFloat {
-        let placeWidth = place.map { measure($0, size: Font.pvSubheadSize, weight: .semibold) } ?? 0
-        let dateWidth = measure(date, size: Font.pvCaptionSize, weight: .regular)
+    /// Badge width = widest line (place at Subhead semibold, date at Caption,
+    /// both at the size the badge renders at: capped at the full-screen chrome
+    /// size) + 32 pt. No place ⇒ the date alone decides.
+    static func badgeWidth(place: String?, date: String, dynamicTypeSize: DynamicTypeSize) -> CGFloat {
+        let size = min(dynamicTypeSize, PVTypeCap.fullscreenChrome)
+        let placeWidth = place.map { measure($0, font: PVFontMetrics.uiFont(.pvSubhead.weight(.semibold), at: size)) } ?? 0
+        let dateWidth = measure(date, font: PVFontMetrics.uiFont(.pvCaption, at: size))
         return max(placeWidth, dateWidth) + badgeHorizontalPadding
     }
 
     /// Rounded up, plus 1 pt: `size(withAttributes:)` returns fractional sizes,
     /// and an underestimate would let the badge be squeezed (the measured defect).
-    private static func measure(_ text: String, size: CGFloat, weight: UIFont.Weight) -> CGFloat {
+    private static func measure(_ text: String, font: UIFont) -> CGFloat {
         guard !text.isEmpty else { return 0 }
-        let font = UIFont.systemFont(ofSize: size, weight: weight)
         return ceil((text as NSString).size(withAttributes: [.font: font]).width) + 1
     }
 }
@@ -295,6 +296,7 @@ struct PhotoViewer: View {
     @State private var showOcr = false
     @State private var ocrVM: OcrOverlayViewModel?
     @State private var filmstripPosition = ScrollPosition()
+    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
     /// Asset ids currently showing their Live Photo video pair instead of the
     /// still — per-page toggle, reset when paging away (Photos behavior).
     @State private var livePlayingIDs: Set<String> = []
@@ -395,6 +397,7 @@ struct PhotoViewer: View {
                         .padding(.horizontal, PVSpacing.s16)
                         .padding(.vertical, PVSpacing.s8)
                         .background(.regularMaterial, in: Capsule())
+                        .pvFullscreenChromeTextCap()
                         .padding(.top, PVSpacing.s8)
                         .accessibilityIdentifier("editedCopySavedBanner")
                         Spacer()
@@ -646,13 +649,13 @@ struct PhotoViewer: View {
                 Text(ocrStatusText(vm))
                     .font(.pvSubhead)
                     .foregroundStyle(Color.textPrimaryPV)
-                    .lineLimit(2)
                     .accessibilityIdentifier("viewerOcrStatusText")
             }
             .padding(.horizontal, PVSpacing.s12)
             .padding(.vertical, PVSpacing.s4)
             .background(Color.bgPrimary, in: Capsule())
             .overlay(Capsule().stroke(Color.separatorPV, lineWidth: 0.5))
+            .pvFullscreenChromeTextCap()
             .padding(.top, PVSpacing.s8)
             .transition(.opacity)
         }
@@ -729,7 +732,9 @@ struct PhotoViewer: View {
         let plan = PhotoViewerTopBarLayout.plan(
             availableWidth: availableWidth,
             badgeWidth: PhotoViewerTopBarLayout.badgeWidth(
-                place: placeName(for: asset), date: headerDate(for: asset)
+                place: placeName(for: asset),
+                date: headerDate(for: asset),
+                dynamicTypeSize: dynamicTypeSize
             ),
             actionCount: actions.count
         )
@@ -772,6 +777,7 @@ struct PhotoViewer: View {
             )
             .ignoresSafeArea(edges: .top)
         )
+        .pvFullscreenChromeTextCap()
     }
 
     /// Location and date. Two lines (`viewerBadgePlace` over `viewerBadgeDate`)
@@ -919,6 +925,7 @@ struct PhotoViewer: View {
             .padding(.horizontal, PVSpacing.s16)
         }
         .frame(height: 56)
+        .pvTileTextCap()
         .scrollPosition($filmstripPosition)
         .onAppear { filmstripPosition.scrollTo(id: selectedIndex) }
         .onChange(of: selectedIndex) { _, new in
@@ -1050,6 +1057,7 @@ struct PhotoViewer: View {
         .padding(.horizontal, PVSpacing.s16)
         .padding(.vertical, PVSpacing.s8)
         .padding(.bottom, PVSpacing.s12)
+        .pvFullscreenChromeTextCap()
     }
 
     /// Trash context is signalled by a `onRestore` callback being provided —
@@ -1184,7 +1192,7 @@ struct PhotoViewer: View {
         } label: {
             HStack(spacing: PVSpacing.s4) {
                 Image(systemName: "viewfinder")
-                    .font(.system(size: 10)) // DS-exempt: badge micro-glyph
+                    .font(.pvCaption.weight(.bold))
                 Text("LIVE")
                     .font(.pvCaption.weight(.bold))
             }
@@ -1196,6 +1204,8 @@ struct PhotoViewer: View {
         }
         .buttonStyle(.plain)
         .accessibilityLabel("Play Live Photo")
+        .accessibilityIdentifier("viewerLivePill")
+        .pvFullscreenChromeTextCap()
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottom)
         .padding(.bottom, PVSpacing.s24)
     }
@@ -1610,8 +1620,7 @@ private struct PhotoShareSheet: View {
                         Text(url)
                             .font(.pvCaption).monospacedDigit()
                             .foregroundStyle(Color.textSecondaryPV)
-                            .lineLimit(1)
-                            .truncationMode(.middle)
+                            .fixedSize(horizontal: false, vertical: true)
                         Button {
                             UIPasteboard.general.string = url
                             didCopyLink = true

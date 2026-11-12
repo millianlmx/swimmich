@@ -5,7 +5,7 @@ import XCTest
 /// in its own file, against its own committed stub. 25 branches each adding a
 /// method to `ImmichRenderScreenshots` would collide on every merge.
 ///
-/// It drives the real app: onboarding → SSO → the "Me" hub → "Recently Taken"
+/// It drives the real app: onboarding → SSO → the Albums tab → "Recently Taken"
 /// (grid + day band) → back → "Recently Added". And it asserts on the WIRE what
 /// each screen asked for, which is the point of the feature: `GET
 /// /api/timeline/buckets` is the only route that can sort by upload date
@@ -230,12 +230,13 @@ final class RecentlyTakenUITests: XCTestCase {
             .firstMatch.waitForExistence(timeout: timeout)
     }
 
-    /// A row of the "Me" hub, by IDENTIFIER (its label is localized: "Recently
-    /// Taken" / "Récemment prises"). A `Form` only publishes what it rendered,
-    /// so the row is scrolled into view first, letting each swipe settle.
-    private func hubRow(_ identifier: String) -> XCUIElement {
+    /// A tile of the Albums tab's Library section, by IDENTIFIER (its label is
+    /// localized: "Recently Taken" / "Récemment prises"). The Albums ScrollView
+    /// is scrolled only when the tile is not hittable.
+    private func libraryRow(_ identifier: String) -> XCUIElement {
         let row = app.buttons.matching(identifier: identifier).firstMatch
-        for _ in 0..<6 where !row.exists {
+        _ = row.waitForExistence(timeout: 10)
+        for _ in 0..<6 where !row.isHittable {
             app.swipeUp()
             sleep(1)
         }
@@ -333,25 +334,23 @@ final class RecentlyTakenUITests: XCTestCase {
                      "no 'recent' screen has been opened yet, nothing may carry orderBy=createdAt — got:\n\(describe(atLaunch))")
         shot("r04-timeline")
 
-        // MARK: The "Me" hub
+        // MARK: The Albums tab's Library section
 
-        let hub = app.buttons.matching(identifier: "profileAvatar").firstMatch
-        XCTAssertTrue(hub.waitForExistence(timeout: 15), "Profile avatar missing")
-        hub.tap()
-        sleep(4) // the sheet animates in; the Form is not hittable before it does
+        let albums = app.tabBars.buttons["Albums"]
+        XCTAssertTrue(albums.waitForExistence(timeout: 15), "Albums tab missing")
+        albums.tap()
 
         // MARK: Recently Taken — the capture axis
 
-        // The "Recently" section sits below the fold: a Form only publishes what
-        // it has rendered. Matched by IDENTIFIER, never by label — "Recently
-        // Taken" reads "Récemment prises" here, so a literal would follow the
-        // simulator's locale.
-        let takenRow = hubRow("recentTakenRow")
+        // Matched by IDENTIFIER, never by label — "Recently Taken" reads
+        // "Récemment prises" here, so a literal would follow the simulator's
+        // locale.
+        let takenRow = libraryRow("recentTakenRow")
         if !takenRow.waitForExistence(timeout: 10) {
-            shot("r05b-me-hub-without-recent-row")
-            XCTFail("Recently Taken row missing in the Me hub:\n\(app.debugDescription)")
+            shot("r05b-albums-without-recent-row")
+            XCTFail("Recently Taken tile missing in the Albums library:\n\(app.debugDescription)")
         }
-        shot("r05-me-hub")
+        shot("r05-albums-library")
         takenRow.tap()
 
         let grid = app.descendants(matching: .any).matching(identifier: "recentGrid").firstMatch
@@ -375,10 +374,10 @@ final class RecentlyTakenUITests: XCTestCase {
         back.tap()
         sleep(2)
 
-        let addedRow = hubRow("recentAddedRow")
+        let addedRow = libraryRow("recentAddedRow")
         if !addedRow.waitForExistence(timeout: 10) {
-            shot("r07b-me-hub-without-added-row")
-            XCTFail("Recently Added row missing in the Me hub:\n\(app.debugDescription)")
+            shot("r07b-albums-without-added-row")
+            XCTFail("Recently Added tile missing in the Albums library:\n\(app.debugDescription)")
         }
         addedRow.tap()
 

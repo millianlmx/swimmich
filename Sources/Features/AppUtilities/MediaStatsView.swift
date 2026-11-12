@@ -38,6 +38,7 @@ struct MediaStatsView: View {
                 Text("Server")
             }
         }
+        .labeledContentStyle(.pvAdaptive)
         .navigationTitle("Media Stats")
         .navigationBarTitleDisplayMode(.inline)
         .task { await vm.load() }

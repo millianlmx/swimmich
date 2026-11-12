@@ -37,17 +37,65 @@ struct ImmichAppBar: View {
 /// (auth screens, launch, empty-state headers).
 struct ImmichLogo: View {
     let title: LocalizedStringKey
+    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
 
     var body: some View {
         HStack(spacing: PVSpacing.s8) {
-            // 24: the mark's own bounding box fills the frame, so its ink carries
-            // the optical weight the replaced SF Symbol did at this size.
-            ImmichMark()
-                .frame(width: 24, height: 24)
-            Text(title)
-                .font(.pvH6)
-                .foregroundStyle(Color.textPrimaryPV)
+            // The cap is on the outside: `@ScaledMetric` reads the environment
+            // of the view that declares it, not of its own body.
+            ImmichLogoMark()
+                .pvGlyphControlCap()
+            // At accessibility sizes the bar keeps the mark only; the title
+            // moves into the content (`immichAppBarTitleHeader`).
+            if !dynamicTypeSize.isAccessibilitySize {
+                Text(title)
+                    .font(.pvH6)
+                    .foregroundStyle(Color.textPrimaryPV)
+            }
         }
+    }
+}
+
+/// The mark alone, a glyph-only control that scales with the text up to xxxLarge.
+private struct ImmichLogoMark: View {
+    // 24: the mark's own bounding box fills the frame, so its ink carries
+    // the optical weight the replaced SF Symbol did at this size.
+    @ScaledMetric(relativeTo: .body) private var markSize: CGFloat = 24
+
+    var body: some View {
+        ImmichMark()
+            .frame(width: markSize, height: markSize)
+    }
+}
+
+private struct ImmichAppBarTitleHeader: ViewModifier {
+    let title: LocalizedStringKey
+    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
+
+    func body(content: Content) -> some View {
+        content.safeAreaInset(edge: .top, spacing: 0) {
+            if dynamicTypeSize.isAccessibilitySize {
+                Text(title)
+                    .font(.pvH6)
+                    .foregroundStyle(Color.textPrimaryPV)
+                    .multilineTextAlignment(.leading)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .padding(.horizontal, PVSpacing.s16)
+                    .padding(.vertical, PVSpacing.s8)
+                    .background(Color.bgPrimary)
+                    .accessibilityAddTraits(.isHeader)
+                    .accessibilityIdentifier("appBarTitleHeader")
+            }
+        }
+    }
+}
+
+extension View {
+    /// Shows the app bar title in the content at accessibility sizes, where
+    /// `ImmichAppBar` keeps only the mark. Pass the key given to `ImmichAppBar`.
+    func immichAppBarTitleHeader(_ title: LocalizedStringKey) -> some View {
+        modifier(ImmichAppBarTitleHeader(title: title))
     }
 }
 

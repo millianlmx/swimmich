@@ -641,8 +641,31 @@ struct AlbumDetailView: View {
     @ViewBuilder
     private func heroHeader(for album: AlbumResponseDto) -> some View {
         ZStack(alignment: .bottomLeading) {
+            // Sets the minimum height (the former 16:9 cover); the text block
+            // may grow past it at large text sizes.
             Color.clear
                 .aspectRatio(16.0 / 9.0, contentMode: .fit)
+
+            VStack(alignment: .leading, spacing: PVSpacing.s2) {
+                Text(album.albumName)
+                    .accessibilityIdentifier("albumHeroTitle")
+                    .font(.pvTitle)
+                    .foregroundStyle(.white)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .shadow(color: .black.opacity(0.4), radius: 4)
+                // While loading, the grid-known count is authoritative; once
+                // loaded the fetched asset list wins (matches grid contents).
+                Text("\(vm.displayedPhotoCount(fallback: album.assetCount)) Photos")
+                    .font(.pvSubhead)
+                    .foregroundStyle(.white.opacity(0.9))
+                    .shadow(color: .black.opacity(0.4), radius: 3)
+                collaboratorAvatars(for: album)
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .padding(PVSpacing.s16)
+        }
+        .background {
+            Color.clear
                 .overlay {
                     if let coverId = coverAssetId {
                         AuthenticatedAsyncImage(
@@ -667,27 +690,9 @@ struct AlbumDetailView: View {
                         startPoint: .top,
                         endPoint: .bottom
                     )
-                    .aspectRatio(16.0 / 9.0, contentMode: .fit)
                     .allowsHitTesting(false)
                 }
                 .clipped()
-
-            VStack(alignment: .leading, spacing: PVSpacing.s2) {
-                Text(album.albumName)
-                    .accessibilityIdentifier("albumHeroTitle")
-                    .font(.pvTitle)
-                    .foregroundStyle(.white)
-                    .lineLimit(2)
-                    .shadow(color: .black.opacity(0.4), radius: 4)
-                // While loading, the grid-known count is authoritative; once
-                // loaded the fetched asset list wins (matches grid contents).
-                Text("\(vm.displayedPhotoCount(fallback: album.assetCount)) Photos")
-                    .font(.pvSubhead)
-                    .foregroundStyle(.white.opacity(0.9))
-                    .shadow(color: .black.opacity(0.4), radius: 3)
-                collaboratorAvatars(for: album)
-            }
-            .padding(PVSpacing.s16)
         }
     }
 
@@ -706,9 +711,10 @@ struct AlbumDetailView: View {
                     Text("+\(others.count - 4)")
                         .font(.pvCaption.weight(.semibold))
                         .foregroundStyle(.white)
-                        .frame(width: 24, height: 24)
-                        .background(.black.opacity(0.45), in: Circle())
-                        .overlay(Circle().stroke(.white.opacity(0.35), lineWidth: 1))
+                        .padding(.horizontal, PVSpacing.s4)
+                        .frame(minWidth: 24, minHeight: 24)
+                        .background(.black.opacity(0.45), in: Capsule())
+                        .overlay(Capsule().stroke(.white.opacity(0.35), lineWidth: 1))
                 }
             }
             .shadow(color: .black.opacity(0.3), radius: 3)

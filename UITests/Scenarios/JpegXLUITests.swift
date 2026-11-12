@@ -284,6 +284,21 @@ final class JpegXLUITests: XCTestCase {
         sleep(4) // the sheet animates in; the Form is not hittable before it does
     }
 
+    /// Selects the Albums tab and taps the tile `identifier` of its Library
+    /// section, scrolling the Albums ScrollView only when it is not hittable.
+    private func openAlbumsLibraryRow(_ identifier: String) {
+        let tab = app.tabBars.buttons["Albums"].firstMatch
+        XCTAssertTrue(tab.waitForExistence(timeout: 30), "the Albums tab is missing")
+        tab.tap()
+        let row = app.buttons.matching(identifier: identifier).firstMatch
+        XCTAssertTrue(row.waitForExistence(timeout: 15), "\(identifier) tile missing — \(screenText())")
+        for _ in 0..<4 where !row.isHittable {
+            app.swipeUp()
+            sleep(1)
+        }
+        row.tap()
+    }
+
     /// The Me hub → Preferences → "Load Full Quality" flipped → back to the timeline.
     private func enableLoadFullQuality() {
         openHub()
@@ -508,10 +523,7 @@ final class JpegXLUITests: XCTestCase {
         let noted = stubRequests().count
 
         // 3. The offline library reads the copy from disk.
-        openHub()
-        let row = hubRow("offlineStorageRow")
-        XCTAssertTrue(row.waitForExistence(timeout: 10), "Offline Storage row missing — \(screenText())")
-        row.tap()
+        openAlbumsLibraryRow("offlineStorageRow")
         XCTAssertTrue(element("offlineAsset_\(jxlPhoto)").waitForExistence(timeout: 20),
                       "the offline library does not list the photo — \(screenText())")
         waitForValue("offlineAsset_\(jxlPhoto)", prefix: originalValue)

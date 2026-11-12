@@ -58,5 +58,6 @@ struct MemoryEpilogueView: View {
             .padding(.horizontal, PVSpacing.s16)
             .padding(.top, safeInsets.top + PVSpacing.s8)
         }
+        .pvFullscreenChromeTextCap()
     }
 }

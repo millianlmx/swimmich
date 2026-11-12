@@ -1,3 +1,4 @@
+import SwiftUI
 import UIKit
 import XCTest
 @testable import ImmichSwiftUI
@@ -17,17 +18,17 @@ final class PhotoViewerTopBarLayoutTests: XCTestCase {
     /// rounded-up width of its widest line (plus the 32 pt padding), so neither
     /// line is squeezed below its own width.
     func testAC1_badgeWidthReservesWidestLineWithPadding() {
-        let placeWidth = ("Ogre" as NSString)
-            .size(withAttributes: [.font: UIFont.systemFont(ofSize: 15, weight: .semibold)]).width
-        let dateWidth = ("2 mai 2025" as NSString)
-            .size(withAttributes: [.font: UIFont.systemFont(ofSize: 13)]).width
-        let width = Layout.badgeWidth(place: "Ogre", date: "2 mai 2025")
+        let placeFont = PVFontMetrics.uiFont(.pvSubhead.weight(.semibold), at: .large)
+        let dateFont = PVFontMetrics.uiFont(.pvCaption, at: .large)
+        let placeWidth = ("Ogre" as NSString).size(withAttributes: [.font: placeFont]).width
+        let dateWidth = ("2 mai 2025" as NSString).size(withAttributes: [.font: dateFont]).width
+        let width = Layout.badgeWidth(place: "Ogre", date: "2 mai 2025", dynamicTypeSize: .large)
         XCTAssertGreaterThanOrEqual(width, ceil(max(placeWidth, dateWidth)) + Layout.badgeHorizontalPadding)
     }
 
     /// AC-1 : Without a place the badge is the date alone plus padding.
     func testAC1_badgeWidthWithoutPlaceIsPaddingOnlyForEmptyDate() {
-        XCTAssertEqual(Layout.badgeWidth(place: nil, date: ""), 32)
+        XCTAssertEqual(Layout.badgeWidth(place: nil, date: "", dynamicTypeSize: .large), 32)
     }
 
     // MARK: - AC-2 : trailing actions collapse behind "⋯" as the row narrows

@@ -52,6 +52,7 @@ struct DownloadInfoView: View {
                     .accessibilityIdentifier("downloadInfoDone")
             }
         }
+        .immichAppBarTitleHeader("Downloads")
         .onAppear { vm.refreshFileAvailability() }
         .onChange(of: scenePhase) { _, phase in
             guard phase == .active else { return }
@@ -130,7 +131,6 @@ struct DownloadInfoView: View {
             VStack(alignment: .leading, spacing: PVSpacing.s4) {
                 Text(item.fileName)
                     .font(.pvSubhead)
-                    .lineLimit(2)
                     .multilineTextAlignment(.leading)
 
                 HStack(spacing: PVSpacing.s8) {

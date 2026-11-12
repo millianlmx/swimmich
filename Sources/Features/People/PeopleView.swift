@@ -65,6 +65,8 @@ struct PeopleView: View {
             token: auth.accessToken,
             onDataChanged: { Task { await vm.refreshAssets() } }
         )
+        .accessibilityElement(children: .contain)
+        .accessibilityIdentifier("peopleScreen")
     }
 
     // MARK: - List
@@ -200,6 +202,7 @@ struct PeopleView: View {
                     Text(person.name)
                         .font(.pvBody)
                         .foregroundStyle(Color.textPrimaryPV)
+                        .accessibilityIdentifier("personName_\(person.id)")
                     Text("\(vm.assetCount(for: person.id)) photos")
                         .font(.pvCaption)
                         .foregroundStyle(Color.textSecondaryPV)
@@ -269,6 +272,8 @@ private struct PersonDetailView: View {
                         Text(person.name)
                             .font(.pvTitle)
                             .foregroundStyle(Color.textPrimaryPV)
+                            .multilineTextAlignment(.center)
+                            .accessibilityIdentifier("personDetailName")
                         Text("\(vm.assetCount(for: person.id)) photos")
                             .font(.pvCaption)
                             .foregroundStyle(Color.textSecondaryPV)
@@ -303,6 +308,7 @@ private struct PersonDetailView: View {
                         .accessibilityIdentifier("personBirthdayAction")
                         mergeMenu
                     }
+                    .pvGlyphControlCap()
                 }
                 .padding(.top, PVSpacing.s16)
                 .padding(.horizontal, PVSpacing.s16)
@@ -397,6 +403,8 @@ private struct PersonDetailView: View {
                 }
             )
         }
+        .accessibilityElement(children: .contain)
+        .accessibilityIdentifier("personScreen_\(pushed.id)")
     }
 
     @State private var renamePerson: PersonResponseDto?
@@ -409,7 +417,7 @@ private struct PersonDetailView: View {
             Image(systemName: systemName)
                 .font(.pvHeadline)
                 .foregroundStyle(color)
-                .frame(width: 40, height: 40)
+                .frame(minWidth: 40, minHeight: 40)
                 .background(Color.gray.opacity(0.12))
                 .clipShape(Circle())
         }
@@ -432,7 +440,7 @@ private struct PersonDetailView: View {
             Image(systemName: "arrow.triangle.merge")
                 .font(.pvHeadline)
                 .foregroundStyle(Color.textSecondaryPV)
-                .frame(width: 40, height: 40)
+                .frame(minWidth: 40, minHeight: 40)
                 .background(Color.gray.opacity(0.12))
                 .clipShape(Circle())
         }

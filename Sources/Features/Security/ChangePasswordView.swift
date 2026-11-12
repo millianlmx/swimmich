@@ -144,6 +144,7 @@ struct ChangePasswordView: View {
         .toolbar {
             ToolbarItem(placement: .principal) { ImmichAppBar(title: "Change Password") }
         }
+        .immichAppBarTitleHeader("Change Password")
         // Editing a field answers the message that was about the previous
         // entry, and a fresh visit starts from a blank form either way.
         .onChange(of: vm.currentPassword) { _, _ in vm.clearError() }

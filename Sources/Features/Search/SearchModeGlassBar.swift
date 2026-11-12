@@ -16,49 +16,43 @@ struct SearchModeGlassBar: View {
     /// TimelineView.swift:155 selection-tick pattern (native API, no UIKit).
     @State private var modeChangeTick = 0
 
-    static let height: CGFloat = 44
+    @ScaledMetric(relativeTo: .subheadline) private var height: CGFloat = 44
+    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
+
     private static let segments: [(mode: SearchViewModel.ViewMode, title: LocalizedStringKey, icon: String)] = [
         (.results, "Results", "magnifyingglass"),
         (.explore, "Explorer", "sparkles"),
         (.map, "Map", "map"),
     ]
 
+    private var stacksSegments: Bool { dynamicTypeSize.isAccessibilitySize }
+    private var showsTitleOnly: Bool { dynamicTypeSize >= .xxLarge }
+
     var body: some View {
-        GlassEffectContainer {
-            GeometryReader { geo in
-                let segmentWidth = geo.size.width / CGFloat(Self.segments.count)
-                let selectedIndex = Self.segments.firstIndex { $0.mode == mode } ?? 0
-
-                ZStack(alignment: .leading) {
-                    // Highlight thumb — smooth slide between segments.
-                    Capsule()
-                        .fill(Color.primary.opacity(0.12))
-                        .overlay(
-                            Capsule().stroke(Color.primary.opacity(0.08), lineWidth: 0.5)
-                        )
-                        .frame(
-                            width: segmentWidth - PVSpacing.s8,
-                            height: Self.height - PVSpacing.s8
-                        )
-                        .offset(x: PVSpacing.s4 + CGFloat(selectedIndex) * segmentWidth)
-                        .animation(.easeOut(duration: 0.2), value: selectedIndex)
-
-                    // Segments.
-                    HStack(spacing: 0) {
-                        ForEach(Self.segments, id: \.mode) { segment in
-                            segmentButton(segment)
-                                .frame(width: segmentWidth, height: Self.height)
-                        }
-                    }
-                }
-            }
-            .frame(height: Self.height)
-            .glassEffect(.regular, in: Capsule())
-            .overlay(Capsule().stroke(Color.primary.opacity(0.1), lineWidth: 0.5))
+        let shape: AnyShape = stacksSegments
+            ? AnyShape(RoundedRectangle(cornerRadius: PVRadius.lg, style: .continuous))
+            : AnyShape(Capsule())
+        return GlassEffectContainer {
+            segmentLayout
+                .glassEffect(.regular, in: shape)
+                .overlay(shape.stroke(Color.primary.opacity(0.1), lineWidth: 0.5))
         }
         .appSensoryFeedback(.selection, trigger: modeChangeTick)
         .onChange(of: mode) { _, _ in
             modeChangeTick += 1
+        }
+    }
+
+    /// Three segments side by side; stacked in a column at accessibility sizes,
+    /// where a row cannot hold three wrapped labels.
+    private var segmentLayout: some View {
+        let layout = stacksSegments
+            ? AnyLayout(VStackLayout(spacing: PVSpacing.s4))
+            : AnyLayout(HStackLayout(spacing: 0))
+        return layout {
+            ForEach(Self.segments, id: \.mode) { segment in
+                segmentButton(segment)
+            }
         }
     }
 
@@ -69,15 +63,51 @@ struct SearchModeGlassBar: View {
         return Button {
             mode = segment.mode
         } label: {
-            Label(segment.title, systemImage: segment.icon)
+            segmentLabel(segment)
                 .font(.pvSubhead)
                 .fontWeight(isSelected ? .semibold : .regular)
                 .foregroundStyle(isSelected ? Color.immichPrimary : Color.textSecondaryPV)
-                .lineLimit(1)
-                .minimumScaleFactor(0.8)
+                .multilineTextAlignment(.center)
+                .padding(.horizontal, PVSpacing.s8)
+                .frame(maxWidth: .infinity, minHeight: height)
+                .background {
+                    // The selected segment carries its own capsule: it snaps,
+                    // it does not slide.
+                    if isSelected {
+                        Capsule()
+                            .fill(Color.primary.opacity(0.12))
+                            .overlay(
+                                Capsule().stroke(Color.primary.opacity(0.08), lineWidth: 0.5)
+                            )
+                            .padding(PVSpacing.s4)
+                    }
+                }
+                .contentShape(Capsule())
         }
         .buttonStyle(.plain)
         .accessibilityAddTraits(isSelected ? .isSelected : [])
+        .accessibilityIdentifier(Self.identifier(for: segment.mode))
+    }
+
+    @ViewBuilder
+    private func segmentLabel(
+        _ segment: (mode: SearchViewModel.ViewMode, title: LocalizedStringKey, icon: String)
+    ) -> some View {
+        if showsTitleOnly {
+            Label(segment.title, systemImage: segment.icon)
+                .labelStyle(.titleOnly)
+        } else {
+            Label(segment.title, systemImage: segment.icon)
+        }
+    }
+
+    /// Non-localized handle of a segment, for UI scenarios.
+    private static func identifier(for mode: SearchViewModel.ViewMode) -> String {
+        switch mode {
+        case .results: "searchModeSegment_results"
+        case .explore: "searchModeSegment_explore"
+        case .map: "searchModeSegment_map"
+        }
     }
 }
 

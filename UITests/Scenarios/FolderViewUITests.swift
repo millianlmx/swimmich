@@ -1,8 +1,8 @@
 import XCTest
 
 /// End-to-end scenario for the folder view (gap G11) — the directory tree the
-/// server sees on its disk, one level per push, reached from the "Me" hub's
-/// Management section.
+/// server sees on its disk, one level per push, reached from the Library
+/// section of the Albums tab.
 ///
 /// It drives the real app (onboarding → SSO → the hub → Folders → two levels)
 /// and asserts on the WIRE what each level asked for, which is the point of the
@@ -258,33 +258,33 @@ final class FolderViewUITests: XCTestCase {
         }
     }
 
-    /// A row of the "Me" hub, by IDENTIFIER (its label is localized: "Folders" /
-    /// "Dossiers" / "Ordner"). A `Form` only publishes what it rendered, so the
-    /// row is scrolled into view first, letting each swipe settle.
-    private func hubRow(_ identifier: String) -> XCUIElement {
+    /// A tile of the Albums tab's Library section, by IDENTIFIER (its label is
+    /// localized: "Folders" / "Dossiers" / "Ordner"). The Albums ScrollView is
+    /// scrolled only when the tile is not hittable.
+    private func libraryRow(_ identifier: String) -> XCUIElement {
         let row = app.buttons.matching(identifier: identifier).firstMatch
-        for _ in 0..<6 where !row.exists {
+        _ = row.waitForExistence(timeout: 10)
+        for _ in 0..<6 where !row.isHittable {
             app.swipeUp()
             sleep(1)
         }
         return row
     }
 
-    /// The shell → the "Me" hub → its Folders row. Leaves the app on the folder
+    /// The shell → the Albums tab → its Folders tile. Leaves the app on the folder
     /// screen; what that screen shows is the caller's business (the caller
     /// waits for its own evidence).
     private func openFolders() {
-        let hub = app.buttons.matching(identifier: "profileAvatar").firstMatch
-        XCTAssertTrue(hub.waitForExistence(timeout: 20), "Profile avatar missing")
-        hub.tap()
-        sleep(4) // the sheet animates in; the Form is not hittable before it does
+        let albums = app.tabBars.buttons["Albums"]
+        XCTAssertTrue(albums.waitForExistence(timeout: 20), "Albums tab missing")
+        albums.tap()
 
-        let row = hubRow("foldersRow")
+        let row = libraryRow("foldersRow")
         if !row.waitForExistence(timeout: 10) {
-            shot("\(phase)b-hub-without-folders-row")
-            XCTFail("Folders row missing in the Me hub:\n\(app.debugDescription)")
+            shot("\(phase)b-albums-without-folders-row")
+            XCTFail("Folders tile missing in the Albums library:\n\(app.debugDescription)")
         }
-        shot("\(phase)a-me-hub")
+        shot("\(phase)a-albums-library")
         row.tap()
     }
 

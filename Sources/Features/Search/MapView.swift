@@ -157,7 +157,7 @@ struct MapSegmentView: View {
             // Filter + settings: floating glass controls, the only surface that
             // is legitimately above a full-screen map (same family as the
             // spinner capsule).
-            HStack(spacing: PVSpacing.s8) {
+            PVAdaptiveStack(hAlignment: .center, vAlignment: .trailing, spacing: PVSpacing.s8) {
                 if !vm.filter.isEmpty { activeFilterBadge }
                 settingsButton
             }
@@ -184,13 +184,14 @@ struct MapSegmentView: View {
         Button { openSettings() } label: {
             Label(vm.activeFilterSummary, systemImage: "line.3.horizontal.decrease.circle.fill")
                 .font(.pvCaption)
-                .lineLimit(1)
                 .foregroundStyle(Color.immichPrimary)
+                .multilineTextAlignment(.leading)
+                .fixedSize(horizontal: false, vertical: true)
                 .padding(.horizontal, PVSpacing.s12)
                 .padding(.vertical, PVSpacing.s8)
         }
         .buttonStyle(.plain)
-        .background(.regularMaterial, in: Capsule())
+        .background(.regularMaterial, in: RoundedRectangle(cornerRadius: PVRadius.lg, style: .continuous))
         .accessibilityElement(children: .combine)
         .accessibilityIdentifier("mapFilterActiveBadge")
         .transition(.opacity.combined(with: .scale(scale: 0.92)))
@@ -267,25 +268,30 @@ struct MapPhotosSheet: View {
     var body: some View {
         NavigationStack {
             VStack(alignment: .leading, spacing: PVSpacing.s12) {
-                HStack(spacing: PVSpacing.s8) {
-                    Image(systemName: "mappin.and.ellipse")
-                        .foregroundStyle(Color.immichPrimary)
-                    Text(placeName)
-                        .font(.pvHeadline)
-                        .lineLimit(1)
+                PVAdaptiveStack(hAlignment: .center, spacing: PVSpacing.s8) {
+                    HStack(spacing: PVSpacing.s8) {
+                        Image(systemName: "mappin.and.ellipse")
+                            .foregroundStyle(Color.immichPrimary)
+                        Text(placeName)
+                            .font(.pvHeadline)
+                            .fixedSize(horizontal: false, vertical: true)
+                            .accessibilityIdentifier("mapPhotosPlaceName")
+                    }
                     Spacer()
-                    Text("\(displayedPhotos.count) photos")
-                        .font(.pvSubhead)
-                        .foregroundStyle(Color.textSecondaryPV)
-                    if vm.selectedMarkerID != nil {
-                        Button {
-                            vm.deselectMarker()
-                        } label: {
-                            Image(systemName: "xmark.circle.fill")
-                                .font(.pvSubhead)
-                                .foregroundStyle(Color.textSecondaryPV)
+                    HStack(spacing: PVSpacing.s8) {
+                        Text("\(displayedPhotos.count) photos")
+                            .font(.pvSubhead)
+                            .foregroundStyle(Color.textSecondaryPV)
+                        if vm.selectedMarkerID != nil {
+                            Button {
+                                vm.deselectMarker()
+                            } label: {
+                                Image(systemName: "xmark.circle.fill")
+                                    .font(.pvSubhead)
+                                    .foregroundStyle(Color.textSecondaryPV)
+                            }
+                            .accessibilityLabel("Clear marker filter")
                         }
-                        .accessibilityLabel("Clear marker filter")
                     }
                 }
                 .padding(.horizontal)

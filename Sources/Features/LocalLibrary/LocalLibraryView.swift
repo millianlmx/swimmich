@@ -2,11 +2,10 @@ import Photos
 import SwiftUI
 import UIKit
 
-/// "On this device" — the local library inventory, pushed from the Me hub's
-/// Management section right after "Offline Storage" (both read the *device*, not
-/// the server).
+/// "On this device" — the local library inventory, pushed from the Albums tab's
+/// Library section (L-12) (it reads the *device*, not the server).
 ///
-/// No `NavigationStack` of its own on purpose: `ProfileView` already carries the
+/// No `NavigationStack` of its own on purpose: the Albums tab already carries the
 /// one this screen is pushed into, and a second stack would draw two navigation
 /// bars (the `LanguageSettingsView` trap). Same contract as `OfflineAssetsView`.
 struct LocalLibraryView: View {
@@ -28,9 +27,12 @@ struct LocalLibraryView: View {
         .toolbar {
             ToolbarItem(placement: .principal) { ImmichAppBar(title: "On this device") }
         }
+        .immichAppBarTitleHeader("On this device")
         .safeAreaInset(edge: .bottom) { selectionBar }
         .task { await reload() }
         .refreshable { await reload() }
+        .accessibilityElement(children: .contain)
+        .accessibilityIdentifier("localLibraryScreen")
     }
 
     /// Re-reads the device and the server. The album the user is scoped to is
@@ -47,7 +49,7 @@ struct LocalLibraryView: View {
 
     private var summaryCard: some View {
         VStack(spacing: PVSpacing.s8) {
-            HStack(alignment: .top, spacing: PVSpacing.s8) {
+            PVAdaptiveStack(hAlignment: .top, spacing: PVSpacing.s8) {
                 SummaryColumn(
                     title: "This device",
                     symbol: "iphone",
@@ -169,7 +171,7 @@ struct LocalLibraryView: View {
     private var selectionBar: some View {
         if vm.hasSelection {
             VStack(spacing: PVSpacing.s8) {
-                HStack(spacing: PVSpacing.s12) {
+                PVAdaptiveStack(spacing: PVSpacing.s12) {
                     Text("\(vm.selectionCount) selected")
                         .font(.pvHeadline)
                     if vm.hasVerdict {
@@ -193,7 +195,7 @@ struct LocalLibraryView: View {
                         .foregroundStyle(Color.textSecondaryPV)
                 }
 
-                HStack(spacing: PVSpacing.s8) {
+                PVAdaptiveStack(spacing: PVSpacing.s8) {
                     Button("Cancel") { vm.clearSelection() }
                         .buttonStyle(PVSubtleButtonStyle())
 
@@ -292,6 +294,7 @@ private struct ServerStorageColumn: View {
             usageRows
         }
         .frame(maxWidth: .infinity, alignment: .leading)
+        .labeledContentStyle(.pvAdaptive)
     }
 
     private var total: String {
@@ -347,7 +350,7 @@ private struct AlbumRow: View {
                 title
                     .font(.pvSubhead)
                     .foregroundStyle(Color.textPrimaryPV)
-                    .lineLimit(1)
+                    .multilineTextAlignment(.leading)
                 Spacer(minLength: 0)
                 Text("\(count)")
                     .font(.pvCaption)

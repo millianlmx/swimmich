@@ -50,6 +50,7 @@ struct SlideshowView: View {
         .overlay(alignment: .bottom) {
             if showControls { chromeFooter }
         }
+        .pvFullscreenChromeTextCap()
         .statusBarHidden(true)
         .task(id: tickerKey) { await runTicker() }
         .task(id: autoHideKey) { await autoHideControls() }
@@ -188,13 +189,11 @@ struct SlideshowView: View {
     private var topBar: some View {
         HStack(spacing: PVSpacing.s12) {
             if let asset = vm.currentAsset {
-                Text("\(vm.currentIndex + 1) of \(vm.count)")
-                    .font(.pvCaption.weight(.semibold))
-                    .foregroundStyle(Color.white)
-                    .padding(.horizontal, PVSpacing.s12)
-                    .padding(.vertical, PVSpacing.s4)
-                    .glassEffect(.regular.tint(.black.opacity(0.6)), in: Capsule())
-                    .accessibilityLabel("Slide \(vm.currentIndex + 1) of \(vm.count): \(asset.hasPlayableMotion ? "Video" : "Photo")")
+                SlideshowCounterLabel(
+                    index: vm.currentIndex,
+                    count: vm.count,
+                    isVideo: asset.hasPlayableMotion
+                )
             }
 
             Spacer()
@@ -213,6 +212,7 @@ struct SlideshowView: View {
             }
             .buttonStyle(.plain)
             .accessibilityLabel("Close Slideshow")
+            .accessibilityIdentifier("slideshowClose")
         }
         .padding(.horizontal, PVSpacing.s16)
         .padding(.top, PVSpacing.s8)
@@ -248,10 +248,10 @@ struct SlideshowView: View {
     private var bottomBar: some View {
         GlassEffectContainer {
             HStack(spacing: PVSpacing.s4) {
-                controlButton(systemName: "shuffle", label: "Shuffle") { vm.shuffle() }
+                controlButton(systemName: "shuffle", label: "Shuffle", id: "slideshowShuffle") { vm.shuffle() }
                     .disabled(vm.count < 2)
 
-                controlButton(systemName: "chevron.left", label: "Previous") { vm.previous() }
+                controlButton(systemName: "chevron.left", label: "Previous", id: "slideshowPrevious") { vm.previous() }
                     .disabled(vm.count < 2)
 
                 Spacer(minLength: PVSpacing.s8)
@@ -260,7 +260,7 @@ struct SlideshowView: View {
 
                 Spacer(minLength: PVSpacing.s8)
 
-                controlButton(systemName: "chevron.right", label: "Next") { vm.next() }
+                controlButton(systemName: "chevron.right", label: "Next", id: "slideshowNext") { vm.next() }
                     .disabled(vm.count < 2)
 
                 speedMenu
@@ -282,6 +282,7 @@ struct SlideshowView: View {
         }
         .buttonStyle(.plain)
         .accessibilityLabel(vm.isPlaying ? "Pause" : "Play")
+        .accessibilityIdentifier("slideshowPlayPause")
         .appSensoryFeedback(.selection, trigger: vm.isPlaying)
     }
 
@@ -293,13 +294,10 @@ struct SlideshowView: View {
                 }
             }
         } label: {
-            Text(vm.speed.label)
-                .font(.pvCaption.weight(.semibold))
-                .foregroundStyle(Color.white)
-                .frame(minWidth: 44, minHeight: 40)
-                .glassEffect(.regular.tint(.black.opacity(0.6)), in: Capsule())
+            SlideshowSpeedLabel(text: vm.speed.label)
         }
         .accessibilityLabel("Slideshow Speed")
+        .accessibilityIdentifier("slideshowSpeed")
     }
 
     private var transitionMenu: some View {
@@ -317,9 +315,12 @@ struct SlideshowView: View {
                 .glassEffect(.regular.tint(.black.opacity(0.6)), in: Circle())
         }
         .accessibilityLabel("Transition")
+        .accessibilityIdentifier("slideshowTransition")
     }
 
-    private func controlButton(systemName: String, label: String, action: @escaping () -> Void) -> some View {
+    private func controlButton(
+        systemName: String, label: String, id: String, action: @escaping () -> Void
+    ) -> some View {
         Button(action: action) {
             Image(systemName: systemName)
                 .font(.pvHeadline)
@@ -329,5 +330,42 @@ struct SlideshowView: View {
         }
         .buttonStyle(.plain)
         .accessibilityLabel(label)
+        .accessibilityIdentifier(id)
+    }
+}
+
+/// "n of N" pill of the slideshow. `index` is zero-based. Carries its own
+/// full-screen cap so it measures the same outside the slideshow.
+struct SlideshowCounterLabel: View {
+    let index: Int
+    let count: Int
+    let isVideo: Bool
+
+    var body: some View {
+        Text("\(index + 1) of \(count)")
+            .font(.pvCaption.weight(.semibold))
+            .foregroundStyle(Color.white)
+            .padding(.horizontal, PVSpacing.s12)
+            .padding(.vertical, PVSpacing.s4)
+            .glassEffect(.regular.tint(.black.opacity(0.6)), in: Capsule())
+            .accessibilityLabel("Slide \(index + 1) of \(count): \(isVideo ? "Video" : "Photo")")
+            .accessibilityIdentifier("slideshowCounter")
+            .pvFullscreenChromeTextCap()
+    }
+}
+
+/// Playback-speed pill of the slideshow. The vertical padding lets the frame
+/// grow with the text (it stays 40 pt at the default size: 16 + one line < 40).
+struct SlideshowSpeedLabel: View {
+    let text: String
+
+    var body: some View {
+        Text(text)
+            .font(.pvCaption.weight(.semibold))
+            .foregroundStyle(Color.white)
+            .padding(.vertical, PVSpacing.s8)
+            .frame(minWidth: 44, minHeight: 40)
+            .glassEffect(.regular.tint(.black.opacity(0.6)), in: Capsule())
+            .pvFullscreenChromeTextCap()
     }
 }

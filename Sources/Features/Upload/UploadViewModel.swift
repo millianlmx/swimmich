@@ -623,6 +623,8 @@ struct BackupSettingsView: View {
     /// The per-asset report of the same run — built from `vm`'s engine, not a
     /// second one (see `DependencyContainer.upload`).
     @State var detail: UploadDetailViewModel
+    /// Legend dot, scaled with the caption text it labels.
+    @ScaledMetric(relativeTo: .footnote) private var dotSize: CGFloat = 7
 
     var body: some View {
         @Bindable var vm = vm
@@ -640,6 +642,7 @@ struct BackupSettingsView: View {
                 serverCheckSection
                 resetTrackingSection
             }
+            .labeledContentStyle(.pvAdaptive)
             .navigationTitle(Text(verbatim: ""))
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
@@ -647,6 +650,7 @@ struct BackupSettingsView: View {
                     ImmichAppBar(title: "Backup")
                 }
             }
+            .immichAppBarTitleHeader("Backup")
             .task {
                 vm.loadAlbums()
             }
@@ -970,12 +974,14 @@ struct BackupSettingsView: View {
         let engine = vm.engine
         let scanning = engine.phase == .checking && engine.total == 0
         VStack(alignment: .leading, spacing: PVSpacing.s8) {
-            HStack(spacing: PVSpacing.s8) {
-                Image(systemName: engine.phase == .checking ? "magnifyingglass" : "icloud.and.arrow.up")
-                    .foregroundStyle(Color.immichPrimary)
-                Text(scanning ? "Scanning your library…"
-                     : engine.phase == .checking ? "Preparing \(engine.total) photos" : "Backing up")
-                    .font(.pvSubhead.weight(.semibold))
+            PVAdaptiveStack(spacing: PVSpacing.s8) {
+                HStack(spacing: PVSpacing.s8) {
+                    Image(systemName: engine.phase == .checking ? "magnifyingglass" : "icloud.and.arrow.up")
+                        .foregroundStyle(Color.immichPrimary)
+                    Text(scanning ? "Scanning your library…"
+                         : engine.phase == .checking ? "Preparing \(engine.total) photos" : "Backing up")
+                        .font(.pvSubhead.weight(.semibold))
+                }
                 Spacer()
                 if !scanning {
                     Text("\(engine.progressPercent)%")
@@ -1022,12 +1028,12 @@ struct BackupSettingsView: View {
                 VStack(alignment: .leading, spacing: PVSpacing.s2) {
                     Text(name)
                         .font(.pvCaption)
-                        .lineLimit(1)
+                        .fixedSize(horizontal: false, vertical: true)
                     if let status = engine.statusMessage {
                         Text(status)
                             .font(.pvCaption)
                             .foregroundStyle(Color.immichPrimary)
-                            .lineLimit(1)
+                            .fixedSize(horizontal: false, vertical: true)
                     }
                 }
                 Spacer()
@@ -1062,7 +1068,7 @@ struct BackupSettingsView: View {
             .frame(height: 6)
             .background(Color.secondary.opacity(0.15))
             .clipShape(Capsule())
-            HStack(spacing: PVSpacing.s12) {
+            PVAdaptiveStack(spacing: PVSpacing.s12) {
                 legendDot(Color.immichSuccess, "Uploaded \(engine.uploadedCount)")
                 legendDot(Color.secondary, "On server \(engine.rejectedCount)")
                 if engine.failedCount > 0 {
@@ -1108,7 +1114,7 @@ struct BackupSettingsView: View {
 
     private func legendDot(_ color: Color, _ text: String) -> some View {
         HStack(spacing: PVSpacing.s4) {
-            Circle().fill(color).frame(width: 7, height: 7)
+            Circle().fill(color).frame(width: dotSize, height: dotSize)
             Text(text)
         }
     }

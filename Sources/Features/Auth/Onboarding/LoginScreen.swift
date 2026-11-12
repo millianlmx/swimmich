@@ -34,6 +34,7 @@ struct LoginScreen: View {
                             .focused($focus, equals: .email)
                             .onSubmit { focus = .password }
                             .font(.pvBody)
+                            .accessibilityIdentifier("loginEmailField")
                             .pvFieldSurface()
 
                         Divider()
@@ -44,6 +45,7 @@ struct LoginScreen: View {
                             .focused($focus, equals: .password)
                             .onSubmit { signIn() }
                             .font(.pvBody)
+                            .accessibilityIdentifier("loginPasswordField")
                             .pvFieldSurface()
                     }
 
@@ -61,15 +63,19 @@ struct LoginScreen: View {
                                     Image(systemName: "person.badge.key.fill")
                                 }
                                 Text(auth.serverConfig?.oauthButtonText ?? "Sign in with SSO")
-                                    .lineLimit(1)
+                                    .multilineTextAlignment(.center)
+                                    .fixedSize(horizontal: false, vertical: true)
+                                    .accessibilityIdentifier("loginSSOLabel")
                             }
                             .font(.pvBody.weight(.medium))
+                            .padding(.vertical, PVSpacing.s8)
                             .frame(maxWidth: .infinity, minHeight: 44)
                         }
                         .buttonStyle(.plain)
                         .foregroundStyle(Color.textPrimaryPV)
                         .background(Color.gray.opacity(0.12), in: RoundedRectangle(cornerRadius: PVRadius.md, style: .continuous))
                         .disabled(auth.isLoading)
+                        .accessibilityIdentifier("loginSSOButton")
                     }
 
                     // Auth errors render inline under the field card (PRD §5.10 Écran 4),
@@ -102,6 +108,7 @@ struct LoginScreen: View {
             }
             .buttonStyle(PVPrimaryButtonStyle())
             .disabled(email.isEmpty || password.isEmpty || auth.isLoading)
+            .accessibilityIdentifier("loginSignInButton")
         }
     }
 
@@ -132,6 +139,8 @@ struct LoginScreen: View {
             PVHeaderBadge(icon: "person.crop.circle.badge.checkmark")
             Text("Sign in to Immich")
                 .font(.pvH2)
+                .multilineTextAlignment(.center)
+                .accessibilityIdentifier("loginTitle")
             Text("Use your Immich account to access your photo library.")
                 .font(.pvSubhead)
                 .foregroundStyle(Color.textSecondaryPV)

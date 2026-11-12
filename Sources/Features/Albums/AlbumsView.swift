@@ -11,6 +11,9 @@ import SwiftUI
 /// Timeline "Add to Album" picker shares the same instance (FM-3 mitigation).
 struct AlbumsView: View {
     @Bindable var vm: AlbumsViewModel
+    /// The Library section's destinations: the 12 collection view models, owned
+    /// by `AuthenticatedRoot` (each serves exactly one screen).
+    let library: LibraryDestinations
     @Environment(AuthViewModel.self) private var auth
     @Environment(\.openProfile) private var openProfile
     @Environment(\.openSyncStatus) private var openSyncStatus
@@ -23,19 +26,18 @@ struct AlbumsView: View {
 
     var body: some View {
         NavigationStack {
-            Group {
-                if vm.albums.isEmpty && vm.loadErrorMessage != nil && !vm.isLoading {
-                    errorState
-                } else if vm.isLoading && vm.albums.isEmpty {
-                    ScrollView {
-                        PVSkeletonGrid(rows: 4, columnCount: 2)
-                            .padding(.horizontal, PVSpacing.s4)
-                            .padding(.top, PVSpacing.s4)
-                    }
-                } else if vm.albums.isEmpty {
-                    emptyState
-                } else {
-                    albumGrid
+            // One scroll view for the whole tab: the Library section (L-12) is
+            // always on top, and the albums' own four states (error, skeleton,
+            // empty, grid) replace only what sits below it.
+            ScrollView {
+                VStack(alignment: .leading, spacing: PVSpacing.s16) {
+                    LibraryCollectionsSection(destinations: library)
+                    Text("Albums")
+                        .font(.pvHeadline)
+                        .foregroundStyle(Color.textPrimaryPV)
+                        .padding(.horizontal, PVSpacing.s16)
+                        .accessibilityAddTraits(.isHeader)
+                    albumsContent
                 }
             }
             .navigationTitle("Albums")
@@ -62,6 +64,22 @@ struct AlbumsView: View {
         }
     }
 
+    /// The albums' own four mutually exclusive states, under the Library section.
+    @ViewBuilder
+    private var albumsContent: some View {
+        if vm.albums.isEmpty && vm.loadErrorMessage != nil && !vm.isLoading {
+            errorState
+        } else if vm.isLoading && vm.albums.isEmpty {
+            PVSkeletonGrid(rows: 4, columnCount: 2)
+                .padding(.horizontal, PVSpacing.s4)
+                .padding(.top, PVSpacing.s4)
+        } else if vm.albums.isEmpty {
+            emptyState
+        } else {
+            albumGrid
+        }
+    }
+
     // MARK: - States
 
     private var errorState: some View {
@@ -72,6 +90,7 @@ struct AlbumsView: View {
         } actions: {
             Button("Try Again") { Task { await vm.refresh() } }
                 .buttonStyle(PVPrimaryButtonStyle())
+                .accessibilityIdentifier("albumsRetryButton")
         }
     }
 
@@ -80,49 +99,53 @@ struct AlbumsView: View {
             Image(systemName: "rectangle.stack")
                 .font(.system(size: 56)) // DS-exempt: hero illustration §8.6
                 .foregroundStyle(Color.textTertiaryPV)
+                .accessibilityIdentifier("albumsEmptyGlyph")
             Text("No albums yet")
                 .font(.pvTitle)
+                .accessibilityIdentifier("albumsEmptyTitle")
         } description: {
             Text("Create an album to organize your photos.")
         } actions: {
             Button("Create Album") { presentingCreate = true }
                 .buttonStyle(PVPrimaryButtonStyle())
+                .accessibilityIdentifier("albumsCreateButton")
                 .padding(.horizontal, PVSpacing.s48)
         }
+        .accessibilityElement(children: .contain)
+        .accessibilityIdentifier("albumsEmptyState")
     }
 
     // MARK: - Grid
 
     private var albumGrid: some View {
-        ScrollView {
-            VStack(spacing: PVSpacing.s16) {
-                if let message = vm.loadErrorMessage {
-                    Section {
-                        InlineErrorBadge(message: message, retry: { Task { await vm.refresh() } })
-                    }
-                    .padding(.horizontal, PVSpacing.s4)
-                    .padding(.top, PVSpacing.s4)
-                }
-                LazyVGrid(columns: columns, spacing: PVSpacing.s16) {
-                    ForEach(vm.albums, id: \.id) { album in
-                        NavigationLink {
-                            AlbumDetailView(album: album)
-                                .zoomNavigationTransitioniOS27(sourceID: album.id, in: zoomNamespace)
-                        } label: {
-                            AlbumCard(
-                                album: album,
-                                baseURL: auth.baseURL ?? defaultBaseURL,
-                                token: auth.accessToken,
-                                showsShadow: colorScheme == .light,
-                                zoomNamespace: zoomNamespace
-                            )
-                        }
-                        .buttonStyle(AlbumCardPressStyle(reduceMotion: reduceMotion))
-                    }
+        VStack(spacing: PVSpacing.s16) {
+            if let message = vm.loadErrorMessage {
+                Section {
+                    InlineErrorBadge(message: message, retry: { Task { await vm.refresh() } })
                 }
                 .padding(.horizontal, PVSpacing.s4)
                 .padding(.top, PVSpacing.s4)
             }
+            LazyVGrid(columns: columns, spacing: PVSpacing.s16) {
+                ForEach(vm.albums, id: \.id) { album in
+                    NavigationLink {
+                        AlbumDetailView(album: album)
+                            .zoomNavigationTransitioniOS27(sourceID: album.id, in: zoomNamespace)
+                    } label: {
+                        AlbumCard(
+                            album: album,
+                            baseURL: auth.baseURL ?? defaultBaseURL,
+                            token: auth.accessToken,
+                            showsShadow: colorScheme == .light,
+                            zoomNamespace: zoomNamespace
+                        )
+                    }
+                    .buttonStyle(AlbumCardPressStyle(reduceMotion: reduceMotion))
+                    .accessibilityIdentifier("albumCard_\(album.id)")
+                }
+            }
+            .padding(.horizontal, PVSpacing.s4)
+            .padding(.top, PVSpacing.s4)
         }
     }
 
@@ -148,7 +171,7 @@ struct AlbumsView: View {
                     Text(album.albumName)
                         .font(.pvHeadline)
                         .foregroundStyle(Color.textPrimaryPV)
-                        .lineLimit(1)
+                        .accessibilityIdentifier("albumCardTitle_\(album.id)")
                     Text("\(album.assetCount) Photos")
                         .font(.pvCaption)
                         .foregroundStyle(Color.textSecondaryPV)
@@ -190,6 +213,7 @@ struct AlbumsView: View {
                     }
                 }
                 .clipShape(RoundedRectangle(cornerRadius: PVRadius.lg, style: .continuous))
+                .pvTileTextCap()
                 // Zoom-morph source (iOS 27+): the push zooms this cover into
                 // the detail hero. Gated to iOS 27 because the zoom transition
                 // interacts with the destination toolbar on iOS 26 (deferred

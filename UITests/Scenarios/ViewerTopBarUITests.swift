@@ -388,15 +388,15 @@ final class ViewerTopBarUITests: XCTestCase {
         armPlace(shortPlace)
         reachShell()
 
-        let hub = app.buttons.matching(identifier: "profileAvatar").firstMatch
-        XCTAssertTrue(hub.waitForExistence(timeout: 20), "Profile avatar missing")
-        hub.tap()
+        let albums = app.tabBars.buttons["Albums"]
+        XCTAssertTrue(albums.waitForExistence(timeout: 20), "Albums tab missing")
+        albums.tap()
         let trash = app.descendants(matching: .any).matching(identifier: "trashRow").firstMatch
-        for _ in 0..<6 where !trash.exists {
+        XCTAssertTrue(trash.waitForExistence(timeout: 15), "the trash tile is missing from the Albums library")
+        for _ in 0..<4 where !trash.isHittable {
             app.swipeUp()
             sleep(1)
         }
-        XCTAssertTrue(trash.waitForExistence(timeout: 15), "the trash row is missing from the Me hub")
         trash.tap()
 
         let firstTrashed = app.descendants(matching: .any)

@@ -26,6 +26,7 @@ struct LocalAssetCell: View {
                 .clipShape(RoundedRectangle(cornerRadius: PVRadius.md, style: .continuous))
         }
         .buttonStyle(.plain)
+        .pvTileTextCap()
         .accessibilityElement(children: .combine)
         .accessibilityIdentifier("localAssetCell_\(asset.localIdentifier)")
         .accessibilityLabel(accessibilityLabel)

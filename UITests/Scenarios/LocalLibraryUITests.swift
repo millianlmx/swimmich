@@ -3,7 +3,7 @@ import XCTest
 /// End-to-end scenario for "On this device" (gap G3) — the local library, and the
 /// one question it asks the server.
 ///
-/// It drives the real app: onboarding → SSO → the "Me" hub → "On this device",
+/// It drives the real app: onboarding → SSO → the Albums tab → "On this device",
 /// against three media seeded into the slot's Photos library by the launcher.
 /// What it proves is the *screen and the wire together*:
 ///
@@ -343,35 +343,32 @@ final class LocalLibraryUITests: XCTestCase {
         XCTAssertTrue(waitUntil(timeout: 10) { !self.whatsNewDone.exists }, "What's New never closed")
     }
 
-    /// The "Me" hub, then "On this device". A `Form` only publishes what it
-    /// rendered, and Management sits far below the fold, so the row is scrolled
-    /// into view — by IDENTIFIER, never by label ("On this device" reads
-    /// "Sur cet appareil" on a French slot, "Auf diesem Gerät" on the repo's own
-    /// simulator).
+    /// The Albums tab, then its "On this device" tile, by IDENTIFIER, never by
+    /// label ("On this device" reads "Sur cet appareil" on a French slot, "Auf
+    /// diesem Gerät" on the repo's own simulator). The Albums ScrollView is
+    /// scrolled only when the tile is not hittable.
     ///
     /// Two bounded attempts on purpose: on a first launch the "What's New" sheet
-    /// can land between the timeline and the avatar tap, and the tap then lands on
-    /// the modal instead of the hub (measured — this is what failed the first run
-    /// of this scenario, with the hub's row assertion reading as "no hub").
+    /// can land between the timeline and the tab tap, and the tap then lands on
+    /// the modal instead of the tab.
     private func openLocalLibrary() {
         let row = app.buttons.matching(identifier: "localLibraryRow").firstMatch
         for _ in 0..<2 {
             dismissWhatsNewIfPresent()
-            let hub = app.buttons.matching(identifier: "profileAvatar").firstMatch
-            XCTAssertTrue(hub.waitForExistence(timeout: 15), "Profile avatar missing")
-            hub.tap()
-            // The sheet animates in and its Form is not published before it does.
-            Thread.sleep(forTimeInterval: 4)
+            let albums = app.tabBars.buttons["Albums"]
+            XCTAssertTrue(albums.waitForExistence(timeout: 15), "Albums tab missing")
+            albums.tap()
+            Thread.sleep(forTimeInterval: 2)
             if whatsNewDone.exists { continue }
 
             var swipes = 0
-            while !row.isHittable && swipes < 24 {
+            while !row.isHittable && swipes < 6 {
                 app.swipeUp()
                 swipes += 1
                 Thread.sleep(forTimeInterval: 0.8)
             }
             if row.isHittable {
-                shot("ll05-me-hub")
+                shot("ll05-albums-library")
                 row.tap()
                 XCTAssertTrue(app.staticTexts.matching(identifier: "localAssetGrid").firstMatch
                     .waitForExistence(timeout: 30),
@@ -379,9 +376,9 @@ final class LocalLibraryUITests: XCTestCase {
                 return
             }
         }
-        shot("ll902-hub-without-local-library-row")
-        XCTFail("the On this device row is not reachable in the Me hub — screen reads: \(screenReads()) — "
-                + "hub buttons: \(app.buttons.allElementsBoundByIndex.prefix(60).map(\.identifier))")
+        shot("ll902-albums-without-local-library-row")
+        XCTFail("the On this device tile is not reachable in the Albums library — screen reads: \(screenReads()) — "
+                + "buttons: \(app.buttons.allElementsBoundByIndex.prefix(60).map(\.identifier))")
     }
 
     // MARK: - The local tiles

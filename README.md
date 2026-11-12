@@ -126,7 +126,7 @@ System surfaces:
 
 ### Navigation
 
-`AuthenticatedRoot`: TabView (Photos, Memories, Albums, Shared) + native iOS 26 Search tab (`role: .search`, Liquid Glass bubble aligned by the system). Profile ("Me") is presented as a sheet from the avatar on each tab.
+`AuthenticatedRoot`: TabView (Photos, Memories, Albums, Shared) + native iOS 26 Search tab (`role: .search`, Liquid Glass bubble aligned by the system). The Albums tab opens with a **Library** section: the 12 content collections (Recently Taken, Recently Added, People, Tags, Folders, Stacks, Partners, On this device, Offline Storage, Duplicates, Trash, Locked Folder), one touch each, pushed onto the tab's own `NavigationStack`. Favorites and Archive are the filter button of the Photos tab (two touches); places are the Explorer segment of Search. Profile ("Me") is presented as a sheet from the avatar on each tab and keeps the account, settings and tools only.
 
 ## Quick Start
 

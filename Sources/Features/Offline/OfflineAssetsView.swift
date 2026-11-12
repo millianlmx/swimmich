@@ -1,8 +1,8 @@
 import SwiftUI
 
-/// Offline storage screen (issue #18) — pushed from `ProfileView`'s Management
-/// section, so it declares **no** `NavigationStack` of its own (StackView /
-/// TagsView pattern; the hub sheet already owns one).
+/// Offline storage screen (issue #18) — pushed from the Albums tab's Library
+/// section (L-12), so it declares **no** `NavigationStack` of its own (StackView /
+/// TagsView pattern; the tab already owns one).
 ///
 /// Everything shown here is read from disk: the grid renders each cached
 /// original from its local file, which is also what makes this screen the
@@ -13,6 +13,7 @@ struct OfflineAssetsView: View {
 
     @State private var page: OfflinePage?
     @State private var showClearAllConfirm = false
+    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
 
     private var baseURL: URL { auth.baseURL ?? URL(string: "https://example.com")! }
 
@@ -68,12 +69,14 @@ struct OfflineAssetsView: View {
                 token: auth.accessToken
             )
         }
+        .accessibilityElement(children: .contain)
+        .accessibilityIdentifier("offlineStorageScreen")
     }
 
     // MARK: - Storage
 
     private var storageUsageCard: some View {
-        HStack(spacing: PVSpacing.s16) {
+        PVAdaptiveStack(vAlignment: .leading, spacing: PVSpacing.s16) {
             VStack(alignment: .leading, spacing: PVSpacing.s4) {
                 Text("Offline Storage")
                     .font(.pvHeadline)
@@ -90,6 +93,7 @@ struct OfflineAssetsView: View {
 
             storageRing
         }
+        .frame(maxWidth: .infinity, alignment: .leading)
         .padding(PVSpacing.s16)
         .background(.regularMaterial, in: RoundedRectangle(cornerRadius: PVRadius.lg, style: .continuous))
         // No identifier on this container: an accessibility identifier placed on
@@ -113,8 +117,21 @@ struct OfflineAssetsView: View {
         return String(localized: "\(files) • of \(limit)")
     }
 
-    @ViewBuilder
     private var storageRing: some View {
+        VStack(spacing: PVSpacing.s4) {
+            ringBody
+            // At accessibility sizes the percentage no longer fits inside the
+            // ring: it sits under it instead. The ring element already speaks it.
+            if dynamicTypeSize.isAccessibilitySize {
+                Text(usagePercentLabel)
+                    .font(.pvCaption.weight(.semibold))
+                    .monospacedDigit()
+                    .accessibilityHidden(true)
+            }
+        }
+    }
+
+    private var ringBody: some View {
         ZStack {
             Circle()
                 .stroke(Color.separatorPV, lineWidth: 8)
@@ -125,9 +142,11 @@ struct OfflineAssetsView: View {
                     .rotationEffect(.degrees(-90))
                     .animation(PVMotion.snappy, value: fraction)
             }
-            Text(usagePercentLabel)
-                .font(.pvCaption.weight(.semibold))
-                .monospacedDigit()
+            if !dynamicTypeSize.isAccessibilitySize {
+                Text(usagePercentLabel)
+                    .font(.pvCaption.weight(.semibold))
+                    .monospacedDigit()
+            }
         }
         .frame(width: 64, height: 64)
         .accessibilityElement(children: .ignore)
@@ -257,6 +276,7 @@ private struct OfflineAssetCell: View {
             .overlay(alignment: .topTrailing) { cachedBadge }
             .clipShape(RoundedRectangle(cornerRadius: PVRadius.xs, style: .continuous))
             .contentShape(Rectangle())
+            .pvTileTextCap()
             // The tap stays on the cell's own gesture: wrapping an
             // `AssetThumbnailCell`-style tile in a `Button` swallows it.
             .onTapGesture(perform: onTap)

@@ -3,9 +3,9 @@ import SwiftUI
 /// Folder view (gap G11) — the directory tree the server sees on its disk
 /// (external libraries: `/mnt/media/Photos/…`), one level per push.
 ///
-/// Pushed from `ProfileView`'s Management section, which already owns the hub's
-/// navigation container: this screen therefore declares none of its own (the
-/// OfflineAssetsView / StackView rule), or the navigation bar would be doubled.
+/// Pushed from the Albums tab's Library section (L-12), whose stack this screen
+/// shares: it therefore declares none of its own (the OfflineAssetsView /
+/// StackView rule), or the navigation bar would be doubled.
 ///
 /// The server only ever returns the **direct** children of a folder
 /// (`LIKE '%<path>/%' AND NOT LIKE '%<path>/%/%'`), so this screen lists one
@@ -59,6 +59,8 @@ struct FolderView: View {
                     Task { await refreshCurrent() }
                 }
             )
+            .accessibilityElement(children: .contain)
+            .accessibilityIdentifier(node.map { "folderScreen_\($0.path)" } ?? "foldersScreen")
     }
 
     // MARK: - Content
@@ -217,7 +219,6 @@ private struct FolderRow: View {
                 Text(node.name)
                     .font(.pvHeadline)
                     .foregroundStyle(Color.textPrimaryPV)
-                    .lineLimit(1)
                 if node.hasChildren {
                     Text(node.children.count == 1
                         ? String(localized: "1 folder")

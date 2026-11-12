@@ -42,7 +42,7 @@ struct PartnerRow: View {
     }
 
     var body: some View {
-        HStack(spacing: PVSpacing.s12) {
+        PVAdaptiveStack(hAlignment: .center, spacing: PVSpacing.s12) {
             if let onOpenLibrary {
                 Button(action: onOpenLibrary) {
                     HStack(spacing: PVSpacing.s12) {
@@ -68,20 +68,29 @@ struct PartnerRow: View {
 
     /// Avatar, name and subtitle — the zone that opens the partner's library
     /// when `onOpenLibrary` is set, plain text otherwise.
+    @ViewBuilder
     private var identity: some View {
+        if onOpenLibrary == nil {
+            identityContent
+                .accessibilityElement(children: .contain)
+                .accessibilityIdentifier("partnerName-\(partner.id)")
+        } else {
+            identityContent
+        }
+    }
+
+    private var identityContent: some View {
         HStack(spacing: PVSpacing.s12) {
             PartnerAvatarCircle(partner: partner)
             VStack(alignment: .leading, spacing: PVSpacing.s2) {
                 Text(partner.name)
                     .font(.pvBody)
                     .foregroundStyle(Color.textPrimaryPV)
-                    // Inside the open-library button the text merges into the
-                    // button's own element, which carries its identifier.
-                    .accessibilityIdentifier(onOpenLibrary == nil ? "partnerName-\(partner.id)" : "")
+                    .accessibilityIdentifier("partnerRowName-\(partner.id)")
                 Text(subtitle)
                     .font(.pvCaption)
                     .foregroundStyle(Color.textSecondaryPV)
-                    .lineLimit(1)
+                    .accessibilityIdentifier("partnerRowSubtitle-\(partner.id)")
             }
         }
     }
