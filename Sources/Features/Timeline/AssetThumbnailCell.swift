@@ -317,7 +317,7 @@ struct AssetThumbnailCell: View {
                 // single piece of information, not two.
                 .accessibilityElement(children: .ignore)
                 .accessibilityIdentifier("stackBadge")
-                .accessibilityLabel(accessibilityStackLabel)
+                .accessibilityLabel(Self.stackAccessibilityLabel(count: asset.stackCount))
             }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
@@ -343,12 +343,11 @@ struct AssetThumbnailCell: View {
             .accessibilityLabel(String(localized: "Available offline"))
     }
 
-    /// Spoken form of the stack badge ("5 photos in a stack").
-    private var accessibilityStackLabel: String {
-        guard let count = asset.stackCount else { return String(localized: "In a stack") }
-        return count == 1
-            ? String(localized: "1 photo in a stack")
-            : String(localized: "\(count) photos in a stack")
+    /// Spoken form of the stack badge ("5 photos in a stack"); the catalog picks
+    /// the singular or plural form. Pure, so each shipped language is testable.
+    static func stackAccessibilityLabel(count: Int?, bundle: Bundle = .main, locale: Locale = .current) -> String {
+        guard let count else { return String(localized: "In a stack", bundle: bundle, locale: locale) }
+        return String(localized: "\(count) photos in a stack", bundle: bundle, locale: locale)
     }
 
 

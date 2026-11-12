@@ -172,7 +172,7 @@ struct AlbumsView: View {
                         .font(.pvHeadline)
                         .foregroundStyle(Color.textPrimaryPV)
                         .accessibilityIdentifier("albumCardTitle_\(album.id)")
-                    Text("\(album.assetCount) Photos")
+                    Text("\(album.assetCount) photos")
                         .font(.pvCaption)
                         .foregroundStyle(Color.textSecondaryPV)
                 }

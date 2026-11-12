@@ -134,16 +134,33 @@ final class LocalizationTests: XCTestCase {
 
     /// AC-6 / AC-17: the owner-only notices are translated in each shipped language.
     func test_ownerOnly_AC6_skippedNoticeIsTranslated() throws {
-        let keys = [
-            "Partner photos skipped",
-            "%lld photo(s) belong to a partner and were not changed.",
-            "%lld photo(s) belong to a partner and will not be deleted. The others are removed from your library. Action cannot be undone.",
+        for code in ["fr", "de", "es", "it"] {
+            let value = try localized("Partner photos skipped", language: code)
+            XCTAssertFalse(value.isEmpty, "Partner photos skipped is empty in \(code)")
+            XCTAssertNotEqual(value, "Partner photos skipped", "Partner photos skipped is untranslated in \(code)")
+        }
+
+        // The two notices are plural entries: a plural key is only rendered once
+        // it is formatted with a count, in the singular and in the plural.
+        let notices: [(key: String, english: [Int: String])] = [
+            (
+                "%lld photos belong to a partner and were not changed.",
+                [1: "1 photo belongs to a partner and was not changed.",
+                 2: "2 photos belong to a partner and were not changed."]
+            ),
+            (
+                "%lld photos belong to a partner and will not be deleted. The others are removed from your library. Action cannot be undone.",
+                [1: "1 photo belongs to a partner and will not be deleted. The others are removed from your library. Action cannot be undone.",
+                 2: "2 photos belong to a partner and will not be deleted. The others are removed from your library. Action cannot be undone."]
+            ),
         ]
-        for key in keys {
+        for notice in notices {
             for code in ["fr", "de", "es", "it"] {
-                let value = try localized(key, language: code)
-                XCTAssertFalse(value.isEmpty, "\(key) is empty in \(code)")
-                XCTAssertNotEqual(value, key, "\(key) is untranslated in \(code)")
+                for count in [1, 2] {
+                    let value = try catalogString(notice.key, language: code, count)
+                    XCTAssertFalse(value.isEmpty, "\(notice.key) is empty in \(code)")
+                    XCTAssertNotEqual(value, notice.english[count], "\(notice.key) is untranslated in \(code) for \(count)")
+                }
             }
         }
     }

@@ -36,7 +36,8 @@ struct SearchFilterSheet: View {
                     // server refuses a body that mixes it with the flat fields
                     // a pre-v3.2.0 server would need.
                     if !vm.supportsStructuredSearch {
-                        Text("Detected text search requires Immich 3.2 or later.")
+                        Text("Detected text search requires Immich \(SearchViewModel.structuredSearchMinimumLabel) or later.")
+                            .accessibilityIdentifier("searchFilterVersionNotice")
                     }
                 }
                 .disabled(!vm.supportsStructuredSearch)

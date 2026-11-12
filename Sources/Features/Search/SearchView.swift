@@ -302,7 +302,7 @@ struct SearchView: View {
             Picker("Rating", selection: ratingFilterBinding) {
                 Label("Any rating", systemImage: "star").tag(Int?.none)
                 ForEach(1...5, id: \.self) { value in
-                    Label("\(value) star", systemImage: "star.fill").tag(Int?.some(value))
+                    Label("\(value) stars", systemImage: "star.fill").tag(Int?.some(value))
                 }
             }
         } label: {
@@ -574,7 +574,7 @@ struct SearchView: View {
 /// darkened bottom gradient and overlaid flag + city + state/country + photo
 /// count + most-recent date. The thumbnail URL is precomputed once (preview
 /// size for sharper hero imagery than the grid thumbnail).
-private struct ExplorePlaceCard: View {
+struct ExplorePlaceCard: View {
     let place: ExplorePlace
     let baseURL: URL
     let token: String?
@@ -605,7 +605,7 @@ private struct ExplorePlaceCard: View {
                     .foregroundStyle(.white.opacity(0.85))
                     .fixedSize(horizontal: false, vertical: true)
             }
-            Text(footer)
+            Text(Self.footerText(photoCount: place.photoCount, date: place.date))
                 .font(.pvCaption)
                 .foregroundStyle(.white.opacity(0.8))
                 .fixedSize(horizontal: false, vertical: true)
@@ -640,14 +640,16 @@ private struct ExplorePlaceCard: View {
     }
 
     /// "247 photos  ·  Jul 2024" — count shows a placeholder dash while loading.
-    private var footer: String {
+    /// The count is a catalog plural ("1 photo" / "2 photos"). Pure, so each
+    /// shipped language is testable.
+    static func footerText(photoCount: Int?, date: Date?, bundle: Bundle = .main, locale: Locale = .current) -> String {
         var parts: [String] = []
-        if let count = place.photoCount {
-            parts.append("\(count) photos")
+        if let count = photoCount {
+            parts.append(String(localized: "\(count) photos", bundle: bundle, locale: locale))
         } else {
             parts.append("·") // count still loading
         }
-        if let date = place.date {
+        if let date {
             parts.append(date.formatted(.dateTime.month(.abbreviated).year()))
         }
         return parts.joined(separator: "  ·  ")

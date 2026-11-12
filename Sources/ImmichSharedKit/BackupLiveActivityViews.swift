@@ -127,11 +127,19 @@ public struct BackupCompactRing: View {
 }
 
 /// One-line status for the island's center region.
-public func backupIslandSubtitle(_ state: BackupActivityAttributes.ContentState) -> String {
+/// The failure count is a catalog plural, so every language agrees it with N.
+public func backupIslandSubtitle(
+    _ state: BackupActivityAttributes.ContentState,
+    bundle: Bundle = .main,
+    locale: Locale = .current
+) -> String {
     switch state.phase {
     case .checking: return "Scanning…"
     case .uploading: return state.fileName ?? "Uploading…"
-    case .done: return state.failed == 0 ? "All done" : "\(state.failed) failed"
+    case .done:
+        return state.failed == 0
+            ? "All done"
+            : String(localized: "\(state.failed) failed", bundle: bundle, locale: locale)
     case .cancelled: return "Cancelled"
     }
 }
@@ -290,16 +298,39 @@ public struct BackupLockScreenView: View {
         self.state = state
     }
 
-    private var subtitle: String {
+    private var subtitle: String { Self.subtitle(for: state) }
+
+    /// The line under the title. The failure count of a finished run is a catalog
+    /// plural ("Finished with 1 failed" / "… 2 failed"). Pure, so each shipped
+    /// language is testable.
+    static func subtitle(
+        for state: BackupActivityAttributes.ContentState,
+        bundle: Bundle = .main,
+        locale: Locale = .current
+    ) -> String {
         switch state.phase {
         case .checking: return "Scanning your library…"
         case .uploading:
             return state.fileName ?? "Uploading your memories…"
         case .done:
-            return state.failed == 0 ? "Backup complete — library safe"
-                                     : "Finished with \(state.failed) failed"
+            return state.failed == 0
+                ? "Backup complete — library safe"
+                : String(localized: "Finished with \(state.failed) failed", bundle: bundle, locale: locale)
         case .cancelled: return "Backup cancelled"
         }
+    }
+
+    /// The footer of a finished run: "N photos safe on Immich", or "N uploaded ·
+    /// M failed" — plurals of the catalog. Pure, so each shipped language is
+    /// testable.
+    static func footerText(
+        for state: BackupActivityAttributes.ContentState,
+        bundle: Bundle = .main,
+        locale: Locale = .current
+    ) -> String {
+        state.failed == 0
+            ? String(localized: "\(state.uploaded) photos safe on Immich", bundle: bundle, locale: locale)
+            : String(localized: "\(state.uploaded) uploaded · \(state.failed) failed", bundle: bundle, locale: locale)
     }
 
     public var body: some View {
@@ -331,9 +362,7 @@ public struct BackupLockScreenView: View {
     private var footer: some View {
         if state.phase == .done {
             Label(
-                state.failed == 0
-                    ? "\(state.uploaded) photos safe on Immich"
-                    : "\(state.uploaded) uploaded · \(state.failed) failed",
+                Self.footerText(for: state),
                 systemImage: state.failed == 0 ? "checkmark.seal.fill" : "exclamationmark.triangle.fill"
             )
             .font(.caption2.weight(.semibold))

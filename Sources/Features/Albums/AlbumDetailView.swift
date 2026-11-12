@@ -92,7 +92,11 @@ struct AlbumDetailView: View {
                 loadingContent
             }
         }
-        .navigationTitle(vm.selectionMode ? "\(vm.selectedIds.count) selected" : (vm.album?.albumName ?? initialAlbum.albumName))
+        .navigationTitle(
+            vm.selectionMode
+                ? Text("\(vm.selectedIds.count) selected")
+                : Text(verbatim: vm.album?.albumName ?? initialAlbum.albumName)
+        )
         .navigationBarTitleDisplayMode(.inline)
         .toolbar {
             if vm.selectionMode {
@@ -216,6 +220,7 @@ struct AlbumDetailView: View {
                                 .foregroundStyle(Color.primary)
                         }
                         .tint(Color.primary)
+                        .accessibilityIdentifier("albumSelectAction")
                         if albumActions.contains(.editAlbum) {
                             Divider()
                             Button {
@@ -358,7 +363,7 @@ struct AlbumDetailView: View {
         } message: {
             Text(vm.actionErrorMessage ?? "")
         }
-        .alert("Delete \(vm.ownedSelectedIds(currentUserId: auth.userId).count) asset(s)?", isPresented: $pendingDeleteSelected) {
+        .alert("Delete \(vm.ownedSelectedIds(currentUserId: auth.userId).count) assets?", isPresented: $pendingDeleteSelected) {
             Button("Delete", role: .destructive) {
                 Task {
                     await vm.deleteSelected(currentUserId: auth.userId)
@@ -370,7 +375,7 @@ struct AlbumDetailView: View {
             Text("This removes them from your library. Action cannot be undone.")
         }
         .alert(
-            "Remove \(vm.selectedIds.count) photo\(vm.selectedIds.count == 1 ? "" : "s") from this album?",
+            "Remove \(vm.selectedIds.count) photos from this album?",
             isPresented: $pendingRemoveSelected
         ) {
             Button("Remove", role: .destructive) {
@@ -720,7 +725,8 @@ struct AlbumDetailView: View {
                     .shadow(color: .black.opacity(0.4), radius: 4)
                 // While loading, the grid-known count is authoritative; once
                 // loaded the fetched asset list wins (matches grid contents).
-                Text("\(vm.displayedPhotoCount(fallback: album.assetCount)) Photos")
+                Text("\(vm.displayedPhotoCount(fallback: album.assetCount)) photos")
+                    .accessibilityIdentifier("albumHeroCount")
                     .font(.pvSubhead)
                     .foregroundStyle(.white.opacity(0.9))
                     .shadow(color: .black.opacity(0.4), radius: 3)
@@ -758,6 +764,7 @@ struct AlbumDetailView: View {
                     .allowsHitTesting(false)
                 }
                 .clipped()
+
         }
     }
 

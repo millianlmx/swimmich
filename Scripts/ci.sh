@@ -3,6 +3,9 @@
 #
 #   Scripts/ci.sh
 #
+# 0. Runs the Python tests of the i18n audit (Scripts/test_*.py), then, after
+#    XcodeGen, the audit itself (R1-R4); its verdict is applied at the end, so
+#    one pass judges the audit and the tests.
 # 1. Regenerates the project from project.yml: the committed .xcodeproj drifts,
 #    and a Tests/*.swift file missing from it would pass "green" by omission.
 # 2. Builds the app, its extensions and BOTH test bundles.
@@ -18,12 +21,46 @@
 set -euo pipefail
 cd "$(dirname "$0")/.."
 
+# The Python tests of the audit script (R4) come first: no build, a few seconds.
+# Each failed test becomes a public `::error` annotation (see report_errors).
+python_log="$(mktemp)"
+if ! python3 -m unittest discover -s Scripts -p 'test_*.py' >"$python_log" 2>&1; then
+  cat "$python_log" >&2
+  if [[ -n "${GITHUB_ACTIONS:-}" ]]; then
+    grep -E '^(FAIL|ERROR):' "$python_log" | while IFS= read -r line; do
+      echo "::error::${line//%/%25}"
+    done || true
+  fi
+  rm -f "$python_log"
+  exit 1
+fi
+rm -f "$python_log"
+
 CACHE="${SWIMMICH_CI_CACHE:-$HOME/Library/Caches/swimmich-ci}"
 SIM_NAME="${SWIMMICH_CI_SIM:-swimmich-ci}"
 DEVICE_TYPE="com.apple.CoreSimulator.SimDeviceType.iPhone-17"
 RESULT="${SWIMMICH_CI_RESULT:-build/ci/unit-tests.xcresult}"
 
 xcodegen generate --quiet
+
+# The i18n audit (R1-R4, a virgin extraction build of about 40 s) reads the
+# .xcodeproj regenerated above. Its status is remembered, not acted on: the
+# build and the tests still run, and the verdict is applied at the very end.
+# The offending lines become public `::error` annotations, because the job log
+# is only readable by repository admins.
+audit_log="$(mktemp)"
+audit_status=0
+python3 Scripts/i18n-audit.py --derived-data "$CACHE/i18n-audit-DerivedData" >"$audit_log" 2>&1 || audit_status=$?
+cat "$audit_log"
+if (( audit_status != 0 )); then
+  if [[ -n "${GITHUB_ACTIONS:-}" ]]; then
+    grep -E '^  - ' "$audit_log" | while IFS= read -r line; do
+      line="${line#  - }"
+      echo "::error title=i18n-audit::${line//%/%25}"
+    done || true
+    echo "::error::i18n-audit exited $audit_status"
+  fi
+fi
 
 udid=$(xcrun simctl list devices available -j | python3 -c '
 import json, sys
@@ -89,7 +126,7 @@ build_log="$(mktemp)"
 media_dir="$(mktemp -d)"
 stub_pid=""
 cleanup() {
-  rm -f "$build_log"
+  rm -f "$build_log" "$python_log" "$audit_log"
   rm -rf "$media_dir"
   if [[ -n "$stub_pid" ]]; then kill "$stub_pid" 2>/dev/null || true; fi
 }
@@ -269,4 +306,11 @@ done 3<"$UI_LIST"
 if (( ui_failures )); then
   echo "ci.sh: $ui_failures UI scenario line(s) failed" >&2
   exit 65
+fi
+
+# The i18n audit ran first (it only reads the catalog and the sources); its
+# verdict is applied last so one pass judges the audit AND the tests.
+if (( audit_status != 0 )); then
+  echo "ci.sh: i18n audit failed (exit $audit_status)" >&2
+  exit 1
 fi

@@ -92,7 +92,7 @@ struct CreateAlbumSheet: View {
                 .clipShape(RoundedRectangle(cornerRadius: PVRadius.sm, style: .continuous))
                 .overlay(alignment: .bottomTrailing) {
                     if let count = preselectedAssetIds?.count, count > 0 {
-                        Text("\(count) Photo\(count == 1 ? "" : "s")")
+                        Text("\(count) photos")
                             .font(.pvCaption.weight(.semibold))
                             .foregroundStyle(.white)
                             .padding(.horizontal, PVSpacing.s8)

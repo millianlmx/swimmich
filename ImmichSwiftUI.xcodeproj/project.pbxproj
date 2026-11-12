@@ -439,6 +439,10 @@
 		B2AF6FBD8DC383225B7945E1 /* MemoryMomentPresentationTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A6A6A461BD50BD1BE66AAD1D /* MemoryMomentPresentationTests.swift */; };
 		8D9ED7A3F3121FF33284CDA5 /* MemoryPlaybackViewModelTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 526ED0B2DB0F74CAB4BFD578 /* MemoryPlaybackViewModelTests.swift */; };
 		47ADF02F1A8091DD76AA74B8 /* MemoryTitlePresentationTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7967479D3203368C78A06467 /* MemoryTitlePresentationTests.swift */; };
+		17A0170000000000000000B1 /* PluralCatalogTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 17A0170000000000000000A1 /* PluralCatalogTests.swift */; };
+		17A0170000000000000000B2 /* PluralLabelsTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 17A0170000000000000000A2 /* PluralLabelsTests.swift */; };
+		17A0170000000000000000B3 /* PluralsUITests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 17A0170000000000000000A3 /* PluralsUITests.swift */; };
+		17A0170000000000000000B4 /* immich_stub_plurals.py in Resources */ = {isa = PBXBuildFile; fileRef = 17A0170000000000000000A4 /* immich_stub_plurals.py */; };
 		B2D919D9DF224DA1CD5BA517 /* SharedLinkURL.swift in Sources */ = {isa = PBXBuildFile; fileRef = 977A7A56CEB688B08C7591B1 /* SharedLinkURL.swift */; };
 		B30270B0AD8AF036F1D42C74 /* EditStateTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 562CB12C829E9A741A247B3C /* EditStateTests.swift */; };
 		B30A2E9C3F3B1216FE716563 /* ImmichColors.swift in Sources */ = {isa = PBXBuildFile; fileRef = AF2FE20DC73A4EF7C653097A /* ImmichColors.swift */; };
@@ -1120,6 +1124,10 @@
 		A6A6A461BD50BD1BE66AAD1D /* MemoryMomentPresentationTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MemoryMomentPresentationTests.swift; sourceTree = "<group>"; };
 		526ED0B2DB0F74CAB4BFD578 /* MemoryPlaybackViewModelTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MemoryPlaybackViewModelTests.swift; sourceTree = "<group>"; };
 		7967479D3203368C78A06467 /* MemoryTitlePresentationTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MemoryTitlePresentationTests.swift; sourceTree = "<group>"; };
+		17A0170000000000000000A1 /* PluralCatalogTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PluralCatalogTests.swift; sourceTree = "<group>"; };
+		17A0170000000000000000A2 /* PluralLabelsTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PluralLabelsTests.swift; sourceTree = "<group>"; };
+		17A0170000000000000000A3 /* PluralsUITests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PluralsUITests.swift; sourceTree = "<group>"; };
+		17A0170000000000000000A4 /* immich_stub_plurals.py */ = {isa = PBXFileReference; lastKnownFileType = text.script.python; path = immich_stub_plurals.py; sourceTree = "<group>"; };
 		A7115A3BD401B5702A2FA3CE /* OfflineAssetStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OfflineAssetStore.swift; sourceTree = "<group>"; };
 		A7932D379D0AC9ADED6B297A /* FileDownloadTransport.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FileDownloadTransport.swift; sourceTree = "<group>"; };
 		A801FF1E7288B5773621C293 /* SlideshowViewModelTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SlideshowViewModelTests.swift; sourceTree = "<group>"; };
@@ -1853,6 +1861,8 @@
 				A6A6A461BD50BD1BE66AAD1D /* MemoryMomentPresentationTests.swift */,
 				526ED0B2DB0F74CAB4BFD578 /* MemoryPlaybackViewModelTests.swift */,
 				7967479D3203368C78A06467 /* MemoryTitlePresentationTests.swift */,
+				17A0170000000000000000A1 /* PluralCatalogTests.swift */,
+				17A0170000000000000000A2 /* PluralLabelsTests.swift */,
 				FEF89AD151AE1656623B76FD /* NotificationsViewModelTests.swift */,
 				964DFB89A91796DADE22870B /* OcrOverlayViewModelTests.swift */,
 				D10DBB74127A94DBEFD3E9E5 /* AssetPixelSizeViewModelTests.swift */,
@@ -2216,6 +2226,7 @@
 				4FF1B91E9C4417E215CF8D26 /* immich_stub_album_sync.py */,
 				7E3A91C4D2B5F60811A9C3E7 /* immich_stub_account_storage.py */,
 				12C01A0000000000000000A4 /* immich_stub_collections.py */,
+				17A0170000000000000000A4 /* immich_stub_plurals.py */,
 				E1CC7019BA3B4C01BC01F2B0 /* immich_stub_app_utilities.py */,
 				5AFCA7C77F5D1A64ACCBB1F2 /* immich_stub_app_log.py */,
 				BBF6CB2BADD7C5BABCD243EA /* immich_stub_archive.py */,
@@ -2342,6 +2353,7 @@
 				3FC0D63F249A1B765BDEFDE1 /* AppLockUITests.swift */,
 				9C17E5A3B8D40F2661E4A7C9 /* AccountStorageUITests.swift */,
 				12C01A0000000000000000A3 /* ContentCollectionsUITests.swift */,
+				17A0170000000000000000A3 /* PluralsUITests.swift */,
 				F12E4D5D4AEA776F68BF61B6 /* AppUtilitiesUITests.swift */,
 				09D345762E990EFD50346F30 /* AppLogRedactionUITests.swift */,
 				2A1531C60F36C47F188E6197 /* ArchiveUITests.swift */,
@@ -2765,6 +2777,7 @@
 				D95AFA1D1289A6BD8EF5E2D7 /* immich_stub_album_sync.py in Resources */,
 				4B8D2F6A90C1E37354A8D1B2 /* immich_stub_account_storage.py in Resources */,
 				12C01A0000000000000000B4 /* immich_stub_collections.py in Resources */,
+				17A0170000000000000000B4 /* immich_stub_plurals.py in Resources */,
 				078AE5EE5A8BF75A6C92E947 /* immich_stub_app_utilities.py in Resources */,
 				20DEB45231D98E5F1FD379B7 /* immich_stub_app_log.py in Resources */,
 				EF937EDA299E4EC2A272D51B /* immich_stub_archive.py in Resources */,
@@ -2953,6 +2966,8 @@
 				B2AF6FBD8DC383225B7945E1 /* MemoryMomentPresentationTests.swift in Sources */,
 				8D9ED7A3F3121FF33284CDA5 /* MemoryPlaybackViewModelTests.swift in Sources */,
 				47ADF02F1A8091DD76AA74B8 /* MemoryTitlePresentationTests.swift in Sources */,
+				17A0170000000000000000B1 /* PluralCatalogTests.swift in Sources */,
+				17A0170000000000000000B2 /* PluralLabelsTests.swift in Sources */,
 				B66F10F2A0915596CE59A686 /* MockAppLockService.swift in Sources */,
 				3F27EDE33671502BA8D0AC94 /* MockBackupAssetSource.swift in Sources */,
 				DE2FE49C43E620B58DFAD481 /* MockBackupLiveActivityService.swift in Sources */,
@@ -3046,6 +3061,7 @@
 				68B39B89B2D5E1286E5757A0 /* AppLockUITests.swift in Sources */,
 				2D6F8B1E4A7C93500B3E5F81 /* AccountStorageUITests.swift in Sources */,
 				12C01A0000000000000000B3 /* ContentCollectionsUITests.swift in Sources */,
+				17A0170000000000000000B3 /* PluralsUITests.swift in Sources */,
 				0AFE2D96811EBD78DCBE78CC /* AppUtilitiesUITests.swift in Sources */,
 				B09924C7D03B1491D90D0076 /* AppLogRedactionUITests.swift in Sources */,
 				B7F3BF2B6D9A909739FCD271 /* ArchiveUITests.swift in Sources */,

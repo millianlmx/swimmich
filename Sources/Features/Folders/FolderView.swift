@@ -220,9 +220,7 @@ private struct FolderRow: View {
                     .font(.pvHeadline)
                     .foregroundStyle(Color.textPrimaryPV)
                 if node.hasChildren {
-                    Text(node.children.count == 1
-                        ? String(localized: "1 folder")
-                        : String(localized: "\(node.children.count) folders"))
+                    Text(String(localized: "\(node.children.count) folders"))
                         .font(.pvSubhead)
                         .foregroundStyle(Color.textSecondaryPV)
                 }

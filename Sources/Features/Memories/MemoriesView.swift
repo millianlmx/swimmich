@@ -388,10 +388,10 @@ enum MemoryCardPresentation {
     }
 
     /// "Last year" / "N years ago" for a count from `yearsAgoCount`.
-    static func yearsAgoText(count: Int, locale: Locale = .current) -> String? {
+    static func yearsAgoText(count: Int, bundle: Bundle = .main, locale: Locale = .current) -> String? {
         guard count > 0 else { return nil }
-        if count == 1 { return String(localized: "Last year", locale: locale) }
-        return String(localized: "\(count) years ago", locale: locale)
+        if count == 1 { return String(localized: "Last year", bundle: bundle, locale: locale) }
+        return String(localized: "\(count) years ago", bundle: bundle, locale: locale)
     }
 
     /// Photo/video split of a memory's assets.
@@ -402,13 +402,17 @@ enum MemoryCardPresentation {
 
     /// "12 photos" / "1 video" / "8 photos · 2 videos". Nil for an empty
     /// memory (server never sends one, but guards the formatting).
-    static func mediaCountLabel(for memory: MemoryResponseDto, locale: Locale = .current) -> String? {
+    static func mediaCountLabel(
+        for memory: MemoryResponseDto,
+        bundle: Bundle = .main,
+        locale: Locale = .current
+    ) -> String? {
         let (photos, videos) = mediaCount(for: memory)
         switch (photos, videos) {
         case (0, 0): return nil
-        case (_, 0): return photoLabel(photos, locale: locale)
-        case (0, _): return videoLabel(videos, locale: locale)
-        default: return "\(photoLabel(photos, locale: locale)) · \(videoLabel(videos, locale: locale))"
+        case (_, 0): return photoLabel(photos, bundle: bundle, locale: locale)
+        case (0, _): return videoLabel(videos, bundle: bundle, locale: locale)
+        default: return String(localized: "\(photos) photos · \(videos) videos", bundle: bundle, locale: locale)
         }
     }
 
@@ -429,12 +433,12 @@ enum MemoryCardPresentation {
         return nil
     }
 
-    private static func photoLabel(_ n: Int, locale: Locale) -> String {
-        n == 1 ? String(localized: "1 photo", locale: locale) : String(localized: "\(n) photos", locale: locale)
+    private static func photoLabel(_ n: Int, bundle: Bundle, locale: Locale) -> String {
+        String(localized: "\(n) photos", bundle: bundle, locale: locale)
     }
 
-    private static func videoLabel(_ n: Int, locale: Locale) -> String {
-        n == 1 ? String(localized: "1 video", locale: locale) : String(localized: "\(n) videos", locale: locale)
+    private static func videoLabel(_ n: Int, bundle: Bundle, locale: Locale) -> String {
+        String(localized: "\(n) videos", bundle: bundle, locale: locale)
     }
 
     private static func trimmed(_ value: String?) -> String? {

@@ -181,22 +181,12 @@ struct SharedLinkViewerView: View {
             Text(vm.title)
                 .font(.pvHeadline)
                 .accessibilityIdentifier("sharedLinkViewerTitle")
-            Text(subtitle)
+            Text(vm.subtitle)
                 .font(.pvCaption)
                 .foregroundStyle(Color.textSecondaryPV)
                 .accessibilityIdentifier("sharedLinkViewerSubtitle")
         }
         .padding(.horizontal, PVSpacing.s16)
-    }
-
-    /// Says which rights the link grants, because that is what decides the
-    /// actions on this screen (and what the server will refuse).
-    private var subtitle: String {
-        let count = vm.assets.count == 1 ? "1 photo" : "\(vm.assets.count) photos"
-        var parts = [count]
-        parts.append(vm.canUpload ? "You can add photos" : "Read only")
-        if vm.link?.allowDownload == false { parts.append("Downloads off") }
-        return parts.joined(separator: " • ")
     }
 
     private var assetGrid: some View {

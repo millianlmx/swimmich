@@ -140,7 +140,7 @@ private struct StackRowView: View {
                 .clipShape(RoundedRectangle(cornerRadius: PVRadius.sm, style: .continuous))
 
             VStack(alignment: .leading, spacing: 2) {
-                Text(stack.assets.count == 1 ? "1 photo" : "\(stack.assets.count) photos")
+                Text("\(stack.assets.count) photos")
                     .font(.pvBody)
                     .foregroundStyle(Color.textPrimaryPV)
                 if let cover {
@@ -153,7 +153,7 @@ private struct StackRowView: View {
         }
         .padding(.vertical, PVSpacing.s4)
         .accessibilityElement(children: .combine)
-        .accessibilityLabel(String(localized: "\(stack.assets.count) photos in a stack"))
+        .accessibilityLabel(AssetThumbnailCell.stackAccessibilityLabel(count: stack.assets.count))
     }
 
     private var baseURL: URL {
