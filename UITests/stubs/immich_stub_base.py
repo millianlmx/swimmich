@@ -596,6 +596,22 @@ def _bad_request(message):
     return Response({"message": message, "statusCode": 400}, status=400)
 
 
+def _served_config(request):
+    """The `CONFIG`-shaped dict this process answers on `GET /api/server/config`.
+
+    Asks the router first, like `announced_version()`, so a feature stub that
+    overrides the legacy route (a long SSO label, say) gets the same values on
+    `/api/public/config` and `/api/config` when it announces v3.2.0 or later.
+    Keys the override leaves out keep the shell's values.
+    """
+    probe = Request("GET", "/api/server/config", "", request.headers, {})
+    response = router.handle(probe)
+    if response is None or response.status >= 400 or not isinstance(response.payload, dict):
+        return CONFIG
+    return {**CONFIG, **response.payload}
+
+
+
 def _route_shell(method, request):
     """The routes whose family changed across versions: jobs and queues, the two
     person merges, the three configs. Both families are always served here;
@@ -610,9 +626,9 @@ def _route_shell(method, request):
         if path == "/api/queues":
             return Response([_queue_dto(name, queue) for name, queue in queues.items()])
         if path == "/api/public/config":
-            return Response(public_config_payload(CONFIG))
+            return Response(public_config_payload(_served_config(request)))
         if path == "/api/config":
-            return Response(user_config_payload(CONFIG))
+            return Response(user_config_payload(_served_config(request)))
 
     if method == "PUT" and len(parts) == 4 and parts[1:3] == ["api", "jobs"]:
         queue, command = queues.get(parts[3]), request.body.get("command")

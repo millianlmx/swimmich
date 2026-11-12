@@ -102,6 +102,26 @@ class StubRoutesTests(unittest.TestCase):
         self.assertEqual(status, 200)
         self.assertEqual((body["major"], body["minor"], body["patch"]), (2, 0, 0))
 
+    def test_AC_35_modernConfigFollowsFeatureOverride(self):
+        # A feature stub's `/api/server/config` (immich_stub_dynamic_type.py: a long
+        # SSO label) reaches the 3.2+ routes the app reads instead.
+        label = "Continue with Example Corporation Single Sign-On Portal"
+        base.router.get("/api/server/config")(
+            lambda req: base.Response({**base.CONFIG, "oauthButtonText": label,
+                                       "externalDomain": "https://x.example"}))
+        status, public = self.call("GET", "/api/public/config")
+        self.assertEqual(status, 200)
+        self.assertEqual(public["oauth"]["buttonText"], label)
+        status, user = self.call("GET", "/api/config")
+        self.assertEqual(status, 200)
+        self.assertEqual(user["oauth"]["buttonText"], label)
+        self.assertEqual(user["server"]["externalDomain"], "https://x.example")
+
+        # Still refused to a server that does not have them.
+        self.at_version("2.0.0")
+        self.assertEqual(self.call("GET", "/api/public/config")[0], 404)
+        self.assertEqual(self.call("GET", "/api/server/config")[1]["oauthButtonText"], label)
+
     # MARK: - AC-36
 
     def test_AC_36_servesPerThreshold(self):
