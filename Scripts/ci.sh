@@ -203,8 +203,10 @@ fi
 # simulator (a UI line can leave a device locked by Face ID). Each line gets a worker's
 # simulator freshly ERASED (no line inherits another's keychain, defaults,
 # Photos or lock: the order of the list does not matter), and its own stub on
-# the worker's port, 8421 + k - 1, which must answer `/__whoami` with its own pid
-# (an orphan stub squatting the port would serve another feature's data). The
+# the worker's port, `SWIMMICH_CI_STUB_PORT` (8421 by default) + k - 1, which
+# must answer `/__whoami` with its own pid (an orphan stub squatting the port
+# would serve another feature's data). A second runner on the same Mac sets its
+# own `SWIMMICH_CI_STUB_PORT`, `SWIMMICH_CI_SIM` and `SWIMMICH_CI_CACHE`. The
 # scenario reaches it through `IMMICH_STUB_URL` (`TEST_RUNNER_IMMICH_STUB_URL`).
 # `--content-size` sets the SYSTEM text size, which an app extension follows
 # (the app itself takes it as a launch argument); `--media` seeds a generated
@@ -213,7 +215,7 @@ fi
 # worker takes the next line: put the longest lines first.
 UI_LIST="Scripts/ci-ui-scenarios.txt"
 UI_WORKERS="${SWIMMICH_CI_UI_WORKERS:-3}"
-STUB_PORT_BASE=8421
+STUB_PORT_BASE="${SWIMMICH_CI_STUB_PORT:-8421}"
 
 check_ui_summary() {
   local result="$1" label="$2" summary
