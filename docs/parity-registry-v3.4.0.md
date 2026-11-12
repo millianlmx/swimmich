@@ -471,9 +471,9 @@ Chaque écran principal a une ligne par aspect. « États » regroupe le chargem
 | L-08 | Bibliothèque d'un partenaire | B-12 | livré | 6999e9d63611 | AC-18 |
 | L-09 | En-têtes HTTP personnalisés pour les proxys | B-13 | livré | 5e08be7bb2e3 | AC-19, AC-20, AC-116, AC-117, AC-118, AC-119, AC-120, AC-121, AC-122, AC-123, AC-124, AC-125 |
 | L-10 | Certificat client (TLS mutuel) | B-14 | livré | 957e65e06f5d | AC-21, AC-22, AC-37 |
-| L-11 | Journal applicatif partagé sans secrets | B-15 | livré | b6a5c778ec33 | AC-23, AC-127, AC-128, AC-129, AC-130, AC-131, AC-132 |
-| L-12 | Collections de contenu accessibles hors du hub « Me » | B-16 | livré | 00959130d4d7 | AC-24, AC-25, AC-133, AC-134, AC-135, AC-136, AC-137, AC-138, AC-139, AC-140, AC-141 |
-| L-13 | Texte lisible à toutes les tailles Dynamic Type | B-17 | planifié | — | — |
+| L-11 | Journal applicatif partagé sans secrets | B-15 | livré | 3df9fadb64de | AC-23, AC-127, AC-128, AC-129, AC-130, AC-131, AC-132 |
+| L-12 | Collections de contenu accessibles hors du hub « Me » | B-16 | livré | 3780fbb1916b | AC-24, AC-25, AC-133, AC-134, AC-135, AC-136, AC-137, AC-138, AC-139, AC-140, AC-141 |
+| L-13 | Texte lisible à toutes les tailles Dynamic Type | B-17 | livré | 89743df05b84 | AC-26 |
 | L-14 | Visionneuse : ouverture et fermeture par zoom depuis la vignette | B-18 | planifié | — | — |
 | L-15 | Identité Swimmich et matériau unique des commandes flottantes | B-19 | planifié | — | — |
 | L-16 | États de chargement, vide, erreur et rafraîchissement sur chaque liste | B-20 | planifié | — | — |
@@ -544,6 +544,7 @@ L-10 (B-14) : sous-critères AC-21.1 à AC-21.5, AC-22.1 à AC-22.6 et AC-37.1 �
 
 L-11 (B-15) : critères complémentaires AC-127 à AC-132 inscrits par le lot (le numéro AC-126, déjà pris par un test des liens partagés, est sauté). Les volets XCUITest (`AppLogRedactionUITests`, stub `immich_stub_app_log.py`) sont compilés par la CI, non exécutés ; la preuve par les tests unitaires (`AppLogRedactionTests` : masqueur, tampon, client, service de certificat ; `PublicLogTextTests` : fonction pure et sorties injectées du widget, de l'intention favori et de l'extension de partage). Le scénario prouve la chaîne liste, détail, presse-papiers sur une vraie coupure de connexion ; l'hôte et le jeton qu'une erreur de transport pourrait citer sont prouvés en unitaire, sur le vrai tampon (une coupure réelle ne cite ni l'un ni l'autre). Limites assumées : un secret de moins de 4 caractères n'est pas appris ; un numéro de port de 1 à 3 chiffres n'est masqué que collé à un hôte ; un hôte qui est aussi un mot courant masque ce mot dans le texte libre d'une erreur, jamais dans un chemin d'API. Le lot ne rend pas `os.Logger` lisible par un test : la preuve passe par `publicLog` et `log` injectés (décision #6).
 L-12 (B-16) : critères complémentaires AC-133 à AC-141 (décisions #1 à #7). Les volets XCUITest (`ContentCollectionsUITests`, stub `immich_stub_collections.py`) sont compilés par la CI, non exécutés : le poste n'a ni simulateur ni python3. La preuve exécutée est unitaire : `TrashViewModelTests.test_AC_133_loadNextBucket_repeatsTrashFilterOnEachPeriod`, `LockedFolderViewModelTests.test_AC_137_relockIfUnlocked_locksOnlyAnOpenFolder`, `LocalizationTests.test_AC_139_libraryEntriesTranslated`. Lecture de code, non vérifiée à l'exécution : le filtre de l'onglet Photos (bouton flottant) était invisible avant ce lot, la sélection d'un item de `Menu` par identifiant sous iOS 26 reste à confirmer. `Scripts/i18n-audit.py` non rejoué (macOS seulement).
+L-13 (B-17) : sous-critères AC-26.1 à AC-26.9 inscrits par le lot. Les volets XCUITest (DynamicTypeUITests, stub immich_stub_dynamic_type.py) sont compilés par la CI, non exécutés ; la preuve CI est celle des tests unitaires (DynamicTypeTests, PhotoViewerTopBarLayoutTests). Le volet extension de partage de test_AC_26_4 exige xcrun simctl ui booted content_size accessibility-extra-extra-extra-large avant le lancement. Contrôle de revue : S-16 des specs du lot.
 
 #### Avant de lancer un lot
 
