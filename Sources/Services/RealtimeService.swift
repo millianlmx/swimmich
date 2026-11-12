@@ -15,18 +15,25 @@ struct RealtimeBatch: Equatable, Sendable {
     let events: Set<String>
 
     static let personThumbnailEvent = "on_person_thumbnail"
+    /// The server regenerated the thumbnails of an edited photo (`PUT`/`DELETE /assets/{id}/edits`
+    /// queue a job; v3.4.0 emits `AssetEditReadyV2`, earlier v2.5+ servers `AssetEditReadyV1`). Until
+    /// then `edited=true` serves the old image under the old thumbhash.
+    static let editReadyEvents: Set<String> = ["AssetEditReadyV1", "AssetEditReadyV2"]
     /// Events that change what the timeline shows.
-    static let assetEvents: Set<String> = [
+    static let assetEvents: Set<String> = Set([
         "on_upload_success", "on_asset_delete", "on_asset_trash",
         "on_asset_update", "on_asset_hidden", "on_asset_restore",
         "on_asset_stack_update",
-    ]
+    ]).union(editReadyEvents)
     static let listenedEvents: [String] = assetEvents.union([personThumbnailEvent]).sorted()
     static let eventsKey = "events"
 
     /// False for a burst made only of `on_person_thumbnail`: the timeline has
     /// nothing to re-read, the other screens still reload.
     var touchesAssets: Bool { !events.isDisjoint(with: Self.assetEvents) }
+
+    /// The burst carries a thumbnail regeneration: the open viewer re-reads its photo.
+    var touchesEditedAssets: Bool { !events.isDisjoint(with: Self.editReadyEvents) }
 
     init(events: Set<String>) {
         self.events = events

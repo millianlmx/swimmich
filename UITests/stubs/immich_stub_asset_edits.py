@@ -33,15 +33,28 @@ THE EDIT LIST, replaying `asset.service.ts` `editAsset` of Immich v3.4.0
   (`filename`). A scenario that must prove "no copy" asserts there is no entry.
 
 CONTROL ROUTE (under `/api/`: the base answers every `/__…` path itself)
-* `GET /api/__edits/config?version=3.4.0|2.0.0&put=200|500&live=<id>` sets what
-  is given; `seed=<id>&edits=<json>` stores the list of an asset (`edits` is the
+* `GET /api/__edits/config?version=3.4.0|2.0.0&put=200|500&regen=<seconds>&live=<id>` sets
+  what is given; `seed=<id>&edits=<json>` stores the list of an asset (`edits` is the
   JSON array of `{action, parameters}`). Unknown parameters are ignored. The
   state is wiped by `/__reset`.
+
+EDITED IMAGES AND THUMBHASH GENERATIONS (display and download scenarios)
+* `GET /api/assets/<id>/thumbnail` and `/original` serve, for `edited=true` and a
+  non-empty list, an edited image (other colour AND other size); otherwise the
+  image as uploaded. The journal notes `sha` (a fingerprint of what was served).
+* Each `PUT` or `DELETE /edits` is a new generation of the asset. Its thumbhash
+  (`GET /api/assets/<id>`, `GET /api/timeline/bucket`) is `<base>-e<n>` and its
+  edited image is served only `regen` seconds later (default 0): until then the
+  old thumbhash and the old image, as a v3.4.0 server before its regeneration job
+  ends. The `AssetEditReadyV2` websocket event is not emitted: the app also
+  polls the record for as long as the official client waits for the event.
 """
+import hashlib
 import json
 import re
+import time
 
-from immich_stub_base import STATE, Response, asset, main, router
+from immich_stub_base import STATE, TIMELINE_ASSETS, Response, asset, bucket_payload, main, png, router
 
 WIDTH, HEIGHT = 4000, 3000
 VERSIONS = {"3.4.0": (3, 4, 0), "2.0.0": (2, 0, 0)}
@@ -50,7 +63,7 @@ NEW_ASSET = "new-asset"
 
 @router.reset
 def fresh():
-    STATE["edits"] = {"version": "3.4.0", "put": 200, "lists": {}, "live": set()}
+    STATE["edits"] = {"version": "3.4.0", "put": 200, "lists": {}, "live": set(), "regen": 0.0, "changes": {}}
 
 
 fresh()  # a request before the first `/__reset` must not find an empty STATE
@@ -58,6 +71,34 @@ fresh()  # a request before the first `/__reset` must not find an empty STATE
 
 def serves_edits():
     return STATE["edits"]["version"] != "2.0.0"
+
+
+def bump(aid):
+    """The edits of `aid` changed: a new generation, which the server takes `regen` seconds to render."""
+    generation = STATE["edits"]["changes"].get(aid, (0, 0))[1]
+    STATE["edits"]["changes"][aid] = (time.time(), generation + 1)
+
+
+def regenerated(aid):
+    """The server has finished the `AssetEditThumbnailGeneration` job of the last change of `aid`."""
+    change = STATE["edits"]["changes"].get(aid)
+    return change is None or time.time() - change[0] >= STATE["edits"]["regen"]
+
+
+def edited_ready(aid):
+    """`edited=true` serves the edited image: the list is not empty and its generation is rendered."""
+    return bool(STATE["edits"]["lists"].get(aid)) and regenerated(aid)
+
+
+def thumbhash_of(aid):
+    """The thumbhash advertised for `aid`: the base's, then `<base>-e<n>` for the n-th change, each one
+    only once its thumbnails are regenerated (until then the previous one, as v3.4.0 does)."""
+    base = STATE["thumbhash"]
+    change = STATE["edits"]["changes"].get(aid)
+    if change is None:
+        return base
+    generation = change[1] if regenerated(aid) else change[1] - 1
+    return base if generation == 0 else f"{base}-e{generation}"
 
 
 def not_found(path):
@@ -108,14 +149,25 @@ def server_version(req):
     return Response({"major": major, "minor": minor, "patch": patch, "prerelease": None})
 
 
+@router.get("/api/timeline/bucket")
+def timeline_bucket(req):
+    """The base's day, each photo advertising the thumbhash its edits generation has reached."""
+    payload = bucket_payload(TIMELINE_ASSETS)
+    payload["thumbhash"] = [thumbhash_of(aid) for aid in TIMELINE_ASSETS]
+    return Response(payload)
+
+
 @router.prefix("GET", "/api/assets/")
 def get_asset_or_edits(req):
     aid, _, tail = req.rest.partition("/")
     if tail == "edits":
         return edits_payload_response(req, aid)
+    if tail in ("thumbnail", "original"):
+        return image(req, aid, tail)
     if tail:
-        return None  # thumbnail, original… the base serves them
+        return None  # video playback… the base serves it
     detail = asset(aid)
+    detail["thumbhash"] = thumbhash_of(aid)
     if serves_edits():
         detail["isEdited"] = bool(STATE["edits"]["lists"].get(aid))
     else:
@@ -123,6 +175,21 @@ def get_asset_or_edits(req):
     if aid in STATE["edits"]["live"]:
         detail["livePhotoVideoId"] = f"live-{aid}"
     return Response(detail)
+
+
+def image(req, aid, kind):
+    """`/thumbnail` and `/original`: the edited rendering for `edited=true` once the server has regenerated
+    it, the file as uploaded otherwise. The two differ in colour AND size, so their bytes always differ.
+    The journal notes a fingerprint of what was served (`sha`)."""
+    shown_edited = req.params.get("edited") == "true" and edited_ready(aid)
+    if kind == "original":
+        data = png(aid + "-edited", size=96) if shown_edited else png(aid, size=64)
+        ctype = "application/octet-stream"
+    else:
+        data = png(aid + "-edited", size=12) if shown_edited else png(aid)
+        ctype = "image/png"
+    req.note(sha=hashlib.sha1(data).hexdigest(), edited_served=shown_edited)
+    return Response(data, ctype=ctype, headers={"Cache-Control": "no-store"})
 
 
 def edits_payload_response(req, aid):
@@ -151,6 +218,7 @@ def put_edits(req):
         {"id": f"edit-{n}", "action": item["action"], "parameters": item["parameters"]}
         for n, item in enumerate(edits, start=1)
     ]
+    bump(aid)
     return Response(edits_payload(aid))
 
 
@@ -162,6 +230,7 @@ def delete_edits(req):
     if not serves_edits():
         return not_found(f"DELETE {req.path}")
     STATE["edits"]["lists"].pop(aid, None)
+    bump(aid)
     return Response(b"", status=204, ctype="application/octet-stream")
 
 
@@ -187,6 +256,8 @@ def config(req):
         state["version"] = params["version"]
     if params.get("put") in ("200", "500"):
         state["put"] = int(params["put"])
+    if params.get("regen"):
+        state["regen"] = float(params["regen"])
     if params.get("live"):
         state["live"].add(params["live"])
     if params.get("seed") and params.get("edits"):
@@ -195,7 +266,7 @@ def config(req):
             {"id": f"edit-{n}", "action": item["action"], "parameters": item["parameters"]}
             for n, item in enumerate(listed, start=1)
         ]
-    return Response({"version": state["version"], "put": state["put"],
+    return Response({"version": state["version"], "put": state["put"], "regen": state["regen"],
                      "live": sorted(state["live"]), "seeded": sorted(state["lists"])})
 
 

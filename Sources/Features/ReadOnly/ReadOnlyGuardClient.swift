@@ -740,8 +740,8 @@ final class ReadOnlyGuardClient: ImmichClient {
         try await inner.downloadInfo(assetIds: assetIds, albumId: albumId)
     }
 
-    func originalRequest(assetId: String) throws -> URLRequest {
-        try inner.originalRequest(assetId: assetId)
+    func originalRequest(assetId: String, edited: Bool) throws -> URLRequest {
+        try inner.originalRequest(assetId: assetId, edited: edited)
     }
 
     func downloadArchiveRequest(archiveName: String, assetIds: [String], edited: Bool) throws -> URLRequest {

@@ -443,12 +443,14 @@ protocol ImmichClient: AnyObject, Sendable {
     /// this call is mandatory for anything but a single asset.
     func downloadInfo(assetIds: [String], albumId: String?) async throws -> DownloadInfoResponse
 
-    /// `GET /api/assets/{id}/original` as a `URLRequest`, bearer included.
+    /// `GET /api/assets/{id}/original?edited=…` as a `URLRequest`, bearer included. `edited` is sent
+    /// explicitly (L-21): `false` is the file as uploaded, `true` the server's edited rendering — the
+    /// original for a photo without edits.
     ///
     /// The client stops at the request on purpose: the body is streamed to
     /// disk by `FileDownloadTransport`, and a `Data`-returning method here
     /// would hold a multi-gigabyte original in memory.
-    func originalRequest(assetId: String) throws -> URLRequest
+    func originalRequest(assetId: String, edited: Bool) throws -> URLRequest
 
     /// `POST /api/download/archive` as a `URLRequest` — the ZIP of one archive
     /// `downloadInfo` returned. Same split: request here, streaming there.

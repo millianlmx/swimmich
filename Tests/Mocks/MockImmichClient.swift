@@ -1771,6 +1771,8 @@ final class MockImmichClient: ImmichClient, @unchecked Sendable {
     private(set) var lastDownloadInfoAlbumId: String?
     var originalRequestError: Error?
     private(set) var lastOriginalRequestAssetId: String?
+    /// The `edited` flag of every `originalRequest`, in call order.
+    private(set) var originalRequestEditedLog: [Bool] = []
     var downloadArchiveRequestError: Error?
     private(set) var lastArchiveName: String?
     private(set) var lastArchiveAssetIds: [String]?
@@ -1789,11 +1791,12 @@ final class MockImmichClient: ImmichClient, @unchecked Sendable {
         return downloadInfoResponse
     }
 
-    func originalRequest(assetId: String) throws -> URLRequest {
+    func originalRequest(assetId: String, edited: Bool) throws -> URLRequest {
         downloadCallOrder.append("original")
         lastOriginalRequestAssetId = assetId
+        originalRequestEditedLog.append(edited)
         if let e = originalRequestError { throw e }
-        return URLRequest(url: URL(string: "https://example.com/api/assets/\(assetId)/original")!)
+        return URLRequest(url: URL(string: "https://example.com/api/assets/\(assetId)/original?edited=\(edited)")!)
     }
 
     func downloadArchiveRequest(archiveName: String, assetIds: [String], edited: Bool) throws -> URLRequest {

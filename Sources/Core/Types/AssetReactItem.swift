@@ -139,13 +139,18 @@ struct AssetReactItem: Identifiable, Equatable, Hashable, Sendable {
     /// `sharedLink` (issue #22) scopes the URL to a public link: the credential
     /// travels in the query instead of a bearer header, so a visitor's grid can
     /// load the same thumbnails the owner sees.
-    func thumbnailURL(base: URL, size: AssetMediaSize = .thumbnail, sharedLink: SharedLinkCredential? = nil) -> URL {
+    ///
+    /// `edited` (L-21) is `true` for every display; only the share sheet, which shares the photo as
+    /// uploaded, passes `false`.
+    func thumbnailURL(base: URL, size: AssetMediaSize = .thumbnail, sharedLink: SharedLinkCredential? = nil,
+                      edited: Bool = true) -> URL {
         ImmichAssetURL.thumbnail(
             assetId: id,
             thumbhash: thumbhash ?? "",
             baseURL: base,
             size: size,
-            sharedLink: sharedLink
+            sharedLink: sharedLink,
+            edited: edited
         )
     }
 
@@ -205,6 +210,35 @@ struct AssetReactItem: Identifiable, Equatable, Hashable, Sendable {
             longitude: longitude,
             stack: stack,
             pixelSize: pixelSize
+        )
+    }
+
+    /// Copy once the server has regenerated the thumbnails of an edited (or no longer edited) photo
+    /// (L-21): the new thumbhash changes the thumbnail URL (`c`), which is what makes every cache
+    /// and screen load the new image. The pixel size, read from the original's EXIF, no longer
+    /// describes what is displayed; the grid's ratio is the timeline's to correct when it re-reads.
+    func refreshed(from dto: AssetResponseDto) -> AssetReactItem {
+        AssetReactItem(
+            id: id,
+            ownerId: ownerId,
+            ratio: ratio,
+            isFavorite: isFavorite,
+            visibility: visibility,
+            isTrashed: isTrashed,
+            isImage: isImage,
+            thumbhash: dto.thumbhash,
+            createdAt: createdAt,
+            fileCreatedAt: fileCreatedAt,
+            localOffsetHours: localOffsetHours,
+            duration: duration,
+            livePhotoVideoId: livePhotoVideoId,
+            projectionType: projectionType,
+            city: city,
+            country: country,
+            latitude: latitude,
+            longitude: longitude,
+            stack: stack,
+            pixelSize: nil
         )
     }
 }

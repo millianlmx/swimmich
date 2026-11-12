@@ -230,7 +230,7 @@ final class ImmichAPIClientTests: XCTestCase {
         )
         XCTAssertEqual(
             url.absoluteString,
-            "https://photos.example.com/api/assets/abc123/thumbnail?size=thumbnail&c=xyz"
+            "https://photos.example.com/api/assets/abc123/thumbnail?size=thumbnail&c=xyz&edited=true"
         )
     }
 
@@ -1059,6 +1059,19 @@ final class ImmichAPIClientTests: XCTestCase {
         ]
         XCTAssertEqual(body["edits"] as? NSArray, expected as NSArray, "the array order is significant")
         XCTAssertEqual(response, AssetEditsResponseDto(assetId: "a1", edits: [.mirror(.vertical)]))
+    }
+
+    /// AC-40: the single-file download asks `edited` explicitly, for the original and for the edited file.
+    func test_AC_40_originalRequestCarriesEditedExplicitly() throws {
+        let client = makeEditsClient()
+        for edited in [true, false] {
+            let request = try client.originalRequest(assetId: "a1", edited: edited)
+            XCTAssertEqual(request.httpMethod, "GET")
+            XCTAssertEqual(request.url?.path, "/api/assets/a1/original")
+            let query = URLComponents(url: try XCTUnwrap(request.url), resolvingAgainstBaseURL: false)?.queryItems
+            XCTAssertEqual(query?.first(where: { $0.name == "edited" })?.value, edited ? "true" : "false")
+            XCTAssertNotNil(request.value(forHTTPHeaderField: "Authorization"), "the bearer stays on the request")
+        }
     }
 
     func test_AC_182_getAndDeleteAssetEditsRoutes() async throws {
@@ -1942,7 +1955,7 @@ final class ImmichAPIClientTests: XCTestCase {
         _ = try await client.validateToken()
         assertCarries("validateToken", authenticated: true)
 
-        let original = try client.originalRequest(assetId: "a1")
+        let original = try client.originalRequest(assetId: "a1", edited: false)
         XCTAssertEqual(original.value(forHTTPHeaderField: "X-Access"), "secret")
         XCTAssertEqual(original.value(forHTTPHeaderField: "Authorization"), "Bearer tok")
 
@@ -2026,7 +2039,7 @@ final class ImmichAPIClientTests: XCTestCase {
         XCTAssertEqual(request.value(forHTTPHeaderField: "x-immich-user-token"), "tok")
         XCTAssertEqual(request.allHTTPHeaderFields?.values.filter { $0.contains("Bearer") }.count, 0)
 
-        let original = try client.originalRequest(assetId: "a1")
+        let original = try client.originalRequest(assetId: "a1", edited: false)
         XCTAssertEqual(original.value(forHTTPHeaderField: "Authorization"), "Basic dXNlcjpwYXNz")
         XCTAssertEqual(original.value(forHTTPHeaderField: "x-immich-user-token"), "tok")
 

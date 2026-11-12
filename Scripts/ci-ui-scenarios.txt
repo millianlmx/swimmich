@@ -23,9 +23,11 @@ immich_stub_dynamic_type.py DynamicTypeUITests/test_AC_26_4_appLock
 immich_stub_dynamic_type.py DynamicTypeUITests/test_AC_26_4_shareExtension --content-size accessibility-extra-extra-extra-large --media Summer-holidays-in-the-Gorges-du-Verdon-with-the-whole-family.png
 immich_stub_dynamic_type.py DynamicTypeUITests/test_AC_26_5
 
-# L-21 server-side edits, editor part (AC-181, AC-182, AC-188, AC-189), with the
-# editor's server mode switched on by `-assetEditsServerSave YES`.
+# L-21 server-side edits (AC-39, AC-40, AC-181, AC-182, AC-188, AC-189): the editor, the edited
+# version shown by the viewer, and the choice of the file to download.
 immich_stub_asset_edits.py AssetEditsUITests/test_AC_182_reopenChangeRotationThenRevert
 immich_stub_asset_edits.py AssetEditsUITests/test_AC_181_cropRotateMirrorSavesEdits
 immich_stub_asset_edits.py AssetEditsUITests/test_AC_188_oldServerSavesCopy
 immich_stub_asset_edits.py AssetEditsUITests/test_AC_189_putErrorShowsMessage
+immich_stub_asset_edits.py AssetEditsUITests/test_AC_39_editedVersionShownThenTheOriginalComesBack
+immich_stub_asset_edits.py AssetEditsUITests/test_AC_40_downloadEditedThenOriginalAsksTwiceWithDifferentFiles

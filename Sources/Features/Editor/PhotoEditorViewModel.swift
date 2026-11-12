@@ -84,7 +84,6 @@ final class PhotoEditorViewModel {
     private(set) var isContextLoaded = false
     /// The server record read by `loadState()`, source of the EXIF size and orientation of the edits.
     @ObservationIgnored private var assetRecord: AssetResponseDto?
-    private let serverEditsEnabled: Bool
 
     /// Test-visible counter of render passes. AC-605 verifies mutation → render.
     @ObservationIgnored private(set) var renderCounter: Int = 0
@@ -159,8 +158,7 @@ final class PhotoEditorViewModel {
          store: EditStateStore = EditStateStore(),
          urlSession: @escaping @Sendable () -> URLSession,
          customHeaders: any CustomHeadersProviding = CustomHeadersRegistry.shared,
-         exportDirectory: URL = FileManager.default.temporaryDirectory.appendingPathComponent("immich-editor", isDirectory: true),
-         serverEditsEnabled: Bool = AssetEditsSupport.isEditorServerSaveEnabled) {
+         exportDirectory: URL = FileManager.default.temporaryDirectory.appendingPathComponent("immich-editor", isDirectory: true)) {
         self.assetId = assetId
         self.client = client
         self.appLog = appLog
@@ -169,7 +167,6 @@ final class PhotoEditorViewModel {
         self.urlSession = urlSession
         self.customHeaders = customHeaders
         self.exportDirectory = exportDirectory
-        self.serverEditsEnabled = serverEditsEnabled
     }
 
     // MARK: Loading (AC-604, AC-617)
@@ -583,19 +580,15 @@ final class PhotoEditorViewModel {
         }
     }
 
-    /// Reads the draft and, when server edits are on, the server's version, record and edit list; then
-    /// opens on the draft, else on the server's edits. AC-616.
+    /// Reads the draft, the server's version, record and edit list; then opens on the draft, else on
+    /// the server's edits. AC-616.
     func loadState() async {
         let draft = await store.load(assetId: assetId)
-        var capability = EditsCapability.unsupported
-        if serverEditsEnabled {
-            async let version = try? client.serverVersion()
-            async let record = try? client.getAsset(id: assetId)
-            let (readVersion, readRecord) = await (version, record)
-            assetRecord = readRecord
-            capability = await readCapability(version: readVersion, record: readRecord)
-        }
-        editsCapability = capability
+        async let version = try? client.serverVersion()
+        async let record = try? client.getAsset(id: assetId)
+        let (readVersion, readRecord) = await (version, record)
+        assetRecord = readRecord
+        editsCapability = await readCapability(version: readVersion, record: readRecord)
         let opening = draft ?? baselineState
         if opening != editState { editState = opening }
         draftSettled = true

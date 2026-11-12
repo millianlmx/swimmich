@@ -102,8 +102,51 @@ enum AssetEditsSupport {
         return version?.isAtLeast(major: minimum.major, minor: minimum.minor, patch: minimum.patch) == true
     }
 
-    /// Temporary switch (`-assetEditsServerSave YES`): the editor saves server-side edits only
-    /// when on. Off in production until the display of edited photos ships.
-    static let serverSaveDefaultsKey = "assetEditsServerSave"
-    static let isEditorServerSaveEnabled = UserDefaults.standard.bool(forKey: serverSaveDefaultsKey)
+    /// `DownloadArchiveDto.edited` exists from v2.6.0 (an older server ignores it).
+    static let minimumArchiveServerVersion = (major: 2, minor: 6, patch: 0)
+
+    /// A server that serves `/edits` and takes `edited` in the archive request: a selection of
+    /// photos, whose items do not say whether one is edited, then offers "edited or original".
+    /// False for an unreadable version.
+    static func acceptsEditedArchive(_ version: ServerVersionResponseDto?) -> Bool {
+        let minimum = minimumArchiveServerVersion
+        return isSupported(version)
+            && version?.isAtLeast(major: minimum.major, minor: minimum.minor, patch: minimum.patch) == true
+    }
+
+    /// The viewer's rule for offering "edited version or original": the photo's own record
+    /// (`GET /api/assets/{id}`, `isEdited`) says it is edited. An unreadable record, or a server
+    /// older than v2.5.0 that sends no `isEdited`, offers nothing and the original goes without a question.
+    static func isEditedOnServer(assetId: String, client: any ImmichClient) async -> Bool {
+        (try? await client.getAsset(id: assetId))?.isEdited == true
+    }
+}
+
+/// Waits for the server to regenerate the thumbnails of a photo whose edits just changed (L-21).
+/// The job (`AssetEditThumbnailGeneration`) runs after the `PUT` or `DELETE` answered; until it ends,
+/// `edited=true` still serves the old image under the old thumbhash. The official client waits for
+/// the `AssetEditReadyV1`/`V2` event for up to 10 s; this reads the record each second for as long,
+/// which also covers a server whose socket is not reachable.
+enum EditedAssetRefresh {
+    static let defaultAttempts = 10
+    static let defaultInterval: Duration = .seconds(1)
+
+    /// The record with a thumbhash different from `previousThumbhash`, or nil when it never changed
+    /// within `attempts` reads (an edit that leaves the thumbnail alone) or the task was cancelled.
+    static func awaitRegeneration(
+        assetId: String,
+        previousThumbhash: String?,
+        client: any ImmichClient,
+        attempts: Int = defaultAttempts,
+        interval: Duration = defaultInterval
+    ) async -> AssetResponseDto? {
+        for attempt in 0..<attempts {
+            if attempt > 0 { try? await Task.sleep(for: interval) }
+            if Task.isCancelled { return nil }
+            if let record = try? await client.getAsset(id: assetId), record.thumbhash != previousThumbhash {
+                return record
+            }
+        }
+        return nil
+    }
 }

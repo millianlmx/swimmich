@@ -1,12 +1,11 @@
 import XCTest
 
-/// End-to-end scenarios for the editor's server-side edits (lot L-21, editor part): crop, quarter turn
-/// and mirror are saved as non-destructive edits (`PUT /api/assets/{id}/edits`) with no copy, removed with
-/// `DELETE`, and an old server keeps the copy.
+/// End-to-end scenarios for server-side edits (lot L-21): crop, quarter turn and mirror are saved as
+/// non-destructive edits (`PUT /api/assets/{id}/edits`) with no copy, shown by the viewer, removed with
+/// `DELETE`, downloaded as the edited version or the original, and an old server keeps the copy.
 ///
-/// It drives the real app against `immich_stub_asset_edits.py`, launched with `-assetEditsServerSave YES`
-/// (the server mode is off in production until the display of edited photos ships) and
-/// `-uiTestImageProbe YES` (the save-mode line and the viewer's banner expose their value). It asserts on
+/// It drives the real app against `immich_stub_asset_edits.py`, launched with `-uiTestImageProbe YES`
+/// (the save-mode line and the viewer's banner expose their value). It asserts on
 /// the WIRE: a screen that said "saved" could still have uploaded a copy. Targets identifiers and the
 /// stub's data, never a localized label.
 ///
@@ -195,6 +194,21 @@ final class AssetEditsUITests: XCTestCase {
 
     private func uploads() -> [[String: Any]] { entries("POST") { $0 == "/api/assets" } }
 
+    private func param(_ entry: [String: Any], _ key: String) -> String? {
+        (entry["params"] as? [String: Any])?[key] as? String
+    }
+
+    /// Every thumbnail request of the photo, optionally those whose thumbhash (`c`) ends with `generation`
+    /// and whose `size` is `size`.
+    private func thumbnails(generation: String? = nil, size: String? = nil) -> [[String: Any]] {
+        entries("GET") { $0 == "/api/assets/\(self.photo)/thumbnail" }.filter { entry in
+            (generation.map { self.param(entry, "c")?.hasSuffix($0) == true } ?? true)
+                && (size.map { self.param(entry, "size") == $0 } ?? true)
+        }
+    }
+
+    private func originals() -> [[String: Any]] { entries("GET") { $0 == "/api/assets/\(self.photo)/original" } }
+
     private func describe() -> String {
         journal().map { "\($0["method"] ?? "") \($0["path"] ?? "") \($0["params"] ?? "") \($0["body"] ?? "")" }
             .joined(separator: "\n")
@@ -215,14 +229,14 @@ final class AssetEditsUITests: XCTestCase {
 
     // MARK: - Navigation
 
-    /// Reset, arm the stub with `config` (a query string for `/api/__edits/config`), launch with both
-    /// switches on, sign in if the device is fresh, and wait for the first tile.
+    /// Reset, arm the stub with `config` (a query string for `/api/__edits/config`), launch with the
+    /// image probe on, sign in if the device is fresh, and wait for the first tile.
     private func launchSignedIn(config: String = "") {
         reset()
         setProvider("manual")
         if !config.isEmpty { get("/api/__edits/config?\(config)") }
         app.launchArguments = ["-AppleLanguages", "(en)", "-AppleLocale", "en_US",
-                               "-uiTestImageProbe", "YES", "-assetEditsServerSave", "YES"]
+                               "-uiTestImageProbe", "YES"]
         app.launch()
         if waitForStaticText(["Your photo library", "Votre photothèque"], timeout: 30) {
             walkOnboardingToLogin()
@@ -257,6 +271,15 @@ final class AssetEditsUITests: XCTestCase {
     }
 
     private func saveMode() -> String? { element("editorSaveModeLabel").value as? String }
+
+    /// The viewer is still open behind the closed editor: its edit button opens the editor again.
+    private func reopenEditorFromViewer() {
+        let edit = element("viewerEditButton")
+        XCTAssertTrue(edit.waitForExistence(timeout: 20), "the viewer has no edit button — \(screenText())")
+        edit.tap()
+        XCTAssertTrue(element("editorSaveModeLabel").waitForExistence(timeout: 20),
+                      "the editor never loaded the photo's context — \(screenText())")
+    }
 
     private func save() {
         let button = element("editorSaveButton")
@@ -313,7 +336,7 @@ final class AssetEditsUITests: XCTestCase {
         XCTAssertEqual(editsBody(of: editsEntries("PUT")[0]), expected as NSArray, "the whole list is replaced")
         XCTAssertTrue(waitUntil(15) { !self.element("editorSaveButton").exists }, "the editor stayed open")
 
-        openEditor()
+        reopenEditorFromViewer()
         tapEditor("revertToOriginalButton")
         save()
         XCTAssertTrue(waitUntil(20) { !self.editsEntries("DELETE").isEmpty }, "no DELETE — \(describe())")
@@ -355,5 +378,71 @@ final class AssetEditsUITests: XCTestCase {
         XCTAssertTrue(element("editorSaveButton").exists, "the editor must stay open")
         XCTAssertFalse(editsEntries("PUT").isEmpty)
         XCTAssertTrue(uploads().isEmpty, "never a silent copy — \(describe())")
+    }
+
+    // MARK: - AC-39
+
+    /// The edited version reaches the viewer's requests once the server has regenerated it, with
+    /// `edited=true` on every thumbnail, and the original comes back after the removal.
+    func test_AC_39_editedVersionShownThenTheOriginalComesBack() {
+        launchSignedIn()
+        openEditor()
+        tapEditor("ratioButton.fourByThree")
+        tapEditor("rotate90CWButton")
+        tapEditor("mirrorHorizontalButton")
+        save()
+
+        XCTAssertTrue(waitUntil(20) { !self.editsEntries("PUT").isEmpty }, "no PUT /edits — \(describe())")
+        XCTAssertTrue(uploads().isEmpty, "no new asset: the edits are saved on the photo — \(describe())")
+        XCTAssertTrue(waitUntil(15) { !self.thumbnails(generation: "-e1", size: "preview").isEmpty },
+                      "the viewer never asked for the regenerated preview — \(describe())")
+        for entry in thumbnails() {
+            XCTAssertEqual(param(entry, "edited"), "true", "every thumbnail asks the edited rendering — \(describe())")
+        }
+
+        reopenEditorFromViewer()
+        tapEditor("revertToOriginalButton")
+        save()
+        XCTAssertTrue(waitUntil(20) { !self.editsEntries("DELETE").isEmpty }, "no DELETE — \(describe())")
+        XCTAssertTrue(waitUntil(15) { !self.thumbnails(generation: "-e2", size: "preview").isEmpty },
+                      "the original never came back to the viewer — \(describe())")
+    }
+
+    // MARK: - AC-40
+
+    /// A photo edited on the server is downloaded as the edited version, then as the original: the two
+    /// requests carry `edited=true` then `edited=false`, and the stub served two different files.
+    func test_AC_40_downloadEditedThenOriginalAsksTwiceWithDifferentFiles() throws {
+        let seeded = [crop(0, 375, 4000, 2250), rotate(90)]
+        let json = String(decoding: try JSONSerialization.data(withJSONObject: seeded), as: UTF8.self)
+        let encoded = try XCTUnwrap(json.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed))
+        launchSignedIn(config: "seed=\(photo)&edits=\(encoded)")
+
+        tile(photo).tap()
+        let share = element("viewerShareButton")
+        XCTAssertTrue(share.waitForExistence(timeout: 20), "the viewer has no share button — \(screenText())")
+        share.tap()
+
+        downloadToFiles(choosing: "downloadChoiceEdited")
+        XCTAssertTrue(waitUntil(20) { self.originals().count >= 1 }, "no edited download — \(describe())")
+        downloadToFiles(choosing: "downloadChoiceOriginal")
+        XCTAssertTrue(waitUntil(20) { self.originals().count >= 2 }, "no original download — \(describe())")
+
+        let asked = originals().map { self.param($0, "edited") }
+        XCTAssertEqual(asked, ["true", "false"], "\(describe())")
+        let files = originals().map { $0["sha"] as? String }
+        XCTAssertNotNil(files[0])
+        XCTAssertNotEqual(files[0], files[1], "the two files received must differ — \(describe())")
+    }
+
+    /// Taps "Download to Files", answers the question "which version?" with `choice`.
+    private func downloadToFiles(choosing choice: String) {
+        let button = element("downloadToFilesButton")
+        XCTAssertTrue(button.waitForExistence(timeout: 20), "no Download to Files — \(screenText())")
+        XCTAssertTrue(waitUntil(20) { button.isEnabled }, "Download to Files stayed disabled")
+        button.tap()
+        let answer = element(choice)
+        XCTAssertTrue(answer.waitForExistence(timeout: 20), "the question was never asked — \(screenText())")
+        answer.tap()
     }
 }
