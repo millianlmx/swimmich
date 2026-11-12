@@ -32,15 +32,12 @@ enum MemoryMomentPresentation {
 
     /// "Alice, Bob" from the people present; "1 person" / "N people" when the
     /// faces are unnamed; nil when nobody is tagged.
-    static func peopleLabel(for memory: MemoryResponseDto, locale: Locale = .current) -> String? {
+    static func peopleLabel(for memory: MemoryResponseDto, bundle: Bundle = .main, locale: Locale = .current) -> String? {
         let people = people(for: memory)
         guard !people.isEmpty else { return nil }
         let names = people.map(\.name).filter { !$0.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }
         if names.isEmpty {
-            if people.count == 1 {
-                return String(localized: "1 person", locale: locale)
-            }
-            return String(localized: "\(people.count) people", locale: locale)
+            return String(localized: "\(people.count) people", bundle: bundle, locale: locale)
         }
         return names.joined(separator: ", ")
     }

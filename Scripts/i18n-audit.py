@@ -6,13 +6,24 @@ extracting the strings of a *virgin* DerivedData build with
 `SWIFT_EMIT_LOC_STRINGS=YES` — the only source of truth (the catalog's own
 `extractionState` marks 461 live keys as `stale`, so it is not a signal).
 
-Three rules, each one printing the offending keys, one per line:
+Four rules, each one printing the offending keys, one per line:
 
   R1 dead keys        in the catalog, claimed by no build target
   R2 missing keys     claimed with words, absent from the catalog
   R3 untranslated     claimed, present, missing one of fr/de/es/it
+  R4 plural forms     a key that formats an integer counter (`%lld`, `%d`,
+                      `%2$lld`…) has plural forms in en/fr/de/es/it: one
+                      `variations.plural` with `one` and `other`, or, for a
+                      key with several counters, one plural substitution per
+                      counter. Closed exceptions: "N of M" reports,
+                      percentages and a named list of bare numbers
+                      (PLURAL_EXCEPTIONS); an exception that is not one of
+                      those three is itself refused.
 
-Exit codes: 0 = all three sets empty, 1 = at least one offending key,
+Options: `--catalog PATH` audits another catalog; `--plurals-only` runs only
+R4 — no build, no Xcode — and prints `plural violations: <n>`.
+
+Exit codes: 0 = all four sets empty, 1 = at least one offending key,
 2 = tooling (no valid DEVELOPER_DIR/xcodebuild, build failed, extraction
 incomplete, catalog unreadable).
 
@@ -76,6 +87,64 @@ _FORMAT_SPECIFIER = re.compile(r"%(\d+\$)?[@dfslu]|%lld|%@")
 
 def has_words(key: str) -> bool:
     return any(ch.isalpha() for ch in _FORMAT_SPECIFIER.sub("", key))
+
+
+# R4. A counter is an integer format specifier, optionally positional
+# (`%2$lld`). `%%` is a literal percent sign and is removed before matching.
+_COUNTER = re.compile(r"%(?:(\d+)\$)?(?:lld|ld|llu|lu|d|u|i)")
+_INTEGER_SPECIFIERS = frozenset({"lld", "ld", "llu", "lu", "d", "u", "i"})
+_SUBSTITUTION_REFERENCE = re.compile(r"%#@([A-Za-z_][A-Za-z0-9_]*)@")
+_RATIO = re.compile(r"%(?:\d+\$)?lld(?: of |/)%(?:\d+\$)?lld")
+
+PLURAL_LANGUAGES = ("en", "fr", "de", "es", "it")
+
+# The closed list of counted keys that take no plural (decision #7). Every
+# entry is re-checked against its category: a key that counts something nameable
+# ("Log out %lld devices") is refused, so the list cannot grow by accident.
+#   ratio   "N of M" / "N/M" reports
+#   percent percentages
+#   number  a number with no counted noun (NAMED_NUMBERS)
+NAMED_NUMBERS = frozenset(
+    {
+        "%lld",
+        "+%lld",
+        "Users (%lld)",
+        "Libraries (%lld)",
+        "Stop %lld",
+        "URLError %lld",
+        "iCloud not ready yet — retrying (%lld)…",
+        "%lldy",
+    }
+)
+PLURAL_EXCEPTIONS: dict[str, str] = {
+    **{
+        key: "ratio"
+        for key in (
+            "%lld of %lld",
+            "%lld of %lld downloads in progress",
+            "Cancelled — %lld of %lld done",
+            "Page %lld of %lld",
+            "Photo %lld of %lld",
+            "Slide %lld of %lld: %@",
+            "Swimmich backup, %lld of %lld, %@",
+            "Uploading %lld/%lld",
+        )
+    },
+    **{
+        key: "percent"
+        for key in (
+            "%lld percent",
+            "%lld%%",
+            "%lld percent of the offline storage budget used",
+            "Backing up — %lld percent",
+            "Backing up, %lld percent",
+            "Crop square, %lld percent of the image",
+            "Downloading from iCloud… %lld%%",
+            "Uploading %lld%%",
+        )
+    },
+    **{key: "number" for key in sorted(NAMED_NUMBERS)},
+}
 
 
 def fail(message: str) -> None:
@@ -207,14 +276,14 @@ def collect(
     return claimed, claimed_by, problems
 
 
-def load_catalog() -> dict[str, object]:
+def load_catalog(path: Path = CATALOG_PATH) -> dict[str, object]:
     try:
-        payload = json.loads(CATALOG_PATH.read_text(encoding="utf-8"))
+        payload = json.loads(path.read_text(encoding="utf-8"))
     except (OSError, json.JSONDecodeError) as error:
-        fail(f"cannot read {CATALOG_PATH}: {error}")
-    strings = payload.get("strings")
+        fail(f"cannot read {path}: {error}")
+    strings = payload.get("strings") if isinstance(payload, dict) else None
     if not isinstance(strings, dict):
-        fail(f"{CATALOG_PATH} has no `strings` object")
+        fail(f"{path} has no `strings` object")
     return strings
 
 
@@ -250,6 +319,108 @@ def untranslated_languages(entry: object) -> list[str]:
     return [language for language in SHIPPED_LANGUAGES if not is_translated(localizations.get(language))]
 
 
+def counters_of(key: str) -> list[int]:
+    """Positions (1-based) of the integer counters a key formats. `%%` is a
+    literal percent sign, not a counter; `%N$lld` names its own position."""
+    positions: list[int] = []
+    for rank, match in enumerate(_COUNTER.finditer(key.replace("%%", "")), start=1):
+        positions.append(int(match.group(1)) if match.group(1) else rank)
+    return positions
+
+
+def _form_violations(plural: dict, suffix: str) -> list[str]:
+    """`one` and `other` must exist; every form present must have a text."""
+    problems: list[str] = []
+    for form in ("one", "other"):
+        if form not in plural:
+            problems.append(f"missing form {form}{suffix}")
+    for form, unit in plural.items():
+        if form in plural and not has_text(unit):
+            problems.append(f"empty form {form}{suffix}")
+    return problems
+
+
+def _plural_of(holder: object) -> dict | None:
+    if not isinstance(holder, dict):
+        return None
+    variations = holder.get("variations")
+    plural = variations.get("plural") if isinstance(variations, dict) else None
+    return plural if isinstance(plural, dict) and plural else None
+
+
+def _language_violations(localization: object, counters: list[int]) -> list[str]:
+    """Plural problems of one language of one counted key."""
+    if not isinstance(localization, dict):
+        return ["no plural forms"]
+    substitutions = localization.get("substitutions")
+    substitutions = substitutions if isinstance(substitutions, dict) else {}
+    own_plural = _plural_of(localization)
+    plural_substitutions = {name: sub for name, sub in substitutions.items() if _plural_of(sub) is not None}
+    if own_plural is None and not plural_substitutions:
+        return ["no plural forms"]
+    if len(counters) == 1 and own_plural is not None:
+        return _form_violations(own_plural, "")
+
+    value = ""
+    string_unit = localization.get("stringUnit")
+    if isinstance(string_unit, dict) and isinstance(string_unit.get("value"), str):
+        value = string_unit["value"]
+    references = _SUBSTITUTION_REFERENCE.findall(value)
+
+    problems: list[str] = []
+    covered: set[str] = set()
+    for position in range(1, len(counters) + 1):
+        match = None
+        for name, sub in plural_substitutions.items():
+            arg_num = sub.get("argNum")
+            if arg_num is None and name in references:
+                arg_num = references.index(name) + 1
+            if arg_num == position and sub.get("formatSpecifier") in _INTEGER_SPECIFIERS:
+                match = name
+                break
+        if match is None:
+            problems.append(f"argument {position} has no plural substitution")
+            continue
+        covered.add(match)
+        problems.extend(_form_violations(_plural_of(plural_substitutions[match]), f" in substitution {match}"))
+    for name in sorted(covered):
+        if f"%#@{name}@" not in value:
+            problems.append(f"substitution {name} not referenced")
+    return problems
+
+
+def plural_violations(catalog: dict) -> list[str]:
+    """R4: every key that formats an integer counter has plural forms in all
+    five languages, unless it is one of the closed exceptions. No build."""
+    problems: list[str] = []
+    for key, entry in catalog.items():
+        counters = counters_of(key)
+        if not counters:
+            continue
+        category = PLURAL_EXCEPTIONS.get(key)
+        if category is not None:
+            accepted = {
+                "ratio": _RATIO.search(key) is not None,
+                "percent": "percent" in key or "%%" in key,
+                "number": key in NAMED_NUMBERS,
+            }.get(category, False)
+            if not accepted:
+                problems.append(f"{key}  exception refused: not a ratio, a percentage or a named number")
+            continue
+        localizations = entry.get("localizations") if isinstance(entry, dict) else None
+        localizations = localizations if isinstance(localizations, dict) else {}
+        for language in PLURAL_LANGUAGES:
+            for problem in _language_violations(localizations.get(language), counters):
+                problems.append(f"{key}  {language}: {problem}")
+    return sorted(problems)
+
+
+def print_plural_violations(violations: list[str]) -> None:
+    print(f"plural violations: {len(violations)}")
+    for line in violations:
+        print(f"  - {line}")
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     parser.add_argument(
@@ -259,9 +430,25 @@ def main() -> int:
         help=f"DerivedData for the audit build (deleted first). Default: {DEFAULT_DERIVED_DATA}",
     )
     parser.add_argument("--jobs", type=int, default=6, help="xcodebuild -jobs (default: 6)")
+    parser.add_argument(
+        "--catalog",
+        type=Path,
+        default=CATALOG_PATH,
+        help=f"String Catalog to audit. Default: {CATALOG_PATH}",
+    )
+    parser.add_argument(
+        "--plurals-only",
+        action="store_true",
+        help="run only R4 (plural forms) on the catalog: no build, no Xcode needed",
+    )
     arguments = parser.parse_args()
 
-    catalog = load_catalog()
+    catalog = load_catalog(arguments.catalog)
+    violations = plural_violations(catalog)
+    if arguments.plurals_only:
+        print_plural_violations(violations)
+        return 1 if violations else 0
+
     claimed, claimed_by, coverage = collect(extract(arguments.derived_data, arguments.jobs))
     if coverage:
         print("i18n-audit: extraction is not complete — no key verdict is rendered", file=sys.stderr)
@@ -287,8 +474,9 @@ def main() -> int:
     for key in untranslated:
         languages = ", ".join(untranslated_languages(catalog[key]))
         print(f"  - {key}  missing: {languages}")
+    print_plural_violations(violations)
 
-    return 1 if dead or missing or untranslated else 0
+    return 1 if dead or missing or untranslated or violations else 0
 
 
 if __name__ == "__main__":

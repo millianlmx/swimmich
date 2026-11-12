@@ -84,8 +84,17 @@ final class SharedLinkViewerViewModel {
     var title: String {
         if let album = link?.album { return album.albumName }
         if let description = link?.description, !description.isEmpty { return description }
-        let count = assets.count
-        return count == 1 ? "1 photo" : "\(count) photos"
+        return String(localized: "\(assets.count) photos")
+    }
+
+    /// Says which rights the link grants, because that is what decides the
+    /// actions on the screen (and what the server will refuse): the photo count,
+    /// the upload right, and "Downloads off" when the link forbids downloading.
+    var subtitle: String {
+        var parts = [String(localized: "\(assets.count) photos")]
+        parts.append(canUpload ? String(localized: "You can add photos") : String(localized: "Read only"))
+        if link?.allowDownload == false { parts.append(String(localized: "Downloads off")) }
+        return parts.joined(separator: " • ")
     }
 
     /// Live URL of what is open, for the ShareLink / pasteboard affordances.

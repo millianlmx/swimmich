@@ -342,7 +342,7 @@ struct TimelineView: View {
             columnCount = newValue
             gridScale = TimelineGridZoom.scale(forColumnCount: newValue, defaultColumns: newValue)
         }
-        .alert("Delete \(vm.ownerScopedSelection(currentUserId: auth.userId).ids.count) asset(s)?", isPresented: $pendingDeleteSelected) {
+        .alert("Delete \(vm.ownerScopedSelection(currentUserId: auth.userId).ids.count) assets?", isPresented: $pendingDeleteSelected) {
             Button("Delete", role: .destructive) {
                 Task {
                     await vm.deleteSelected(currentUserId: auth.userId)
@@ -353,7 +353,7 @@ struct TimelineView: View {
         } message: {
             let skipped = vm.ownerScopedSelection(currentUserId: auth.userId).skipped
             if skipped > 0 {
-                Text("\(skipped) photo(s) belong to a partner and will not be deleted. The others are removed from your library. Action cannot be undone.")
+                Text("\(skipped) photos belong to a partner and will not be deleted. The others are removed from your library. Action cannot be undone.")
             } else {
                 Text("This removes them from your library. Action cannot be undone.")
             }
@@ -375,7 +375,7 @@ struct TimelineView: View {
         )) {
             Button("OK", role: .cancel) {}
         } message: {
-            Text("\(vm.skippedPartnerCount ?? 0) photo(s) belong to a partner and were not changed.")
+            Text("\(vm.skippedPartnerCount ?? 0) photos belong to a partner and were not changed.")
         }
         // D5: single-asset context-menu delete confirmation.
         .alert("Delete this asset?", isPresented: Binding(

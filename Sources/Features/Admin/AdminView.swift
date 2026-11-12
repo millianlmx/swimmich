@@ -182,7 +182,7 @@ struct AdminView: View {
                             Text(Self.displayName(name))
                                 .font(.pvBody)
                                 .foregroundStyle(Color.textPrimaryPV)
-                            Text(jobSummary(job))
+                            Text(Self.jobSummary(job.jobCounts))
                                 .font(.pvCaption)
                                 .foregroundStyle(Color.textSecondaryPV)
                         }
@@ -299,9 +299,15 @@ struct AdminView: View {
 
     // MARK: - Helpers
 
-    private func jobSummary(_ job: QueueResponseLegacyDto) -> String {
-        let c = job.jobCounts
-        return "active \(c.active) · waiting \(c.waiting) · completed \(c.completed) · failed \(c.failed)"
+    /// "2 active · 0 waiting · 41 completed · 1 failed": each count is its own
+    /// catalog plural, so every language agrees each word with its number. Pure,
+    /// so each shipped language is testable.
+    static func jobSummary(_ c: QueueStatisticsDto, bundle: Bundle = .main, locale: Locale = .current) -> String {
+        String(
+            localized: "\(c.active) active · \(c.waiting) waiting · \(c.completed) completed · \(c.failed) failed",
+            bundle: bundle,
+            locale: locale
+        )
     }
 
     private static func displayName(_ raw: String) -> String {

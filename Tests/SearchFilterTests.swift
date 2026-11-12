@@ -356,6 +356,27 @@ final class SearchFilterTests: XCTestCase {
         }
     }
 
+    /// B-21: the "requires Immich X or later" notice reads the threshold the
+    /// guard uses — one constant, not a version written twice.
+    func test_AC_32_6_versionNoticeUsesTheGuardThreshold() async {
+        XCTAssertEqual(SearchViewModel.structuredSearchMinimumLabel, "3.2")
+        let minimum = SearchViewModel.structuredSearchMinimum
+        XCTAssertEqual([minimum.major, minimum.minor, minimum.patch], [3, 2, 0])
+
+        for (version, structured) in [
+            (ServerVersionResponseDto(major: 3, minor: 1, patch: 9, prerelease: nil), false),
+            (minimum, true),
+        ] {
+            let mock = makeMock()
+            mock.serverVersionResponse = version
+            let vm = SearchViewModel(client: mock)
+            vm.searchMode = .metadata
+            vm.filter.city = "Lyon"
+            await vm.applyFilters()
+            XCTAssertEqual(vm.supportsStructuredSearch, structured, "\(version.major).\(version.minor).\(version.patch)")
+        }
+    }
+
     /// A version that cannot be read leaves the generation unknown, and unknown
     /// means the flat route — the one no server rejects.
     func test_unreachableVersionEndpoint_keepsTheFlatRoute() async throws {

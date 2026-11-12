@@ -126,6 +126,21 @@ final class DeviceSessionsViewModelTests: XCTestCase {
         XCTAssertNil(vm.pendingRevocation)
     }
 
+    /// B-21: the bulk confirmation counts the other sessions in a plural entry.
+    @MainActor
+    func test_AC_32_2_revokeAllCopyFollowsTheCountOfOtherSessions() async {
+        for others in [1, 2] {
+            let mock = MockImmichClient()
+            mock.sessionsResponse =
+                [session(id: "phone", current: true)] + (0..<others).map { session(id: "other\($0)") }
+            let vm = DeviceSessionsViewModel(client: mock)
+            await vm.load()
+
+            XCTAssertEqual(vm.revokeAllPrompt, localizedString("Log out %lld other devices?", others))
+            XCTAssertEqual(vm.revokeAllButtonTitle, localizedString("Log out %lld devices", others))
+        }
+    }
+
     @MainActor
     func test_revokeAllOthers_deletesWithoutIdAndReloads() async {
         let mock = MockImmichClient()
