@@ -272,7 +272,7 @@ struct MemoryMomentView: View {
                         .foregroundStyle(.white)
                         .frame(width: 44, height: 44)
                         .contentShape(Rectangle())
-                        .glassEffect(.regular.tint(.black.opacity(0.6)), in: Circle())
+                        .pvFloating(.circle)
                 }
                 .buttonStyle(.plain)
                 .accessibilityLabel(String(localized: "Close memory"))
@@ -287,7 +287,7 @@ struct MemoryMomentView: View {
                     .lineLimit(1)
                     .padding(.horizontal, PVSpacing.s12)
                     .padding(.vertical, 6)
-                    .glassEffect(.regular.tint(.black.opacity(0.6)), in: Capsule())
+                    .pvFloating(.pill)
 
                 Spacer(minLength: PVSpacing.s8)
 
@@ -302,7 +302,7 @@ struct MemoryMomentView: View {
                         .foregroundStyle(.white)
                         .frame(width: 44, height: 44)
                         .contentShape(Rectangle())
-                        .glassEffect(.regular.tint(.black.opacity(0.6)), in: Circle())
+                        .pvFloating(.circle)
                 }
                 .buttonStyle(.plain)
                 .disabled(heroAsset == nil)
@@ -394,7 +394,7 @@ struct MemoryMomentView: View {
                 .foregroundStyle(.white)
                 .frame(width: 44, height: 44)
                 .contentShape(Rectangle())
-                .glassEffect(.regular.tint(.black.opacity(0.6)), in: Circle())
+                .pvFloating(.circle)
         }
         .buttonStyle(.plain)
         .accessibilityIdentifier(identifier)
@@ -490,7 +490,7 @@ struct MemoryMomentView: View {
             }
             .padding(.horizontal, PVSpacing.s8)
             .padding(.vertical, 6)
-            .glassEffect(.regular.tint(.black.opacity(0.6)), in: Capsule())
+            .pvFloating(.pill)
             .accessibilityLabel(MemoryMomentPresentation.peopleLabel(for: memory) ?? String(localized: "People"))
         }
     }
@@ -524,6 +524,6 @@ struct MemoryChip: View {
         .foregroundStyle(.white)
         .padding(.horizontal, PVSpacing.s8)
         .padding(.vertical, 6)
-        .glassEffect(.regular.tint(.black.opacity(0.6)), in: Capsule())
+        .pvFloating(.pill)
     }
 }

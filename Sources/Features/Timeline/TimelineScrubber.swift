@@ -165,7 +165,7 @@ struct TimelineScrubber: View {
                     .foregroundStyle(.white)
                     .padding(.horizontal, PVSpacing.s12)
                     .padding(.vertical, PVSpacing.s8)
-                    .glassEffect(.regular, in: Capsule())
+                    .pvFloating(.pill)
                     .allowsHitTesting(false)
                     .accessibilityIdentifier("timelineScrubberLabel")
                     .transition(.opacity)
@@ -185,7 +185,7 @@ struct TimelineScrubber: View {
             .font(.pvCaption.weight(.semibold))
             .foregroundStyle(.white)
             .frame(width: 28, height: Self.handleHeight)
-            .glassEffect(.regular, in: Capsule())
+            .pvFloating(.pill)
             .frame(width: 44, height: Self.handleHeight)
             .contentShape(Rectangle())
             .gesture(

@@ -363,7 +363,7 @@ private struct SharedLinkAssetPager: View {
                     .font(.system(size: 17, weight: .semibold))
                     .foregroundStyle(.white)
                     .frame(width: 44, height: 44)
-                    .background(.ultraThinMaterial, in: Circle())
+                    .pvFloating(.circle)
             }
             .accessibilityLabel("Close")
             .accessibilityIdentifier("closeSharedLinkPager")
@@ -376,7 +376,7 @@ private struct SharedLinkAssetPager: View {
                     .foregroundStyle(.white)
                     .padding(.horizontal, PVSpacing.s12)
                     .padding(.vertical, PVSpacing.s8)
-                    .background(.ultraThinMaterial, in: Capsule())
+                    .pvFloating(.pill)
                     .accessibilityIdentifier("sharedLinkPagerPosition")
             }
         }

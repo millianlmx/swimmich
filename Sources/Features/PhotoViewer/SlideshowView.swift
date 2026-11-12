@@ -193,7 +193,7 @@ struct SlideshowView: View {
                     .foregroundStyle(Color.white)
                     .padding(.horizontal, PVSpacing.s12)
                     .padding(.vertical, PVSpacing.s4)
-                    .glassEffect(.regular.tint(.black.opacity(0.6)), in: Capsule())
+                    .pvFloating(.pill)
                     .accessibilityLabel("Slide \(vm.currentIndex + 1) of \(vm.count): \(asset.hasPlayableMotion ? "Video" : "Photo")")
             }
 
@@ -209,7 +209,7 @@ struct SlideshowView: View {
                     .font(.pvHeadline)
                     .foregroundStyle(Color.white)
                     .frame(width: 40, height: 40)
-                    .glassEffect(.regular.tint(.black.opacity(0.6)), in: Circle())
+                    .pvFloating(.circle)
             }
             .buttonStyle(.plain)
             .accessibilityLabel("Close Slideshow")
@@ -278,7 +278,7 @@ struct SlideshowView: View {
                 .font(.pvTitle)
                 .foregroundStyle(Color.white)
                 .frame(width: 48, height: 48)
-                .glassEffect(.regular.tint(.black.opacity(0.6)), in: Circle())
+                .pvFloating(.circle)
         }
         .buttonStyle(.plain)
         .accessibilityLabel(vm.isPlaying ? "Pause" : "Play")
@@ -297,7 +297,7 @@ struct SlideshowView: View {
                 .font(.pvCaption.weight(.semibold))
                 .foregroundStyle(Color.white)
                 .frame(minWidth: 44, minHeight: 40)
-                .glassEffect(.regular.tint(.black.opacity(0.6)), in: Capsule())
+                .pvFloating(.pill)
         }
         .accessibilityLabel("Slideshow Speed")
     }
@@ -314,7 +314,7 @@ struct SlideshowView: View {
                 .font(.pvHeadline)
                 .foregroundStyle(Color.white)
                 .frame(width: 40, height: 40)
-                .glassEffect(.regular.tint(.black.opacity(0.6)), in: Circle())
+                .pvFloating(.circle)
         }
         .accessibilityLabel("Transition")
     }
@@ -325,7 +325,7 @@ struct SlideshowView: View {
                 .font(.pvHeadline)
                 .foregroundStyle(Color.white)
                 .frame(width: 40, height: 40)
-                .glassEffect(.regular.tint(.black.opacity(0.6)), in: Circle())
+                .pvFloating(.circle)
         }
         .buttonStyle(.plain)
         .accessibilityLabel(label)

@@ -219,7 +219,7 @@ struct RoadTripView: View {
                     .foregroundStyle(.white)
                     .padding(.horizontal, 14)
                     .padding(.vertical, 8)
-                    .glassEffect(.regular.tint(.black.opacity(0.35)), in: Capsule())
+                    .pvFloating(.pill)
             }
             GeometryReader { geo in
                 ZStack(alignment: .leading) {
@@ -265,7 +265,7 @@ struct RoadTripView: View {
                     .foregroundStyle(.white)
                     .frame(width: 44, height: 44)
                     .contentShape(Rectangle())
-                    .glassEffect(.regular.tint(.black.opacity(0.3)), in: Circle())
+                    .pvFloating(.circle)
             }
             .buttonStyle(.plain)
             .accessibilityLabel("Close")
@@ -277,7 +277,7 @@ struct RoadTripView: View {
                 .foregroundStyle(.white)
                 .padding(.horizontal, 12)
                 .padding(.vertical, 6)
-                .glassEffect(.regular.tint(.black.opacity(0.3)), in: Capsule())
+                .pvFloating(.pill)
 
             Spacer()
 
@@ -289,7 +289,7 @@ struct RoadTripView: View {
                     .foregroundStyle(.white)
                     .frame(width: 44, height: 44)
                     .contentShape(Rectangle())
-                    .glassEffect(.regular.tint(.black.opacity(0.3)), in: Circle())
+                    .pvFloating(.circle)
             }
             .buttonStyle(.plain)
             .disabled(vm.isExporting || vm.timeline == nil)
@@ -311,17 +311,17 @@ struct RoadTripView: View {
                     .frame(width: 220)
                 Button("Cancel") { vm.cancelExport() }
                     .font(.pvCaption)
-                    .foregroundStyle(.white.opacity(0.8))
+                    .foregroundStyle(PVFloating.secondaryContent)
             }
             .padding(24)
-            .background(.black.opacity(0.5), in: RoundedRectangle(cornerRadius: PVRadius.lg, style: .continuous))
+            .pvFloating(.bar)
             .padding(.bottom, 60)
         } else if vm.exportState == .saving {
             Label("Saving…", systemImage: "square.and.arrow.down")
                 .font(.pvSubhead)
                 .foregroundStyle(.white)
                 .padding(16)
-                .background(.black.opacity(0.5), in: Capsule())
+                .pvFloating(.bar)
                 .padding(.bottom, 60)
         }
     }

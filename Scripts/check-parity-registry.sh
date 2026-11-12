@@ -111,43 +111,34 @@ EXPECT_B=$(cat <<'EOF'
 Connexion|Parcours|B-13 B-14 B-32
 Connexion|Gestes et transitions|B-22
 Connexion|Haptique|B-32
-Connexion|Matériau|B-19
 Connexion|Accessibilité|B-17 B-22 B-32
 Timeline|Gestes et transitions|B-22
-Timeline|Matériau|B-19
 Timeline|Accessibilité|B-17 B-22
 Visionneuse et panneau d'infos|États|B-33
 Visionneuse et panneau d'infos|Gestes et transitions|B-22
 Visionneuse et panneau d'infos|Haptique|B-33
-Visionneuse et panneau d'infos|Matériau|B-19
 Visionneuse et panneau d'infos|Accessibilité|B-17 B-22
 Diaporama|Parcours|B-33
-Diaporama|Matériau|B-19
 Diaporama|Accessibilité|B-17
 Albums et détail d'album|États|B-20
-Albums et détail d'album|Matériau|B-19
 Albums et détail d'album|Accessibilité|B-17 B-22
 Recherche|États|B-20
 Recherche|Gestes et transitions|B-22
-Recherche|Matériau|B-19
 Recherche|Accessibilité|B-17 B-22
 Souvenirs|Parcours|B-34
 Souvenirs|États|B-20
 Souvenirs|Gestes et transitions|B-22
 Souvenirs|Haptique|B-34
-Souvenirs|Matériau|B-19
 Souvenirs|Accessibilité|B-17 B-22
 Carte|Parcours|B-29
 Carte|États|B-20
 Carte|Gestes et transitions|B-22 B-23
-Carte|Matériau|B-19
 Carte|Accessibilité|B-17 B-22 B-23
 Personnes|Gestes et transitions|B-22
 Personnes|Accessibilité|B-17 B-22
 Partage (liens et partenaires)|États|B-20
 Partage (liens et partenaires)|Gestes et transitions|B-22 B-36
 Partage (liens et partenaires)|Haptique|B-36
-Partage (liens et partenaires)|Matériau|B-19
 Partage (liens et partenaires)|Accessibilité|B-17 B-22
 Hub « Me »|Parcours|B-16
 Hub « Me »|Accessibilité|B-17
@@ -160,7 +151,7 @@ Sauvegarde|Haptique|B-36
 Sauvegarde|Accessibilité|B-17 B-22
 Verrouillage|États|B-20 B-36
 Verrouillage|Haptique|B-36
-Verrouillage|Accessibilité|B-17 B-19
+Verrouillage|Accessibilité|B-17
 EOF
 )
 

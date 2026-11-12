@@ -303,9 +303,7 @@ struct VideoPlayerView: View {
                 .font(.pvTitle)
                 .foregroundStyle(Color.white)
                 .frame(width: 52, height: 52)
-                .background(.ultraThinMaterial, in: Circle())
-                .overlay(Circle().stroke(.white.opacity(0.25), lineWidth: 0.5))
-                .shadow(color: .black.opacity(0.3), radius: 4)
+                .pvFloating(.circle)
         }
         .buttonStyle(.plain)
         .accessibilityLabel(vm.status == .playing ? "Pause" : "Play")
@@ -320,8 +318,7 @@ struct VideoPlayerView: View {
                 .font(.pvHeadline)
                 .foregroundStyle(Color.white)
                 .frame(width: 44, height: 44)
-                .background(.ultraThinMaterial, in: Circle())
-                .overlay(Circle().stroke(.white.opacity(0.25), lineWidth: 0.5))
+                .pvFloating(.circle)
         }
         .buttonStyle(.plain)
         .accessibilityLabel(label)
@@ -350,7 +347,7 @@ struct VideoPlayerView: View {
                     .foregroundStyle(Color.white)
                     .padding(.horizontal, PVSpacing.s16)
                     .padding(.vertical, PVSpacing.s8)
-                    .glassEffect(.regular.tint(.black.opacity(0.6)), in: Capsule())
+                    .pvFloating(.pill)
             }
             .buttonStyle(.plain)
         }

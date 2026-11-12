@@ -185,7 +185,7 @@ struct TimelineView: View {
                                             .foregroundStyle(.white)
                                             .padding(.horizontal, PVSpacing.s16)
                                             .padding(.vertical, PVSpacing.s8)
-                                            .glassEffect(.regular, in: Capsule())
+                                            .pvFloating(.pill)
                                     }
                                     .buttonStyle(.plain)
                                 }
@@ -201,8 +201,11 @@ struct TimelineView: View {
                             // own disc — the gesture of the glass pill next to it.
                             // The run's live ring rides THIS button, not the
                             // avatar: the profile button carries no sync state.
+                            // The plain style keeps the accent tint off the glyph, so the
+                            // disc's content colour (white) reaches it.
                             SyncStatusButton { openSyncStatus() }
-                                .glassEffect(.regular, in: Circle())
+                                .buttonStyle(.plain)
+                                .pvFloating(.circle)
                                 .overlay { backupProgressRing }
                             ProfileAvatarButton { openProfile() }
                         }
@@ -286,10 +289,8 @@ struct TimelineView: View {
                         } label: {
                             Image(systemName: "arrow.up")
                                 .font(.pvHeadline)
-                                .foregroundStyle(Color.immichPrimary)
                                 .frame(width: 44, height: 44)
-                                .background(.regularMaterial, in: Circle())
-                                .pvFloatingShadow()
+                                .pvFloating(.circle)
                         }
                         .accessibilityLabel(String(localized: "Scroll to top"))
                         .accessibilityIdentifier("timelineScrollToTopButton")
@@ -440,10 +441,7 @@ struct TimelineView: View {
             Circle()
                 .trim(from: 0, to: max(0.02, engine.progressFraction))
                 .stroke(
-                    LinearGradient(
-                        colors: [Color.immichPrimary, Color.immichPrimary.opacity(0.55)],
-                        startPoint: .top, endPoint: .bottom
-                    ),
+                    PVFloating.accent,
                     style: StrokeStyle(lineWidth: 3, lineCap: .round)
                 )
                 .frame(width: 36, height: 36)
@@ -905,10 +903,11 @@ struct TimelineView: View {
         } label: {
             Image(systemName: vm.filter == .all ? "line.3.horizontal.decrease.circle" : "line.3.horizontal.decrease.circle.fill")
                 .font(.system(size: 17, weight: .semibold)) // DS-exempt: glyph of the 44 pt disc, as SyncStatusButton
+                .foregroundStyle(PVFloating.content)
                 .frame(width: 44, height: 44)
                 .contentShape(Circle())
         }
-        .glassEffect(.regular, in: Circle())
+        .pvFloating(.circle)
         .accessibilityLabel("Filter")
         .accessibilityValue(Text(vm.filter.title))
         .accessibilityIdentifier("filterMenu")

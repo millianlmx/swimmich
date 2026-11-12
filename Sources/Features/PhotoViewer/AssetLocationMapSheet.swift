@@ -58,11 +58,10 @@ struct AssetLocationMapSheet: View {
         } label: {
             Image(systemName: "xmark")
                 .font(.pvBody.weight(.semibold))
-                .foregroundStyle(Color.textPrimaryPV)
                 .padding(PVSpacing.s12)
         }
         .buttonStyle(.plain)
-        .background(.regularMaterial, in: Circle())
+        .pvFloating(.circle)
         .accessibilityLabel("Done")
         .accessibilityIdentifier("assetLocationMapDoneButton")
         .padding(PVSpacing.s16)
