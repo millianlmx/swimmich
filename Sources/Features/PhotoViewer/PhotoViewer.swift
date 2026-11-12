@@ -671,6 +671,9 @@ struct PhotoViewer: View {
             }
         }
         .task { await runOpeningTransition() }
+        // Whatever removes the viewer (a close, a delete that emptied the list, the
+        // host), the thumbnail it hid comes back.
+        .onDisappear { zoomSource?.hiddenID = nil }
     }
 
     // MARK: - Pager

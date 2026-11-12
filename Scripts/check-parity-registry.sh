@@ -113,11 +113,11 @@ Connexion|Gestes et transitions|B-22
 Connexion|Haptique|B-32
 Connexion|Matériau|B-19
 Connexion|Accessibilité|B-17 B-22 B-32
-Timeline|Gestes et transitions|B-18 B-22
+Timeline|Gestes et transitions|B-22
 Timeline|Matériau|B-19
 Timeline|Accessibilité|B-17 B-22
 Visionneuse et panneau d'infos|États|B-33
-Visionneuse et panneau d'infos|Gestes et transitions|B-18 B-22
+Visionneuse et panneau d'infos|Gestes et transitions|B-22
 Visionneuse et panneau d'infos|Haptique|B-33
 Visionneuse et panneau d'infos|Matériau|B-19
 Visionneuse et panneau d'infos|Accessibilité|B-17 B-22
