@@ -69,10 +69,11 @@ enum AssetEditsMapping {
         if let crop = state.cropRect, let size = orientedSize(exif) {
             let r = orientedRect(crop, orientation(exif))
             let w = Double(size.width), h = Double(size.height)
-            let x = min(max(Int((r.minX * w + 1e-6).rounded(.down)), 0), size.width - 1)
-            let y = min(max(Int((r.minY * h + 1e-6).rounded(.down)), 0), size.height - 1)
-            let width = min(max(Int((r.width * w + 1e-6).rounded(.down)), 1), size.width - x)
-            let height = min(max(Int((r.height * h + 1e-6).rounded(.down)), 1), size.height - y)
+            let left = Double(r.minX) * w, top = Double(r.minY) * h
+            let x = min(max(Int((left + 1e-6).rounded(.down)), 0), size.width - 1)
+            let y = min(max(Int((top + 1e-6).rounded(.down)), 0), size.height - 1)
+            let width = min(max(Int((Double(r.width) * w + 1e-6).rounded(.down)), 1), size.width - x)
+            let height = min(max(Int((Double(r.height) * h + 1e-6).rounded(.down)), 1), size.height - y)
             if (x, y, width, height) != (0, 0, size.width, size.height) {
                 list.append(.crop(x: x, y: y, width: width, height: height))
             }

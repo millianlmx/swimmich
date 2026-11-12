@@ -65,7 +65,7 @@ final class AssetEditsEditorTests: XCTestCase {
     }
 
     private func puts(_ client: MockImmichClient) -> [[AssetEditItem]] {
-        client.putAssetEditsCalls.map(\.edits)
+        client.putAssetEditsCalls.map { $0.edits }
     }
 
     // MARK: AC-181
