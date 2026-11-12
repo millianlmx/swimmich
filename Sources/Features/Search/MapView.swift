@@ -301,16 +301,24 @@ struct MapPhotosSheet: View {
                     .padding(.horizontal)
                 }
 
-                if displayedPhotos.isEmpty {
-                    ContentUnavailableView(
-                        "No photos in this area",
-                        systemImage: "map",
-                        description: Text("Pan the map to find photos here.")
-                    )
-                    .frame(maxWidth: .infinity)
-                    .padding(.top, PVSpacing.s24)
-                } else {
-                    ScrollView(.vertical, showsIndicators: false) {
+                // One ScrollView through the empty and grid states, so the pull
+                // to refresh survives a region change that empties the sheet.
+                ScrollView(.vertical, showsIndicators: false) {
+                    if let message = vm.refreshErrorMessage {
+                        InlineErrorBadge(message: message, retry: { Task { await vm.refreshMarkers() } })
+                            .padding(.horizontal)
+                            .accessibilityIdentifier("mapPhotosRefreshError")
+                    }
+                    if displayedPhotos.isEmpty {
+                        ContentUnavailableView(
+                            "No photos in this area",
+                            systemImage: "map",
+                            description: Text("Pan the map to find photos here.")
+                        )
+                        .frame(maxWidth: .infinity)
+                        .padding(.top, PVSpacing.s24)
+                        .accessibilityIdentifier("mapPhotosEmptyState")
+                    } else {
                         LazyVGrid(columns: columns, spacing: PVSpacing.s2) {
                             ForEach(shownPhotos) { photo in
                                 MapThumb(photo: photo)
@@ -330,6 +338,7 @@ struct MapPhotosSheet: View {
                         .padding(.bottom, PVSpacing.s12)
                     }
                 }
+                .refreshable { await vm.refreshMarkers() }
             }
             .padding(.top, PVSpacing.s12)
             .onChange(of: displayedPhotos) { _, _ in

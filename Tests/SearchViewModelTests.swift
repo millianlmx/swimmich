@@ -735,4 +735,465 @@ final class SearchViewModelTests: XCTestCase {
         await vm.search()
         XCTAssertEqual(mock.lastMetadataSearchDto?.rating, 3, "and the filter still runs")
     }
+
+    // MARK: - List states (L-16)
+
+    private let serverError = APIError.serverError(500, "x")
+
+    private func response(_ ids: [String], nextPage: String? = nil) -> SearchResponseDto {
+        SearchResponseDto(
+            assets: SearchAssetResponseDto(
+                count: ids.count, items: ids.map { makeAsset(id: $0) }, nextPage: nextPage
+            )
+        )
+    }
+
+    /// A metadata-mode VM with a typed query, the shape the results tests share.
+    private func makeSearchVM(_ mock: MockImmichClient) -> SearchViewModel {
+        let vm = SearchViewModel(client: mock)
+        vm.searchMode = .metadata
+        vm.query = "beach"
+        return vm
+    }
+
+    /// A metadata gate whose first call waits for `latch`; the following ones pass.
+    private func holdingFirstSearch(_ latch: TestLatch) -> ((MetadataSearchDto) async throws -> Void) {
+        let calls = TestBox(0)
+        return { _ in
+            calls.value += 1
+            if calls.value == 1 { try await latch.wait() }
+        }
+    }
+
+    /// A cities gate whose first call waits for `latch`; the following ones pass.
+    private func holdingFirstCities(_ latch: TestLatch) -> (() async throws -> Void) {
+        let calls = TestBox(0)
+        return {
+            calls.value += 1
+            if calls.value == 1 { try await latch.wait() }
+        }
+    }
+
+    func test_AC_142_search_loadingUntilFirstAnswer() async {
+        let mock = makeMock(items: [makeAsset(id: "a")])
+        let latch = TestLatch()
+        mock.searchMetadataGate = { _ in try await latch.wait() }
+        let vm = makeSearchVM(mock)
+
+        let read = Task { @MainActor in await vm.search() }
+        await pollUntil("first search in flight") { mock.requestCount == 1 }
+
+        XCTAssertEqual(vm.resultsState, .loading)
+        latch.open()
+        await read.value
+        XCTAssertEqual(vm.resultsState, .data(.idle))
+    }
+
+    func test_AC_147_search_emptyAnswerIsEmptyState() async {
+        let vm = makeSearchVM(makeMock())
+
+        await vm.search()
+
+        XCTAssertEqual(vm.resultsState, .empty)
+        XCTAssertTrue(vm.hasSearched)
+    }
+
+    func test_AC_149_search_firstReadFailsShowsErrorNotEmpty() async {
+        let mock = makeMock()
+        mock.searchMetadataError = serverError
+        let vm = makeSearchVM(mock)
+
+        await vm.search()
+
+        XCTAssertEqual(vm.resultsState, .error(UserFacingError.serverErrorMessage))
+        XCTAssertTrue(vm.results.isEmpty)
+    }
+
+    func test_AC_149_search_retryShowsLoadingThenData() async {
+        let mock = makeMock(items: [makeAsset(id: "a")])
+        mock.searchMetadataError = serverError
+        let vm = makeSearchVM(mock)
+        await vm.search()
+        mock.searchMetadataError = nil
+        let latch = TestLatch()
+        mock.searchMetadataGate = { _ in try await latch.wait() }
+        let before = mock.requestCount
+
+        let retry = Task { @MainActor in await vm.retryResults() }
+        await pollUntil("retry in flight") { mock.requestCount == before + 1 }
+
+        XCTAssertTrue(vm.isLoading)
+        XCTAssertFalse(vm.isRefreshing)
+        XCTAssertEqual(vm.resultsState, .loading)
+        latch.open()
+        await retry.value
+        XCTAssertEqual(vm.resultsState, .data(.idle))
+        XCTAssertEqual(vm.results.map(\.id), ["a"])
+    }
+
+    func test_AC_152_search_refreshFailureKeepsDataThenRetryClears() async {
+        let mock = makeMock(items: [makeAsset(id: "a")])
+        let vm = makeSearchVM(mock)
+        await vm.search()
+
+        mock.searchMetadataError = serverError
+        await vm.refreshResults()
+
+        XCTAssertEqual(vm.results.map(\.id), ["a"], "a failed read keeps the data")
+        XCTAssertEqual(vm.resultsState, .data(.failed(UserFacingError.serverErrorMessage)))
+        XCTAssertFalse(vm.isRefreshing)
+
+        mock.searchMetadataError = nil
+        await vm.retryResults()
+        XCTAssertEqual(vm.resultsState, .data(.idle))
+    }
+
+    func test_AC_152_search_cancelledReplayChangesNothing() async {
+        let mock = makeMock(items: [makeAsset(id: "a")])
+        let vm = makeSearchVM(mock)
+        await vm.search()
+
+        mock.searchMetadataError = URLError(.cancelled)
+        await vm.refreshResults()
+
+        XCTAssertEqual(vm.results.map(\.id), ["a"])
+        XCTAssertNil(vm.errorMessage)
+        XCTAssertEqual(vm.resultsState, .data(.idle))
+    }
+
+    func test_AC_143_search_dataKeptDuringRefresh() async {
+        let mock = makeMock(items: [makeAsset(id: "a"), makeAsset(id: "b")])
+        let vm = makeSearchVM(mock)
+        await vm.search()
+        mock.searchMetadataResponse = response(["c"])
+        let latch = TestLatch()
+        mock.searchMetadataGate = { _ in try await latch.wait() }
+        let before = mock.requestCount
+
+        let pull = Task { @MainActor in await vm.refreshResults() }
+        await pollUntil("pull in flight") { mock.requestCount == before + 1 }
+
+        XCTAssertTrue(vm.isRefreshing)
+        XCTAssertEqual(vm.results.map(\.id), ["a", "b"], "results are not emptied before the answer")
+        XCTAssertEqual(vm.resultsState, .data(.idle))
+        latch.open()
+        await pull.value
+        XCTAssertFalse(vm.isRefreshing)
+        XCTAssertEqual(vm.results.map(\.id), ["c"])
+    }
+
+    func test_AC_154_search_refreshFromEmptyAndErrorReads() async {
+        let mock = makeMock()
+        let vm = makeSearchVM(mock)
+        await vm.search()
+        XCTAssertEqual(vm.resultsState, .empty)
+
+        // From the empty state.
+        let emptyLatch = TestLatch()
+        mock.searchMetadataGate = { _ in try await emptyLatch.wait() }
+        let emptyBefore = mock.requestCount
+        let emptyPull = Task { @MainActor in await vm.refreshResults() }
+        await pollUntil("pull from empty in flight") { mock.requestCount == emptyBefore + 1 }
+        XCTAssertTrue(vm.isRefreshing)
+        XCTAssertEqual(vm.resultsState, .empty)
+        mock.searchMetadataResponse = response(["a"])
+        emptyLatch.open()
+        await emptyPull.value
+        XCTAssertFalse(vm.isRefreshing)
+        XCTAssertEqual(vm.resultsState, .data(.idle))
+
+        // From the error state.
+        mock.searchMetadataGate = nil
+        mock.searchMetadataResponse = nil
+        let failing = makeSearchVM(mock)
+        mock.searchMetadataError = serverError
+        await failing.search()
+        XCTAssertEqual(failing.resultsState, .error(UserFacingError.serverErrorMessage))
+        mock.searchMetadataError = nil
+        let errorLatch = TestLatch()
+        mock.searchMetadataGate = { _ in try await errorLatch.wait() }
+        let errorBefore = mock.requestCount
+        let errorPull = Task { @MainActor in await failing.refreshResults() }
+        await pollUntil("pull from error in flight") { mock.requestCount == errorBefore + 1 }
+        XCTAssertTrue(failing.isRefreshing)
+        XCTAssertEqual(failing.resultsState, .error(UserFacingError.serverErrorMessage))
+        mock.searchMetadataResponse = response(["b"])
+        errorLatch.open()
+        await errorPull.value
+        XCTAssertEqual(failing.resultsState, .data(.idle))
+    }
+
+    func test_AC_154_search_refreshDuringReadIsNotIgnored() async {
+        let mock = makeMock(items: [makeAsset(id: "a")])
+        let latch = TestLatch()
+        mock.searchMetadataGate = holdingFirstSearch(latch)
+        let vm = makeSearchVM(mock)
+
+        let first = Task { @MainActor in await vm.search() }
+        await pollUntil("first search in flight") { mock.requestCount == 1 }
+        await vm.refreshResults()
+        XCTAssertEqual(mock.requestCount, 2, "a pull during a read is a request of its own")
+        XCTAssertEqual(vm.resultsState, .data(.idle))
+
+        // The superseded read fails late: it must not write.
+        mock.searchMetadataError = serverError
+        latch.open()
+        await first.value
+
+        XCTAssertEqual(vm.resultsState, .data(.idle))
+        XCTAssertFalse(vm.isLoading)
+    }
+
+    func test_AC_154_search_pullBeforeAnySearchStartsNothing() async {
+        let mock = makeMock()
+        let vm = makeSearchVM(mock)
+
+        await vm.refreshResults()
+
+        XCTAssertEqual(mock.requestCount, 0)
+        XCTAssertFalse(vm.hasSearched)
+        XCTAssertFalse(vm.isRefreshing)
+    }
+
+    func test_AC_31_search_errorThenEmptyThenData() async {
+        let mock = makeMock()
+        mock.searchMetadataError = serverError
+        let vm = makeSearchVM(mock)
+        await vm.search()
+        XCTAssertEqual(vm.resultsState, .error(UserFacingError.serverErrorMessage))
+
+        mock.searchMetadataError = nil
+        await vm.refreshResults()
+        XCTAssertEqual(vm.resultsState, .empty)
+
+        mock.searchMetadataResponse = response(["a"])
+        await vm.refreshResults()
+        XCTAssertEqual(vm.resultsState, .data(.idle))
+        XCTAssertEqual(vm.results.map(\.id), ["a"])
+    }
+
+    func test_AC_155_search_refreshReplaysSameQueryAndFilters() async {
+        let mock = makeMock(items: [makeAsset(id: "a")])
+        let vm = makeSearchVM(mock)
+        await vm.setRatingFilter(3)
+        let first = mock.searchMetadataCalls.count
+
+        await vm.refreshResults()
+
+        XCTAssertEqual(mock.searchMetadataCalls.count, first + 1)
+        let original = mock.searchMetadataCalls[first - 1]
+        let replay = mock.searchMetadataCalls[first]
+        XCTAssertEqual(replay.query, original.query)
+        XCTAssertEqual(replay.rating, 3)
+        XCTAssertEqual(replay.rating, original.rating)
+        XCTAssertEqual(replay.page ?? 1, 1)
+        XCTAssertEqual(vm.results.map(\.id), ["a"])
+    }
+
+    func test_AC_152_search_loadMoreFailureKeepsGridWithBannerThenRetriesThePage() async {
+        let mock = makeMock()
+        mock.searchMetadataResponsesByPage[1] = response(["a"], nextPage: "2")
+        mock.searchMetadataResponsesByPage[2] = response(["b"])
+        let vm = makeSearchVM(mock)
+        await vm.search()
+
+        mock.searchMetadataError = serverError
+        await vm.loadMore()
+
+        XCTAssertEqual(vm.results.map(\.id), ["a"], "the grid stays")
+        XCTAssertEqual(vm.resultsState, .data(.failed(UserFacingError.serverErrorMessage)))
+
+        mock.searchMetadataError = nil
+        let before = mock.searchMetadataCalls.count
+        await vm.retryResults()
+
+        XCTAssertEqual(mock.searchMetadataCalls.count, before + 1)
+        XCTAssertEqual(mock.searchMetadataCalls.last?.page, 2, "retry re-runs the failed page, not the search")
+        XCTAssertEqual(vm.results.map(\.id), ["a", "b"])
+        XCTAssertEqual(vm.resultsState, .data(.idle))
+    }
+
+    // MARK: Explore (L-16)
+
+    func test_AC_142_explore_loadingUntilFirstAnswer() async {
+        let mock = MockImmichClient()
+        mock.citiesResponse = [makeCityAsset(id: "t1", city: "Paris")]
+        let latch = TestLatch()
+        mock.citiesGate = { try await latch.wait() }
+        let vm = SearchViewModel(client: mock)
+        XCTAssertEqual(vm.exploreState, .loading)
+
+        let read = Task { @MainActor in await vm.loadExplore() }
+        await pollUntil("first read in flight") { mock.requestCount == 1 }
+
+        XCTAssertEqual(vm.exploreState, .loading)
+        XCTAssertTrue(vm.isLoadingExplore)
+        XCTAssertFalse(vm.isLoading, "Explore does not share the results' loading flag")
+        latch.open()
+        await read.value
+        XCTAssertEqual(vm.exploreState, .data(.idle))
+    }
+
+    func test_AC_147_explore_emptyAnswerIsEmptyState() async {
+        let vm = SearchViewModel(client: MockImmichClient())
+
+        await vm.loadExplore()
+
+        XCTAssertEqual(vm.exploreState, .empty)
+    }
+
+    func test_AC_149_explore_firstReadFailsShowsErrorNotEmpty() async {
+        let mock = MockImmichClient()
+        mock.citiesError = serverError
+        let vm = SearchViewModel(client: mock)
+
+        await vm.loadExplore()
+
+        XCTAssertEqual(vm.exploreState, .error(UserFacingError.serverErrorMessage))
+        XCTAssertEqual(vm.exploreLoadError, UserFacingError.serverErrorMessage)
+        XCTAssertNil(vm.errorMessage, "Explore never writes the results' error")
+        XCTAssertTrue(vm.explorePlaces.isEmpty)
+    }
+
+    func test_AC_149_explore_retryShowsLoadingThenData() async {
+        let mock = MockImmichClient()
+        mock.citiesError = serverError
+        let vm = SearchViewModel(client: mock)
+        await vm.loadExplore()
+        mock.citiesError = nil
+        mock.citiesResponse = [makeCityAsset(id: "t1", city: "Paris")]
+        let latch = TestLatch()
+        mock.citiesGate = { try await latch.wait() }
+        let before = mock.requestCount
+
+        let retry = Task { @MainActor in await vm.loadExplore(force: true) }
+        await pollUntil("retry in flight") { mock.requestCount == before + 1 }
+
+        XCTAssertTrue(vm.isLoadingExplore)
+        XCTAssertFalse(vm.isRefreshingExplore)
+        XCTAssertEqual(vm.exploreState, .loading)
+        latch.open()
+        await retry.value
+        XCTAssertEqual(vm.exploreState, .data(.idle))
+        XCTAssertEqual(vm.explorePlaces.map(\.city), ["Paris"])
+    }
+
+    func test_AC_152_explore_refreshFailureKeepsCardsThenRetryClears() async {
+        let mock = MockImmichClient()
+        mock.citiesResponse = [makeCityAsset(id: "t1", city: "Paris")]
+        let vm = SearchViewModel(client: mock)
+        await vm.loadExplore()
+
+        mock.citiesError = serverError
+        await vm.refreshExplore()
+
+        XCTAssertEqual(vm.explorePlaces.map(\.city), ["Paris"], "a failed read keeps the cards")
+        XCTAssertEqual(vm.exploreState, .data(.failed(UserFacingError.serverErrorMessage)))
+        XCTAssertFalse(vm.isRefreshingExplore)
+
+        mock.citiesError = nil
+        await vm.loadExplore(force: true)
+        XCTAssertEqual(vm.exploreState, .data(.idle))
+    }
+
+    func test_AC_157_explore_refreshKeepsTheCardsUntilTheAnswer() async {
+        let mock = MockImmichClient()
+        mock.citiesResponse = [makeCityAsset(id: "t1", city: "Paris")]
+        let vm = SearchViewModel(client: mock)
+        await vm.loadExplore()
+        mock.citiesResponse = [makeCityAsset(id: "t2", city: "Rome")]
+        let latch = TestLatch()
+        mock.citiesGate = { try await latch.wait() }
+        let before = mock.requestCount
+
+        let pull = Task { @MainActor in await vm.refreshExplore() }
+        await pollUntil("pull in flight") { mock.requestCount == before + 1 }
+
+        XCTAssertTrue(vm.isRefreshingExplore)
+        XCTAssertEqual(vm.explorePlaces.map(\.city), ["Paris"], "cards are not emptied before the answer")
+        XCTAssertEqual(vm.exploreState, .data(.idle))
+        latch.open()
+        await pull.value
+        XCTAssertFalse(vm.isRefreshingExplore)
+        XCTAssertEqual(vm.explorePlaces.map(\.city), ["Rome"])
+    }
+
+    func test_AC_154_explore_refreshFromEmptyAndErrorReads() async {
+        let mock = MockImmichClient()
+        let vm = SearchViewModel(client: mock)
+        await vm.loadExplore()
+        XCTAssertEqual(vm.exploreState, .empty)
+
+        // From the empty state.
+        let emptyLatch = TestLatch()
+        mock.citiesGate = { try await emptyLatch.wait() }
+        let emptyBefore = mock.requestCount
+        let emptyPull = Task { @MainActor in await vm.refreshExplore() }
+        await pollUntil("pull from empty in flight") { mock.requestCount == emptyBefore + 1 }
+        XCTAssertTrue(vm.isRefreshingExplore)
+        XCTAssertEqual(vm.exploreState, .empty)
+        mock.citiesResponse = [makeCityAsset(id: "t1", city: "Paris")]
+        emptyLatch.open()
+        await emptyPull.value
+        XCTAssertFalse(vm.isRefreshingExplore)
+        XCTAssertEqual(vm.exploreState, .data(.idle))
+
+        // From the error state.
+        mock.citiesGate = nil
+        mock.citiesResponse = nil
+        let failing = SearchViewModel(client: mock)
+        mock.citiesError = serverError
+        await failing.loadExplore()
+        XCTAssertEqual(failing.exploreState, .error(UserFacingError.serverErrorMessage))
+        mock.citiesError = nil
+        let errorLatch = TestLatch()
+        mock.citiesGate = { try await errorLatch.wait() }
+        let errorBefore = mock.requestCount
+        let errorPull = Task { @MainActor in await failing.refreshExplore() }
+        await pollUntil("pull from error in flight") { mock.requestCount == errorBefore + 1 }
+        XCTAssertTrue(failing.isRefreshingExplore)
+        XCTAssertEqual(failing.exploreState, .error(UserFacingError.serverErrorMessage))
+        mock.citiesResponse = [makeCityAsset(id: "t1", city: "Paris")]
+        errorLatch.open()
+        await errorPull.value
+        XCTAssertEqual(failing.exploreState, .data(.idle))
+    }
+
+    func test_AC_154_explore_refreshDuringReadIsNotIgnored() async {
+        let mock = MockImmichClient()
+        mock.citiesResponse = [makeCityAsset(id: "t1", city: "Paris")]
+        let latch = TestLatch()
+        mock.citiesGate = holdingFirstCities(latch)
+        let vm = SearchViewModel(client: mock)
+
+        let first = Task { @MainActor in await vm.loadExplore() }
+        await pollUntil("first read in flight") { mock.requestCount == 1 }
+        await vm.refreshExplore()
+        XCTAssertEqual(vm.exploreState, .data(.idle))
+
+        // The superseded read fails late: it must not write.
+        mock.citiesError = serverError
+        latch.open()
+        await first.value
+
+        XCTAssertEqual(vm.exploreState, .data(.idle))
+        XCTAssertFalse(vm.isLoadingExplore)
+    }
+
+    func test_AC_157_explore_failureIsErrorThenEmptyThenRefresh() async {
+        let mock = MockImmichClient()
+        mock.citiesError = serverError
+        let vm = SearchViewModel(client: mock)
+        await vm.loadExplore()
+        XCTAssertEqual(vm.exploreState, .error(UserFacingError.serverErrorMessage))
+
+        mock.citiesError = nil
+        await vm.refreshExplore()
+        XCTAssertEqual(vm.exploreState, .empty)
+
+        mock.citiesResponse = [makeCityAsset(id: "t1", city: "Paris")]
+        await vm.refreshExplore()
+        XCTAssertEqual(vm.exploreState, .data(.idle))
+        XCTAssertEqual(vm.explorePlaces.map(\.city), ["Paris"])
+    }
 }

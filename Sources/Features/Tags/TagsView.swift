@@ -17,17 +17,88 @@ struct TagsView: View {
 
     var body: some View {
         Group {
-            if vm.isLoading && vm.rows.isEmpty {
+            if case .loading = vm.renderState {
+                // First read, or a "Try Again" with nothing to show.
                 ProgressView()
+                    .pvLoadingIndicator("tagsLoading")
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
-            } else if vm.rows.isEmpty {
-                ContentUnavailableView(
-                    "No tags yet",
-                    systemImage: "tag",
-                    description: Text("Create tags to organize your photos.")
-                )
             } else {
-                List {
+                tagList
+            }
+        }
+        .navigationTitle("Tags")
+        .navigationBarTitleDisplayMode(.inline)
+        .toolbar {
+            ToolbarItem(placement: .topBarTrailing) {
+                Button {
+                    vm.clearCreateError()
+                    showCreate = true
+                } label: {
+                    Image(systemName: "plus")
+                }
+                .accessibilityLabel("Create tag")
+                .accessibilityIdentifier("createTagButton")
+            }
+        }
+        .task { await vm.load() }
+        .navigationDestination(for: TagAssetsRoute.self) { route in
+            TagAssetsView(vm: DependencyContainer.shared.makeTagAssetsViewModel(tagId: route.tagId, tagName: route.name))
+        }
+        .sheet(isPresented: $showCreate) {
+            CreateTagSheet(vm: vm)
+                .presentationDetents([.medium, .large])
+        }
+        .accessibilityElement(children: .contain)
+        .accessibilityIdentifier("tagsScreen")
+    }
+
+    /// One `List` carries `.refreshable` for the error, the empty state and the
+    /// rows, so a state change never cancels the pull in flight.
+    private var tagList: some View {
+        List {
+            switch vm.renderState {
+            case .loading:
+                EmptyView()
+            case .error(let message):
+                Section {
+                    PVErrorStateView(
+                        title: "Couldn't load tags",
+                        message: message,
+                        identifierPrefix: "tags",
+                        retry: { Task { await vm.load(force: true) } }
+                    )
+                    .listRowBackground(Color.clear)
+                }
+            case .empty:
+                Section {
+                    ContentUnavailableView(
+                        "No tags yet",
+                        systemImage: "tag",
+                        description: Text("Create tags to organize your photos.")
+                    )
+                    .accessibilityIdentifier("tagsEmptyState")
+                    .listRowBackground(Color.clear)
+                }
+            case .data(let status):
+                switch status {
+                case .idle:
+                    EmptyView()
+                case .reloading:
+                    // "Try Again" from the banner: the rows stay, this stands in for it.
+                    Section {
+                        ProgressView()
+                            .frame(maxWidth: .infinity)
+                            .pvLoadingIndicator("tagsLoading")
+                            .listRowBackground(Color.clear)
+                    }
+                case .failed(let message):
+                    Section {
+                        InlineErrorBadge(message: message, retry: { Task { await vm.load(force: true) } })
+                            .accessibilityIdentifier("tagsRefreshError")
+                            .listRowBackground(Color.clear)
+                    }
+                }
+                Section {
                     ForEach(vm.rows) { row in
                         NavigationLink(value: TagAssetsRoute(tagId: row.tag.id, name: row.tag.name)) {
                             HStack(spacing: PVSpacing.s12) {
@@ -52,30 +123,6 @@ struct TagsView: View {
                 }
             }
         }
-        .navigationTitle("Tags")
-        .navigationBarTitleDisplayMode(.inline)
-        .toolbar {
-            ToolbarItem(placement: .topBarTrailing) {
-                Button {
-                    vm.clearCreateError()
-                    showCreate = true
-                } label: {
-                    Image(systemName: "plus")
-                }
-                .accessibilityLabel("Create tag")
-                .accessibilityIdentifier("createTagButton")
-            }
-        }
-        .task { await vm.load() }
-        .refreshable { await vm.load(force: true) }
-        .navigationDestination(for: TagAssetsRoute.self) { route in
-            TagAssetsView(vm: DependencyContainer.shared.makeTagAssetsViewModel(tagId: route.tagId, tagName: route.name))
-        }
-        .sheet(isPresented: $showCreate) {
-            CreateTagSheet(vm: vm)
-                .presentationDetents([.medium, .large])
-        }
-        .accessibilityElement(children: .contain)
-        .accessibilityIdentifier("tagsScreen")
+        .refreshable { await vm.refresh() }
     }
 }

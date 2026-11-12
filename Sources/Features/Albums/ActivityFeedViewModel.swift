@@ -11,7 +11,18 @@ final class ActivityFeedViewModel {
 
     var activities: [ActivityResponseDto] = []
     var isLoading = false
+    /// True while `refresh()` runs: the system's refresh control is the
+    /// indicator then, not the screen's own.
+    private(set) var isRefreshing = false
+    /// True once the feed was read and applied.
+    private(set) var hasLoaded = false
+    /// Failure of the last read of the feed, cleared by a success. Written by
+    /// `load()` only.
+    private(set) var loadErrorMessage: String?
+    /// Failure of the last action (comment, like, delete).
     var errorMessage: String?
+    /// Bumped by every `load()`, so only the last read writes its result.
+    private var loadGeneration = 0
     var isSending = false
 
     init(client: any ImmichClient, albumId: String, currentUserId: String) {
@@ -27,18 +38,44 @@ final class ActivityFeedViewModel {
         return activity.user.id == currentUserId
     }
 
-    /// Full album feed, newest first. Separates sorting from network so the
-    /// list stays stable while reloading.
+    /// What the feed renders.
+    var renderState: ListRenderState {
+        .resolve(
+            isEmpty: activities.isEmpty,
+            hasLoaded: hasLoaded,
+            isLoading: isLoading,
+            isRefreshing: isRefreshing,
+            loadError: loadErrorMessage
+        )
+    }
+
+    /// Full album feed, newest first: first read, "Try Again" and `.task`
+    /// (never pulls). Separates sorting from network so the list stays stable
+    /// while reloading; the feed is replaced only by a success, and a newer
+    /// read supersedes one still in flight.
     func load() async {
+        loadGeneration += 1
+        let generation = loadGeneration
         isLoading = true
-        defer { isLoading = false }
+        defer { if generation == loadGeneration { isLoading = false } }
         do {
             let fetched = try await client.getActivities(albumId: albumId, assetId: nil)
+            guard generation == loadGeneration else { return }
             activities = fetched.sorted { $0.createdAt > $1.createdAt }
-            errorMessage = nil
+            hasLoaded = true
+            loadErrorMessage = nil
         } catch {
-            errorMessage = error.userFacingMessage
+            guard generation == loadGeneration, let message = error.userFacingMessage else { return }
+            loadErrorMessage = message
         }
+    }
+
+    /// Pull-to-refresh: `load()` flagged so the screen keeps its current
+    /// rendering.
+    func refresh() async {
+        isRefreshing = true
+        await load()
+        isRefreshing = false
     }
 
     /// Posts a comment; on success the row is appended server-side, on throw

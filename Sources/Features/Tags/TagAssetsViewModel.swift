@@ -16,18 +16,24 @@ final class TagAssetsViewModel {
     private(set) var items: [AssetReactItem] = []
     private(set) var isLoading = false
     private(set) var isLoadingMore = false
-    /// True once the bucket list was read; the screen then shows empty/error/grid.
+    /// True once the first page was read and applied; the screen then shows
+    /// empty/error/grid.
     private(set) var hasLoaded = false
     private(set) var hasMore = false
-    /// A failed first load (nothing on screen yet).
-    private(set) var errorMessage: String?
+    /// True while `refresh()` runs: the system's refresh control is the
+    /// indicator then, not the screen's own.
+    private(set) var isRefreshing = false
+    /// Failure of the last read of the first page, cleared by a success. The
+    /// photos already on screen stay.
+    private(set) var loadErrorMessage: String?
     /// A failed later page: the grid stays, the footer offers a retry.
     private(set) var loadMoreErrorMessage: String?
 
     private var buckets: [TimeBucketsResponseDto] = []
     private var bucketIndex = 0
     private var loadedIds: Set<String> = []
-    /// Bumped by every reset, so a page still in flight cannot write into a newer list.
+    /// Bumped by every `load()`, so only the last read writes its result and a
+    /// page still in flight cannot write into a newer list.
     private var generation = 0
 
     init(client: any ImmichClient, tagId: String, tagName: String) {
@@ -36,13 +42,26 @@ final class TagAssetsViewModel {
         self.tagName = tagName
     }
 
-    /// First load, "Try Again" and pull-to-refresh: restarts from the bucket list.
+    /// What the grid renders.
+    var renderState: ListRenderState {
+        .resolve(
+            isEmpty: items.isEmpty,
+            hasLoaded: hasLoaded,
+            isLoading: isLoading,
+            isRefreshing: isRefreshing,
+            loadError: loadErrorMessage
+        )
+    }
+
+    /// First read, "Try Again" and `.task` (never pulls): restarts from the
+    /// bucket list. The bucket list and the first non-empty period are read
+    /// into locals and applied at once, so the photos on screen stay until the
+    /// answer; a failure or a newer read leaves them alone.
     func load() async {
-        guard !isLoading else { return }
+        generation += 1
+        let started = generation
         isLoading = true
-        errorMessage = nil
-        loadMoreErrorMessage = nil
-        defer { isLoading = false }
+        defer { if started == generation { isLoading = false } }
         do {
             let fetched = try await client.getTimeBuckets(
                 isFavorite: nil,
@@ -54,16 +73,47 @@ final class TagAssetsViewModel {
                 orderBy: nil,
                 tagId: tagId
             )
-            generation += 1
+            guard started == generation else { return }
+            var index = 0
+            var firstItems: [AssetReactItem] = []
+            var firstIds: Set<String> = []
+            while index < fetched.count, firstItems.isEmpty {
+                let columnar = try await client.getTimeBucket(
+                    timeBucket: fetched[index].timeBucket,
+                    isFavorite: nil,
+                    isTrashed: nil,
+                    personId: nil,
+                    withPartners: nil,
+                    visibility: "timeline",
+                    withStacked: nil,
+                    orderBy: nil,
+                    tagId: tagId
+                )
+                guard started == generation else { return }
+                firstItems = AssetReactItem.zip(columnar).filter { !firstIds.contains($0.id) }
+                firstIds.formUnion(firstItems.map(\.id))
+                index += 1
+            }
             buckets = fetched
-            items = []
-            loadedIds = []
-            bucketIndex = 0
+            bucketIndex = index
+            items = firstItems
+            loadedIds = firstIds
+            hasMore = index < fetched.count
             hasLoaded = true
-            await loadNextNonEmptyBucket()
+            loadErrorMessage = nil
+            loadMoreErrorMessage = nil
         } catch {
-            errorMessage = error.userFacingMessage
+            guard started == generation, let message = error.userFacingMessage else { return }
+            loadErrorMessage = message
         }
+    }
+
+    /// Pull-to-refresh: `load()` flagged so the screen keeps its current
+    /// rendering.
+    func refresh() async {
+        isRefreshing = true
+        await load()
+        isRefreshing = false
     }
 
     /// Appends the next period that holds photos.
@@ -105,11 +155,7 @@ final class TagAssetsViewModel {
                 bucketIndex += 1
             } catch {
                 guard started == generation else { return }
-                if items.isEmpty {
-                    errorMessage = error.userFacingMessage
-                } else {
-                    loadMoreErrorMessage = error.userFacingMessage
-                }
+                loadMoreErrorMessage = error.userFacingMessage
                 break
             }
         }

@@ -33,15 +33,14 @@ struct RecentAssetsView: View {
 
     @ViewBuilder
     private var content: some View {
-        if vm.isLoading && vm.dayGroups.isEmpty {
+        if vm.renderState == .loading {
+            // Outside the scroll view: the container (and its `.refreshable`)
+            // only exists once there is something to say besides "loading".
             PVSkeletonGrid(rows: 4, columnCount: columns.count)
                 .padding(.horizontal, PVSpacing.s4)
-        } else if let message = vm.errorMessage, vm.dayGroups.isEmpty {
-            errorState(message)
-        } else if vm.dayGroups.isEmpty {
-            emptyState
+                .pvLoadingIndicator("recentLoading")
         } else {
-            grid
+            scrollContent
         }
     }
 
@@ -55,59 +54,64 @@ struct RecentAssetsView: View {
             Text(vm.mode.emptyMessage)
         }
         .accessibilityIdentifier("recentEmptyState")
-    }
-
-    /// Error state. `recentError` goes on the message `Text`, never on this
-    /// stack: an identifier on a container replaces its descendants', which
-    /// would hide `recentErrorRetry` (measured on `languageRelaunchToast`).
-    /// `Refresh` is the only way back — the error is never a blocking overlay.
-    private func errorState(_ message: String) -> some View {
-        VStack(spacing: PVSpacing.s16) {
-            Label(vm.mode.title, systemImage: vm.mode.systemImage)
-                .font(.pvSubhead)
-                .foregroundStyle(Color.textPrimaryPV)
-            Text(message)
-                .font(.pvBody)
-                .foregroundStyle(Color.textSecondaryPV)
-                .multilineTextAlignment(.center)
-                .accessibilityIdentifier("recentError")
-            Button("Refresh") { Task { await vm.refresh() } }
-                .buttonStyle(PVPrimaryButtonStyle())
-                .accessibilityIdentifier("recentErrorRetry")
-        }
-        .frame(maxWidth: .infinity)
-        .padding(PVSpacing.s24)
+        .containerRelativeFrame(.vertical)
     }
 
     // MARK: - Grid
 
-    /// Days, newest first. The footer sentinel fetches the next older day when
-    /// it scrolls into view — there is no "load more" button.
-    private var grid: some View {
+    /// The one scroll container: error, empty state and days, newest first.
+    /// The footer sentinel fetches the next older day when it scrolls into
+    /// view — there is no "load more" button.
+    private var scrollContent: some View {
         ScrollView {
             LazyVStack(spacing: PVSpacing.s24, pinnedViews: [.sectionHeaders]) {
-                ForEach(vm.dayGroups) { group in
-                    Section {
-                        LazyVGrid(columns: columns, spacing: PVSpacing.s2) {
-                            ForEach(group.items) { item in
-                                AssetThumbnailCell(
-                                    asset: item,
-                                    baseURL: baseURL,
-                                    token: auth.accessToken,
-                                    contextMenuEnabled: false
-                                )
-                            }
-                        }
-                    } header: {
-                        dayHeader(group.title)
+                switch vm.renderState {
+                case .loading:
+                    EmptyView()
+                case .error(let message):
+                    PVErrorStateView(
+                        title: "Couldn't load photos",
+                        message: message,
+                        identifierPrefix: "recent",
+                        retry: { Task { await vm.load() } }
+                    )
+                    .containerRelativeFrame(.vertical)
+                case .empty:
+                    emptyState
+                case .data(let status):
+                    switch status {
+                    case .idle:
+                        EmptyView()
+                    case .reloading:
+                        ProgressView()
+                            .pvLoadingIndicator("recentLoading")
+                    case .failed(let message):
+                        InlineErrorBadge(message: message, retry: { Task { await vm.load() } })
+                            .accessibilityIdentifier("recentRefreshError")
                     }
-                }
+                    ForEach(vm.dayGroups) { group in
+                        Section {
+                            LazyVGrid(columns: columns, spacing: PVSpacing.s2) {
+                                ForEach(group.items) { item in
+                                    AssetThumbnailCell(
+                                        asset: item,
+                                        baseURL: baseURL,
+                                        token: auth.accessToken,
+                                        contextMenuEnabled: false
+                                    )
+                                }
+                            }
+                        } header: {
+                            dayHeader(group.title)
+                        }
+                    }
 
-                if vm.hasMore {
-                    ProgressView()
-                        .padding(.vertical, PVSpacing.s16)
-                        .accessibilityIdentifier("recentLoadMore")
-                        .onAppear { Task { await vm.loadMore() } }
+                    if vm.hasMore {
+                        ProgressView()
+                            .padding(.vertical, PVSpacing.s16)
+                            .accessibilityIdentifier("recentLoadMore")
+                            .onAppear { Task { await vm.loadMore() } }
+                    }
                 }
             }
             .padding(.horizontal, PVSpacing.s4)

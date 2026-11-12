@@ -27,7 +27,7 @@ final class DuplicatesViewModelTests: XCTestCase {
 
         XCTAssertEqual(vm.groups.count, 1)
         XCTAssertEqual(vm.groups.first?.duplicateId, "g1")
-        XCTAssertNil(vm.errorMessage)
+        XCTAssertNil(vm.loadErrorMessage)
     }
 
     @MainActor
@@ -39,7 +39,7 @@ final class DuplicatesViewModelTests: XCTestCase {
         await vm.load()
 
         XCTAssertTrue(vm.groups.isEmpty)
-        XCTAssertEqual(vm.errorMessage, UserFacingError.serverErrorMessage)
+        XCTAssertEqual(vm.loadErrorMessage, UserFacingError.serverErrorMessage)
     }
 
     @MainActor
@@ -50,7 +50,7 @@ final class DuplicatesViewModelTests: XCTestCase {
         await vm.load()
 
         XCTAssertTrue(vm.groups.isEmpty)
-        XCTAssertNil(vm.errorMessage)
+        XCTAssertNil(vm.loadErrorMessage)
     }
 
     @MainActor
@@ -113,5 +113,183 @@ final class DuplicatesViewModelTests: XCTestCase {
 
         XCTAssertNil(mock.lastDeleteBody)
         XCTAssertTrue(vm.groups.isEmpty)
+    }
+
+    // MARK: - List states (L-16)
+
+    private let serverError = APIError.serverError(500, "x")
+
+    /// Holds the first request of a route on `latch`; later ones pass.
+    private func holdingFirstCall(_ latch: TestLatch) -> (() async throws -> Void) {
+        let calls = TestBox(0)
+        return {
+            calls.value += 1
+            if calls.value == 1 { try await latch.wait() }
+        }
+    }
+
+    @MainActor
+    func test_AC_149_duplicates_loadingUntilFirstAnswer() async {
+        let mock = MockImmichClient()
+        mock.duplicatesResponse = [makeGroup(id: "g1", ids: ["a1", "a2"], suggested: ["a1"])]
+        let latch = TestLatch()
+        mock.duplicatesGate = { try await latch.wait() }
+        let vm = DuplicatesViewModel(client: mock)
+        XCTAssertEqual(vm.renderState, .loading)
+
+        let read = Task { @MainActor in await vm.load() }
+        await pollUntil("first read in flight") { mock.requestCount == 1 }
+
+        XCTAssertEqual(vm.renderState, .loading)
+        latch.open()
+        await read.value
+        XCTAssertEqual(vm.renderState, .data(.idle))
+    }
+
+    @MainActor
+    func test_AC_149_duplicates_firstReadFailsShowsErrorNotEmpty() async {
+        let mock = MockImmichClient()
+        mock.duplicatesError = serverError
+        let vm = DuplicatesViewModel(client: mock)
+
+        await vm.load()
+
+        XCTAssertEqual(vm.renderState, .error(UserFacingError.serverErrorMessage))
+        XCTAssertFalse(vm.hasLoaded)
+        XCTAssertTrue(vm.groups.isEmpty)
+        XCTAssertNil(vm.errorMessage, "the read never writes the action error")
+    }
+
+    @MainActor
+    func test_AC_149_duplicates_successfulEmptyReadIsEmpty() async {
+        let vm = DuplicatesViewModel(client: MockImmichClient())
+
+        await vm.load()
+
+        XCTAssertEqual(vm.renderState, .empty)
+        XCTAssertTrue(vm.hasLoaded)
+    }
+
+    @MainActor
+    func test_AC_149_duplicates_retryShowsLoadingThenData() async {
+        let mock = MockImmichClient()
+        mock.duplicatesError = serverError
+        let vm = DuplicatesViewModel(client: mock)
+        await vm.load()
+        mock.duplicatesError = nil
+        mock.duplicatesResponse = [makeGroup(id: "g1", ids: ["a1", "a2"], suggested: ["a1"])]
+        let latch = TestLatch()
+        mock.duplicatesGate = { try await latch.wait() }
+        let before = mock.requestCount
+
+        let retry = Task { @MainActor in await vm.load() }
+        await pollUntil("retry in flight") { mock.requestCount == before + 1 }
+
+        XCTAssertTrue(vm.isLoading)
+        XCTAssertFalse(vm.isRefreshing)
+        XCTAssertEqual(vm.renderState, .loading)
+        latch.open()
+        await retry.value
+        XCTAssertEqual(vm.renderState, .data(.idle))
+        XCTAssertEqual(vm.groups.map(\.duplicateId), ["g1"])
+    }
+
+    @MainActor
+    func test_AC_152_duplicates_refreshFailureKeepsDataThenRetryClears() async {
+        let mock = MockImmichClient()
+        mock.duplicatesResponse = [makeGroup(id: "g1", ids: ["a1", "a2"], suggested: ["a1"])]
+        let vm = DuplicatesViewModel(client: mock)
+        await vm.load()
+
+        mock.duplicatesError = serverError
+        await vm.refresh()
+
+        XCTAssertEqual(vm.renderState, .data(.failed(UserFacingError.serverErrorMessage)))
+        XCTAssertEqual(vm.groups.map(\.duplicateId), ["g1"])
+
+        mock.duplicatesError = nil
+        await vm.load()
+        XCTAssertEqual(vm.renderState, .data(.idle))
+    }
+
+    @MainActor
+    func test_AC_154_duplicates_refreshFromEmptyAndErrorReads() async {
+        let mock = MockImmichClient()
+        let vm = DuplicatesViewModel(client: mock)
+        await vm.load()
+        XCTAssertEqual(vm.renderState, .empty)
+
+        // From the empty state.
+        let emptyLatch = TestLatch()
+        mock.duplicatesGate = { try await emptyLatch.wait() }
+        let emptyBefore = mock.requestCount
+        let emptyPull = Task { @MainActor in await vm.refresh() }
+        await pollUntil("pull from empty in flight") { mock.requestCount == emptyBefore + 1 }
+        XCTAssertTrue(vm.isRefreshing)
+        XCTAssertEqual(vm.renderState, .empty)
+        mock.duplicatesResponse = [makeGroup(id: "g1", ids: ["a1", "a2"], suggested: ["a1"])]
+        emptyLatch.open()
+        await emptyPull.value
+        XCTAssertFalse(vm.isRefreshing)
+        XCTAssertEqual(vm.renderState, .data(.idle))
+
+        // From the error state.
+        mock.duplicatesGate = nil
+        mock.duplicatesResponse = nil
+        let failing = DuplicatesViewModel(client: mock)
+        mock.duplicatesError = serverError
+        await failing.load()
+        XCTAssertEqual(failing.renderState, .error(UserFacingError.serverErrorMessage))
+        let errorLatch = TestLatch()
+        mock.duplicatesGate = { try await errorLatch.wait() }
+        mock.duplicatesResponse = [makeGroup(id: "g1", ids: ["a1", "a2"], suggested: ["a1"])]
+        let errorBefore = mock.requestCount
+        let errorPull = Task { @MainActor in await failing.refresh() }
+        await pollUntil("pull from error in flight") { mock.requestCount == errorBefore + 1 }
+        XCTAssertTrue(failing.isRefreshing)
+        XCTAssertEqual(failing.renderState, .error(UserFacingError.serverErrorMessage),
+                       "the error stays while the pull reads")
+        mock.duplicatesError = nil
+        errorLatch.open()
+        await errorPull.value
+        XCTAssertEqual(failing.renderState, .data(.idle))
+    }
+
+    @MainActor
+    func test_AC_154_duplicates_refreshDuringReadIsNotIgnored() async {
+        let mock = MockImmichClient()
+        mock.duplicatesResponse = [makeGroup(id: "g1", ids: ["a1", "a2"], suggested: ["a1"])]
+        let latch = TestLatch()
+        mock.duplicatesGate = holdingFirstCall(latch)
+        let vm = DuplicatesViewModel(client: mock)
+
+        let first = Task { @MainActor in await vm.load() }
+        await pollUntil("first read in flight") { mock.requestCount == 1 }
+        await vm.refresh()
+        XCTAssertEqual(mock.requestCount, 2, "a pull during a read is a request of its own")
+        XCTAssertEqual(vm.renderState, .data(.idle))
+
+        // The superseded read fails late: it must not write.
+        mock.duplicatesError = serverError
+        latch.open()
+        await first.value
+
+        XCTAssertEqual(vm.renderState, .data(.idle))
+        XCTAssertFalse(vm.isLoading)
+    }
+
+    @MainActor
+    func test_AC_149_duplicates_actionErrorDoesNotSetTheReadError() async {
+        let mock = MockImmichClient()
+        mock.duplicatesResponse = [makeGroup(id: "g1", ids: ["a1", "a2"], suggested: ["a1"])]
+        let vm = DuplicatesViewModel(client: mock)
+        await vm.load()
+
+        mock.globalError = serverError
+        await vm.deleteGroup(id: "g1")
+
+        XCTAssertEqual(vm.errorMessage, UserFacingError.serverErrorMessage)
+        XCTAssertNil(vm.loadErrorMessage)
+        XCTAssertEqual(vm.renderState, .data(.idle))
     }
 }

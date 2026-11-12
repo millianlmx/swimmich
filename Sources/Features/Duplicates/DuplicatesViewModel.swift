@@ -12,23 +12,60 @@ final class DuplicatesViewModel {
 
     var groups: [DuplicateResponseDto] = []
     var isLoading = false
+    /// True while `refresh()` runs: the system's refresh control is the
+    /// indicator then, not the screen's own.
+    private(set) var isRefreshing = false
+    /// True once the groups were read and applied.
+    private(set) var hasLoaded = false
+    /// Failure of the last read, cleared by a success. Written by `load()`
+    /// only.
+    private(set) var loadErrorMessage: String?
+    /// Failure of the last `deleteGroup`.
     var errorMessage: String?
+    /// Bumped by every `load()`, so only the last read writes its result.
+    private var loadGeneration = 0
 
     init(client: any ImmichClient) {
         self.client = client
     }
 
-    /// Loads the duplicate groups from `GET /api/duplicates`.
+    /// What the screen renders.
+    var renderState: ListRenderState {
+        .resolve(
+            isEmpty: groups.isEmpty,
+            hasLoaded: hasLoaded,
+            isLoading: isLoading,
+            isRefreshing: isRefreshing,
+            loadError: loadErrorMessage
+        )
+    }
+
+    /// Loads the duplicate groups from `GET /api/duplicates` (`.task` and
+    /// "Try Again", never a pull). The groups are replaced by a success only.
     func load() async {
+        loadGeneration += 1
+        let generation = loadGeneration
         isLoading = true
-        defer { isLoading = false }
+        defer { if generation == loadGeneration { isLoading = false } }
 
         do {
-            groups = try await client.getDuplicates()
-            errorMessage = nil
+            let fetched = try await client.getDuplicates()
+            guard generation == loadGeneration else { return }
+            groups = fetched
+            hasLoaded = true
+            loadErrorMessage = nil
         } catch {
-            errorMessage = error.userFacingMessage
+            guard generation == loadGeneration, let message = error.userFacingMessage else { return }
+            loadErrorMessage = message
         }
+    }
+
+    /// Pull-to-refresh: `load()` flagged so the screen keeps its current
+    /// rendering.
+    func refresh() async {
+        isRefreshing = true
+        await load()
+        isRefreshing = false
     }
 
     /// The asset ids that would be deleted for a group: everything except the
