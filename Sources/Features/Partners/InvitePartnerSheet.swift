@@ -63,7 +63,7 @@ struct InvitePartnerSheet: View {
                                     Text(user.email)
                                         .font(.pvCaption)
                                         .foregroundStyle(Color.textSecondaryPV)
-                                        .lineLimit(1)
+                                        .accessibilityIdentifier("inviteCandidateEmail-\(user.id)")
                                 }
                                 Spacer(minLength: PVSpacing.s8)
                                 if vm.selectedCandidateId == user.id {

@@ -99,8 +99,10 @@ struct AlbumsView: View {
             Image(systemName: "rectangle.stack")
                 .font(.system(size: 56)) // DS-exempt: hero illustration §8.6
                 .foregroundStyle(Color.textTertiaryPV)
+                .accessibilityIdentifier("albumsEmptyGlyph")
             Text("No albums yet")
                 .font(.pvTitle)
+                .accessibilityIdentifier("albumsEmptyTitle")
         } description: {
             Text("Create an album to organize your photos.")
         } actions: {
@@ -109,6 +111,8 @@ struct AlbumsView: View {
                 .accessibilityIdentifier("albumsCreateButton")
                 .padding(.horizontal, PVSpacing.s48)
         }
+        .accessibilityElement(children: .contain)
+        .accessibilityIdentifier("albumsEmptyState")
     }
 
     // MARK: - Grid
@@ -167,7 +171,7 @@ struct AlbumsView: View {
                     Text(album.albumName)
                         .font(.pvHeadline)
                         .foregroundStyle(Color.textPrimaryPV)
-                        .lineLimit(1)
+                        .accessibilityIdentifier("albumCardTitle_\(album.id)")
                     Text("\(album.assetCount) photos")
                         .font(.pvCaption)
                         .foregroundStyle(Color.textSecondaryPV)
@@ -209,6 +213,7 @@ struct AlbumsView: View {
                     }
                 }
                 .clipShape(RoundedRectangle(cornerRadius: PVRadius.lg, style: .continuous))
+                .pvTileTextCap()
                 // Zoom-morph source (iOS 27+): the push zooms this cover into
                 // the detail hero. Gated to iOS 27 because the zoom transition
                 // interacts with the destination toolbar on iOS 26 (deferred

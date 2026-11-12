@@ -208,7 +208,9 @@ final class FloatingControlStyleTests: XCTestCase {
     /// Sites that are not floating controls (thumbnail badges, section chrome,
     /// the transparent cover of the zoom transition): file, member, pattern → max.
     private static let allowedSites: [String: Int] = [
-        "AssetThumbnailCell.swift|videoBadge|P5": 1,
+        // L-13 moved the video tile's duration pill out of `videoBadge` into
+        // `VideoDurationBadge.body` (same file, same single site).
+        "AssetThumbnailCell.swift|body|P5": 1,
         "AssetThumbnailCell.swift|compactPlayIcon|P5": 1,
         "AssetThumbnailCell.swift|topLeadingBadges|P5": 2,
         "OfflineAssetsView.swift|storageUsageCard|P2": 1,

@@ -118,6 +118,7 @@ struct SearchFilterSheet: View {
                     .accessibilityIdentifier("searchFilterDone")
                 }
             }
+            .immichAppBarTitleHeader("Filters")
         }
     }
 

@@ -16,6 +16,8 @@ struct PreferencesView: View {
     @Bindable var vm: PreferencesViewModel
 
     @State private var showResetConfirm = false
+    /// The accent swatch grows with the row's text (16 pt by default).
+    @ScaledMetric(relativeTo: .body) private var swatch: CGFloat = 16
 
     var body: some View {
         Form {
@@ -102,7 +104,7 @@ struct PreferencesView: View {
                             // Blue", not "Accent Color, circle".
                             Circle()
                                 .fill(preset.color)
-                                .frame(width: PVSpacing.s16, height: PVSpacing.s16)
+                                .frame(width: swatch, height: swatch)
                                 .accessibilityHidden(true)
                         }
                         .tag(preset)
@@ -125,6 +127,7 @@ struct PreferencesView: View {
                 Text("Puts every preference on this screen back to its default.")
             }
         }
+        .labeledContentStyle(.pvAdaptive)
         .navigationTitle("Preferences")
         .navigationBarTitleDisplayMode(.inline)
         // Destructive and confirmed: the reset is not undoable, and it is a

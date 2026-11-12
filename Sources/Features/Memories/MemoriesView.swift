@@ -180,13 +180,16 @@ struct MemoriesView: View {
     }
 
     private func refreshErrorBanner(_ message: String) -> some View {
-        HStack(spacing: PVSpacing.s8) {
-            Image(systemName: "exclamationmark.triangle.fill")
-                .foregroundStyle(Color.immichWarning)
-            Text(message)
-                .font(.pvCaption)
-                .foregroundStyle(Color.textSecondaryPV)
-                .lineLimit(2)
+        PVAdaptiveStack(hAlignment: .center, vAlignment: .leading, spacing: PVSpacing.s8) {
+            HStack(alignment: .firstTextBaseline, spacing: PVSpacing.s8) {
+                Image(systemName: "exclamationmark.triangle.fill")
+                    .font(.pvCaption)
+                    .foregroundStyle(Color.immichWarning)
+                Text(message)
+                    .font(.pvCaption)
+                    .foregroundStyle(Color.textSecondaryPV)
+                    .accessibilityIdentifier("memoriesRefreshErrorMessage")
+            }
             Spacer(minLength: 0)
             Button("Try Again") { Task { await vm.load() } }
                 .font(.pvCaption.weight(.semibold))
@@ -205,7 +208,7 @@ struct MemoriesView: View {
 /// (photo/video counts, location, asset count). Tapping the card opens the
 /// full-screen `MemoryPlaybackView`; the bookmark toggles `isSaved` and the long
 /// press opens the memory's mutations.
-private struct MemoryCard: View {
+struct MemoryCard: View {
     let memory: MemoryResponseDto
     let baseURL: URL
     let token: String?
@@ -274,7 +277,27 @@ private struct MemoryCard: View {
     }
 
     private var card: some View {
-        ZStack {
+        VStack(alignment: .leading, spacing: PVSpacing.s12) {
+            header
+            footer
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(PVSpacing.s16)
+        // The card grows with its text; the image and the scrim are drawn
+        // behind the final frame, so they always fill the whole card.
+        .frame(minHeight: 320, alignment: .bottom)
+        .frame(maxWidth: .infinity)
+        .background {
+            LinearGradient(
+                stops: [
+                    .init(color: .clear, location: 0.25),
+                    .init(color: .black.opacity(0.9), location: 0.85),
+                    .init(color: .black.opacity(0.98), location: 1.0)
+                ],
+                startPoint: .top, endPoint: .bottom
+            )
+        }
+        .background {
             if let heroURL {
                 GeometryReader { proxy in
                     AuthenticatedAsyncImage(url: heroURL, token: token, contentMode: .fill)
@@ -284,28 +307,7 @@ private struct MemoryCard: View {
             } else {
                 Rectangle().fill(Color.bgTertiary.opacity(0.3))
             }
-
-            LinearGradient(
-                stops: [
-                    .init(color: .clear, location: 0.25),
-                    .init(color: .black.opacity(0.9), location: 0.85),
-                    .init(color: .black.opacity(0.98), location: 1.0)
-                ],
-                startPoint: .top, endPoint: .bottom
-            )
-
-            VStack(spacing: 0) {
-                Spacer(minLength: 0)
-                VStack(alignment: .leading, spacing: PVSpacing.s12) {
-                    header
-                    footer
-                }
-                .frame(maxWidth: .infinity, alignment: .leading)
-                .padding(PVSpacing.s16)
-            }
         }
-        .frame(height: 320)
-        .frame(maxWidth: .infinity)
         .clipShape(RoundedRectangle(cornerRadius: PVRadius.xl, style: .continuous))
     }
 
@@ -316,8 +318,7 @@ private struct MemoryCard: View {
                     .font(.pvH3)
                     .foregroundStyle(.white)
                     .shadow(color: .black.opacity(0.5), radius: 4, y: 1)
-                    .lineLimit(1)
-                    .minimumScaleFactor(0.7)
+                    .accessibilityIdentifier("memoryCardTitle_\(memory.id)")
             }
             if let subtitle = MemoryTitlePresentation.cardSubtitle(for: memory) {
                 Text(subtitle)
@@ -330,7 +331,7 @@ private struct MemoryCard: View {
     }
 
     private var footer: some View {
-        HStack(spacing: PVSpacing.s8) {
+        PVAdaptiveStack(vAlignment: .leading, spacing: PVSpacing.s8) {
             if let media = MemoryCardPresentation.mediaCountLabel(for: memory) {
                 Label(media, systemImage: "photo.on.rectangle")
                     .lineLimit(1)
@@ -338,6 +339,7 @@ private struct MemoryCard: View {
             if let location = MemoryCardPresentation.locationLabel(for: memory) {
                 Label(location, systemImage: "mappin.and.ellipse")
                     .lineLimit(1)
+                    .accessibilityIdentifier("memoryCardLocation_\(memory.id)")
             }
             if memory.assets.count > 1 {
                 Label(String(memory.assets.count), systemImage: "square.stack")

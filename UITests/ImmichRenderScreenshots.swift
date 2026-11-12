@@ -595,7 +595,7 @@ final class ImmichRenderScreenshots: XCTestCase {
         openSharedTab()
         shot("28-shared-empty")
 
-        let create = app.buttons["newSharedLinkButton"]
+        let create = app.buttons["sharedLinksCreateButton"]
         XCTAssertTrue(create.waitForExistence(timeout: 15), "no create CTA on the empty state")
         create.tap()
         sleep(3)

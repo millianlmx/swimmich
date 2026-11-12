@@ -88,17 +88,21 @@ struct AdjustLocationSheet: View {
     }
 
     var body: some View {
-        VStack(spacing: PVSpacing.s16) {
-            header
-            DraggablePinMapView(latitude: latitude, longitude: longitude) { lat, lon in
-                latitude = lat
-                longitude = lon
-                vm.errorMessage = nil
+        ScrollView {
+            VStack(spacing: PVSpacing.s16) {
+                header
+                DraggablePinMapView(latitude: latitude, longitude: longitude) { lat, lon in
+                    latitude = lat
+                    longitude = lon
+                    vm.errorMessage = nil
+                }
+                .frame(minHeight: 240)
+                .clipShape(RoundedRectangle(cornerRadius: PVRadius.md, style: .continuous))
+                footer
             }
-            .clipShape(RoundedRectangle(cornerRadius: PVRadius.md, style: .continuous))
-            footer
+            .padding(PVSpacing.s16)
         }
-        .padding(PVSpacing.s16)
+        .scrollBounceBehavior(.basedOnSize)
     }
 
     private var header: some View {

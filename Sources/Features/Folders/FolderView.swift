@@ -219,7 +219,6 @@ private struct FolderRow: View {
                 Text(node.name)
                     .font(.pvHeadline)
                     .foregroundStyle(Color.textPrimaryPV)
-                    .lineLimit(1)
                 if node.hasChildren {
                     Text(String(localized: "\(node.children.count) folders"))
                         .font(.pvSubhead)

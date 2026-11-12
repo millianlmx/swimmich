@@ -22,6 +22,7 @@ struct MapSettingsSheet: View {
     @State private var draft: MapMarkerFilter
     /// Guards the two close paths (Done and swipe-down) from applying twice.
     @State private var applied = false
+    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
 
     /// Upstream `map_custom_time_range.dart` opens its pickers at
     /// `firstDate: DateTime(1970)`; the upper bound is today.
@@ -64,13 +65,29 @@ struct MapSettingsSheet: View {
 
     private var themeSection: some View {
         Section("Appearance") {
+            themePicker
+                .accessibilityIdentifier("mapSettingsThemePicker")
+        }
+    }
+
+    /// Three segments no longer fit side by side at accessibility sizes: the
+    /// picker becomes a menu there.
+    @ViewBuilder
+    private var themePicker: some View {
+        if dynamicTypeSize.isAccessibilitySize {
+            Picker("Appearance", selection: themeBinding) {
+                Text("System").tag(MapTheme.system)
+                Text("Light").tag(MapTheme.light)
+                Text("Dark").tag(MapTheme.dark)
+            }
+            .pickerStyle(.menu)
+        } else {
             Picker("Appearance", selection: themeBinding) {
                 Text("System").tag(MapTheme.system)
                 Text("Light").tag(MapTheme.light)
                 Text("Dark").tag(MapTheme.dark)
             }
             .pickerStyle(.segmented)
-            .accessibilityIdentifier("mapSettingsThemePicker")
         }
     }
 
@@ -154,7 +171,7 @@ struct MapSettingsSheet: View {
         clearID: String,
         clearLabel: LocalizedStringKey
     ) -> some View {
-        HStack(spacing: PVSpacing.s8) {
+        PVAdaptiveStack(hAlignment: .center, spacing: PVSpacing.s8) {
             if let date {
                 DatePicker(
                     title,

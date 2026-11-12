@@ -82,8 +82,12 @@ struct ProfileView: View {
                         }
                         .accessibilityIdentifier("profilePictureRow")
 
-                        LabeledContent("Name", value: user)
-                        LabeledContent("Email", value: email)
+                        LabeledContent("Name") {
+                            Text(user).accessibilityIdentifier("profileNameValue")
+                        }
+                        LabeledContent("Email") {
+                            Text(email).accessibilityIdentifier("profileEmailValue")
+                        }
                     } header: {
                         Text("Account")
                     }
@@ -321,6 +325,7 @@ struct ProfileView: View {
                     .accessibilityIdentifier("logoutButton")
                 }
             }
+            .labeledContentStyle(.pvAdaptive)
             .accessibilityIdentifier("profileList")
             .navigationTitle("Me")
             // Logging out purges offline photos, caches and saved servers

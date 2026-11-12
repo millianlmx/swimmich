@@ -371,5 +371,6 @@ private struct SharedLinkAssetPager: View {
             }
         }
         .padding(.horizontal, PVSpacing.s16)
+        .pvFullscreenChromeTextCap()
     }
 }

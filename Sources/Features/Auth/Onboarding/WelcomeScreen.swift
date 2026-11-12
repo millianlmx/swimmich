@@ -85,13 +85,14 @@ private struct WelcomeBullet: Identifiable {
 /// Static value-prop row: tinted icon tile + headline + detail line.
 private struct WelcomeBulletRow: View {
     let bullet: WelcomeBullet
+    @ScaledMetric(relativeTo: .title3) private var tile: CGFloat = 48
 
     var body: some View {
         HStack(alignment: .top, spacing: PVSpacing.s16) {
             Image(systemName: bullet.symbol)
                 .font(.pvH5)
                 .foregroundStyle(Color.immichPrimary)
-                .frame(width: 48, height: 48)
+                .frame(width: tile, height: tile)
                 .background(Color.immichPrimary.opacity(0.12))
                 .clipShape(RoundedRectangle(cornerRadius: PVRadius.md, style: .continuous))
 

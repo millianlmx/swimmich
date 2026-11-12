@@ -39,7 +39,7 @@ struct LanguageSettingsView: View {
         }
         .navigationTitle("Language")
         .navigationBarTitleDisplayMode(.inline)
-        .overlay(alignment: .bottom) {
+        .safeAreaInset(edge: .bottom) {
             if vm.requiresRelaunch {
                 LanguageToast(onDismiss: { vm.dismissRelaunchPrompt() })
                     .padding(.bottom, PVSpacing.s16)

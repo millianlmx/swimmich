@@ -48,6 +48,7 @@ struct ServerURLScreen: View {
                                 .focused($isFocused)
                                 .onSubmit(primaryAction)
                                 .font(.pvBody)
+                                .accessibilityIdentifier("serverURLField")
                                 .pvFieldSurface()
 
                             Button {
@@ -56,7 +57,7 @@ struct ServerURLScreen: View {
                                 Image(systemName: "qrcode.viewfinder")
                                     .font(.pvBody)
                                     .foregroundStyle(Color.immichPrimary)
-                                    .frame(width: 40, height: 40)
+                                    .frame(minWidth: 44, minHeight: 44)
                             }
                             .buttonStyle(.plain)
                             .accessibilityLabel("Scan server QR code")
@@ -158,6 +159,7 @@ struct ServerURLScreen: View {
             }
             .buttonStyle(PVPrimaryButtonStyle())
             .disabled(auth.serverURLString.isEmpty || auth.isLoading || auth.serverStatus == .checking)
+            .accessibilityIdentifier("serverURLContinueButton")
         }
     }
 
@@ -200,17 +202,19 @@ struct ServerURLScreen: View {
             presentingCertificate = true
         } label: {
             HStack(spacing: PVSpacing.s8) {
-                Label("Client Certificate", systemImage: "lock.shield")
-                Spacer(minLength: PVSpacing.s8)
-                Group {
-                    if auth.serverHasClientCertificate {
-                        Text("Installed")
-                    } else {
-                        Text("Not Installed")
+                PVAdaptiveStack(vAlignment: .leading, spacing: PVSpacing.s8) {
+                    Label("Client Certificate", systemImage: "lock.shield")
+                    Spacer(minLength: PVSpacing.s8)
+                    Group {
+                        if auth.serverHasClientCertificate {
+                            Text("Installed")
+                        } else {
+                            Text("Not Installed")
+                        }
                     }
+                    .font(.pvSubhead)
+                    .foregroundStyle(Color.textSecondaryPV)
                 }
-                .font(.pvSubhead)
-                .foregroundStyle(Color.textSecondaryPV)
                 Image(systemName: "chevron.right")
                     .font(.pvCaption)
                     .foregroundStyle(Color.textSecondaryPV)
@@ -279,6 +283,7 @@ struct ServerURLScreen: View {
             Text("Connect your server")
                 .font(.pvH2)
                 .multilineTextAlignment(.center)
+                .accessibilityIdentifier("serverURLTitle")
             Text("Enter the URL of your Immich instance.")
                 .font(.pvSubhead)
                 .foregroundStyle(Color.textSecondaryPV)
@@ -405,9 +410,10 @@ private struct InfoRow: View {
     /// property is never extracted by the compiler and never translated.
     let label: LocalizedStringKey
     let value: String
+    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
 
     var body: some View {
-        HStack {
+        PVAdaptiveStack {
             Text(label)
                 .font(.pvSubhead)
                 .foregroundStyle(Color.textSecondaryPV)
@@ -415,7 +421,7 @@ private struct InfoRow: View {
             Text(value)
                 .font(.pvBody)
                 .foregroundStyle(Color.textPrimaryPV)
-                .multilineTextAlignment(.trailing)
+                .multilineTextAlignment(dynamicTypeSize.isAccessibilitySize ? .leading : .trailing)
         }
         .padding(.vertical, PVSpacing.s12)
     }

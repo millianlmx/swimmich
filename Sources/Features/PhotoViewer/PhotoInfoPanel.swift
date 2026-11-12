@@ -97,12 +97,14 @@ struct PhotoInfoPanel: View {
                     Text(place)
                         .font(.pvH6)
                         .foregroundStyle(Color.textPrimaryPV)
-                        .lineLimit(1)
+                        .fixedSize(horizontal: false, vertical: true)
+                        .accessibilityIdentifier("viewerInfoPlace")
                 }
                 Text(headerDate)
                     .font(.pvSubhead)
                     .foregroundStyle(Color.textSecondaryPV)
-                    .lineLimit(1)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .accessibilityIdentifier("viewerInfoDate")
             }
             Spacer()
             Button(action: onClose) {
@@ -220,9 +222,10 @@ struct PhotoInfoPanel: View {
                                         Text(face.person?.name ?? String(localized: "Unnamed"))
                                             .font(.pvCaption)
                                             .foregroundStyle(Color.textPrimaryPV)
-                                            .lineLimit(1)
+                                            .multilineTextAlignment(.center)
+                                            .accessibilityIdentifier("viewerInfoFaceName_\(face.id)")
                                     }
-                                    .frame(width: 68)
+                                    .frame(minWidth: 68)
                                 }
                                 .buttonStyle(.plain)
                                 .accessibilityLabel(face.person?.name ?? String(localized: "Unnamed face"))
@@ -245,7 +248,7 @@ struct PhotoInfoPanel: View {
                     ForEach(tags, id: \.id) { tag in
                         HStack(spacing: PVSpacing.s8) {
                             Image(systemName: "tag.fill")
-                                .font(.pvCaption)
+                                .font(.pvBody)
                                 .foregroundStyle((tag.color.flatMap { Color(hex: $0) }) ?? Color.immichPrimary)
                             Text(tag.name)
                                 .font(.pvBody)
@@ -488,7 +491,7 @@ struct ExifInfoPanel: View {
     /// Map-extras: "Open in Maps" launches Apple Maps at the photo spot;
     /// "Adjust Location" presents the drag-pin sheet (wired by the viewer).
     private func actionRow(latitude lat: Double, longitude lon: Double) -> some View {
-        HStack(spacing: PVSpacing.s8) {
+        PVAdaptiveStack(vAlignment: .center, spacing: PVSpacing.s8) {
             if let onOpenInMaps {
                 Button {
                     onOpenInMaps(lat, lon)
@@ -554,11 +557,18 @@ private struct InfoCard<Content: View>: View {
 }
 
 /// Icon + value grid: items spread evenly ("space evenly"), wrap-around
-/// automatic, long values truncated with "…". Single-line sections render as
-/// a natural-size centered HStack; multiline sections use a plain leading
-/// grid (wrap stays aligned with the row above — no lopsided centering).
-private struct InfoGrid: View {
+/// automatic, long values wrap onto several lines. Single-line sections render
+/// as a natural-size centered HStack; multiline sections use a plain leading
+/// grid (wrap stays aligned with the row above — no lopsided centering). At
+/// accessibility sizes the grid is a single column.
+struct InfoGrid: View {
     let items: [(symbol: String, value: String)]
+
+    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
+
+    init(items: [(symbol: String, value: String)]) {
+        self.items = items
+    }
 
     /// Min item width + spacing — mirrors the `GridItem(.adaptive(minimum:))`
     /// math so the computed column count matches the rendered grid.
@@ -574,7 +584,16 @@ private struct InfoGrid: View {
 
     @ViewBuilder
     var body: some View {
-        if items.count <= columnCount {
+        if dynamicTypeSize.isAccessibilitySize {
+            // One column, no fixed size: every value gets the full width.
+            VStack(spacing: PVSpacing.s12) {
+                ForEach(items.indices, id: \.self) { i in
+                    InfoGridItem(symbol: items[i].symbol, value: items[i].value, index: i)
+                }
+            }
+            .padding(.horizontal, PVSpacing.s16)
+            .padding(.vertical, PVSpacing.s8)
+        } else if items.count <= columnCount {
             // Single line — natural-size items spread across the FULL width
             // (flexible spacers), so a short section doesn't cluster in the
             // middle with cramped gaps: one item centers, two go to the edges.
@@ -582,7 +601,7 @@ private struct InfoGrid: View {
                 Spacer(minLength: PVSpacing.s8)
                 ForEach(items.indices, id: \.self) { i in
                     if i > 0 { Spacer(minLength: PVSpacing.s24) }
-                    InfoGridItem(symbol: items[i].symbol, value: items[i].value)
+                    InfoGridItem(symbol: items[i].symbol, value: items[i].value, index: i)
                         .fixedSize()
                 }
                 Spacer(minLength: PVSpacing.s8)
@@ -599,7 +618,7 @@ private struct InfoGrid: View {
                 spacing: PVSpacing.s12
             ) {
                 ForEach(items.indices, id: \.self) { i in
-                    InfoGridItem(symbol: items[i].symbol, value: items[i].value)
+                    InfoGridItem(symbol: items[i].symbol, value: items[i].value, index: i)
                 }
             }
             .padding(.horizontal, PVSpacing.s16)
@@ -609,10 +628,12 @@ private struct InfoGrid: View {
 }
 
 /// Icon above value — the icon carries the meaning (no label), the value is
-/// the anchor: medium-weight primary text, one line, "…" when too long.
-private struct InfoGridItem: View {
+/// the anchor: medium-weight primary text, wrapped when long.
+struct InfoGridItem: View {
     let symbol: String
     let value: String
+    /// Position in its grid; only feeds the accessibility identifier.
+    var index: Int = 0
 
     var body: some View {
         VStack(spacing: PVSpacing.s4) {
@@ -622,9 +643,8 @@ private struct InfoGridItem: View {
             Text(value)
                 .font(.pvCaption.weight(.medium))
                 .foregroundStyle(Color.textPrimaryPV)
-                .lineLimit(1)
-                .truncationMode(.tail)
-                .minimumScaleFactor(0.8)
+                .multilineTextAlignment(.center)
+                .accessibilityIdentifier("viewerInfoValue_\(index)")
         }
         .frame(maxWidth: .infinity)
         .padding(.vertical, PVSpacing.s4)

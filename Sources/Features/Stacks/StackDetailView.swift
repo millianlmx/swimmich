@@ -178,7 +178,6 @@ struct StackDetailView: View {
                     Text(member.originalFileName)
                         .font(.pvBody)
                         .foregroundStyle(Color.textPrimaryPV)
-                        .lineLimit(1)
                     if isPrimary {
                         Text("Cover")
                             .font(.pvCaption)

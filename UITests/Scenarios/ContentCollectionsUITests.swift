@@ -411,7 +411,7 @@ final class ContentCollectionsUITests: XCTestCase {
         selectTab("Memories")
         XCTAssertTrue(element("memoriesCreateButton").waitForExistence(timeout: 15), "Memories root missing")
         selectTab("Shared")
-        XCTAssertTrue(element("newSharedLinkButton").waitForExistence(timeout: 15), "Shared root missing")
+        XCTAssertTrue(element("sharedLinksCreateButton").waitForExistence(timeout: 15), "Shared root missing")
         selectTab("Photos")
         selectTab("Search")
         XCTAssertTrue(element("searchModeSegment_results").waitForExistence(timeout: 15), "Search root missing")

@@ -396,11 +396,16 @@ struct SearchView: View {
     private var resultsContent: some View {
         if !vm.hasSearched {
             // No search done: nothing to refresh, so no `.refreshable` here.
-            ContentUnavailableView(
-                "Search your library",
-                systemImage: "magnifyingglass",
-                description: Text("Find photos by place, object, camera, or natural language.")
-            )
+            ContentUnavailableView {
+                Label {
+                    Text("Search your library")
+                        .accessibilityIdentifier("searchPromptTitle")
+                } icon: {
+                    Image(systemName: "magnifyingglass")
+                }
+            } description: {
+                Text("Find photos by place, object, camera, or natural language.")
+            }
             .frame(maxWidth: .infinity, maxHeight: .infinity)
         } else if case .loading = vm.resultsState {
             ProgressView()
@@ -591,39 +596,41 @@ struct ExplorePlaceCard: View {
     }
 
     var body: some View {
-        ZStack(alignment: .bottomLeading) {
-            AuthenticatedAsyncImage(url: url, token: token)
-                .frame(maxWidth: .infinity)
-                .frame(height: 220)
-                .clipped()
-
-            // Legibility gradient under the text.
+        // Overlaid metadata: it sets the card height (at least 220 pt) and the
+        // photo fills whatever height that gives.
+        VStack(alignment: .leading, spacing: PVSpacing.s2) {
+            Text(headline)
+                .font(.pvH4)
+                .foregroundStyle(.white)
+                .fixedSize(horizontal: false, vertical: true)
+                .shadow(radius: 4)
+            if !place.subtitle.isEmpty {
+                Text(place.subtitle)
+                    .font(.pvSubhead)
+                    .foregroundStyle(.white.opacity(0.85))
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+            Text(Self.footerText(photoCount: place.photoCount, date: place.date))
+                .font(.pvCaption)
+                .foregroundStyle(.white.opacity(0.8))
+                .fixedSize(horizontal: false, vertical: true)
+        }
+        .padding(PVSpacing.s12)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        // Legibility gradient under the text.
+        .background(alignment: .bottom) {
             LinearGradient(
                 colors: [.black.opacity(0), .black.opacity(0.65)],
                 startPoint: .top, endPoint: .bottom
             )
-            .frame(height: 140)
+            .frame(minHeight: 140)
             .allowsHitTesting(false)
-
-            // Overlaid metadata.
-            VStack(alignment: .leading, spacing: PVSpacing.s2) {
-                Text(headline)
-                    .font(.pvH4)
-                    .foregroundStyle(.white)
-                    .lineLimit(1)
-                    .shadow(radius: 4)
-                if !place.subtitle.isEmpty {
-                    Text(place.subtitle)
-                        .font(.pvSubhead)
-                        .foregroundStyle(.white.opacity(0.85))
-                        .lineLimit(1)
-                }
-                Text(Self.footerText(photoCount: place.photoCount, date: place.date))
-                    .font(.pvCaption)
-                    .foregroundStyle(.white.opacity(0.8))
-                    .lineLimit(1)
-            }
-            .padding(PVSpacing.s12)
+        }
+        .frame(maxWidth: .infinity, minHeight: 220, alignment: .bottomLeading)
+        .background {
+            AuthenticatedAsyncImage(url: url, token: token)
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+                .clipped()
         }
         .frame(maxWidth: .infinity)
         .clipShape(RoundedRectangle(cornerRadius: PVRadius.lg, style: .continuous))

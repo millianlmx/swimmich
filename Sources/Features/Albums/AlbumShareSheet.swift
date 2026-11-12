@@ -138,16 +138,16 @@ struct AlbumShareSheet: View {
     private func collaboratorRow(_ user: UserResponseDto) -> some View {
         HStack(spacing: PVSpacing.s12) {
             UserAvatarCircle(user: user, baseURL: auth.baseURL, token: auth.accessToken)
-            VStack(alignment: .leading, spacing: PVSpacing.s2) {
+            PVAdaptiveStack(hAlignment: .center, spacing: PVSpacing.s8) {
                 Text(user.name)
                     .font(.pvBody)
                     .foregroundStyle(Color.textPrimaryPV)
+                Spacer()
+                roleMenu(for: user)
+                    .font(.pvCaption)
+                    .foregroundStyle(Color.accentColor)
+                    .disabled(vm.busyUserIds.contains(user.id))
             }
-            Spacer()
-            roleMenu(for: user)
-                .font(.pvCaption)
-                .foregroundStyle(Color.accentColor)
-                .disabled(vm.busyUserIds.contains(user.id))
         }
         .accessibilityElement(children: .contain)
         .accessibilityIdentifier("albumShareCollaborator_\(user.id)")

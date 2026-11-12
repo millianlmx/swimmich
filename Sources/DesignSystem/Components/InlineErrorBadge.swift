@@ -13,20 +13,24 @@ struct InlineErrorBadge: View {
     var retry: (() -> Void)? = nil
 
     var body: some View {
-        HStack(spacing: PVSpacing.s12) {
-            Image(systemName: "exclamationmark.circle.fill")
-                .foregroundStyle(Color.immichError)
+        PVAdaptiveStack(spacing: PVSpacing.s12) {
+            HStack(alignment: .firstTextBaseline, spacing: PVSpacing.s12) {
+                Image(systemName: "exclamationmark.circle.fill")
+                    .foregroundStyle(Color.immichError)
 
-            Text(message)
-                .font(.pvSubhead)
-                .foregroundStyle(Color.immichError)
-                .multilineTextAlignment(.leading)
-                .frame(maxWidth: .infinity, alignment: .leading)
+                Text(message)
+                    .font(.pvSubhead)
+                    .foregroundStyle(Color.immichError)
+                    .multilineTextAlignment(.leading)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+            }
 
             if let retry {
                 Button("Try Again", action: retry)
                     .font(.pvSubhead.weight(.semibold))
                     .foregroundStyle(Color.immichError)
+                    .frame(minHeight: 44)
             }
         }
         .padding(PVSpacing.s12)

@@ -209,8 +209,6 @@ struct SyncStatusView: View {
                     Text(name)
                         .font(.pvCaption)
                         .foregroundStyle(Color.textSecondaryPV)
-                        .lineLimit(1)
-                        .truncationMode(.middle)
                 }
 
                 Spacer(minLength: 0)
@@ -310,8 +308,6 @@ struct SyncStatusView: View {
                 VStack(alignment: .leading, spacing: PVSpacing.s2) {
                     Text(failure.name)
                         .font(.pvSubhead)
-                        .lineLimit(1)
-                        .truncationMode(.middle)
                     Text(failure.reason)
                         .font(.pvCaption)
                         .foregroundStyle(Color.textSecondaryPV)

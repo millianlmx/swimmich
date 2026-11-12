@@ -140,17 +140,20 @@ struct SharedLinksView: View {
                         Image(systemName: "link")
                             .font(.system(size: 56)) // DS-exempt: hero illustration §8.6
                             .foregroundStyle(Color.textTertiaryPV)
+                            .accessibilityIdentifier("sharedLinksEmptyGlyph")
                         Text("No shared links")
                             .font(.pvTitle)
-                            .accessibilityIdentifier("sharedLinksEmptyState")
+                            .accessibilityIdentifier("sharedLinksEmptyTitle")
                     } description: {
                         Text("Links you create to share albums will appear here.")
                     } actions: {
                         Button("Create Link") { presentingCreate = true }
                             .buttonStyle(PVPrimaryButtonStyle())
                             .padding(.horizontal, PVSpacing.s48)
-                            .accessibilityIdentifier("newSharedLinkButton")
+                            .accessibilityIdentifier("sharedLinksCreateButton")
                     }
+                    .accessibilityElement(children: .contain)
+                    .accessibilityIdentifier("sharedLinksEmptyState")
                     .listRowBackground(Color.clear)
                 }
             case .data(let status):
@@ -250,7 +253,6 @@ struct SharedLinkRow: View {
     @State private var copied = false
     @State private var offsetX: CGFloat = 0
     @State private var rowWidth: CGFloat = 0
-    @State private var rowHeight: CGFloat = 84
 
     private var url: String {
         sharedLinkBase.urlString(slug: link.slug, key: link.key)
@@ -277,7 +279,8 @@ struct SharedLinkRow: View {
 
     var body: some View {
         cardContent
-            .frame(height: rowHeight)
+            .frame(maxHeight: isPendingRevoke ? 0 : nil)
+            .animation(PVMotion.movement(PVMotion.snappy, reduceMotion: reduceMotion), value: isPendingRevoke)
             .frame(maxWidth: .infinity)
             .background {
                 GeometryReader { geo in
@@ -299,12 +302,10 @@ struct SharedLinkRow: View {
                         // closes up behind it — no gap while the confirmation
                         // popup is up.
                         offsetX = -rowWidth
-                        rowHeight = 0
                     } else {
                         // Reopen the cell and slide the card back in from the
                         // left.
                         offsetX = 0
-                        rowHeight = 84
                     }
                 }
             }
@@ -337,54 +338,59 @@ struct SharedLinkRow: View {
                 }
                 Text(title)
                     .font(.pvSubhead)
-                    .lineLimit(1)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .accessibilityIdentifier("sharedLinkTitle_\(link.id)")
                 Spacer()
             }
-            HStack(spacing: PVSpacing.s8) {
+            PVAdaptiveStack(hAlignment: .center, spacing: PVSpacing.s8) {
                 Text(url)
                     .font(.pvCaption).monospacedDigit()
                     .foregroundStyle(Color.textSecondaryPV)
-                    .lineLimit(1)
-                    .truncationMode(.middle)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .accessibilityIdentifier("sharedLinkURL_\(link.id)")
                 Spacer()
-                if copied {
-                    Text("Copied")
-                        .font(.pvCaption)
-                        .foregroundStyle(Color.immichPrimary)
-                        .accessibilityIdentifier("sharedLinkCopyFeedback")
-                }
-                // No `.buttonStyle(.plain)` here: inside a List it swallows the
-                // tap (the row looks tappable and nothing happens). The default
-                // list style + an explicit hit shape is what works.
-                Button {
-                    UIPasteboard.general.string = url
-                    copied = true
-                    DispatchQueue.main.asyncAfter(deadline: .now() + 2) {
-                        copied = false
+                HStack(spacing: PVSpacing.s8) {
+                    if copied {
+                        Text("Copied")
+                            .font(.pvCaption)
+                            .foregroundStyle(Color.immichPrimary)
+                            .accessibilityIdentifier("sharedLinkCopyFeedback")
                     }
-                } label: {
-                    Image(systemName: copied ? "checkmark" : "doc.on.doc")
-                        .foregroundStyle(Color.immichPrimary)
-                        .frame(width: 32, height: 32)
-                        .contentShape(Rectangle())
-                }
-                .accessibilityIdentifier("sharedLinkCopy-\(link.id)")
-                .accessibilityLabel("Copy link")
+                    // No `.buttonStyle(.plain)` here: inside a List it swallows the
+                    // tap (the row looks tappable and nothing happens). The default
+                    // list style + an explicit hit shape is what works.
+                    Button {
+                        UIPasteboard.general.string = url
+                        copied = true
+                        DispatchQueue.main.asyncAfter(deadline: .now() + 2) {
+                            copied = false
+                        }
+                    } label: {
+                        Image(systemName: copied ? "checkmark" : "doc.on.doc")
+                            .foregroundStyle(Color.immichPrimary)
+                            .frame(minWidth: 44, minHeight: 44)
+                            .contentShape(Rectangle())
+                    }
+                    .accessibilityIdentifier("sharedLinkCopy-\(link.id)")
+                    .accessibilityLabel("Copy link")
 
-                ShareLink(item: publicURL) {
-                    Image(systemName: "square.and.arrow.up")
-                        .foregroundStyle(Color.immichPrimary)
-                        .frame(width: 32, height: 32)
-                        .contentShape(Rectangle())
+                    ShareLink(item: publicURL) {
+                        Image(systemName: "square.and.arrow.up")
+                            .foregroundStyle(Color.immichPrimary)
+                            .frame(minWidth: 44, minHeight: 44)
+                            .contentShape(Rectangle())
+                    }
+                    .accessibilityIdentifier("sharedLinkShare-\(link.id)")
+                    .accessibilityLabel("Share link")
                 }
-                .accessibilityIdentifier("sharedLinkShare-\(link.id)")
-                .accessibilityLabel("Share link")
             }
         }
         .padding(PVSpacing.s16)
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .leading)
         .background(cardBackground)
         .clipShape(RoundedRectangle(cornerRadius: PVRadius.lg, style: .continuous))
+        .accessibilityElement(children: .contain)
+        .accessibilityIdentifier("sharedLinkRow_\(link.id)")
     }
 }
 
@@ -496,44 +502,45 @@ struct CreateSharedLinkSheet: View {
     /// copy/share pair the list rows offer.
     private func readyPanel(for link: SharedLinkResponseDto) -> some View {
         let url = sharedLinkBase.url(slug: link.slug, key: link.key)
-        return VStack(spacing: PVSpacing.s16) {
-            Image(systemName: "checkmark.circle.fill")
-                .font(.system(size: 44)) // DS-exempt: hero confirmation glyph
-                .foregroundStyle(Color.immichSuccess)
-            Text(url.absoluteString)
-                .font(.pvCaption).monospacedDigit()
-                .foregroundStyle(Color.textSecondaryPV)
-                .multilineTextAlignment(.center)
-                .lineLimit(3)
-                .truncationMode(.middle)
-                .accessibilityIdentifier("sharedLinkReadyURL")
-            HStack(spacing: PVSpacing.s12) {
-                Button {
-                    UIPasteboard.general.string = url.absoluteString
-                    didCopyLink = true
-                    copiedTick &+= 1
-                    DispatchQueue.main.asyncAfter(deadline: .now() + 2) { didCopyLink = false }
-                } label: {
-                    // Two literal labels instead of one ternary: `Label(didCopyLink
-                    // ? "Copied" : "Copy link", …)` produces no extractable string.
-                    if didCopyLink {
-                        Label("Copied", systemImage: "checkmark")
-                    } else {
-                        Label("Copy link", systemImage: "doc.on.doc")
+        return ScrollView {
+            VStack(spacing: PVSpacing.s16) {
+                Image(systemName: "checkmark.circle.fill")
+                    .font(.system(size: 44)) // DS-exempt: hero confirmation glyph
+                    .foregroundStyle(Color.immichSuccess)
+                Text(url.absoluteString)
+                    .font(.pvCaption).monospacedDigit()
+                    .foregroundStyle(Color.textSecondaryPV)
+                    .multilineTextAlignment(.center)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .accessibilityIdentifier("sharedLinkReadyURL")
+                PVAdaptiveStack(vAlignment: .center, spacing: PVSpacing.s12) {
+                    Button {
+                        UIPasteboard.general.string = url.absoluteString
+                        didCopyLink = true
+                        copiedTick &+= 1
+                        DispatchQueue.main.asyncAfter(deadline: .now() + 2) { didCopyLink = false }
+                    } label: {
+                        // Two literal labels instead of one ternary: `Label(didCopyLink
+                        // ? "Copied" : "Copy link", …)` produces no extractable string.
+                        if didCopyLink {
+                            Label("Copied", systemImage: "checkmark")
+                        } else {
+                            Label("Copy link", systemImage: "doc.on.doc")
+                        }
                     }
+                    .buttonStyle(PVPrimaryButtonStyle())
+                    .accessibilityIdentifier("sharedLinkReadyCopy")
+                    ShareLink(item: url) {
+                        Label("Share link", systemImage: "square.and.arrow.up")
+                    }
+                    .accessibilityIdentifier("sharedLinkReadyShare")
                 }
-                .buttonStyle(PVPrimaryButtonStyle())
-                .accessibilityIdentifier("sharedLinkReadyCopy")
-                ShareLink(item: url) {
-                    Label("Share link", systemImage: "square.and.arrow.up")
-                }
-                .accessibilityIdentifier("sharedLinkReadyShare")
+                .padding(.horizontal, PVSpacing.s24)
             }
-            .padding(.horizontal, PVSpacing.s24)
-            Spacer()
+            .frame(maxWidth: .infinity)
+            .padding(PVSpacing.s24)
         }
-        .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .padding(PVSpacing.s24)
+        .scrollBounceBehavior(.basedOnSize)
         // No identifier on this container: an `.accessibilityIdentifier` set on a
         // container propagates to every descendant and OVERWRITES theirs — the
         // URL text and both buttons all came back as "sharedLinkReadyScreen",

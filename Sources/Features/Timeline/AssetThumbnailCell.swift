@@ -117,6 +117,7 @@ struct AssetThumbnailCell: View {
             .animation(PVMotion.movement(PVMotion.snappy, reduceMotion: reduceMotion), value: isSelected)
             .animation(PVMotion.movement(PVMotion.snappy, reduceMotion: reduceMotion), value: selectionMode)
             .contentShape(Rectangle())
+            .pvTileTextCap()
             .onTapGesture { onTap?() }
 
         // Context menu suppressed in selection mode: it would compete with the
@@ -204,14 +205,7 @@ struct AssetThumbnailCell: View {
 
             Group {
                 if let durationText {
-                    Label(durationText, systemImage: "play.fill")
-                        .font(.caption2.weight(.semibold))
-                        .lineLimit(1)
-                        .foregroundStyle(.white) // DS-exempt: badge contrast on material
-                        .padding(.horizontal, 6)
-                        .padding(.vertical, 3) // DS-exempt: badge micro-padding
-                        .background(Color.black.opacity(0.4), in: Capsule())
-                        .padding(5)
+                    VideoDurationBadge(text: durationText)
                 } else {
                     compactPlayIcon
                 }
@@ -406,4 +400,22 @@ struct AssetThumbnailCell: View {
         }
     }
 
+}
+
+/// Duration pill on a video tile. Carries its own cap so it stays at the
+/// default size even when measured outside the cell.
+struct VideoDurationBadge: View {
+    let text: String
+
+    var body: some View {
+        Label(text, systemImage: "play.fill")
+            .font(.caption2.weight(.semibold))
+            .lineLimit(1)
+            .foregroundStyle(.white) // DS-exempt: badge contrast on material
+            .padding(.horizontal, 6)
+            .padding(.vertical, 3) // DS-exempt: badge micro-padding
+            .background(Color.black.opacity(0.4), in: Capsule())
+            .padding(5)
+            .pvTileTextCap()
+    }
 }

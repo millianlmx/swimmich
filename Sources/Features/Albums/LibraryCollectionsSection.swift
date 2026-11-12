@@ -24,7 +24,11 @@ struct LibraryDestinations {
 struct LibraryCollectionsSection: View {
     let destinations: LibraryDestinations
 
-    private let columns = Array(repeating: GridItem(.flexible(), spacing: PVSpacing.s12), count: 2)
+    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
+
+    private var columns: [GridItem] {
+        Array(repeating: GridItem(.flexible(), spacing: PVSpacing.s12), count: dynamicTypeSize.isAccessibilitySize ? 1 : 2)
+    }
 
     var body: some View {
         VStack(alignment: .leading, spacing: PVSpacing.s12) {
@@ -41,7 +45,6 @@ struct LibraryCollectionsSection: View {
                         Label(collection.title, systemImage: collection.systemImage)
                             .font(.pvSubhead)
                             .foregroundStyle(Color.textPrimaryPV)
-                            .lineLimit(2)
                             .frame(maxWidth: .infinity, minHeight: 44, alignment: .leading)
                             .padding(.horizontal, PVSpacing.s12)
                             .padding(.vertical, PVSpacing.s8)
