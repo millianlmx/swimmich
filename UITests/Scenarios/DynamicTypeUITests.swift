@@ -41,8 +41,9 @@ import XCTest
 ///   and put it back afterwards with `xcrun simctl ui booted content_size large`. Like
 ///   `ShareExtensionUITests`, the photo must be the newest one of the Photos library.
 ///
-/// The CI runs this class with these prerequisites (`Scripts/ci.sh`, three lines of
-/// `Scripts/ci-ui-scenarios.txt`); a test that skips itself fails it.
+/// The CI runs every test of this class on its own freshly erased simulator, the
+/// share extension with the prerequisites above (`Scripts/ci.sh`, one line per test
+/// in `Scripts/ci-ui-scenarios.txt`); a test that skips itself fails it.
 ///
 /// Helpers are copied from the other scenarios on purpose: one file per feature.
 final class DynamicTypeUITests: XCTestCase {
