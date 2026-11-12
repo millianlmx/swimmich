@@ -477,7 +477,7 @@ Chaque écran principal a une ligne par aspect. « États » regroupe le chargem
 | L-14 | Visionneuse : ouverture et fermeture par zoom depuis la vignette | B-18 | livré | 23d8069 | AC-27 (non vérifié à l'exécution), AC-27.1 (non vérifié à l'exécution), AC-27.2 (non vérifié à l'exécution), AC-27.3 (non vérifié à l'exécution), AC-27.4 (non vérifié à l'exécution), AC-27.5 (non vérifié à l'exécution), AC-27.6 (non vérifié à l'exécution), AC-27.7 (non vérifié à l'exécution), AC-27.8 (non vérifié à l'exécution), AC-28 (non vérifié à l'exécution), AC-28.1 (non vérifié à l'exécution), AC-28.2 (non vérifié à l'exécution) |
 | L-15 | Identité Swimmich et matériau unique des commandes flottantes | B-19 | livré | 713b00543e52 | AC-29 (non vérifié à l'exécution), AC-29.1, AC-29.2, AC-29.3, AC-30, AC-30.1, AC-30.2, AC-30.3, AC-30.4, AC-30.5 |
 | L-16 | États de chargement, vide, erreur et rafraîchissement sur chaque liste | B-20 | planifié | — | — |
-| L-17 | Pluriels et traductions complètes | B-21 | planifié | — | — |
+| L-17 | Pluriels et traductions complètes | B-21 | livré | c9ae978f4cb1 | AC-32 (non vérifié à l'exécution), AC-32.1, AC-32.2, AC-32.3, AC-32.4, AC-32.5, AC-32.6, AC-32.7, AC-32.8, AC-32.9 |
 | L-18 | Réduire les animations : fondus à la place des mouvements | B-22 | planifié | — | — |
 | L-19 | VoiceOver : un libellé explicite sur chaque bouton | B-23 | planifié | — | — |
 | L-20 | Compatibilité Immich v3.4.0 sans routes dépréciées | B-24 | planifié | — | — |
