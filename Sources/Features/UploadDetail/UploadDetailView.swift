@@ -25,6 +25,7 @@ struct UploadDetailView: View {
             }
             .padding(PVSpacing.s16)
         }
+        .refreshable { await vm.refresh() }
         .labeledContentStyle(.pvAdaptive)
         .background(Color.bgPrimary)
         .navigationTitle("Upload details")
@@ -242,6 +243,7 @@ struct UploadDetailView: View {
             systemImage: "checkmark.circle",
             description: Text("The last backup left nothing to do.")
         )
+        .accessibilityIdentifier("uploadDetailEmptyState")
     }
 
     private func sectionTitle(_ title: LocalizedStringKey) -> some View {

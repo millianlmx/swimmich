@@ -225,6 +225,106 @@ final class MediaStatsViewModelTests: XCTestCase {
         XCTAssertEqual(vm.offlineCount, 0)
         XCTAssertEqual(vm.offlineBytes, 0)
     }
+
+    // MARK: - List states (L-16)
+
+    func test_AC_148_mediaStats_zeroCountsShowEmptyCountsKeepUsageAndQuota() async {
+        let mock = MockImmichClient()
+        mock.getMyUserResponse = UserAdminResponseDto(
+            id: "me", name: "Me", email: "me@example.com",
+            quotaSizeInBytes: 1_000_000, quotaUsageInBytes: 123_456
+        )
+        mock.assetStatisticsResponse = AssetStatsResponseDto(images: 0, videos: 0, total: 0)
+        let (vm, _) = makeSUT(client: mock)
+        XCTAssertFalse(vm.serverCountsAreEmpty, "nothing was read yet")
+
+        await vm.load()
+
+        XCTAssertTrue(vm.serverCountsAreEmpty)
+        XCTAssertEqual(vm.storage.counts, .loaded(.init(photos: 0, videos: 0)))
+        XCTAssertEqual(vm.storage.usage, .loaded(.init(usedBytes: 123_456, quotaBytes: 1_000_000)),
+                       "usage and quota stay loaded next to the empty counts")
+
+        mock.assetStatisticsResponse = AssetStatsResponseDto(images: 2, videos: 0, total: 2)
+        await vm.load()
+        XCTAssertFalse(vm.serverCountsAreEmpty)
+    }
+
+    func test_AC_148_mediaStats_countsFailureStaysUnavailable() async {
+        let mock = MockImmichClient()
+        mock.getMyUserResponse = UserAdminResponseDto(
+            id: "me", name: "Me", email: "me@example.com",
+            quotaSizeInBytes: nil, quotaUsageInBytes: 10
+        )
+        mock.assetStatisticsError = APIError.serverError(500, "x")
+        let (vm, _) = makeSUT(client: mock)
+
+        await vm.load()
+
+        XCTAssertFalse(vm.serverCountsAreEmpty, "a failed read is never the empty state")
+        XCTAssertEqual(vm.storage.counts, .unavailable(message: UserFacingError.serverErrorMessage))
+        guard case .loaded = vm.storage.usage else { return XCTFail("usage must stay loaded") }
+    }
+
+    /// AC-31 on the server half of Media Stats: 500, then 0 / 0, then data,
+    /// each read with an indicator, pulling (`load()`) each time.
+    func test_AC_31_mediaStats_errorThenEmptyThenData() async {
+        let mock = MockImmichClient()
+        mock.getMyUserResponse = UserAdminResponseDto(
+            id: "me", name: "Me", email: "me@example.com",
+            quotaSizeInBytes: nil, quotaUsageInBytes: 10
+        )
+        mock.assetStatisticsError = APIError.serverError(500, "x")
+        let (vm, _) = makeSUT(client: mock)
+
+        // 500: "Unavailable" with a retry, never the empty state.
+        let latch1 = TestLatch()
+        mock.assetStatisticsGate = { try? await latch1.wait() }
+        let first = Task { @MainActor in await vm.load() }
+        await pollUntil("first read in flight") { vm.storage.isLoading }
+        XCTAssertTrue(vm.isLoading, "an indicator while the request runs")
+        latch1.open()
+        await first.value
+        XCTAssertFalse(vm.isLoading)
+        XCTAssertEqual(vm.storage.counts, .unavailable(message: UserFacingError.serverErrorMessage))
+        XCTAssertFalse(vm.serverCountsAreEmpty)
+
+        // 0 / 0: the empty state, with an indicator during the pull.
+        mock.assetStatisticsError = nil
+        mock.assetStatisticsResponse = AssetStatsResponseDto(images: 0, videos: 0, total: 0)
+        let latch2 = TestLatch()
+        mock.assetStatisticsGate = { try? await latch2.wait() }
+        let second = Task { @MainActor in await vm.load() }
+        await pollUntil("pull in flight") { vm.storage.isLoading }
+        XCTAssertTrue(vm.isLoading)
+        latch2.open()
+        await second.value
+        XCTAssertTrue(vm.serverCountsAreEmpty)
+
+        // Data.
+        mock.assetStatisticsGate = nil
+        mock.assetStatisticsResponse = AssetStatsResponseDto(images: 4, videos: 1, total: 5)
+        await vm.load()
+        XCTAssertFalse(vm.serverCountsAreEmpty)
+        XCTAssertEqual(vm.storage.counts, .loaded(.init(photos: 4, videos: 1)))
+    }
+
+    func test_AC_161_mediaStatsLocal_unavailableOnCacheFailure() async throws {
+        let mock = MockImmichClient()
+        try Data("not a folder".utf8).write(to: folder)
+        let (vm, _) = makeSUT(client: mock)
+
+        await vm.load()
+
+        XCTAssertNotNil(vm.offlineListingErrorMessage, "the cache could not be read: the rows say Unavailable")
+        XCTAssertEqual(vm.offlineCount, 0)
+
+        try FileManager.default.removeItem(at: folder)
+        await vm.load()
+
+        XCTAssertNil(vm.offlineListingErrorMessage, "a successful read clears the badge")
+        XCTAssertEqual(vm.offlineCount, 0)
+    }
 }
 
 /// Administration reads the instance totals on their own (L-01, AC-73).

@@ -31443,6 +31443,182 @@
           }
         }
       }
+    },
+    "Couldn't load partners" : {
+      "localizations" : {
+        "de" : { "stringUnit" : { "state" : "translated", "value" : "Partner konnten nicht geladen werden" } },
+        "es" : { "stringUnit" : { "state" : "translated", "value" : "No se pudieron cargar los socios" } },
+        "fr" : { "stringUnit" : { "state" : "translated", "value" : "Impossible de charger les partenaires" } },
+        "it" : { "stringUnit" : { "state" : "translated", "value" : "Impossibile caricare i partner" } }
+      }
+    },
+    "Couldn't load users" : {
+      "localizations" : {
+        "de" : { "stringUnit" : { "state" : "translated", "value" : "Benutzer konnten nicht geladen werden" } },
+        "es" : { "stringUnit" : { "state" : "translated", "value" : "No se pudieron cargar los usuarios" } },
+        "fr" : { "stringUnit" : { "state" : "translated", "value" : "Impossible de charger les utilisateurs" } },
+        "it" : { "stringUnit" : { "state" : "translated", "value" : "Impossibile caricare gli utenti" } }
+      }
+    },
+    "Couldn't load results" : {
+      "localizations" : {
+        "de" : { "stringUnit" : { "state" : "translated", "value" : "Ergebnisse konnten nicht geladen werden" } },
+        "es" : { "stringUnit" : { "state" : "translated", "value" : "No se pudieron cargar los resultados" } },
+        "fr" : { "stringUnit" : { "state" : "translated", "value" : "Impossible de charger les résultats" } },
+        "it" : { "stringUnit" : { "state" : "translated", "value" : "Impossibile caricare i risultati" } }
+      }
+    },
+    "Couldn't load places" : {
+      "localizations" : {
+        "de" : { "stringUnit" : { "state" : "translated", "value" : "Orte konnten nicht geladen werden" } },
+        "es" : { "stringUnit" : { "state" : "translated", "value" : "No se pudieron cargar los lugares" } },
+        "fr" : { "stringUnit" : { "state" : "translated", "value" : "Impossible de charger les lieux" } },
+        "it" : { "stringUnit" : { "state" : "translated", "value" : "Impossibile caricare i luoghi" } }
+      }
+    },
+    "Couldn't read downloaded files" : {
+      "localizations" : {
+        "de" : { "stringUnit" : { "state" : "translated", "value" : "Heruntergeladene Dateien konnten nicht gelesen werden" } },
+        "es" : { "stringUnit" : { "state" : "translated", "value" : "No se pudieron leer los archivos descargados" } },
+        "fr" : { "stringUnit" : { "state" : "translated", "value" : "Impossible de lire les fichiers téléchargés" } },
+        "it" : { "stringUnit" : { "state" : "translated", "value" : "Impossibile leggere i file scaricati" } }
+      }
+    },
+    "Couldn't load API keys" : {
+      "localizations" : {
+        "de" : { "stringUnit" : { "state" : "translated", "value" : "API-Schlüssel konnten nicht geladen werden" } },
+        "es" : { "stringUnit" : { "state" : "translated", "value" : "No se pudieron cargar las claves de API" } },
+        "fr" : { "stringUnit" : { "state" : "translated", "value" : "Impossible de charger les clés API" } },
+        "it" : { "stringUnit" : { "state" : "translated", "value" : "Impossibile caricare le chiavi API" } }
+      }
+    },
+    "Couldn't load administration" : {
+      "localizations" : {
+        "de" : { "stringUnit" : { "state" : "translated", "value" : "Administration konnte nicht geladen werden" } },
+        "es" : { "stringUnit" : { "state" : "translated", "value" : "No se pudo cargar la administración" } },
+        "fr" : { "stringUnit" : { "state" : "translated", "value" : "Impossible de charger l'administration" } },
+        "it" : { "stringUnit" : { "state" : "translated", "value" : "Impossibile caricare l'amministrazione" } }
+      }
+    },
+    "Couldn't load activity" : {
+      "localizations" : {
+        "de" : { "stringUnit" : { "state" : "translated", "value" : "Aktivität konnte nicht geladen werden" } },
+        "es" : { "stringUnit" : { "state" : "translated", "value" : "No se pudo cargar la actividad" } },
+        "fr" : { "stringUnit" : { "state" : "translated", "value" : "Impossible de charger l'activité" } },
+        "it" : { "stringUnit" : { "state" : "translated", "value" : "Impossibile caricare l'attività" } }
+      }
+    },
+    "Couldn't load devices" : {
+      "localizations" : {
+        "de" : { "stringUnit" : { "state" : "translated", "value" : "Geräte konnten nicht geladen werden" } },
+        "es" : { "stringUnit" : { "state" : "translated", "value" : "No se pudieron cargar los dispositivos" } },
+        "fr" : { "stringUnit" : { "state" : "translated", "value" : "Impossible de charger les appareils" } },
+        "it" : { "stringUnit" : { "state" : "translated", "value" : "Impossibile caricare i dispositivi" } }
+      }
+    },
+    "Couldn't load stacks" : {
+      "localizations" : {
+        "de" : { "stringUnit" : { "state" : "translated", "value" : "Stapel konnten nicht geladen werden" } },
+        "es" : { "stringUnit" : { "state" : "translated", "value" : "No se pudieron cargar las pilas" } },
+        "fr" : { "stringUnit" : { "state" : "translated", "value" : "Impossible de charger les piles" } },
+        "it" : { "stringUnit" : { "state" : "translated", "value" : "Impossibile caricare i gruppi" } }
+      }
+    },
+    "No partners yet" : {
+      "localizations" : {
+        "de" : { "stringUnit" : { "state" : "translated", "value" : "Noch keine Partner" } },
+        "es" : { "stringUnit" : { "state" : "translated", "value" : "Aún no hay socios" } },
+        "fr" : { "stringUnit" : { "state" : "translated", "value" : "Aucun partenaire pour l'instant" } },
+        "it" : { "stringUnit" : { "state" : "translated", "value" : "Ancora nessun partner" } }
+      }
+    },
+    "Partners who share their library with you, and people you share yours with, appear here." : {
+      "localizations" : {
+        "de" : { "stringUnit" : { "state" : "translated", "value" : "Partner, die ihre Bibliothek mit dir teilen, und Personen, mit denen du deine teilst, erscheinen hier." } },
+        "es" : { "stringUnit" : { "state" : "translated", "value" : "Aquí aparecen los socios que comparten su biblioteca contigo y las personas con quienes compartes la tuya." } },
+        "fr" : { "stringUnit" : { "state" : "translated", "value" : "Les partenaires qui partagent leur photothèque avec vous, et les personnes avec qui vous partagez la vôtre, apparaissent ici." } },
+        "it" : { "stringUnit" : { "state" : "translated", "value" : "Qui compaiono i partner che condividono la loro libreria con te e le persone con cui condividi la tua." } }
+      }
+    },
+    "No photos or videos yet" : {
+      "localizations" : {
+        "de" : { "stringUnit" : { "state" : "translated", "value" : "Noch keine Fotos oder Videos" } },
+        "es" : { "stringUnit" : { "state" : "translated", "value" : "Aún no hay fotos ni vídeos" } },
+        "fr" : { "stringUnit" : { "state" : "translated", "value" : "Aucune photo ni vidéo pour l'instant" } },
+        "it" : { "stringUnit" : { "state" : "translated", "value" : "Ancora nessuna foto o video" } }
+      }
+    },
+    "Photos and videos you back up appear here." : {
+      "localizations" : {
+        "de" : { "stringUnit" : { "state" : "translated", "value" : "Fotos und Videos, die du sicherst, erscheinen hier." } },
+        "es" : { "stringUnit" : { "state" : "translated", "value" : "Aquí aparecen las fotos y vídeos que copias." } },
+        "fr" : { "stringUnit" : { "state" : "translated", "value" : "Les photos et vidéos que vous sauvegardez apparaissent ici." } },
+        "it" : { "stringUnit" : { "state" : "translated", "value" : "Qui compaiono le foto e i video di cui esegui il backup." } }
+      }
+    },
+    "Keys you create let apps and scripts use your account." : {
+      "localizations" : {
+        "de" : { "stringUnit" : { "state" : "translated", "value" : "Mit Schlüsseln, die du erstellst, können Apps und Skripte dein Konto nutzen." } },
+        "es" : { "stringUnit" : { "state" : "translated", "value" : "Las claves que crees permiten a apps y scripts usar tu cuenta." } },
+        "fr" : { "stringUnit" : { "state" : "translated", "value" : "Les clés que vous créez permettent à des apps et des scripts d'utiliser votre compte." } },
+        "it" : { "stringUnit" : { "state" : "translated", "value" : "Le chiavi che crei permettono ad app e script di usare il tuo account." } }
+      }
+    },
+    "Albums in your Photos library appear here." : {
+      "localizations" : {
+        "de" : { "stringUnit" : { "state" : "translated", "value" : "Alben deiner Fotomediathek erscheinen hier." } },
+        "es" : { "stringUnit" : { "state" : "translated", "value" : "Aquí aparecen los álbumes de tu fototeca." } },
+        "fr" : { "stringUnit" : { "state" : "translated", "value" : "Les albums de votre photothèque apparaissent ici." } },
+        "it" : { "stringUnit" : { "state" : "translated", "value" : "Qui compaiono gli album della tua libreria Foto." } }
+      }
+    },
+    "No jobs" : {
+      "localizations" : {
+        "de" : { "stringUnit" : { "state" : "translated", "value" : "Keine Aufträge" } },
+        "es" : { "stringUnit" : { "state" : "translated", "value" : "Sin tareas" } },
+        "fr" : { "stringUnit" : { "state" : "translated", "value" : "Aucune tâche" } },
+        "it" : { "stringUnit" : { "state" : "translated", "value" : "Nessun job" } }
+      }
+    },
+    "Jobs reported by the server appear here." : {
+      "localizations" : {
+        "de" : { "stringUnit" : { "state" : "translated", "value" : "Vom Server gemeldete Aufträge erscheinen hier." } },
+        "es" : { "stringUnit" : { "state" : "translated", "value" : "Aquí aparecen las tareas que informa el servidor." } },
+        "fr" : { "stringUnit" : { "state" : "translated", "value" : "Les tâches signalées par le serveur apparaissent ici." } },
+        "it" : { "stringUnit" : { "state" : "translated", "value" : "Qui compaiono i job segnalati dal server." } }
+      }
+    },
+    "No external libraries" : {
+      "localizations" : {
+        "de" : { "stringUnit" : { "state" : "translated", "value" : "Keine externen Bibliotheken" } },
+        "es" : { "stringUnit" : { "state" : "translated", "value" : "Sin bibliotecas externas" } },
+        "fr" : { "stringUnit" : { "state" : "translated", "value" : "Aucune bibliothèque externe" } },
+        "it" : { "stringUnit" : { "state" : "translated", "value" : "Nessuna libreria esterna" } }
+      }
+    },
+    "External libraries added on the server appear here." : {
+      "localizations" : {
+        "de" : { "stringUnit" : { "state" : "translated", "value" : "Auf dem Server hinzugefügte externe Bibliotheken erscheinen hier." } },
+        "es" : { "stringUnit" : { "state" : "translated", "value" : "Aquí aparecen las bibliotecas externas añadidas en el servidor." } },
+        "fr" : { "stringUnit" : { "state" : "translated", "value" : "Les bibliothèques externes ajoutées sur le serveur apparaissent ici." } },
+        "it" : { "stringUnit" : { "state" : "translated", "value" : "Qui compaiono le librerie esterne aggiunte sul server." } }
+      }
+    },
+    "This stack is no longer available." : {
+      "localizations" : {
+        "de" : { "stringUnit" : { "state" : "translated", "value" : "Dieser Stapel ist nicht mehr verfügbar." } },
+        "es" : { "stringUnit" : { "state" : "translated", "value" : "Esta pila ya no está disponible." } },
+        "fr" : { "stringUnit" : { "state" : "translated", "value" : "Cette pile n'est plus disponible." } },
+        "it" : { "stringUnit" : { "state" : "translated", "value" : "Questo gruppo non è più disponibile." } }
+      }
+    },
+    "Group similar photos — bursts, edits, brackets — to keep your timeline clean." : {
+      "localizations" : {
+        "de" : { "stringUnit" : { "state" : "translated", "value" : "Gruppiere ähnliche Fotos – Serienaufnahmen, Bearbeitungen, Belichtungsreihen –, um deine Zeitleiste übersichtlich zu halten." } },
+        "es" : { "stringUnit" : { "state" : "translated", "value" : "Agrupa fotos similares (ráfagas, ediciones, secuencias) para mantener limpia tu línea de tiempo." } },
+        "fr" : { "stringUnit" : { "state" : "translated", "value" : "Regroupez les photos similaires (rafales, retouches, bracketing) pour garder votre chronologie propre." } },
+        "it" : { "stringUnit" : { "state" : "translated", "value" : "Raggruppa foto simili (scatti in sequenza, modifiche, bracketing) per mantenere ordinata la tua timeline." } }
+      }
     }
   },
   "version" : "1.0"

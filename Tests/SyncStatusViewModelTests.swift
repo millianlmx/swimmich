@@ -203,6 +203,23 @@ final class SyncStatusViewModelTests: XCTestCase {
         XCTAssertTrue(harness.index.isCached("pinned-1"))
     }
 
+    func test_AC_161_syncStatus_badgeShowsCacheFailureThenClears() async throws {
+        let (client, source) = library(["c1"])
+        let harness = makeHarness(client: client, source: source)
+        try Data("not a folder".utf8).write(to: folder)
+
+        await harness.sut.refresh()
+
+        let message = try XCTUnwrap(harness.sut.offlineErrorMessage, "the cache read failure reaches the offline badge")
+        XCTAssertEqual(message, harness.offline.listingErrorMessage)
+        XCTAssertNil(harness.offline.errorMessage)
+
+        try FileManager.default.removeItem(at: folder)
+        await harness.sut.refresh()
+
+        XCTAssertNil(harness.sut.offlineErrorMessage, "a successful read clears it")
+    }
+
     // MARK: - Actions
 
     /// Reset is only useful if it actually clears the ledger: the next run must

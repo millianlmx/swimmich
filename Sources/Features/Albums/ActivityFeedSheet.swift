@@ -12,39 +12,54 @@ struct ActivityFeedSheet: View {
 
     var body: some View {
         NavigationStack {
-            Group {
-                if vm.isLoading && vm.activities.isEmpty {
+            // One `List` carries every state and `.refreshable`, so a state
+            // change never cancels the pull in flight.
+            List {
+                switch vm.renderState {
+                case .loading:
                     ProgressView("Loading activity…")
-                        .frame(maxWidth: .infinity, maxHeight: .infinity)
-                } else if vm.activities.isEmpty {
+                        .frame(maxWidth: .infinity)
+                        .pvLoadingIndicator("activityFeedLoading")
+                        .listRowBackground(Color.clear)
+                case .error(let message):
+                    PVErrorStateView(
+                        title: "Couldn't load activity",
+                        message: message,
+                        identifierPrefix: "activityFeed",
+                        retry: { Task { await vm.load() } }
+                    )
+                    .listRowBackground(Color.clear)
+                case .empty:
                     ContentUnavailableView(
                         "No Activity Yet",
                         systemImage: "bubble.left.and.bubble.right",
                         description: Text("Comments and reactions on this album's photos will appear here.")
                     )
-                } else {
-                    List {
-                        if let error = vm.errorMessage {
-                            InlineErrorBadge(message: error)
-                                .listRowSeparator(.hidden)
-                        }
-                        Section {
-                            ForEach(vm.activities, id: \.id) { activity in
-                                ActivityRow(
-                                    activity: activity,
-                                    canDelete: activity.user.id == auth.userId,
-                                    hasMyLike: vm.hasMyLike(activity),
-                                    canToggleLike: vm.canToggleLike(activity),
-                                    onToggleLike: { Task { await vm.toggleLike(activity: activity) } },
-                                    onDelete: { Task { await vm.deleteActivity(id: activity.id) } }
-                                )
-                            }
+                    .accessibilityIdentifier("activityFeedEmptyState")
+                    .listRowBackground(Color.clear)
+                case .data(let status):
+                    reloadStatus(status)
+                    if let error = vm.errorMessage {
+                        InlineErrorBadge(message: error)
+                            .listRowSeparator(.hidden)
+                    }
+                    Section {
+                        ForEach(vm.activities, id: \.id) { activity in
+                            ActivityRow(
+                                activity: activity,
+                                canDelete: activity.user.id == auth.userId,
+                                hasMyLike: vm.hasMyLike(activity),
+                                canToggleLike: vm.canToggleLike(activity),
+                                onToggleLike: { Task { await vm.toggleLike(activity: activity) } },
+                                onDelete: { Task { await vm.deleteActivity(id: activity.id) } }
+                            )
                         }
                     }
-                    .listStyle(.plain)
-                    .scrollContentBackground(.hidden)
                 }
             }
+            .listStyle(.plain)
+            .scrollContentBackground(.hidden)
+            .refreshable { await vm.refresh() }
             .navigationTitle("Activity")
             .navigationBarTitleDisplayMode(.inline)
             .safeAreaInset(edge: .bottom) {
@@ -52,6 +67,25 @@ struct ActivityFeedSheet: View {
             }
         }
         .task { await vm.load() }
+    }
+
+    /// "Try Again" with the feed on screen: the indicator stands in for the
+    /// banner while the read runs; a failed refresh keeps the rows under it.
+    @ViewBuilder
+    private func reloadStatus(_ status: DataStatus) -> some View {
+        switch status {
+        case .idle:
+            EmptyView()
+        case .reloading:
+            ProgressView()
+                .frame(maxWidth: .infinity)
+                .pvLoadingIndicator("activityFeedLoading")
+                .listRowBackground(Color.clear)
+        case .failed(let message):
+            InlineErrorBadge(message: message, retry: { Task { await vm.load() } })
+                .accessibilityIdentifier("activityFeedRefreshError")
+                .listRowBackground(Color.clear)
+        }
     }
 
     // MARK: - Composer

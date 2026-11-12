@@ -30,41 +30,7 @@ struct SharedLinksView: View {
 
     var body: some View {
         NavigationStack {
-            Group {
-                if vm.sharedLinks.isEmpty && vm.loadErrorMessage != nil && !vm.isLoading {
-                    ContentUnavailableView {
-                        Label("Couldn't load shared links", systemImage: "wifi.exclamationmark")
-                    } description: {
-                        Text(vm.loadErrorMessage ?? "")
-                    } actions: {
-                        Button("Try Again") { Task { await vm.refresh() } }
-                            .buttonStyle(PVPrimaryButtonStyle())
-                    }
-                } else if vm.isLoading && vm.sharedLinks.isEmpty {
-                    ProgressView()
-                } else if vm.sharedLinks.isEmpty {
-                    ContentUnavailableView {
-                        Image(systemName: "link")
-                            .font(.system(size: 56)) // DS-exempt: hero illustration §8.6
-                            .foregroundStyle(Color.textTertiaryPV)
-                            .accessibilityIdentifier("sharedLinksEmptyGlyph")
-                        Text("No shared links")
-                            .font(.pvTitle)
-                            .accessibilityIdentifier("sharedLinksEmptyTitle")
-                    } description: {
-                        Text("Links you create to share albums will appear here.")
-                    } actions: {
-                        Button("Create Link") { presentingCreate = true }
-                            .buttonStyle(PVPrimaryButtonStyle())
-                            .padding(.horizontal, PVSpacing.s48)
-                            .accessibilityIdentifier("sharedLinksCreateButton")
-                    }
-                    .accessibilityElement(children: .contain)
-                    .accessibilityIdentifier("sharedLinksEmptyState")
-                } else {
-                    linkList
-                }
-            }
+            linkList
             .navigationTitle("Shared")
             .navigationBarTitleDisplayMode(.large)
             .toolbar {
@@ -84,9 +50,6 @@ struct SharedLinksView: View {
             .task {
                 await vm.load()
                 await albumsVM.load() // ensure album list is ready for the create picker
-            }
-            .refreshable {
-                await vm.refresh()
             }
             .sheet(isPresented: $presentingCreate) {
                 CreateSharedLinkSheet(vm: vm)
@@ -149,52 +112,110 @@ struct SharedLinksView: View {
             externalDomain: auth.serverConfig?.externalDomain ?? ""
         )
         return List {
-            if let message = vm.loadErrorMessage {
+            // The loading, error and empty states are rows of this one List,
+            // which carries `.refreshable`: a state change must not cancel the
+            // task of a pull-to-refresh in flight.
+            switch vm.renderState {
+            case .loading:
                 Section {
-                    InlineErrorBadge(message: message, retry: { Task { await vm.refresh() } })
+                    ProgressView()
+                        .frame(maxWidth: .infinity)
+                        .pvLoadingIndicator("sharedLinksLoading")
                         .listRowBackground(Color.clear)
                 }
-            }
-            ForEach(vm.sharedLinks, id: \.id) { link in
-                SharedLinkRow(
-                    link: link,
-                    sharedLinkBase: sharedLinkBase,
-                    isPendingRevoke: pendingRevokeId == link.id,
-                    onRevoke: { pendingRevokeId = link.id }
-                )
-                .contextMenu {
-                    Button {
-                        editLinkItem = EditLinkItem(link: link)
-                    } label: {
-                        Label("Edit", systemImage: "pencil")
+            case .error(let message):
+                Section {
+                    PVErrorStateView(
+                        title: "Couldn't load shared links",
+                        message: message,
+                        identifierPrefix: "sharedLinks",
+                        retry: { Task { await vm.load() } }
+                    )
+                    .listRowBackground(Color.clear)
+                }
+            case .empty:
+                Section {
+                    ContentUnavailableView {
+                        Image(systemName: "link")
+                            .font(.system(size: 56)) // DS-exempt: hero illustration §8.6
+                            .foregroundStyle(Color.textTertiaryPV)
+                            .accessibilityIdentifier("sharedLinksEmptyGlyph")
+                        Text("No shared links")
+                            .font(.pvTitle)
+                            .accessibilityIdentifier("sharedLinksEmptyTitle")
+                    } description: {
+                        Text("Links you create to share albums will appear here.")
+                    } actions: {
+                        Button("Create Link") { presentingCreate = true }
+                            .buttonStyle(PVPrimaryButtonStyle())
+                            .padding(.horizontal, PVSpacing.s48)
+                            .accessibilityIdentifier("sharedLinksCreateButton")
                     }
-                    Button(role: .destructive) {
-                        pendingRevokeId = link.id
-                        showRevokeConfirm = true
-                    } label: {
-                        Label("Revoke", systemImage: "trash")
+                    .accessibilityElement(children: .contain)
+                    .accessibilityIdentifier("sharedLinksEmptyState")
+                    .listRowBackground(Color.clear)
+                }
+            case .data(let status):
+                switch status {
+                case .idle:
+                    EmptyView()
+                case .reloading:
+                    // "Try Again" from the banner: the rows stay, this stands in for it.
+                    Section {
+                        ProgressView()
+                            .frame(maxWidth: .infinity)
+                            .pvLoadingIndicator("sharedLinksLoading")
+                            .listRowBackground(Color.clear)
+                    }
+                case .failed(let message):
+                    Section {
+                        InlineErrorBadge(message: message, retry: { Task { await vm.load() } })
+                            .accessibilityIdentifier("sharedLinksRefreshError")
+                            .listRowBackground(Color.clear)
                     }
                 }
-                .swipeActions(edge: .trailing, allowsFullSwipe: true) {
-                    Button("Revoke", systemImage: "trash", role: .destructive) {
-                        withAnimation(PVMotion.snappy) {
+                ForEach(vm.sharedLinks, id: \.id) { link in
+                    SharedLinkRow(
+                        link: link,
+                        sharedLinkBase: sharedLinkBase,
+                        isPendingRevoke: pendingRevokeId == link.id,
+                        onRevoke: { pendingRevokeId = link.id }
+                    )
+                    .contextMenu {
+                        Button {
+                            editLinkItem = EditLinkItem(link: link)
+                        } label: {
+                            Label("Edit", systemImage: "pencil")
+                        }
+                        Button(role: .destructive) {
                             pendingRevokeId = link.id
-                        }
-                        // Present the confirmation after the row has finished
-                        // sliding out, so the popup never has to snap the row
-                        // back from an open swipe state.
-                        Task {
-                            try? await Task.sleep(for: .milliseconds(300))
-                            guard pendingRevokeId == link.id else { return }
                             showRevokeConfirm = true
+                        } label: {
+                            Label("Revoke", systemImage: "trash")
                         }
                     }
+                    .swipeActions(edge: .trailing, allowsFullSwipe: true) {
+                        Button("Revoke", systemImage: "trash", role: .destructive) {
+                            withAnimation(PVMotion.snappy) {
+                                pendingRevokeId = link.id
+                            }
+                            // Present the confirmation after the row has finished
+                            // sliding out, so the popup never has to snap the row
+                            // back from an open swipe state.
+                            Task {
+                                try? await Task.sleep(for: .milliseconds(300))
+                                guard pendingRevokeId == link.id else { return }
+                                showRevokeConfirm = true
+                            }
+                        }
+                    }
+                    .tint(.red)
                 }
-                .tint(.red)
             }
         }
         .listStyle(.plain)
         .scrollContentBackground(.hidden)
+        .refreshable { await vm.refresh() }
     }
 }
 

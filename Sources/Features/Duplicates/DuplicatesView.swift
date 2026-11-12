@@ -15,34 +15,15 @@ struct DuplicatesView: View {
         // No `NavigationStack` of its own: pushed from the Albums tab's Library
         // section, it shares the tab's single navigation bar.
         Group {
-            if vm.groups.isEmpty && vm.isLoading {
+            if vm.renderState == .loading {
+                // Outside the scroll view: the container (and its
+                // `.refreshable`) only exists once there is something to say
+                // besides "loading".
                 ProgressView("Checking for duplicates…")
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
-            } else if let error = vm.errorMessage, vm.groups.isEmpty {
-                ContentUnavailableView {
-                    Label("Couldn't load duplicates", systemImage: "rectangle.on.rectangle")
-                } description: {
-                    Text(error)
-                } actions: {
-                    Button("Try Again") { Task { await vm.load() } }
-                        .buttonStyle(PVPrimaryButtonStyle())
-                }
-            } else if vm.groups.isEmpty {
-                ContentUnavailableView(
-                    "No Duplicates",
-                    systemImage: "checkmark.seal",
-                    description: Text("Duplicated photos will appear here for easy cleanup.")
-                )
+                    .pvLoadingIndicator("duplicatesLoading")
             } else {
-                ScrollView {
-                    LazyVStack(spacing: PVSpacing.s16) {
-                        ForEach(vm.groups, id: \.duplicateId) { group in
-                            groupCard(group)
-                        }
-                    }
-                    .padding(PVSpacing.s16)
-                }
-                .refreshable { await vm.load() }
+                scrollContent
             }
         }
         .navigationTitle("Duplicates")
@@ -68,6 +49,49 @@ struct DuplicatesView: View {
         }
         .accessibilityElement(children: .contain)
         .accessibilityIdentifier("duplicatesScreen")
+    }
+
+    private var scrollContent: some View {
+        ScrollView {
+            LazyVStack(spacing: PVSpacing.s16) {
+                switch vm.renderState {
+                case .loading:
+                    EmptyView()
+                case .error(let message):
+                    PVErrorStateView(
+                        title: "Couldn't load duplicates",
+                        message: message,
+                        identifierPrefix: "duplicates",
+                        retry: { Task { await vm.load() } }
+                    )
+                    .containerRelativeFrame(.vertical)
+                case .empty:
+                    ContentUnavailableView(
+                        "No Duplicates",
+                        systemImage: "checkmark.seal",
+                        description: Text("Duplicated photos will appear here for easy cleanup.")
+                    )
+                    .accessibilityIdentifier("duplicatesEmptyState")
+                    .containerRelativeFrame(.vertical)
+                case .data(let status):
+                    switch status {
+                    case .idle:
+                        EmptyView()
+                    case .reloading:
+                        ProgressView()
+                            .pvLoadingIndicator("duplicatesLoading")
+                    case .failed(let message):
+                        InlineErrorBadge(message: message, retry: { Task { await vm.load() } })
+                            .accessibilityIdentifier("duplicatesRefreshError")
+                    }
+                    ForEach(vm.groups, id: \.duplicateId) { group in
+                        groupCard(group)
+                    }
+                }
+            }
+            .padding(PVSpacing.s16)
+        }
+        .refreshable { await vm.refresh() }
     }
 
     private var pendingCount: Int {

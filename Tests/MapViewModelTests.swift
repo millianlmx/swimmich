@@ -462,6 +462,57 @@ final class MapViewModelTests: XCTestCase {
         XCTAssertNil(vm.errorMessage, "refresh is silent")
     }
 
+    func test_AC_156_map_refreshMarkersFailureSurfacesThenClears() async {
+        let mock = MockImmichClient()
+        mock.mapMarkersResponse = [makeMarker(id: "a1", lat: 48.85, lon: 2.35)]
+        let (cache, dir) = makeIsolatedCache()
+        defer { try? FileManager.default.removeItem(at: dir) }
+        let vm = MapViewModel(client: mock, cache: cache)
+        await vm.loadMarkers()
+        XCTAssertNil(vm.refreshErrorMessage)
+
+        mock.mapMarkersError = APIError.serverError(500, "x")
+        await vm.refreshMarkers()
+
+        XCTAssertEqual(vm.refreshErrorMessage, UserFacingError.serverErrorMessage)
+        XCTAssertEqual(vm.markers.map(\.id), ["a1"], "the stale markers stay")
+        XCTAssertNil(vm.errorMessage, "the first-load error channel is not touched")
+
+        // A cancellation changes nothing.
+        mock.mapMarkersError = URLError(.cancelled)
+        await vm.refreshMarkers()
+        XCTAssertEqual(vm.refreshErrorMessage, UserFacingError.serverErrorMessage)
+
+        mock.mapMarkersError = nil
+        mock.mapMarkersResponse = [makeMarker(id: "a2", lat: 40.71, lon: -74.0)]
+        await vm.refreshMarkers()
+
+        XCTAssertNil(vm.refreshErrorMessage)
+        XCTAssertEqual(vm.markers.map(\.id), ["a2"])
+    }
+
+    func test_AC_156_map_pullIsAFreshRequestEvenFromAnEmptyRegion() async {
+        let mock = MockImmichClient()
+        let (cache, dir) = makeIsolatedCache()
+        defer { try? FileManager.default.removeItem(at: dir) }
+        let vm = MapViewModel(client: mock, cache: cache)
+        await vm.loadMarkers()
+        XCTAssertTrue(vm.visiblePhotos.isEmpty)
+        let latch = TestLatch()
+        mock.mapMarkersGate = { try await latch.wait() }
+        let before = mock.requestCount
+
+        let pull = Task { @MainActor in await vm.refreshMarkers() }
+        await pollUntil("pull in flight") { mock.requestCount == before + 1 }
+        XCTAssertTrue(vm.visiblePhotos.isEmpty, "the sheet keeps its rendering while the pull reads")
+        mock.mapMarkersResponse = [makeMarker(id: "a1", lat: 48.85, lon: 2.35)]
+        latch.open()
+        await pull.value
+
+        XCTAssertEqual(vm.markers.map(\.id), ["a1"])
+        XCTAssertNil(vm.refreshErrorMessage)
+    }
+
     func test_mapPhoto_asAssetItem_keeps_identity_and_coords() {
         let dto = MapMarkerResponseDto(id: "a1", lat: 48.8566, lon: 2.3522, city: "Paris", state: "Île-de-France", country: "France")
         let photo = MapPhoto(from: dto)

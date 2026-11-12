@@ -120,23 +120,18 @@ Visionneuse et panneau d'infos|Haptique|B-33
 Visionneuse et panneau d'infos|Accessibilité|B-17 B-22
 Diaporama|Parcours|B-33
 Diaporama|Accessibilité|B-17
-Albums et détail d'album|États|B-20
 Albums et détail d'album|Accessibilité|B-17 B-22
-Recherche|États|B-20
 Recherche|Gestes et transitions|B-22
 Recherche|Accessibilité|B-17 B-22
 Souvenirs|Parcours|B-34
-Souvenirs|États|B-20
 Souvenirs|Gestes et transitions|B-22
 Souvenirs|Haptique|B-34
 Souvenirs|Accessibilité|B-17 B-22
 Carte|Parcours|B-29
-Carte|États|B-20
 Carte|Gestes et transitions|B-22 B-23
 Carte|Accessibilité|B-17 B-22 B-23
 Personnes|Gestes et transitions|B-22
 Personnes|Accessibilité|B-17 B-22
-Partage (liens et partenaires)|États|B-20
 Partage (liens et partenaires)|Gestes et transitions|B-22 B-36
 Partage (liens et partenaires)|Haptique|B-36
 Partage (liens et partenaires)|Accessibilité|B-17 B-22
@@ -145,11 +140,10 @@ Hub « Me »|Accessibilité|B-17
 Réglages|Gestes et transitions|B-36
 Réglages|Accessibilité|B-17
 Sauvegarde|Parcours|B-37
-Sauvegarde|États|B-20
 Sauvegarde|Gestes et transitions|B-36
 Sauvegarde|Haptique|B-36
 Sauvegarde|Accessibilité|B-17 B-22
-Verrouillage|États|B-20 B-36
+Verrouillage|États|B-36
 Verrouillage|Haptique|B-36
 Verrouillage|Accessibilité|B-17
 EOF

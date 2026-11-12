@@ -19,27 +19,12 @@ struct PeopleView: View {
         Group {
             if vm.isSearchActive {
                 searchList
-            } else if vm.isLoading && vm.people.isEmpty {
+            } else if vm.peopleState == .loading {
+                // Outside the list: the list (and its `.refreshable`) only
+                // exists once there is something to say besides "loading".
                 ProgressView()
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
-            } else if vm.people.isEmpty, let error = vm.errorMessage {
-                ContentUnavailableView {
-                    Label("Couldn't load people", systemImage: "person.2.slash")
-                } description: {
-                    Text(error)
-                } actions: {
-                    Button("Retry") {
-                        Task { await vm.refresh() }
-                    }
-                    .buttonStyle(PVPrimaryButtonStyle())
-                }
-            } else if vm.people.isEmpty {
-                ContentUnavailableView(
-                    "No people yet",
-                    systemImage: "person.2",
-                    description: Text("Faces detected on your photos will appear here.")
-                )
-                .frame(maxWidth: .infinity, maxHeight: .infinity)
+                    .pvLoadingIndicator("peopleLoading")
             } else {
                 personList
             }
@@ -58,7 +43,6 @@ struct PeopleView: View {
             }
         }
         .task { await vm.appear(visit: visit) }
-        .refreshable { await vm.refresh() }
         .photoViewer(
             item: $viewerItem,
             baseURL: auth.baseURL ?? URL(string: "https://example.com")!,
@@ -73,23 +57,71 @@ struct PeopleView: View {
 
     private var personList: some View {
         List {
-            let featured = vm.featuredPeople
-
-            if !featured.isEmpty {
-                Section("Featured") {
-                    ForEach(featured) { person in
-                        personRow(person)
+            switch vm.peopleState {
+            case .loading:
+                EmptyView()
+            case .error(let message):
+                Section {
+                    PVErrorStateView(
+                        title: "Couldn't load people",
+                        message: message,
+                        identifierPrefix: "people",
+                        retry: { retryList() }
+                    )
+                    .listRowBackground(Color.clear)
+                }
+            case .empty:
+                Section {
+                    ContentUnavailableView(
+                        "No people yet",
+                        systemImage: "person.2",
+                        description: Text("Faces detected on your photos will appear here.")
+                    )
+                    .accessibilityIdentifier("peopleEmptyState")
+                    .listRowBackground(Color.clear)
+                }
+            case .data(let status):
+                switch status {
+                case .idle:
+                    EmptyView()
+                case .reloading:
+                    Section {
+                        ProgressView()
+                            .frame(maxWidth: .infinity)
+                            .pvLoadingIndicator("peopleLoading")
+                    }
+                case .failed(let message):
+                    Section {
+                        InlineErrorBadge(message: message, retry: { retryList() })
+                            .accessibilityIdentifier("peopleRefreshError")
                     }
                 }
-            }
-            Section("People") {
-                ForEach(vm.otherPeople) { person in
-                    personRow(person)
+                let featured = vm.featuredPeople
+                if !featured.isEmpty {
+                    Section("Featured") {
+                        ForEach(featured) { person in
+                            personRow(person)
+                        }
+                    }
                 }
-                listFooter
+                Section("People") {
+                    ForEach(vm.otherPeople) { person in
+                        personRow(person)
+                    }
+                    listFooter
+                }
             }
             hiddenToggleSection
             actionErrorSection
+        }
+        .refreshable { await vm.refresh() }
+    }
+
+    /// "Try Again" (error and banner): the read without pull, then the counts.
+    private func retryList() {
+        Task {
+            await vm.load(force: true)
+            await vm.loadStatistics()
         }
     }
 
@@ -128,6 +160,7 @@ struct PeopleView: View {
             hiddenToggleSection
             actionErrorSection
         }
+        .refreshable { await vm.refresh() }
     }
 
     @ViewBuilder
@@ -313,17 +346,40 @@ private struct PersonDetailView: View {
                 .padding(.top, PVSpacing.s16)
                 .padding(.horizontal, PVSpacing.s16)
 
-                if vm.assetsLoading && vm.personAssets.isEmpty {
+                switch vm.assetsState {
+                case .loading:
                     ProgressView()
                         .padding(.vertical, PVSpacing.s32)
-                } else if vm.personAssets.isEmpty {
+                        .pvLoadingIndicator("personAssetsLoading")
+                case .error(let message):
+                    PVErrorStateView(
+                        title: "Couldn't load photos",
+                        message: message,
+                        identifierPrefix: "personAssets",
+                        retry: { Task { await vm.reloadPerson() } }
+                    )
+                    .padding(.vertical, PVSpacing.s24)
+                case .empty:
                     ContentUnavailableView(
                         "No photos",
                         systemImage: "photo.on.rectangle",
                         description: Text("No assets tagged with this person yet.")
                     )
+                    .accessibilityIdentifier("personAssetsEmptyState")
                     .padding(.vertical, PVSpacing.s24)
-                } else {
+                case .data(let status):
+                    switch status {
+                    case .idle:
+                        EmptyView()
+                    case .reloading:
+                        ProgressView()
+                            .padding(.vertical, PVSpacing.s8)
+                            .pvLoadingIndicator("personAssetsLoading")
+                    case .failed(let message):
+                        InlineErrorBadge(message: message, retry: { Task { await vm.reloadPerson() } })
+                            .accessibilityIdentifier("personAssetsRefreshError")
+                            .padding(.horizontal, PVSpacing.s4)
+                    }
                     LazyVGrid(columns: columns, spacing: PVSpacing.s2) {
                         ForEach(Array(vm.personAssets.enumerated()), id: \.element.id) { i, item in
                             AssetThumbnailCell(
@@ -361,15 +417,9 @@ private struct PersonDetailView: View {
                         .onAppear { Task { await vm.loadMoreAssets() } }
                         .id(vm.assetsEndRevision)
                 }
-
-                if let error = vm.assetsError {
-                    Label(error, systemImage: "exclamationmark.triangle.fill")
-                        .font(.pvCaption)
-                        .foregroundStyle(Color.immichError)
-                        .padding(.vertical, PVSpacing.s8)
-                }
             }
         }
+        .refreshable { await vm.refreshPerson() }
         .navigationTitle(person.name)
         .navigationBarTitleDisplayMode(.inline)
         .task { await vm.select(person) }

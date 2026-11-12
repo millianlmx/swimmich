@@ -42,7 +42,29 @@ final class DownloadInfoViewModel {
         "\(info.fileName) · \(info.cachedAt.formatted(date: .abbreviated, time: .shortened))"
     }
 
+    // MARK: - Reading state (projected from the cache view model)
+
+    var isLoadingListing: Bool { offline.isLoadingListing }
+    var hasLoadedListing: Bool { offline.hasLoadedListing }
+    var listingErrorMessage: String? { offline.listingErrorMessage }
+    var isRefreshingListing: Bool { offline.isRefreshingListing }
+
+    /// What the screen renders; `data` is the cached files.
+    var renderState: ListRenderState {
+        .resolve(
+            isEmpty: files.isEmpty,
+            hasLoaded: hasLoadedListing,
+            isLoading: isLoadingListing,
+            isRefreshing: isRefreshingListing,
+            loadError: listingErrorMessage
+        )
+    }
+
+    /// Reads the disk, without a pull: the `.task` and every "Try Again".
     func load() async { await offline.load() }
+
+    /// Pull-to-refresh.
+    func refresh() async { await offline.refresh() }
 
     func clearAll() async { await offline.clearAll() }
 }

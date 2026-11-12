@@ -39,7 +39,20 @@ final class PartnersViewModel {
     var sharing: [PartnerResponseDto] = []
 
     var isLoading = false
+    /// True while `refresh()` runs: the system's refresh control is the
+    /// indicator then, not the screen's own.
+    private(set) var isRefreshing = false
+    /// True once both directions were read and applied.
+    private(set) var hasLoaded = false
+    /// Failure of the last read of the two lists, cleared by a success. Written
+    /// by `load()` only; the actions keep `errorMessage`.
+    private(set) var loadErrorMessage: String?
+    /// Failure of the last action (invitation, switch, removal).
     var errorMessage: String?
+    /// Failure of the last read of the invite directory (`loadCandidates`).
+    private(set) var inviteErrorMessage: String?
+    /// Bumped by every `load()`, so only the last read writes its result.
+    private var loadGeneration = 0
 
     // MARK: - Invite flow
 
@@ -47,6 +60,8 @@ final class PartnersViewModel {
     /// everyone already in `sharing`.
     var inviteCandidates: [UserResponseDto] = []
     var isLoadingCandidates = false
+    /// True once the directory was read successfully.
+    private(set) var hasLoadedCandidates = false
     var searchQuery = ""
     var selectedCandidateId: String?
 
@@ -84,21 +99,58 @@ final class PartnersViewModel {
 
     var canInvite: Bool { selectedCandidateId != nil && !isInviting }
 
+    /// What the screen renders; `data` is the two lists together.
+    var renderState: ListRenderState {
+        .resolve(
+            isEmpty: sharedWithMe.isEmpty && sharing.isEmpty,
+            hasLoaded: hasLoaded,
+            isLoading: isLoading,
+            isRefreshing: isRefreshing,
+            loadError: loadErrorMessage
+        )
+    }
+
+    /// What the invite sheet renders; `data` is the candidate list.
+    var inviteRenderState: ListRenderState {
+        .resolve(
+            isEmpty: inviteCandidates.isEmpty,
+            hasLoaded: hasLoadedCandidates,
+            isLoading: isLoadingCandidates,
+            isRefreshing: false,
+            loadError: inviteErrorMessage
+        )
+    }
+
     // MARK: - Load
 
-    /// Loads both directions. A failure on one leaves the other populated —
-    /// the two lists are independent queries.
+    /// Loads both directions, "Try Again" and `.task` (never pulls). Both lists
+    /// are written together, only once both answered: a failure keeps what the
+    /// screen shows. A newer read supersedes one still in flight.
     func load() async {
-        guard !isLoading else { return }
+        loadGeneration += 1
+        let generation = loadGeneration
         isLoading = true
-        defer { isLoading = false }
+        defer { if generation == loadGeneration { isLoading = false } }
         do {
-            sharedWithMe = try await client.getPartners(direction: .sharedWith)
-            sharing = try await client.getPartners(direction: .sharedBy)
-            errorMessage = nil
+            let incoming = try await client.getPartners(direction: .sharedWith)
+            let outgoing = try await client.getPartners(direction: .sharedBy)
+            guard generation == loadGeneration else { return }
+            sharedWithMe = incoming
+            sharing = outgoing
+            hasLoaded = true
+            loadErrorMessage = nil
         } catch {
-            errorMessage = error.userFacingMessage
+            guard generation == loadGeneration, let message = error.userFacingMessage else { return }
+            loadErrorMessage = message
         }
+    }
+
+    /// Pull-to-refresh: `load()` flagged so the screen keeps its current
+    /// rendering and the system's control is the indicator.
+    func refresh() async {
+        isRefreshing = true
+        await load()
+        isRefreshing = false
     }
 
     /// Loads the invite candidates. `excludingUserId` is the signed-in user —
@@ -115,9 +167,10 @@ final class PartnersViewModel {
                 $0.id != currentUserId && !alreadySharing.contains($0.id)
             }
             selectedCandidateId = nil
-            errorMessage = nil
+            hasLoadedCandidates = true
+            inviteErrorMessage = nil
         } catch {
-            errorMessage = error.userFacingMessage
+            if let message = error.userFacingMessage { inviteErrorMessage = message }
         }
     }
 

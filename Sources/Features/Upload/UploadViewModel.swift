@@ -246,6 +246,9 @@ final class UploadViewModel {
     let readOnly: ReadOnlyModeStore
 
     var albums: [BackupAlbum] = []
+    /// True once `loadAlbums()` ended: before that, an empty `albums` means
+    /// "not read yet", not "no album".
+    private(set) var albumsLoaded = false
 
     // Resume state
     var canResume: Bool {
@@ -516,8 +519,15 @@ final class UploadViewModel {
         await currentBackupTask?.value
     }
 
-    func loadAlbums() {
-        albums = engine.source.fetchAlbums()
+    /// Reads the device's albums. Photos enumeration runs off the main actor
+    /// (it stutters the UI otherwise, like the engine's own scans); the result
+    /// is written here. The read cannot fail, so there is no error state:
+    /// `.task` and the pull of the album picker both call this.
+    func loadAlbums() async {
+        let source = engine.source
+        let fetched = await Task.detached(priority: .utility) { source.fetchAlbums() }.value
+        albums = fetched
+        albumsLoaded = true
     }
 
     /// Assets the ledger currently tracks as already backed up.
@@ -652,7 +662,7 @@ struct BackupSettingsView: View {
             }
             .immichAppBarTitleHeader("Backup")
             .task {
-                vm.loadAlbums()
+                await vm.loadAlbums()
             }
             .confirmationDialog(
                 "Reset backup tracking?",
@@ -842,6 +852,8 @@ struct BackupSettingsView: View {
                     AlbumPickerView(
                         title: "Albums to back up",
                         albums: vm.albums,
+                        albumsLoaded: vm.albumsLoaded,
+                        refresh: { await vm.loadAlbums() },
                         selection: $vm.settings.selectedAlbumIDs
                     )
                 } label: {
@@ -853,6 +865,8 @@ struct BackupSettingsView: View {
                     AlbumPickerView(
                         title: String(localized: "Albums to skip"),
                         albums: vm.albums,
+                        albumsLoaded: vm.albumsLoaded,
+                        refresh: { await vm.loadAlbums() },
                         selection: $vm.settings.excludedAlbumIDs
                     )
                 } label: {
@@ -869,6 +883,8 @@ struct BackupSettingsView: View {
                 AlbumPickerView(
                     title: String(localized: "Albums to mirror"),
                     albums: vm.albums.filter { !$0.isSmart },
+                    albumsLoaded: vm.albumsLoaded,
+                    refresh: { await vm.loadAlbums() },
                     selection: $vm.settings.syncedAlbumIDs
                 )
             } label: {
@@ -1195,34 +1211,66 @@ struct BackupSettingsView: View {
 
 /// Album selection list — a generic checkmark picker bound to whichever
 /// identifier set the caller owns (backup scope or exclusion scope), so the
-/// two screens share one implementation.
+/// screens share one implementation.
 struct AlbumPickerView: View {
     let title: String
     let albums: [BackupAlbum]
+    /// False until the caller's first read of the albums ended: a library with
+    /// no album and a library not read yet must not look alike.
+    var albumsLoaded = true
+    /// Pull-to-refresh of the albums; `nil` for a caller with nothing to
+    /// re-read (the list is then not refreshable).
+    var refresh: (() async -> Void)?
     @Binding var selection: Set<String>
 
     private var userAlbums: [BackupAlbum] { albums.filter { !$0.isSmart } }
     private var smartAlbums: [BackupAlbum] { albums.filter(\.isSmart) }
 
     var body: some View {
-        Group {
-            if albums.isEmpty {
+        albumList
+            .navigationTitle(title)
+            .navigationBarTitleDisplayMode(.inline)
+    }
+
+    /// One `List` through the loading, empty and albums states, so a state
+    /// change never cancels the task of a pull-to-refresh in flight.
+    @ViewBuilder
+    private var albumList: some View {
+        if let refresh {
+            list.refreshable { await refresh() }
+        } else {
+            list
+        }
+    }
+
+    private var list: some View {
+        List {
+            if !albumsLoaded {
+                Section {
+                    ProgressView()
+                        .frame(maxWidth: .infinity)
+                        .pvLoadingIndicator("backupAlbumsLoading")
+                        .listRowBackground(Color.clear)
+                }
+            } else if albums.isEmpty {
                 // A `List` with no row in it is a blank screen: "your library
                 // has no album" and "this screen failed to load" look exactly
-                // alike. The empty state is the screen's only content in that
-                // case, so it says which of the two it is.
-                ContentUnavailableView("No albums yet", systemImage: "rectangle.stack")
+                // alike, so the empty state says which of the two it is.
+                Section {
+                    ContentUnavailableView(
+                        "No albums yet",
+                        systemImage: "rectangle.stack",
+                        description: Text("Albums in your Photos library appear here.")
+                    )
                     .accessibilityElement(children: .combine)
                     .accessibilityIdentifier("albumPickerEmptyState")
-            } else {
-                List {
-                    section("Albums", userAlbums)
-                    section("Smart albums", smartAlbums)
+                    .listRowBackground(Color.clear)
                 }
+            } else {
+                section("Albums", userAlbums)
+                section("Smart albums", smartAlbums)
             }
         }
-        .navigationTitle(title)
-        .navigationBarTitleDisplayMode(.inline)
     }
 
     @ViewBuilder

@@ -523,3 +523,35 @@ final class BackupAutoChainTests: XCTestCase {
         XCTAssertEqual(scheduler.submitCount, 1, "un run terminé ré-arme la chaîne (auto-backup on)")
     }
 }
+
+// MARK: - Album picker reads (L-16)
+
+final class BackupAlbumsLoadingTests: XCTestCase {
+
+    /// "Not read yet" and "no album" are told apart by `albumsLoaded`, which the
+    /// picker needs for its indicator (`backupAlbumsLoading`) and its empty state
+    /// (`albumPickerEmptyState`).
+    @MainActor
+    func test_AC_146_backupAlbums_loadingThenAlbumsOrEmpty() async {
+        let source = MockBackupAssetSource()
+        let settings = BackupSettingsStore(suiteName: "albums-loading-\(UUID().uuidString)")
+        let (vm, _) = makeVM(client: MockImmichClient(), source: source, settings: settings)
+
+        XCTAssertFalse(vm.albumsLoaded, "before the first read the picker shows its indicator")
+        XCTAssertTrue(vm.albums.isEmpty)
+
+        // A library without any album: loaded and empty is the empty state.
+        await vm.loadAlbums()
+        XCTAssertTrue(vm.albumsLoaded)
+        XCTAssertTrue(vm.albums.isEmpty)
+
+        // A pull re-reads and picks up what appeared since.
+        source.albums = [
+            BackupAlbum(id: "a1", name: "Trip", count: 3),
+            BackupAlbum(id: BackupAlbum.SmartID.videos, name: "Videos", count: 1, isSmart: true)
+        ]
+        await vm.loadAlbums()
+        XCTAssertTrue(vm.albumsLoaded)
+        XCTAssertEqual(vm.albums.map(\.id), ["a1", BackupAlbum.SmartID.videos])
+    }
+}

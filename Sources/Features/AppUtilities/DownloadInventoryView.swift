@@ -15,17 +15,61 @@ struct DownloadInventoryView: View {
 
     var body: some View {
         List {
-            Section {
-                LabeledContent("Files", value: "\(vm.fileCount)")
-                LabeledContent("Total size", value: vm.formattedTotalSize())
-            }
-
-            Section {
-                ForEach(vm.files, id: \.id) { info in
-                    row(info)
+            switch vm.renderState {
+            case .loading:
+                Section {
+                    ProgressView()
+                        .frame(maxWidth: .infinity)
+                        .pvLoadingIndicator("downloadInfoLoading")
+                        .listRowBackground(Color.clear)
+                }
+            case .error(let message):
+                Section {
+                    PVErrorStateView(
+                        title: "Couldn't read downloaded files",
+                        message: message,
+                        identifierPrefix: "downloadInfo",
+                        retry: { Task { await vm.load() } }
+                    )
+                    .listRowBackground(Color.clear)
+                }
+            case .empty:
+                Section {
+                    ContentUnavailableView(
+                        "No downloaded files",
+                        systemImage: "arrow.down.doc",
+                        description: Text("Assets you keep offline will be listed here.")
+                    )
+                    .accessibilityIdentifier("downloadInfoEmptyState")
+                    .listRowBackground(Color.clear)
+                }
+            case .data(let status):
+                switch status {
+                case .idle:
+                    EmptyView()
+                case .reloading:
+                    Section {
+                        ProgressView()
+                            .frame(maxWidth: .infinity)
+                            .pvLoadingIndicator("downloadInfoLoading")
+                    }
+                case .failed(let message):
+                    Section {
+                        InlineErrorBadge(message: message, retry: { Task { await vm.load() } })
+                            .accessibilityIdentifier("downloadInfoRefreshError")
+                    }
                 }
 
-                if !vm.files.isEmpty {
+                Section {
+                    LabeledContent("Files", value: "\(vm.fileCount)")
+                    LabeledContent("Total size", value: vm.formattedTotalSize())
+                }
+
+                Section {
+                    ForEach(vm.files, id: \.id) { info in
+                        row(info)
+                    }
+
                     Button("Clear all", role: .destructive) { confirmPurge = true }
                         .accessibilityIdentifier("downloadInfoPurgeButton")
                 }
@@ -33,15 +77,6 @@ struct DownloadInventoryView: View {
         }
         .navigationTitle("Download Info")
         .navigationBarTitleDisplayMode(.inline)
-        .overlay {
-            if vm.files.isEmpty {
-                ContentUnavailableView(
-                    "No downloaded files",
-                    systemImage: "arrow.down.doc",
-                    description: Text("Assets you keep offline will be listed here.")
-                )
-            }
-        }
         .confirmationDialog(
             "Remove all downloaded files?",
             isPresented: $confirmPurge,
@@ -53,7 +88,7 @@ struct DownloadInventoryView: View {
             Text("The files will need to be downloaded again.")
         }
         .task { await vm.load() }
-        .refreshable { await vm.load() }
+        .refreshable { await vm.refresh() }
     }
 
     /// One cached file: what it is, which file it is on disk, when it landed,
@@ -73,5 +108,7 @@ struct DownloadInventoryView: View {
                 .font(.pvNumeric)
                 .foregroundStyle(Color.textSecondaryPV)
         }
+        .accessibilityElement(children: .combine)
+        .accessibilityIdentifier("downloadInfoRow_\(info.id)")
     }
 }

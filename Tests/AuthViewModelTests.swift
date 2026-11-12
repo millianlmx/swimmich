@@ -859,7 +859,7 @@ final class AuthViewModelTests: XCTestCase {
     }
 
     @MainActor
-    private func assertLocalStoresIntact(_ fx: LogoutFixture, file: StaticString = #filePath, line: UInt = #line) async {
+    private func assertLocalStoresIntact(_ fx: LogoutFixture, file: StaticString = #filePath, line: UInt = #line) async throws {
         let image = await fx.imageCache.image(for: fx.thumbURL)
         XCTAssertNotNil(image, "ImageCache must keep its thumbnail", file: file, line: line)
         XCTAssertNotNil(fx.diskCache.cachedResponse(for: fx.diskRequest), "disk image tier must be kept", file: file, line: line)
@@ -869,7 +869,7 @@ final class AuthViewModelTests: XCTestCase {
         XCTAssertTrue(FileManager.default.fileExists(atPath: copy.path), "alice's copy must stay on disk", file: file, line: line)
         let reopened = OfflineAssetStore(rootURL: fx.offlineRoot, transport: fx.transport, defaults: fx.offlineDefaults)
         reopened.setActiveAccount(fx.alice.id, otherAccountsRegistered: true)
-        let listing = await reopened.listing()
+        let listing = try await reopened.listing()
         XCTAssertEqual(listing.items.map(\.id), ["offline-1"], "a fresh store still lists it", file: file, line: line)
         XCTAssertEqual(fx.ledger.trackedCount(), 1, "BackupLedger must keep its entry", file: file, line: line)
         XCTAssertTrue(fx.trustStore.contains(LogoutFixture.host), "TrustedServerStore must keep its host", file: file, line: line)
@@ -882,7 +882,7 @@ final class AuthViewModelTests: XCTestCase {
         let fx = await LogoutFixture.make()
         defer { fx.cleanup() }
         // Preconditions: everything is really there before the logout.
-        await assertLocalStoresIntact(fx)
+        try await assertLocalStoresIntact(fx)
         XCTAssertEqual(fx.auth.savedAccounts.count, 2)
         XCTAssertNotNil(fx.defaults.string(forKey: AuthViewModel.serverURLDefaultsKey))
         XCTAssertNotNil(fx.defaults.data(forKey: AuthViewModel.serverListDefaultsKey))
@@ -1070,7 +1070,7 @@ final class AuthViewModelTests: XCTestCase {
 
     // AC-7 — 401: stores, address, registry and tokens stay as they are.
     @MainActor
-    func test_AC7_unauthorized_keepsLocalStores() async {
+    func test_AC7_unauthorized_keepsLocalStores() async throws {
         let fx = await LogoutFixture.make()
         defer { fx.cleanup() }
         let list = fx.defaults.data(forKey: AuthViewModel.serverListDefaultsKey)
@@ -1079,7 +1079,7 @@ final class AuthViewModelTests: XCTestCase {
         for _ in 0..<100 where fx.auth.isAuthenticated { await Task.yield() }
 
         XCTAssertFalse(fx.auth.isAuthenticated)
-        await assertLocalStoresIntact(fx)
+        try await assertLocalStoresIntact(fx)
         XCTAssertEqual(fx.defaults.string(forKey: AuthViewModel.serverURLDefaultsKey), "https://photos.example.com")
         XCTAssertEqual(fx.defaults.data(forKey: AuthViewModel.serverListDefaultsKey), list)
         XCTAssertEqual(fx.keychain.getToken(for: fx.alice.id), "alice-jwt")
@@ -1088,7 +1088,7 @@ final class AuthViewModelTests: XCTestCase {
 
     // AC-7 — switching account: the address follows the account, nothing else is purged.
     @MainActor
-    func test_AC7_switchToAccount_keepsLocalStores() async {
+    func test_AC7_switchToAccount_keepsLocalStores() async throws {
         let fx = await LogoutFixture.make()
         defer { fx.cleanup() }
         let list = fx.defaults.data(forKey: AuthViewModel.serverListDefaultsKey)
@@ -1096,7 +1096,7 @@ final class AuthViewModelTests: XCTestCase {
         await fx.auth.switchToAccount(fx.bob)
 
         XCTAssertTrue(fx.auth.isAuthenticated)
-        await assertLocalStoresIntact(fx)
+        try await assertLocalStoresIntact(fx)
         XCTAssertEqual(fx.defaults.string(forKey: AuthViewModel.serverURLDefaultsKey), fx.bob.url, "address = the new account's, as before")
         XCTAssertEqual(fx.defaults.data(forKey: AuthViewModel.serverListDefaultsKey), list)
         XCTAssertEqual(fx.keychain.getToken(for: fx.alice.id), "alice-jwt")
@@ -1105,7 +1105,7 @@ final class AuthViewModelTests: XCTestCase {
 
     // AC-7 — adding a server: stores, address and registry untouched.
     @MainActor
-    func test_AC7_addNewServer_keepsLocalStores() async {
+    func test_AC7_addNewServer_keepsLocalStores() async throws {
         let fx = await LogoutFixture.make()
         defer { fx.cleanup() }
         let list = fx.defaults.data(forKey: AuthViewModel.serverListDefaultsKey)
@@ -1113,7 +1113,7 @@ final class AuthViewModelTests: XCTestCase {
         fx.auth.addNewServer()
 
         XCTAssertFalse(fx.auth.isAuthenticated)
-        await assertLocalStoresIntact(fx)
+        try await assertLocalStoresIntact(fx)
         XCTAssertEqual(fx.defaults.string(forKey: AuthViewModel.serverURLDefaultsKey), "https://photos.example.com")
         XCTAssertEqual(fx.defaults.data(forKey: AuthViewModel.serverListDefaultsKey), list)
         XCTAssertEqual(fx.keychain.getToken(for: fx.alice.id), "alice-jwt")
@@ -1122,7 +1122,7 @@ final class AuthViewModelTests: XCTestCase {
 
     // AC-7 — removing a registered account drops only that account.
     @MainActor
-    func test_AC7_removeSavedAccount_keepsLocalStores() async {
+    func test_AC7_removeSavedAccount_keepsLocalStores() async throws {
         let fx = await LogoutFixture.make()
         defer { fx.cleanup() }
 
@@ -1130,7 +1130,7 @@ final class AuthViewModelTests: XCTestCase {
 
         XCTAssertEqual(fx.auth.savedAccounts.map(\.id), [fx.alice.id])
         XCTAssertTrue(fx.auth.isAuthenticated, "the active account stays signed in")
-        await assertLocalStoresIntact(fx)
+        try await assertLocalStoresIntact(fx)
         XCTAssertEqual(fx.defaults.string(forKey: AuthViewModel.serverURLDefaultsKey), "https://photos.example.com")
         XCTAssertEqual(Self.accountIDs(in: fx.defaults), [fx.alice.id])
         XCTAssertNil(fx.keychain.getToken(for: fx.bob.id), "only the removed account's token goes")
@@ -1139,7 +1139,7 @@ final class AuthViewModelTests: XCTestCase {
 
     // AC-7 — a restore that finds the token invalid keeps stores and address.
     @MainActor
-    func test_AC7_restoreSessionInvalidToken_keepsLocalStores() async {
+    func test_AC7_restoreSessionInvalidToken_keepsLocalStores() async throws {
         let fx = await LogoutFixture.make()
         defer { fx.cleanup() }
         let list = fx.defaults.data(forKey: AuthViewModel.serverListDefaultsKey)
@@ -1148,7 +1148,7 @@ final class AuthViewModelTests: XCTestCase {
         await fx.auth.restoreSession()
 
         XCTAssertFalse(fx.auth.isAuthenticated)
-        await assertLocalStoresIntact(fx)
+        try await assertLocalStoresIntact(fx)
         XCTAssertEqual(fx.defaults.string(forKey: AuthViewModel.serverURLDefaultsKey), "https://photos.example.com")
         XCTAssertEqual(fx.defaults.data(forKey: AuthViewModel.serverListDefaultsKey), list)
         XCTAssertEqual(fx.keychain.getToken(for: fx.bob.id), "bob-jwt")
@@ -1174,7 +1174,7 @@ final class AuthViewModelTests: XCTestCase {
         defer { fx.cleanup() }
         try await fx.seedOffline("b1", for: fx.bob.id)
         XCTAssertTrue(fx.offlineIndex.isCached("offline-1"), "precondition: alice's copy is served")
-        let stale = await fx.offlineStore.listing()
+        let stale = try await fx.offlineStore.listing()
         let latch = TestLatch()
         fx.mock.validateTokenGate = { try await latch.wait() }
         let validationsBefore = fx.mock.validateTokenCallCount
@@ -1474,9 +1474,9 @@ final class AuthViewModelTests: XCTestCase {
         XCTAssertTrue(fx.offlineIndex.isEmpty)
         let reopened = OfflineAssetStore(rootURL: fx.offlineRoot, transport: fx.transport, defaults: fx.offlineDefaults)
         reopened.setActiveAccount(fx.alice.id, otherAccountsRegistered: true)
-        let forAlice = await reopened.listing()
+        let forAlice = try await reopened.listing()
         reopened.setActiveAccount(fx.bob.id, otherAccountsRegistered: true)
-        let forBob = await reopened.listing()
+        let forBob = try await reopened.listing()
         XCTAssertTrue(forAlice.items.isEmpty)
         XCTAssertTrue(forBob.items.isEmpty)
     }

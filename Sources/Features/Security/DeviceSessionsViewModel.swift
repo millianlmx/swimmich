@@ -39,7 +39,18 @@ final class DeviceSessionsViewModel {
 
     var sessions: [SessionResponseDto] = []
     var isLoading = false
+    /// True while `refresh()` runs: the system's refresh control is the
+    /// indicator then, not the screen's own.
+    private(set) var isRefreshing = false
+    /// True once the list was read and applied.
+    private(set) var hasLoaded = false
+    /// Failure of the last read of the list, cleared by a success. Written by
+    /// `load()` only.
+    private(set) var loadErrorMessage: String?
+    /// Failure of the last action (revoke, lock, unlock, probe).
     var errorMessage: String?
+    /// Bumped by every `load()`, so only the last read writes its result.
+    private var loadGeneration = 0
     /// The elevation the server last reported for this session. Written by
     /// `probeElevation()` alone — no action of this screen moves it on its own —
     /// and left at its last confirmed value when a probe fails.
@@ -67,22 +78,48 @@ final class DeviceSessionsViewModel {
 
     // MARK: - Actions
 
-    /// Reads the list. The current session is pinned first, then the others by
-    /// last activity descending — the row the user is most likely to act on
-    /// sits closest to the top.
+    /// What the list renders.
+    var renderState: ListRenderState {
+        .resolve(
+            isEmpty: sessions.isEmpty,
+            hasLoaded: hasLoaded,
+            isLoading: isLoading,
+            isRefreshing: isRefreshing,
+            loadError: loadErrorMessage
+        )
+    }
+
+    /// Reads the list (`.task` and "Try Again", never a pull). The current
+    /// session is pinned first, then the others by last activity descending —
+    /// the row the user is most likely to act on sits closest to the top. The
+    /// list is replaced by a success only; a newer read supersedes one in
+    /// flight.
     func load() async {
+        loadGeneration += 1
+        let generation = loadGeneration
         isLoading = true
-        defer { isLoading = false }
+        defer { if generation == loadGeneration { isLoading = false } }
         do {
             let fetched = try await client.getSessions()
+            guard generation == loadGeneration else { return }
             sessions = fetched.sorted { lhs, rhs in
                 if lhs.current != rhs.current { return lhs.current }
                 return lhs.updatedAt > rhs.updatedAt
             }
-            errorMessage = nil
+            hasLoaded = true
+            loadErrorMessage = nil
         } catch {
-            errorMessage = error.userFacingMessage
+            guard generation == loadGeneration, let message = error.userFacingMessage else { return }
+            loadErrorMessage = message
         }
+    }
+
+    /// Pull-to-refresh: `load()` flagged so the screen keeps its current
+    /// rendering.
+    func refresh() async {
+        isRefreshing = true
+        await load()
+        isRefreshing = false
     }
 
     /// Arms the confirmation dialog for one device. The current session is
@@ -150,8 +187,8 @@ final class DeviceSessionsViewModel {
         do {
             try await mutation()
             if reloadingList {
+                // A failed reload shows in the list's own banner.
                 await load()
-                failure = errorMessage
             }
         } catch {
             failure = error.userFacingMessage

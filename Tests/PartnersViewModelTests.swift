@@ -44,7 +44,7 @@ final class PartnersViewModelTests: XCTestCase {
                        "both directions are required queries — one call cannot serve both lists")
         XCTAssertEqual(vm.sharedWithMe.map(\.id), ["incoming"])
         XCTAssertEqual(vm.sharing.map(\.id), ["outgoing"])
-        XCTAssertNil(vm.errorMessage)
+        XCTAssertNil(vm.loadErrorMessage)
     }
 
     @MainActor
@@ -57,7 +57,8 @@ final class PartnersViewModelTests: XCTestCase {
 
         XCTAssertTrue(vm.sharedWithMe.isEmpty)
         XCTAssertTrue(vm.sharing.isEmpty)
-        XCTAssertNotNil(vm.errorMessage)
+        XCTAssertNotNil(vm.loadErrorMessage)
+        XCTAssertNil(vm.errorMessage, "the read never writes the action error")
     }
 
     @MainActor
@@ -248,5 +249,232 @@ final class PartnersViewModelTests: XCTestCase {
         XCTAssertNil(vm.libraryRoute(for: a, direction: .sharedBy), "the Sharing row of a reciprocal partner opens nothing")
         XCTAssertNil(vm.libraryRoute(for: o, direction: .sharedBy))
         XCTAssertNil(vm.libraryRoute(for: o, direction: .sharedWith), "nobody shares O's library with me")
+    }
+
+    // MARK: - List states (L-16)
+
+    private let serverError = APIError.serverError(500, "x")
+
+    /// A gate whose first call waits for `latch`; the following ones pass.
+    private func holdingFirstCall(_ latch: TestLatch) -> (() async throws -> Void) {
+        let calls = TestBox(0)
+        return {
+            calls.value += 1
+            if calls.value == 1 { try await latch.wait() }
+        }
+    }
+
+    private func sharedWithCalls(_ mock: MockImmichClient) -> Int {
+        mock.lastPartnersDirections.filter { $0 == .sharedWith }.count
+    }
+
+    @MainActor
+    func test_AC_142_partners_loadingUntilFirstAnswer() async {
+        let mock = MockImmichClient()
+        mock.partnersSharedWithResponse = [partner(id: "incoming")]
+        let latch = TestLatch()
+        mock.partnersGate = holdingFirstCall(latch)
+        let vm = PartnersViewModel(client: mock)
+        XCTAssertEqual(vm.renderState, .loading, "before the first read nothing is empty yet")
+
+        let read = Task { @MainActor in await vm.load() }
+        await pollUntil("first read in flight") { mock.requestCount == 1 }
+
+        XCTAssertEqual(vm.renderState, .loading)
+        latch.open()
+        await read.value
+        XCTAssertEqual(vm.renderState, .data(.idle))
+    }
+
+    @MainActor
+    func test_AC_147_partners_successfulEmptyReadIsEmptyState() async {
+        let vm = PartnersViewModel(client: MockImmichClient())
+
+        await vm.load()
+
+        XCTAssertEqual(vm.renderState, .empty)
+        XCTAssertTrue(vm.hasLoaded)
+    }
+
+    @MainActor
+    func test_AC_149_partners_firstReadFailsShowsErrorNotEmpty() async throws {
+        let mock = MockImmichClient()
+        mock.partnersError = serverError
+        let vm = PartnersViewModel(client: mock)
+
+        await vm.load()
+
+        XCTAssertEqual(vm.renderState, .error(UserFacingError.serverErrorMessage))
+        XCTAssertFalse(vm.hasLoaded)
+        XCTAssertTrue(vm.sharedWithMe.isEmpty && vm.sharing.isEmpty)
+    }
+
+    @MainActor
+    func test_AC_149_partners_retryShowsLoadingThenData() async {
+        let mock = MockImmichClient()
+        mock.partnersError = serverError
+        let vm = PartnersViewModel(client: mock)
+        await vm.load()
+        mock.partnersError = nil
+        mock.partnersSharedWithResponse = [partner(id: "incoming")]
+        let latch = TestLatch()
+        mock.partnersGate = holdingFirstCall(latch)
+        let before = mock.requestCount
+
+        let retry = Task { @MainActor in await vm.load() }
+        await pollUntil("retry in flight") { mock.requestCount == before + 1 }
+
+        XCTAssertTrue(vm.isLoading)
+        XCTAssertFalse(vm.isRefreshing)
+        XCTAssertEqual(vm.renderState, .loading)
+        latch.open()
+        await retry.value
+        XCTAssertEqual(vm.renderState, .data(.idle))
+        XCTAssertEqual(vm.sharedWithMe.map(\.id), ["incoming"])
+    }
+
+    @MainActor
+    func test_AC_152_partners_refreshFailureKeepsDataThenRetryClears() async {
+        let mock = MockImmichClient()
+        mock.partnersSharedWithResponse = [partner(id: "incoming")]
+        mock.partnersSharedByResponse = [partner(id: "outgoing")]
+        let vm = PartnersViewModel(client: mock)
+        await vm.load()
+
+        mock.partnersError = serverError
+        await vm.refresh()
+
+        XCTAssertEqual(vm.renderState, .data(.failed(UserFacingError.serverErrorMessage)))
+        XCTAssertEqual(vm.sharedWithMe.map(\.id), ["incoming"])
+        XCTAssertEqual(vm.sharing.map(\.id), ["outgoing"])
+
+        mock.partnersError = nil
+        await vm.load()
+        XCTAssertEqual(vm.renderState, .data(.idle))
+    }
+
+    @MainActor
+    func test_AC_154_partners_refreshFromEmptyAndErrorReads() async {
+        let mock = MockImmichClient()
+        let vm = PartnersViewModel(client: mock)
+        await vm.load()
+        XCTAssertEqual(vm.renderState, .empty)
+
+        // From the empty state.
+        let emptyLatch = TestLatch()
+        mock.partnersGate = holdingFirstCall(emptyLatch)
+        let emptyCalls = sharedWithCalls(mock)
+        let emptyPull = Task { @MainActor in await vm.refresh() }
+        await pollUntil("pull from empty in flight") { sharedWithCalls(mock) == emptyCalls + 1 }
+        XCTAssertTrue(vm.isRefreshing)
+        XCTAssertEqual(vm.renderState, .empty)
+        mock.partnersSharedWithResponse = [partner(id: "incoming")]
+        emptyLatch.open()
+        await emptyPull.value
+        XCTAssertFalse(vm.isRefreshing)
+        XCTAssertEqual(vm.renderState, .data(.idle))
+
+        // From the error state.
+        mock.partnersGate = nil
+        mock.partnersSharedWithResponse = nil
+        let failing = PartnersViewModel(client: mock)
+        mock.partnersError = serverError
+        await failing.load()
+        XCTAssertEqual(failing.renderState, .error(UserFacingError.serverErrorMessage))
+        let errorLatch = TestLatch()
+        mock.partnersGate = holdingFirstCall(errorLatch)
+        mock.partnersSharedWithResponse = [partner(id: "incoming")]
+        let errorCalls = sharedWithCalls(mock)
+        let errorPull = Task { @MainActor in await failing.refresh() }
+        await pollUntil("pull from error in flight") { sharedWithCalls(mock) == errorCalls + 1 }
+        XCTAssertTrue(failing.isRefreshing)
+        XCTAssertEqual(failing.renderState, .error(UserFacingError.serverErrorMessage),
+                       "the error stays while the pull reads")
+        mock.partnersError = nil
+        errorLatch.open()
+        await errorPull.value
+        XCTAssertEqual(failing.renderState, .data(.idle))
+    }
+
+    @MainActor
+    func test_AC_154_partners_refreshDuringReadIsNotIgnored() async {
+        let mock = MockImmichClient()
+        mock.partnersSharedWithResponse = [partner(id: "incoming")]
+        let latch = TestLatch()
+        mock.partnersGate = holdingFirstCall(latch)
+        let vm = PartnersViewModel(client: mock)
+
+        let first = Task { @MainActor in await vm.load() }
+        await pollUntil("first read in flight") { sharedWithCalls(mock) == 1 }
+        await vm.refresh()
+        XCTAssertEqual(sharedWithCalls(mock), 2, "a pull during a read is a request of its own")
+        XCTAssertEqual(vm.renderState, .data(.idle))
+
+        // The superseded read fails late: it must not write.
+        mock.partnersError = serverError
+        latch.open()
+        await first.value
+
+        XCTAssertEqual(vm.renderState, .data(.idle))
+        XCTAssertFalse(vm.isLoading)
+    }
+
+    @MainActor
+    func test_AC_31_partners_errorThenEmptyThenData() async {
+        let mock = MockImmichClient()
+        let vm = PartnersViewModel(client: mock)
+        mock.partnersError = serverError
+        await vm.refresh()
+        XCTAssertEqual(vm.renderState, .error(UserFacingError.serverErrorMessage))
+
+        mock.partnersError = nil
+        await vm.refresh()
+        XCTAssertEqual(vm.renderState, .empty)
+
+        mock.partnersSharedWithResponse = [partner(id: "incoming")]
+        await vm.refresh()
+        XCTAssertEqual(vm.renderState, .data(.idle))
+    }
+
+    @MainActor
+    func test_AC_149_partners_loadCandidatesFailureDoesNotSetTheReadError() async {
+        let mock = MockImmichClient()
+        let vm = PartnersViewModel(client: mock)
+        await vm.load()
+        mock.getUsersError = serverError
+
+        await vm.loadCandidates(excludingUserId: "me")
+
+        XCTAssertEqual(vm.inviteErrorMessage, UserFacingError.serverErrorMessage)
+        XCTAssertEqual(vm.inviteRenderState, .error(UserFacingError.serverErrorMessage))
+        XCTAssertNil(vm.loadErrorMessage)
+        XCTAssertNil(vm.errorMessage)
+        XCTAssertEqual(vm.renderState, .empty, "the screen's list is not the invite directory")
+    }
+
+    @MainActor
+    func test_AC_149_partners_inviteSheetLoadingThenErrorThenEmptyThenData() async {
+        let mock = MockImmichClient()
+        let latch = TestLatch()
+        mock.getUsersGate = { try await latch.wait() }
+        let vm = PartnersViewModel(client: mock)
+        XCTAssertEqual(vm.inviteRenderState, .loading)
+
+        let read = Task { @MainActor in await vm.loadCandidates(excludingUserId: "me") }
+        await pollUntil("directory read in flight") { vm.isLoadingCandidates }
+        XCTAssertEqual(vm.inviteRenderState, .loading)
+        mock.getUsersError = serverError
+        latch.open()
+        await read.value
+        XCTAssertEqual(vm.inviteRenderState, .error(UserFacingError.serverErrorMessage))
+
+        mock.getUsersError = nil
+        mock.getUsersResponse = [user(id: "me")]
+        await vm.loadCandidates(excludingUserId: "me")
+        XCTAssertEqual(vm.inviteRenderState, .empty, "empty only after a successful read")
+
+        mock.getUsersResponse = [user(id: "me"), user(id: "fresh")]
+        await vm.loadCandidates(excludingUserId: "me")
+        XCTAssertEqual(vm.inviteRenderState, .data(.idle))
     }
 }

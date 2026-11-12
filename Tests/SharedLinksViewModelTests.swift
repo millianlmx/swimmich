@@ -36,8 +36,8 @@ final class SharedLinksViewModelTests: XCTestCase {
         mock.sharedLinksError = Boom()
         let vm = SharedLinksViewModel(client: mock)
         await vm.load()
-        XCTAssertTrue(vm.sharedLinks.isEmpty)
-        XCTAssertNotNil(vm.loadErrorMessage)
+        XCTAssertEqual(vm.renderState, .error(UserFacingError.genericMessage))
+        XCTAssertFalse(vm.hasLoaded)
         XCTAssertFalse(vm.isLoading)
     }
 
@@ -190,5 +190,170 @@ final class SharedLinksViewModelTests: XCTestCase {
         XCTAssertEqual(vm.sharedLinks.count, 1, "failed edit must keep the row")
         XCTAssertEqual(vm.sharedLinks[0].id, "l1")
         XCTAssertNotNil(vm.actionErrorMessage)
+    }
+
+    // MARK: - List states (L-16)
+
+    private let serverError = APIError.serverError(500, "x")
+
+    func test_AC_142_sharedLinks_loadingUntilFirstAnswer() async {
+        let mock = MockImmichClient()
+        mock.sharedLinksResponse = [makeSharedLink(id: "l1")]
+        let latch = TestLatch()
+        mock.sharedLinksGate = { try await latch.wait() }
+        let vm = SharedLinksViewModel(client: mock)
+        XCTAssertEqual(vm.renderState, .loading)
+
+        let read = Task { @MainActor in await vm.load() }
+        await pollUntil("first read in flight") { mock.requestCount == 1 }
+
+        XCTAssertEqual(vm.renderState, .loading)
+        latch.open()
+        await read.value
+        XCTAssertEqual(vm.renderState, .data(.idle))
+    }
+
+    func test_AC_147_sharedLinks_successfulEmptyReadIsEmptyState() async {
+        let vm = SharedLinksViewModel(client: MockImmichClient())
+
+        await vm.load()
+
+        XCTAssertEqual(vm.renderState, .empty)
+        XCTAssertTrue(vm.hasLoaded)
+    }
+
+    func test_AC_149_sharedLinks_firstReadFailsShowsErrorNotEmpty() async {
+        let mock = MockImmichClient()
+        mock.sharedLinksError = serverError
+        let vm = SharedLinksViewModel(client: mock)
+
+        await vm.load()
+
+        XCTAssertEqual(vm.renderState, .error(UserFacingError.serverErrorMessage))
+        XCTAssertFalse(vm.hasLoaded)
+        XCTAssertTrue(vm.sharedLinks.isEmpty)
+        XCTAssertNil(vm.actionErrorMessage, "the read never writes the action error")
+    }
+
+    func test_AC_149_sharedLinks_retryShowsLoadingThenData() async {
+        let mock = MockImmichClient()
+        mock.sharedLinksError = serverError
+        let vm = SharedLinksViewModel(client: mock)
+        await vm.load()
+        mock.sharedLinksError = nil
+        mock.sharedLinksResponse = [makeSharedLink(id: "l1")]
+        let latch = TestLatch()
+        mock.sharedLinksGate = { try await latch.wait() }
+        let before = mock.requestCount
+
+        let retry = Task { @MainActor in await vm.load() }
+        await pollUntil("retry in flight") { mock.requestCount == before + 1 }
+
+        XCTAssertTrue(vm.isLoading)
+        XCTAssertFalse(vm.isRefreshing)
+        XCTAssertEqual(vm.renderState, .loading)
+        latch.open()
+        await retry.value
+        XCTAssertEqual(vm.renderState, .data(.idle))
+        XCTAssertEqual(vm.sharedLinks.map(\.id), ["l1"])
+    }
+
+    func test_AC_152_sharedLinks_refreshFailureKeepsDataThenRetryClears() async {
+        let mock = MockImmichClient()
+        mock.sharedLinksResponse = [makeSharedLink(id: "l1")]
+        let vm = SharedLinksViewModel(client: mock)
+        await vm.load()
+
+        mock.sharedLinksError = serverError
+        await vm.refresh()
+
+        XCTAssertEqual(vm.renderState, .data(.failed(UserFacingError.serverErrorMessage)))
+        XCTAssertEqual(vm.sharedLinks.map(\.id), ["l1"])
+
+        mock.sharedLinksError = nil
+        await vm.load()
+        XCTAssertEqual(vm.renderState, .data(.idle))
+    }
+
+    func test_AC_154_sharedLinks_refreshFromEmptyAndErrorReads() async {
+        let mock = MockImmichClient()
+        let vm = SharedLinksViewModel(client: mock)
+        await vm.load()
+        XCTAssertEqual(vm.renderState, .empty)
+
+        // From the empty state.
+        let emptyLatch = TestLatch()
+        mock.sharedLinksGate = { try await emptyLatch.wait() }
+        let emptyBefore = mock.requestCount
+        let emptyPull = Task { @MainActor in await vm.refresh() }
+        await pollUntil("pull from empty in flight") { mock.requestCount == emptyBefore + 1 }
+        XCTAssertTrue(vm.isRefreshing)
+        XCTAssertEqual(vm.renderState, .empty)
+        mock.sharedLinksResponse = [makeSharedLink(id: "l1")]
+        emptyLatch.open()
+        await emptyPull.value
+        XCTAssertFalse(vm.isRefreshing)
+        XCTAssertEqual(vm.renderState, .data(.idle))
+
+        // From the error state.
+        mock.sharedLinksGate = nil
+        mock.sharedLinksResponse = nil
+        let failing = SharedLinksViewModel(client: mock)
+        mock.sharedLinksError = serverError
+        await failing.load()
+        XCTAssertEqual(failing.renderState, .error(UserFacingError.serverErrorMessage))
+        let errorLatch = TestLatch()
+        mock.sharedLinksGate = { try await errorLatch.wait() }
+        mock.sharedLinksResponse = [makeSharedLink(id: "l1")]
+        let errorBefore = mock.requestCount
+        let errorPull = Task { @MainActor in await failing.refresh() }
+        await pollUntil("pull from error in flight") { mock.requestCount == errorBefore + 1 }
+        XCTAssertTrue(failing.isRefreshing)
+        XCTAssertEqual(failing.renderState, .error(UserFacingError.serverErrorMessage),
+                       "the error stays while the pull reads")
+        mock.sharedLinksError = nil
+        errorLatch.open()
+        await errorPull.value
+        XCTAssertEqual(failing.renderState, .data(.idle))
+    }
+
+    func test_AC_154_sharedLinks_refreshDuringReadIsNotIgnored() async {
+        let mock = MockImmichClient()
+        mock.sharedLinksResponse = [makeSharedLink(id: "l1")]
+        let latch = TestLatch()
+        let calls = TestBox(0)
+        mock.sharedLinksGate = {
+            calls.value += 1
+            if calls.value == 1 { try await latch.wait() }
+        }
+        let vm = SharedLinksViewModel(client: mock)
+
+        let first = Task { @MainActor in await vm.load() }
+        await pollUntil("first read in flight") { mock.requestCount == 1 }
+        await vm.refresh()
+        XCTAssertEqual(mock.requestCount, 2, "a pull during a read is a request of its own")
+        XCTAssertEqual(vm.renderState, .data(.idle))
+
+        // The superseded read fails late: it must not write.
+        mock.sharedLinksError = serverError
+        latch.open()
+        await first.value
+
+        XCTAssertEqual(vm.renderState, .data(.idle))
+        XCTAssertFalse(vm.isLoading)
+    }
+
+    func test_AC_149_sharedLinks_revokeErrorDoesNotSetTheReadError() async {
+        let mock = MockImmichClient()
+        mock.sharedLinksResponse = [makeSharedLink(id: "l1")]
+        let vm = SharedLinksViewModel(client: mock)
+        await vm.load()
+
+        mock.deleteSharedLinkError = serverError
+        _ = await vm.revoke(id: "l1")
+
+        XCTAssertNotNil(vm.actionErrorMessage)
+        XCTAssertNil(vm.loadErrorMessage)
+        XCTAssertEqual(vm.renderState, .data(.idle))
     }
 }

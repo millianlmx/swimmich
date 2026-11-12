@@ -35,27 +35,55 @@ struct UserApiKeysView: View {
             }
 
             Section {
-                if vm.keys.isEmpty && !vm.isLoading {
-                    ContentUnavailableView("No API keys yet", systemImage: "key.horizontal")
-                }
-                ForEach(vm.keys) { key in
-                    keyRow(key)
+                switch vm.renderState {
+                case .loading:
+                    ProgressView()
+                        .frame(maxWidth: .infinity)
+                        .pvLoadingIndicator("apiKeysLoading")
+                        .listRowBackground(Color.clear)
+                case .error(let message):
+                    PVErrorStateView(
+                        title: "Couldn't load API keys",
+                        message: message,
+                        identifierPrefix: "apiKeys",
+                        retry: { Task { await vm.load() } }
+                    )
+                    .listRowBackground(Color.clear)
+                case .empty:
+                    ContentUnavailableView {
+                        Label("No API keys yet", systemImage: "key.horizontal")
+                    } description: {
+                        Text("Keys you create let apps and scripts use your account.")
+                    }
+                    .accessibilityIdentifier("apiKeysEmptyState")
+                    .listRowBackground(Color.clear)
+                case .data(let status):
+                    switch status {
+                    case .idle:
+                        EmptyView()
+                    case .reloading:
+                        ProgressView()
+                            .frame(maxWidth: .infinity)
+                            .pvLoadingIndicator("apiKeysLoading")
+                    case .failed(let message):
+                        InlineErrorBadge(message: message, retry: { Task { await vm.load() } })
+                            .accessibilityIdentifier("apiKeysRefreshError")
+                    }
+                    ForEach(vm.keys) { key in
+                        keyRow(key)
+                    }
                 }
             } header: {
                 Text("Your keys")
             }
 
-            // Loading and transport failures never take the screen over: the
-            // list stays usable and the message renders in context.
+            // An action's failure (create, rotate, delete) never takes the
+            // screen over: the list stays usable and the message renders in
+            // context.
             if let message = vm.errorMessage {
                 Section {
                     InlineErrorBadge(message: message)
                 }
-            }
-        }
-        .overlay {
-            if vm.isLoading && vm.keys.isEmpty {
-                ProgressView()
             }
         }
         .navigationTitle("API Keys")
@@ -74,7 +102,7 @@ struct UserApiKeysView: View {
             await vm.load()
             await vm.loadMyKey()
         }
-        .refreshable { await vm.load() }
+        .refreshable { await vm.refresh() }
         .sheet(isPresented: $showCreate) {
             APIKeyCreateView { name, permissions in
                 await vm.create(name: name, permissions: permissions)

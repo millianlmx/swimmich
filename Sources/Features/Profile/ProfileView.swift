@@ -466,10 +466,20 @@ struct AccountStorageRows: View {
     /// Prefix of every `accessibilityIdentifier` (`<prefix>Photos`, …).
     let idPrefix: String
     let showsQuotaBar: Bool
+    /// Replaces the Photos / Videos rows with an empty state when the account
+    /// holds neither. Media Stats only; the Me hub keeps its zeros.
+    var showsEmptyCounts = false
     let retry: () -> Void
 
     var body: some View {
         switch storage.counts {
+        case .loaded(let counts) where showsEmptyCounts && counts.total == 0:
+            ContentUnavailableView {
+                Label("No photos or videos yet", systemImage: "photo.on.rectangle")
+            } description: {
+                Text("Photos and videos you back up appear here.")
+            }
+            .accessibilityIdentifier("\(idPrefix)EmptyState")
         case .loaded(let counts):
             LabeledContent("Photos", value: counts.photos.formatted())
                 .accessibilityIdentifier("\(idPrefix)Photos")

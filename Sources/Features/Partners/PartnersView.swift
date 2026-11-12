@@ -26,13 +26,46 @@ struct PartnersView: View {
 
     var body: some View {
         Form {
-            incomingSection
-            outgoingSection
-
-            if let error = vm.errorMessage {
+            // An action (stop sharing, switch) that failed keeps its own message,
+            // apart from the read states below.
+            if let message = vm.errorMessage {
                 Section {
-                    InlineErrorBadge(message: error)
+                    InlineErrorBadge(message: message)
+                        .accessibilityIdentifier("partnersActionError")
                 }
+            }
+            switch vm.renderState {
+            case .loading:
+                Section {
+                    ProgressView()
+                        .frame(maxWidth: .infinity)
+                        .pvLoadingIndicator("partnersLoading")
+                        .listRowBackground(Color.clear)
+                }
+            case .error(let message):
+                Section {
+                    PVErrorStateView(
+                        title: "Couldn't load partners",
+                        message: message,
+                        identifierPrefix: "partners",
+                        retry: { Task { await vm.load() } }
+                    )
+                    .listRowBackground(Color.clear)
+                }
+            case .empty:
+                Section {
+                    ContentUnavailableView {
+                        Label("No partners yet", systemImage: "person.2")
+                    } description: {
+                        Text("Partners who share their library with you, and people you share yours with, appear here.")
+                    }
+                    .accessibilityIdentifier("partnersEmptyState")
+                    .listRowBackground(Color.clear)
+                }
+            case .data(let status):
+                reloadStatus(status)
+                incomingSection
+                outgoingSection
             }
         }
         .navigationTitle("Partners")
@@ -49,7 +82,7 @@ struct PartnersView: View {
             }
         }
         .task { await vm.load() }
-        .refreshable { await vm.load() }
+        .refreshable { await vm.refresh() }
         .navigationDestination(item: $openedPartner) { route in
             PartnerLibraryView(
                 vm: DependencyContainer.shared.makePartnerLibraryViewModel(
@@ -85,6 +118,27 @@ struct PartnersView: View {
     }
 
     // MARK: - Sections
+
+    /// Head of the sections when the last read failed (banner) or a "Try Again"
+    /// from that banner is in flight (indicator in its place).
+    @ViewBuilder
+    private func reloadStatus(_ status: DataStatus) -> some View {
+        switch status {
+        case .idle:
+            EmptyView()
+        case .reloading:
+            Section {
+                ProgressView()
+                    .frame(maxWidth: .infinity)
+                    .pvLoadingIndicator("partnersLoading")
+            }
+        case .failed(let message):
+            Section {
+                InlineErrorBadge(message: message, retry: { Task { await vm.load() } })
+                    .accessibilityIdentifier("partnersRefreshError")
+            }
+        }
+    }
 
     @ViewBuilder
     private var incomingSection: some View {

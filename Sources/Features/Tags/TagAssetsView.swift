@@ -29,49 +29,68 @@ struct TagAssetsView: View {
 
     @ViewBuilder
     private var content: some View {
-        if vm.isLoading && vm.items.isEmpty {
+        if case .loading = vm.renderState {
+            // First read, or a "Try Again" with nothing to show.
             PVSkeletonGrid(rows: 4, columnCount: columns.count)
                 .padding(.horizontal, PVSpacing.s4)
-                .accessibilityIdentifier("tagAssetsLoading")
-        } else if let message = vm.errorMessage, vm.items.isEmpty {
-            errorState(message)
-        } else if vm.hasLoaded && vm.items.isEmpty {
-            ContentUnavailableView(
-                "No photos with this tag",
-                systemImage: "tag",
-                description: Text("Photos you add to this tag appear here.")
-            )
-            .accessibilityIdentifier("tagAssetsEmptyState")
+                .pvLoadingIndicator("tagAssetsLoading")
         } else {
-            grid
+            scrollContent
         }
     }
 
-    /// The identifier goes on the message `Text`, never on the stack: an
-    /// identifier on a container would hide the retry button's.
-    private func errorState(_ message: String) -> some View {
-        VStack(spacing: PVSpacing.s16) {
-            Label(title: { Text(verbatim: vm.tagName) }, icon: { Image(systemName: "tag") })
-                .font(.pvSubhead)
-                .foregroundStyle(Color.textPrimaryPV)
-            Text("Couldn't load photos")
-                .font(.pvBody)
-                .foregroundStyle(Color.textPrimaryPV)
-            Text(verbatim: message)
-                .font(.pvBody)
-                .foregroundStyle(Color.textSecondaryPV)
-                .multilineTextAlignment(.center)
-                .accessibilityIdentifier("tagAssetsError")
-            Button("Try Again") { Task { await vm.load() } }
-                .buttonStyle(PVPrimaryButtonStyle())
-                .accessibilityIdentifier("tagAssetsErrorRetry")
+    /// One `ScrollView` carries the error, the empty state and the grid, with
+    /// `.refreshable`: a state change never cancels the pull in flight.
+    private var scrollContent: some View {
+        ScrollView {
+            switch vm.renderState {
+            case .loading:
+                EmptyView()
+            case .error(let message):
+                PVErrorStateView(
+                    title: "Couldn't load photos",
+                    message: message,
+                    identifierPrefix: "tagAssets",
+                    retry: { Task { await vm.load() } }
+                )
+                .containerRelativeFrame(.vertical)
+            case .empty:
+                ContentUnavailableView(
+                    "No photos with this tag",
+                    systemImage: "tag",
+                    description: Text("Photos you add to this tag appear here.")
+                )
+                .accessibilityIdentifier("tagAssetsEmptyState")
+                .containerRelativeFrame(.vertical)
+            case .data(let status):
+                reloadStatus(status)
+                grid
+            }
         }
-        .frame(maxWidth: .infinity)
-        .padding(PVSpacing.s24)
+        .accessibilityIdentifier("tagAssetsGrid")
+        .refreshable { await vm.refresh() }
+    }
+
+    /// "Try Again" with photos on screen: the indicator stands in for the
+    /// banner while the read runs; a failed refresh keeps the photos under it.
+    @ViewBuilder
+    private func reloadStatus(_ status: DataStatus) -> some View {
+        switch status {
+        case .idle:
+            EmptyView()
+        case .reloading:
+            ProgressView()
+                .padding(.vertical, PVSpacing.s8)
+                .pvLoadingIndicator("tagAssetsLoading")
+        case .failed(let message):
+            InlineErrorBadge(message: message, retry: { Task { await vm.load() } })
+                .padding(PVSpacing.s16)
+                .accessibilityIdentifier("tagAssetsRefreshError")
+        }
     }
 
     private var grid: some View {
-        ScrollView {
+        VStack(spacing: 0) {
             LazyVGrid(columns: columns, spacing: PVSpacing.s2) {
                 ForEach(Array(vm.items.enumerated()), id: \.element.id) { index, item in
                     AssetThumbnailCell(
@@ -96,7 +115,5 @@ struct TagAssetsView: View {
                     .onAppear { Task { await vm.loadMore() } }
             }
         }
-        .accessibilityIdentifier("tagAssetsGrid")
-        .refreshable { await vm.load() }
     }
 }

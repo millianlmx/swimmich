@@ -28,62 +28,18 @@ struct MemoriesView: View {
     var body: some View {
         NavigationStack {
             Group {
-                if vm.memories.isEmpty && vm.isLoading {
+                if vm.renderState == .loading {
+                    // Outside the ScrollView: only a first read (or a "Try
+                    // Again" with nothing to show) reaches here, never a pull,
+                    // so the ScrollView and its refresh task stay in place.
                     ProgressView("Loading memories…")
                         .frame(maxWidth: .infinity, maxHeight: .infinity)
-                } else if let error = vm.errorMessage, vm.memories.isEmpty {
-                    ContentUnavailableView {
-                        Label("Couldn't load memories", systemImage: "sparkles.rectangle.stack")
-                    } description: {
-                        Text(error)
-                    } actions: {
-                        Button("Try Again") { Task { await vm.load() } }
-                            .buttonStyle(PVPrimaryButtonStyle())
-                    }
-                } else if vm.memories.isEmpty {
-                    ContentUnavailableView(
-                        "No Memories Yet",
-                        systemImage: "sparkles.rectangle.stack",
-                        description: Text("Photos from this day in past years will appear here.")
-                    )
+                        .pvLoadingIndicator("memoriesLoading")
                 } else {
                     ScrollView {
-                        VStack(spacing: PVSpacing.s16) {
-                            // Refresh failures keep the stale list (try-then-mutate)
-                            // — surface the error instead of hiding it.
-                            if let error = vm.errorMessage {
-                                refreshErrorBanner(error)
-                            }
-                            LazyVStack(spacing: PVSpacing.s24) {
-                                ForEach(vm.memories, id: \.id) { memory in
-                                    MemoryCard(
-                                        memory: memory,
-                                        baseURL: baseURL,
-                                        token: auth.accessToken,
-                                        onOpen: {
-                                            playback = vm.makePlayback(
-                                                startingAt: memory.id,
-                                                autoPlays: !MemoryPlaybackProbe.autoplayOff
-                                            )
-                                        },
-                                        onToggleSaved: {
-                                            Task {
-                                                if memory.isSaved {
-                                                    await vm.unsaveMemory(id: memory.id)
-                                                } else {
-                                                    await vm.saveMemory(id: memory.id)
-                                                }
-                                            }
-                                        },
-                                        onAddPhotos: { addingPhotosToID = memory.id },
-                                        onDelete: { pendingDelete = memory }
-                                    )
-                                }
-                            }
-                        }
-                        .padding(PVSpacing.s16)
+                        scrollContent
                     }
-                    .refreshable { await vm.load() }
+                    .refreshable { await vm.refresh() }
                 }
             }
             .navigationTitle("Memories")
@@ -138,6 +94,80 @@ struct MemoriesView: View {
             }
             .fullScreenCover(item: $playback) { playback in
                 MemoryPlaybackView(playback: playback, vm: vm, baseURL: baseURL, token: auth.accessToken)
+            }
+        }
+    }
+
+    /// One `ScrollView` through the error, empty and cards states: a state
+    /// change must not cancel the task of a pull-to-refresh in flight.
+    @ViewBuilder
+    private var scrollContent: some View {
+        switch vm.renderState {
+        case .loading:
+            EmptyView()
+        case .error(let message):
+            PVErrorStateView(
+                title: "Couldn't load memories",
+                message: message,
+                identifierPrefix: "memories",
+                retry: { Task { await vm.load() } }
+            )
+            .containerRelativeFrame(.vertical)
+        case .empty:
+            ContentUnavailableView(
+                "No Memories Yet",
+                systemImage: "sparkles.rectangle.stack",
+                description: Text("Photos from this day in past years will appear here.")
+            )
+            .containerRelativeFrame(.vertical)
+            .accessibilityIdentifier("memoriesEmptyState")
+        case .data(let status):
+            VStack(spacing: PVSpacing.s16) {
+                switch status {
+                case .reloading:
+                    // "Try Again" from the banner: the cards stay, this stands in for it.
+                    ProgressView()
+                        .pvLoadingIndicator("memoriesLoading")
+                case .failed(let message):
+                    // Refresh failures keep the stale list (try-then-mutate)
+                    // — surface the error instead of hiding it.
+                    refreshErrorBanner(message)
+                case .idle:
+                    if let message = vm.errorMessage {
+                        refreshErrorBanner(message)
+                    }
+                }
+                memoryCards
+            }
+            .padding(PVSpacing.s16)
+        }
+    }
+
+    private var memoryCards: some View {
+        LazyVStack(spacing: PVSpacing.s24) {
+            ForEach(vm.memories, id: \.id) { memory in
+                MemoryCard(
+                    memory: memory,
+                    baseURL: baseURL,
+                    token: auth.accessToken,
+                    onOpen: {
+                        playback = vm.makePlayback(
+                            startingAt: memory.id,
+                            autoPlays: !MemoryPlaybackProbe.autoplayOff
+                        )
+                    },
+                    onToggleSaved: {
+                        Task {
+                            if memory.isSaved {
+                                await vm.unsaveMemory(id: memory.id)
+                            } else {
+                                await vm.saveMemory(id: memory.id)
+                            }
+                        }
+                    },
+                    onAddPhotos: { addingPhotosToID = memory.id },
+                    onDelete: { pendingDelete = memory }
+                )
             }
         }
     }

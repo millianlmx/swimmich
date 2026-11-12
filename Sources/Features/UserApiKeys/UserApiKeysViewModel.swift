@@ -23,7 +23,18 @@ final class UserApiKeysViewModel {
     var myKey: ApiKeyResponseDto?
 
     var isLoading = false
+    /// True while `refresh()` runs: the system's refresh control is the
+    /// indicator then, not the screen's own.
+    private(set) var isRefreshing = false
+    /// True once the list was read and applied.
+    private(set) var hasLoaded = false
+    /// Failure of the last read of the list, cleared by a success. Written by
+    /// `load()` only.
+    private(set) var loadErrorMessage: String?
+    /// Failure of the last action (create, rotate, delete).
     var errorMessage: String?
+    /// Bumped by every `load()`, so only the last read writes its result.
+    private var loadGeneration = 0
 
     /// The plaintext secret between its creation (or rotation) and the single
     /// alert that shows it. The server returns it once and never again, so it
@@ -41,15 +52,42 @@ final class UserApiKeysViewModel {
 
     // MARK: - Loading
 
+    /// What the "Your keys" section renders.
+    var renderState: ListRenderState {
+        .resolve(
+            isEmpty: keys.isEmpty,
+            hasLoaded: hasLoaded,
+            isLoading: isLoading,
+            isRefreshing: isRefreshing,
+            loadError: loadErrorMessage
+        )
+    }
+
+    /// First read, "Try Again" and `.task` (never pulls). The list is replaced
+    /// only by a success; a newer read supersedes one still in flight.
     func load() async {
+        loadGeneration += 1
+        let generation = loadGeneration
         isLoading = true
-        defer { isLoading = false }
+        defer { if generation == loadGeneration { isLoading = false } }
         do {
-            keys = try await client.getAPIKeys()
-            errorMessage = nil
+            let fetched = try await client.getAPIKeys()
+            guard generation == loadGeneration else { return }
+            keys = fetched
+            hasLoaded = true
+            loadErrorMessage = nil
         } catch {
-            errorMessage = error.userFacingMessage
+            guard generation == loadGeneration, let message = error.userFacingMessage else { return }
+            loadErrorMessage = message
         }
+    }
+
+    /// Pull-to-refresh: `load()` flagged so the screen keeps its current
+    /// rendering.
+    func refresh() async {
+        isRefreshing = true
+        await load()
+        isRefreshing = false
     }
 
     /// Best-effort by design: a server that refuses `GET /api/api-keys/me` to a

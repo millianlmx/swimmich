@@ -321,4 +321,498 @@ final class OfflineDownloadViewModelTests: XCTestCase {
             visibility: "timeline", checksum: "abc", isEdited: false
         )
     }
+
+    // MARK: - Listing states (L-16)
+
+    private var movedRoot: URL { root.deletingLastPathComponent().appendingPathComponent("moved-aside") }
+
+    /// An ordinary file where the cache folder belongs: every read of the
+    /// folder fails. What was in the folder is kept aside.
+    private func blockRoot() throws {
+        let fileManager = FileManager.default
+        try fileManager.createDirectory(at: root.deletingLastPathComponent(), withIntermediateDirectories: true)
+        if fileManager.fileExists(atPath: root.path) { try fileManager.moveItem(at: root, to: movedRoot) }
+        try Data("not a folder".utf8).write(to: root)
+    }
+
+    /// The cause of the failure is gone: the folder is back with its files.
+    private func unblockRoot() throws {
+        let fileManager = FileManager.default
+        try fileManager.removeItem(at: root)
+        if fileManager.fileExists(atPath: movedRoot.path) { try fileManager.moveItem(at: movedRoot, to: root) }
+    }
+
+    /// Moves the store's scope (B, then A again) so its next read goes to the disk.
+    private func forceDiskReread() {
+        store.setActiveAccount(Self.accountB, otherAccountsRegistered: false)
+        store.setActiveAccount(Self.accountA, otherAccountsRegistered: false)
+    }
+
+    /// Every distinct `listingState` the screen goes through while `body` runs,
+    /// and whether the read was ever flagged as a pull.
+    private func record(
+        _ model: OfflineDownloadViewModel,
+        during body: () async -> Void
+    ) async -> (states: [ListRenderState], pulled: Bool) {
+        // Boxes, not local vars: the observer task is `@Sendable`, which may not
+        // mutate a captured `var`.
+        let seen = TestBox<[ListRenderState]>([model.listingState])
+        let pulled = TestBox(false)
+        let observer = Task { @MainActor in
+            while !Task.isCancelled {
+                if seen.value.last != model.listingState { seen.value.append(model.listingState) }
+                if model.isRefreshingListing { pulled.value = true }
+                await Task.yield()
+            }
+        }
+        await body()
+        observer.cancel()
+        if seen.value.last != model.listingState { seen.value.append(model.listingState) }
+        return (seen.value, pulled.value)
+    }
+
+    private func isError(_ state: ListRenderState) -> Bool {
+        if case .error = state { return true }
+        return false
+    }
+
+    func test_AC_142_offline_loadingUntilFirstAnswer() async {
+        XCTAssertEqual(vm.listingState, .loading, "nothing is read yet: never an empty or error screen")
+
+        let states = await record(vm) { await vm.load() }.states
+
+        // The last recorded state is the answer itself (empty): only the ones
+        // before it must not be empty or error.
+        let before = states.dropLast()
+        XCTAssertFalse(before.contains(.empty) || before.contains(where: isError),
+                       "no empty or error state before the answer: \(states)")
+        XCTAssertEqual(vm.listingState, .empty)
+    }
+
+    func test_AC_145_offline_notEmptyBeforeFirstListing() async {
+        transport.payload = Data(repeating: 0x01, count: 64)
+        await vm.downloadAsset(makeAsset(id: "asset-1"), baseURL: baseURL, token: "tok")
+        let fresh = OfflineDownloadViewModel(store: store, client: client, index: OfflineAssetIndex(), accountID: Self.accountA)
+        XCTAssertEqual(fresh.listingState, .loading)
+
+        let seen = await record(fresh) { await fresh.load() }.states
+
+        XCTAssertFalse(seen.contains(.empty), "a cache with files is never shown as empty: \(seen)")
+        XCTAssertEqual(fresh.listingState, .data(.idle))
+        XCTAssertEqual(fresh.cachedAssets.map(\.id), ["asset-1"])
+    }
+
+    func test_AC_147_offline_successfulEmptyReadIsEmptyState() async {
+        await vm.load()
+
+        XCTAssertEqual(vm.listingState, .empty)
+        XCTAssertTrue(vm.hasLoadedListing)
+        XCTAssertNil(vm.listingErrorMessage)
+    }
+
+    func test_AC_149_offline_firstReadFailsShowsErrorNotEmpty() async throws {
+        try blockRoot()
+
+        await vm.load()
+
+        let message = try XCTUnwrap(vm.listingErrorMessage)
+        XCTAssertEqual(vm.listingState, .error(message))
+        XCTAssertFalse(vm.hasLoadedListing)
+        XCTAssertTrue(vm.cachedAssets.isEmpty)
+        XCTAssertNil(vm.errorMessage, "a read failure is not a download error")
+    }
+
+    func test_AC_149_offline_retryShowsLoadingThenData() async throws {
+        transport.payload = Data(repeating: 0x01, count: 64)
+        await vm.downloadAsset(makeAsset(id: "asset-1"), baseURL: baseURL, token: "tok")
+        let reader = OfflineDownloadViewModel(store: store, client: client, index: OfflineAssetIndex(), accountID: Self.accountA)
+        try blockRoot()
+        forceDiskReread()
+        await reader.load()
+        XCTAssertTrue(isError(reader.listingState), "the first read must fail: \(reader.listingState)")
+        try unblockRoot()
+
+        let run = await record(reader) { await reader.load() }
+        let seen = run.states
+
+        XCTAssertFalse(seen.contains(.empty), "\(seen)")
+        XCTAssertFalse(run.pulled, "a Try Again is not a pull")
+        XCTAssertEqual(reader.listingState, .data(.idle))
+        XCTAssertEqual(reader.cachedAssets.map(\.id), ["asset-1"])
+    }
+
+    func test_AC_150_offline_readFailureThenRetryReadsDisk() async throws {
+        try blockRoot()
+        await vm.load()
+        guard case .error = vm.listingState else { return XCTFail("the read must fail: \(vm.listingState)") }
+
+        try unblockRoot()
+        await vm.refresh()
+
+        XCTAssertEqual(vm.listingState, .empty, "the folder is read again, not remembered as failed or empty")
+        XCTAssertTrue(vm.hasLoadedListing)
+        XCTAssertNil(vm.errorMessage)
+        var isDirectory: ObjCBool = false
+        XCTAssertTrue(FileManager.default.fileExists(atPath: root.path, isDirectory: &isDirectory) && isDirectory.boolValue)
+
+        // A download now shows a row.
+        transport.payload = Data(repeating: 0x01, count: 64)
+        await vm.downloadAsset(makeAsset(id: "asset-1"), baseURL: baseURL, token: "tok")
+        XCTAssertEqual(vm.listingState, .data(.idle))
+        XCTAssertEqual(vm.cachedAssets.map(\.id), ["asset-1"])
+    }
+
+    func test_AC_152_offline_refreshFailureKeepsDataThenRetryClears() async throws {
+        transport.payload = Data(repeating: 0x01, count: 64)
+        await vm.downloadAsset(makeAsset(id: "asset-1"), baseURL: baseURL, token: "tok")
+        try blockRoot()
+        forceDiskReread()
+
+        await vm.refresh()
+
+        let message = try XCTUnwrap(vm.listingErrorMessage)
+        XCTAssertEqual(vm.listingState, .data(.failed(message)))
+        XCTAssertEqual(vm.cachedAssets.map(\.id), ["asset-1"], "the files stay while the banner shows")
+        XCTAssertEqual(vm.cacheUsage, 64)
+
+        try unblockRoot()
+        await vm.load()
+        XCTAssertEqual(vm.listingState, .data(.idle))
+        XCTAssertEqual(vm.cachedAssets.map(\.id), ["asset-1"])
+    }
+
+    func test_AC_154_offline_refreshFromEmptyAndErrorReads() async throws {
+        // From the empty state: the pull keeps the screen, then shows the new file.
+        await vm.load()
+        XCTAssertEqual(vm.listingState, .empty)
+        transport.payload = Data(repeating: 0x01, count: 64)
+        let other = OfflineDownloadViewModel(store: store, client: client, index: OfflineAssetIndex(), accountID: Self.accountA)
+        await other.downloadAsset(makeAsset(id: "asset-1"), baseURL: baseURL, token: "tok")
+
+        let emptyRun = await record(vm) { await vm.refresh() }
+
+        XCTAssertFalse(emptyRun.states.contains(.loading), "a pull never swaps the screen for the indicator: \(emptyRun.states)")
+        XCTAssertFalse(vm.isRefreshingListing)
+        XCTAssertEqual(vm.listingState, .data(.idle))
+
+        // From the error state.
+        let failing = OfflineDownloadViewModel(store: store, client: client, index: OfflineAssetIndex(), accountID: Self.accountA)
+        try blockRoot()
+        forceDiskReread()
+        await failing.load()
+        XCTAssertTrue(isError(failing.listingState), "\(failing.listingState)")
+        try unblockRoot()
+
+        let errorRun = await record(failing) { await failing.refresh() }
+
+        XCTAssertFalse(errorRun.states.contains(.loading), "\(errorRun.states)")
+        XCTAssertFalse(errorRun.states.contains(.empty), "\(errorRun.states)")
+        XCTAssertEqual(failing.listingState, .data(.idle))
+    }
+
+    func test_AC_154_offline_refreshDuringReadIsNotIgnored() async throws {
+        transport.payload = Data(repeating: 0x01, count: 64)
+        await vm.downloadAsset(makeAsset(id: "asset-1"), baseURL: baseURL, token: "tok")
+        let reader = OfflineDownloadViewModel(store: store, client: client, index: OfflineAssetIndex(), accountID: Self.accountA)
+
+        async let first: Void = reader.load()
+        async let pull: Void = reader.refresh()
+        _ = await (first, pull)
+
+        XCTAssertEqual(reader.listingState, .data(.idle), "the last read wins and nothing is left loading")
+        XCTAssertFalse(reader.isLoadingListing)
+        XCTAssertFalse(reader.isRefreshingListing)
+    }
+
+    func test_AC_150_offline_downloadErrorNeverWritesTheReadError() async {
+        transport.error = URLError(.notConnectedToInternet)
+
+        await vm.downloadAsset(makeAsset(id: "asset-1"), baseURL: baseURL, token: "tok")
+
+        XCTAssertNotNil(vm.errorMessage)
+        XCTAssertNil(vm.listingErrorMessage, "a download failure leaves the read state alone")
+    }
+
+    func test_AC_161_offline_listingFailureNeverWritesDownloadError() async throws {
+        try blockRoot()
+        await vm.load()
+        XCTAssertNotNil(vm.listingErrorMessage)
+        XCTAssertNil(vm.errorMessage)
+
+        try unblockRoot()
+        await vm.refresh()
+        XCTAssertNil(vm.listingErrorMessage)
+        XCTAssertNil(vm.errorMessage)
+
+        transport.payload = Data(repeating: 0x01, count: 64)
+        await vm.downloadAsset(makeAsset(id: "asset-1"), baseURL: baseURL, token: "tok")
+        XCTAssertEqual(vm.cachedAssets.map(\.id), ["asset-1"], "a download through the mock transport gives one row")
+        XCTAssertNil(vm.errorMessage)
+    }
+}
+
+/// Download Info (E-4): a projection of the offline view model's reading state
+/// on a real store over a temp folder. The read of the cache is the only read
+/// this screen has (L-16, AC-31 for its volet cache).
+@MainActor
+final class DownloadInfoViewModelTests: XCTestCase {
+
+    private static let accountA = OfflineAssetStoreTests.accountA
+    private static let accountB = OfflineAssetStoreTests.accountB
+
+    private var root: URL!
+    private var defaults: UserDefaults!
+    private var transport: MockFileDownloadTransport!
+    private var store: OfflineAssetStore!
+    private var client: MockImmichClient!
+    private var offline: OfflineDownloadViewModel!
+    private var vm: DownloadInfoViewModel!
+
+    private let baseURL = URL(string: "https://example.com")!
+
+    override func setUp() {
+        super.setUp()
+        root = FileManager.default.temporaryDirectory
+            .appendingPathComponent("download-info-tests-\(UUID().uuidString)", isDirectory: true)
+            .appendingPathComponent("OfflineAssets", isDirectory: true)
+        defaults = UserDefaults(suiteName: "download-info-tests-\(UUID().uuidString)")!
+        transport = MockFileDownloadTransport()
+        store = OfflineAssetStore(rootURL: root, transport: transport, defaults: defaults)
+        store.setActiveAccount(Self.accountA, otherAccountsRegistered: false)
+        client = MockImmichClient()
+        offline = OfflineDownloadViewModel(store: store, client: client, index: OfflineAssetIndex(), accountID: Self.accountA)
+        vm = DownloadInfoViewModel(offline: offline)
+    }
+
+    override func tearDown() {
+        try? FileManager.default.removeItem(at: root.deletingLastPathComponent())
+        super.tearDown()
+    }
+
+    private func makeAsset(id: String) -> AssetReactItem {
+        AssetReactItem(
+            id: id, ownerId: "owner", ratio: 0.75, isFavorite: false, visibility: "timeline",
+            isTrashed: false, isImage: true, thumbhash: "thumb",
+            createdAt: "2024-07-01T10:00:00.000Z", fileCreatedAt: "2024-07-01T10:00:00.000Z",
+            localOffsetHours: 0, duration: nil, livePhotoVideoId: nil,
+            projectionType: nil, city: nil, country: nil, latitude: nil, longitude: nil, stack: []
+        )
+    }
+
+    private var movedRoot: URL { root.deletingLastPathComponent().appendingPathComponent("moved-aside") }
+
+    private func blockRoot() throws {
+        let fileManager = FileManager.default
+        try fileManager.createDirectory(at: root.deletingLastPathComponent(), withIntermediateDirectories: true)
+        if fileManager.fileExists(atPath: root.path) { try fileManager.moveItem(at: root, to: movedRoot) }
+        try Data("not a folder".utf8).write(to: root)
+    }
+
+    private func unblockRoot() throws {
+        let fileManager = FileManager.default
+        try fileManager.removeItem(at: root)
+        if fileManager.fileExists(atPath: movedRoot.path) { try fileManager.moveItem(at: movedRoot, to: root) }
+    }
+
+    private func forceDiskReread() {
+        store.setActiveAccount(Self.accountB, otherAccountsRegistered: false)
+        store.setActiveAccount(Self.accountA, otherAccountsRegistered: false)
+    }
+
+    private func download(_ id: String) async {
+        transport.payload = Data(repeating: 0x01, count: 64)
+        await offline.downloadAsset(makeAsset(id: id), baseURL: baseURL, token: "tok")
+    }
+
+    private func isError(_ state: ListRenderState) -> Bool {
+        if case .error = state { return true }
+        return false
+    }
+
+    func test_AC_142_downloadInfo_loadingUntilFirstAnswer() async {
+        XCTAssertEqual(vm.renderState, .loading)
+
+        await vm.load()
+
+        XCTAssertEqual(vm.renderState, .empty)
+    }
+
+    func test_AC_145_offline_notEmptyBeforeFirstListing() async {
+        await download("asset-1")
+        let freshOffline = OfflineDownloadViewModel(store: store, client: client, index: OfflineAssetIndex(), accountID: Self.accountA)
+        let fresh = DownloadInfoViewModel(offline: freshOffline)
+        XCTAssertEqual(fresh.renderState, .loading, "the cache has files: no empty state before the first listing")
+
+        // Boxes, not local vars: the observer task is `@Sendable`, which may not
+        // mutate a captured `var`.
+        let seen = TestBox<[ListRenderState]>([fresh.renderState])
+        let observer = Task { @MainActor in
+            while !Task.isCancelled {
+                if seen.value.last != fresh.renderState { seen.value.append(fresh.renderState) }
+                await Task.yield()
+            }
+        }
+        await fresh.load()
+        observer.cancel()
+
+        XCTAssertFalse(seen.value.contains(.empty), "\(seen.value)")
+        XCTAssertEqual(fresh.renderState, .data(.idle))
+        XCTAssertEqual(fresh.files.map(\.id), ["asset-1"])
+    }
+
+    func test_AC_147_downloadInfo_successfulEmptyReadIsEmptyState() async {
+        await vm.load()
+
+        XCTAssertEqual(vm.renderState, .empty)
+        XCTAssertTrue(vm.hasLoadedListing)
+        XCTAssertNil(vm.listingErrorMessage)
+    }
+
+    func test_AC_149_downloadInfo_firstReadFailsShowsErrorNotEmpty() async throws {
+        try blockRoot()
+
+        await vm.load()
+
+        let message = try XCTUnwrap(vm.listingErrorMessage)
+        XCTAssertEqual(vm.renderState, .error(message))
+        XCTAssertFalse(vm.hasLoadedListing)
+        XCTAssertTrue(vm.files.isEmpty)
+    }
+
+    func test_AC_150_offline_readFailureThenRetryReadsDisk() async throws {
+        try blockRoot()
+        await vm.load()
+        XCTAssertTrue(isError(vm.renderState), "\(vm.renderState)")
+
+        try unblockRoot()
+        await vm.refresh()
+
+        XCTAssertEqual(vm.renderState, .empty, "the disk is read again: an empty folder, not a remembered failure")
+        XCTAssertFalse(vm.isRefreshingListing)
+
+        await download("asset-1")
+        await vm.load()
+        XCTAssertEqual(vm.renderState, .data(.idle))
+        XCTAssertEqual(vm.files.map(\.id), ["asset-1"])
+    }
+
+    func test_AC_149_downloadInfo_retryShowsLoadingThenData() async throws {
+        await download("asset-1")
+        let freshOffline = OfflineDownloadViewModel(store: store, client: client, index: OfflineAssetIndex(), accountID: Self.accountA)
+        let fresh = DownloadInfoViewModel(offline: freshOffline)
+        try blockRoot()
+        forceDiskReread()
+        await fresh.load()
+        XCTAssertTrue(isError(fresh.renderState), "\(fresh.renderState)")
+        try unblockRoot()
+
+        let seen = TestBox<[ListRenderState]>([fresh.renderState])
+        let pulled = TestBox(false)
+        let observer = Task { @MainActor in
+            while !Task.isCancelled {
+                if seen.value.last != fresh.renderState { seen.value.append(fresh.renderState) }
+                if fresh.isRefreshingListing { pulled.value = true }
+                await Task.yield()
+            }
+        }
+        await fresh.load()
+        observer.cancel()
+
+        XCTAssertFalse(seen.value.contains(.empty), "\(seen.value)")
+        XCTAssertFalse(pulled.value, "Try Again is not a pull")
+        XCTAssertEqual(fresh.renderState, .data(.idle))
+    }
+
+    func test_AC_152_downloadInfo_refreshFailureKeepsDataThenRetryClears() async throws {
+        await download("asset-1")
+        await vm.load()
+        try blockRoot()
+        forceDiskReread()
+
+        await vm.refresh()
+
+        let message = try XCTUnwrap(vm.listingErrorMessage)
+        XCTAssertEqual(vm.renderState, .data(.failed(message)))
+        XCTAssertEqual(vm.files.map(\.id), ["asset-1"])
+
+        try unblockRoot()
+        await vm.load()
+        XCTAssertEqual(vm.renderState, .data(.idle))
+    }
+
+    func test_AC_154_downloadInfo_refreshFromEmptyAndErrorReads() async throws {
+        // From the empty state: the pull keeps the screen, then shows the new file.
+        await vm.load()
+        XCTAssertEqual(vm.renderState, .empty)
+        transport.payload = Data(repeating: 0x01, count: 64)
+        let other = OfflineDownloadViewModel(store: store, client: client, index: OfflineAssetIndex(), accountID: Self.accountA)
+        await other.downloadAsset(makeAsset(id: "asset-1"), baseURL: baseURL, token: "tok")
+        XCTAssertEqual(vm.renderState, .empty, "this screen has not read since")
+
+        let emptySeen = TestBox<[ListRenderState]>([vm.renderState])
+        let emptyObserver = Task { @MainActor in
+            while !Task.isCancelled {
+                if emptySeen.value.last != vm.renderState { emptySeen.value.append(vm.renderState) }
+                await Task.yield()
+            }
+        }
+        await vm.refresh()
+        emptyObserver.cancel()
+        XCTAssertFalse(emptySeen.value.contains(.loading), "\(emptySeen.value)")
+        XCTAssertEqual(vm.renderState, .data(.idle))
+        XCTAssertEqual(vm.files.map(\.id), ["asset-1"])
+
+        // From the error state: the pull keeps the error until the answer.
+        let failing = DownloadInfoViewModel(
+            offline: OfflineDownloadViewModel(store: store, client: client, index: OfflineAssetIndex(), accountID: Self.accountA)
+        )
+        try blockRoot()
+        forceDiskReread()
+        await failing.load()
+        XCTAssertTrue(isError(failing.renderState))
+        try unblockRoot()
+
+        let seen = TestBox<[ListRenderState]>([failing.renderState])
+        let observer = Task { @MainActor in
+            while !Task.isCancelled {
+                if seen.value.last != failing.renderState { seen.value.append(failing.renderState) }
+                await Task.yield()
+            }
+        }
+        await failing.refresh()
+        observer.cancel()
+
+        XCTAssertFalse(seen.value.contains(.loading), "a pull keeps the error on screen: \(seen.value)")
+        XCTAssertFalse(failing.isRefreshingListing)
+        XCTAssertEqual(failing.renderState, .data(.idle))
+    }
+
+    func test_AC_154_downloadInfo_refreshDuringReadIsNotIgnored() async {
+        await download("asset-1")
+        let freshOffline = OfflineDownloadViewModel(store: store, client: client, index: OfflineAssetIndex(), accountID: Self.accountA)
+        let fresh = DownloadInfoViewModel(offline: freshOffline)
+
+        async let first: Void = fresh.load()
+        async let pull: Void = fresh.refresh()
+        _ = await (first, pull)
+
+        XCTAssertEqual(fresh.renderState, .data(.idle))
+        XCTAssertFalse(fresh.isLoadingListing)
+        XCTAssertFalse(fresh.isRefreshingListing)
+    }
+
+    func test_AC_31_downloadInfo_errorThenEmptyThenData() async throws {
+        try blockRoot()
+        await vm.refresh()
+        XCTAssertTrue(isError(vm.renderState), "\(vm.renderState)")
+
+        try unblockRoot()
+        await vm.refresh()
+        XCTAssertEqual(vm.renderState, .empty)
+
+        await download("asset-1")
+        await vm.refresh()
+        XCTAssertEqual(vm.renderState, .data(.idle))
+        XCTAssertEqual(vm.files.map(\.id), ["asset-1"])
+    }
 }

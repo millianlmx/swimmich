@@ -19,13 +19,19 @@ struct LockedFolderView: View {
 
     var body: some View {
         Group {
-            switch vm.gate {
-            case .needsSetup:
-                LockedFolderSetupView(vm: vm)
-            case .locked:
-                LockedFolderPINView(vm: vm)
-            case .unlocked:
-                LockedFolderGridView(vm: vm)
+            if !vm.hasCheckedAccess {
+                // First access check only: later checks keep the current door.
+                ProgressView()
+                    .pvLoadingIndicator("lockedFolderLoading")
+            } else {
+                switch vm.gate {
+                case .needsSetup:
+                    LockedFolderSetupView(vm: vm)
+                case .locked:
+                    LockedFolderPINView(vm: vm)
+                case .unlocked:
+                    LockedFolderGridView(vm: vm)
+                }
             }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -178,13 +184,30 @@ private struct LockedFolderGridView: View {
     private let columns = Array(repeating: GridItem(.flexible(), spacing: PVSpacing.s2), count: 3)
 
     var body: some View {
+        // One scroll container carries every state and `.refreshable`, so a
+        // state change never cancels the pull in flight.
         ScrollView {
             LazyVStack(alignment: .leading, spacing: PVSpacing.s2) {
                 statusBanner
 
-                if vm.items.isEmpty && !vm.isLoadingMore {
+                switch vm.gridState {
+                case .loading:
+                    PVSkeletonGrid(rows: 3, columnCount: columns.count)
+                        .padding(.horizontal, PVSpacing.s4)
+                        .pvLoadingIndicator("lockedFolderLoading")
+                case .error(let message):
+                    PVErrorStateView(
+                        title: "Couldn't load photos",
+                        message: message,
+                        identifierPrefix: "lockedFolder",
+                        retry: { Task { await vm.refreshGate() } }
+                    )
+                    .containerRelativeFrame(.vertical)
+                case .empty:
                     emptyState
-                } else {
+                        .containerRelativeFrame(.vertical)
+                case .data(let status):
+                    reloadStatus(status)
                     LazyVGrid(columns: columns, spacing: PVSpacing.s2) {
                         ForEach(vm.items) { item in
                             cellView(for: item)
@@ -207,7 +230,7 @@ private struct LockedFolderGridView: View {
                 }
             }
         }
-        .refreshable { await vm.loadFirstPage() }
+        .refreshable { await vm.refresh() }
         .navigationTitle(Text(verbatim: ""))
         .navigationBarTitleDisplayMode(.inline)
         .toolbar { toolbarContent }
@@ -256,7 +279,26 @@ private struct LockedFolderGridView: View {
         } description: {
             Text("Photos you move here are hidden from the timeline until you unlock it.")
         }
-        .padding(.top, 60)
+        .accessibilityIdentifier("lockedFolderEmptyState")
+    }
+
+    /// "Try Again" with photos on screen: the indicator stands in for the
+    /// banner while the read runs; a failed refresh keeps the photos under it.
+    @ViewBuilder
+    private func reloadStatus(_ status: DataStatus) -> some View {
+        switch status {
+        case .idle:
+            EmptyView()
+        case .reloading:
+            ProgressView()
+                .padding(.vertical, PVSpacing.s8)
+                .frame(maxWidth: .infinity)
+                .pvLoadingIndicator("lockedFolderLoading")
+        case .failed(let message):
+            InlineErrorBadge(message: message, retry: { Task { await vm.refreshGate() } })
+                .padding(PVSpacing.s16)
+                .accessibilityIdentifier("lockedFolderRefreshError")
+        }
     }
 
     @ViewBuilder

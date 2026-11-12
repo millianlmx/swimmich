@@ -130,6 +130,9 @@ final class MapViewModel {
     private(set) var visiblePhotos: [MapPhoto] = []
     private(set) var isLoading: Bool = false
     var errorMessage: String? = nil
+    /// Failure of the last `refreshMarkers()` (the markers are kept), cleared
+    /// by a successful one. Distinct from `errorMessage`, the first load's.
+    private(set) var refreshErrorMessage: String? = nil
 
     /// Presentation state of the native map photo sheet. Owned here (the
     /// ViewModel lives in RootView, outliving every navigation change) so
@@ -290,7 +293,8 @@ final class MapViewModel {
     /// Re-fetches markers from the server, swapping in fresh data and
     /// refreshing the disk cache — without clearing anything. The map and the
     /// photo sheet keep showing the previous set while the fetch runs.
-    /// Silent on failure (a stale set is fine until the next refresh).
+    /// A failure keeps the stale set and is reported in `refreshErrorMessage`
+    /// (the photo sheet's banner), cleared by the next success.
     /// Overlapping calls no-op (`isRefreshing`) so repeated opens / rapid
     /// viewer mutations don't fire concurrent full-catalogue refetches.
     func refreshMarkers() async {
@@ -301,12 +305,14 @@ final class MapViewModel {
             let dtos = try await client.getMapMarkers(filter: filter)
             print("[MapVM] refresh fetched \(dtos.count) markers")
             applyMarkers(dtos)
+            refreshErrorMessage = nil
             // Never overwrite a good cache with an empty response (an empty
             // cache would make loadMarkers skip the cache path forever).
             await persist(dtos)
         } catch {
             print("[MapVM] refresh failed: \(error.localizedDescription)")
-            // Silent: a stale cache is fine until the next open.
+            // A cancellation (user-facing message nil) changes nothing.
+            if let message = error.userFacingMessage { refreshErrorMessage = message }
         }
     }
 
@@ -360,6 +366,7 @@ final class MapViewModel {
         selectedMarkerID = nil
         selectedMarkerPhotos = []
         errorMessage = nil
+        refreshErrorMessage = nil
         await loadMarkers()
     }
 
@@ -372,6 +379,7 @@ final class MapViewModel {
         loaded = false
         markers = []
         errorMessage = nil
+        refreshErrorMessage = nil
         cache.clear()
         await loadMarkers()
     }

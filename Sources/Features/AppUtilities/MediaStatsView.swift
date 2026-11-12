@@ -17,8 +17,19 @@ struct MediaStatsView: View {
         List {
             Section {
                 LabeledContent("Tracked assets", value: "\(vm.trackedCount)")
-                LabeledContent("Cached offline", value: "\(vm.offlineCount)")
-                LabeledContent("Offline size", value: vm.formattedUsage(vm.offlineBytes))
+                if let message = vm.offlineListingErrorMessage {
+                    LabeledContent("Cached offline", value: String(localized: "Unavailable"))
+                        .accessibilityIdentifier("mediaStatsCachedOffline")
+                    LabeledContent("Offline size", value: String(localized: "Unavailable"))
+                        .accessibilityIdentifier("mediaStatsOfflineSize")
+                    InlineErrorBadge(message: message, retry: { Task { await vm.load() } })
+                        .accessibilityIdentifier("mediaStatsLocalError")
+                } else {
+                    LabeledContent("Cached offline", value: "\(vm.offlineCount)")
+                        .accessibilityIdentifier("mediaStatsCachedOffline")
+                    LabeledContent("Offline size", value: vm.formattedUsage(vm.offlineBytes))
+                        .accessibilityIdentifier("mediaStatsOfflineSize")
+                }
                 LabeledContent("Last server check", value: vm.formattedLastReconciliation())
             } header: {
                 Text("Local")
@@ -27,12 +38,13 @@ struct MediaStatsView: View {
             Section {
                 if vm.storage.isLoading {
                     ProgressView()
-                        .accessibilityIdentifier("mediaStatsServerLoading")
+                        .pvLoadingIndicator("mediaStatsServerLoading")
                 }
                 AccountStorageRows(
                     storage: vm.storage,
                     idPrefix: "mediaStatsServer",
-                    showsQuotaBar: false
+                    showsQuotaBar: false,
+                    showsEmptyCounts: true
                 ) { Task { await vm.load() } }
             } header: {
                 Text("Server")

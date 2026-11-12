@@ -21,10 +21,20 @@ struct InvitePartnerSheet: View {
     var body: some View {
         NavigationStack {
             Group {
-                if vm.isLoadingCandidates && vm.inviteCandidates.isEmpty {
+                switch vm.inviteRenderState {
+                case .loading:
                     ProgressView()
+                        .pvLoadingIndicator("partnerInviteLoading")
                         .frame(maxWidth: .infinity, maxHeight: .infinity)
-                } else if vm.inviteCandidates.isEmpty {
+                case .error(let message):
+                    PVErrorStateView(
+                        title: "Couldn't load users",
+                        message: message,
+                        identifierPrefix: "partnerInvite",
+                        retry: { Task { await vm.loadCandidates(excludingUserId: currentUserId) } }
+                    )
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+                case .empty:
                     ContentUnavailableView {
                         Image(systemName: "person.crop.circle.badge.questionmark")
                             .font(.system(size: 56)) // DS-exempt: hero illustration §8.6
@@ -34,7 +44,7 @@ struct InvitePartnerSheet: View {
                     } description: {
                         Text("This server does not expose its user list, or everyone on it is already a partner.")
                     }
-                } else {
+                case .data:
                     List(vm.filteredCandidates, id: \.id) { user in
                         // Plain button style inside a List swallows the tap on
                         // iOS 26 (same class of defect as the stack picker's

@@ -81,6 +81,9 @@ final class MockImmichClient: ImmichClient, @unchecked Sendable {
     var validateTokenGate: (() async throws -> Void)?
 
     // Locked folder (gap G12)
+    /// Awaited in `getAuthStatus` after the call is counted and before the
+    /// error check: holds the access check so a test sees the screen mid-check.
+    var authStatusGate: (() async throws -> Void)?
     /// `GET /api/auth/status` answer; defaults to a PIN-protected, unelevated
     /// session (the door the folder shows after the first setup).
     var authStatus: AuthStatusResponseDto?
@@ -102,6 +105,7 @@ final class MockImmichClient: ImmichClient, @unchecked Sendable {
     func getAuthStatus() async throws -> AuthStatusResponseDto {
         bump()
         authStatusCallCount += 1
+        if let gate = authStatusGate { try await gate() }
         if let e = globalError ?? authStatusError { throw e }
         return authStatus ?? AuthStatusResponseDto(
             expiresAt: nil, isElevated: false, password: true, pinCode: true, pinExpiresAt: nil
@@ -230,6 +234,8 @@ final class MockImmichClient: ImmichClient, @unchecked Sendable {
     var exploreError: Error?
     var citiesResponse: [AssetResponseDto]?
     var citiesError: Error?
+    /// Awaited by `getAssetsByCity` after `bump()`, before the error check.
+    var citiesGate: (() async throws -> Void)?
     // Folder view capture (gap G11)
     var folderPathsResponse: [String]?
     var folderPathsError: Error?
@@ -383,6 +389,8 @@ final class MockImmichClient: ImmichClient, @unchecked Sendable {
     var memoriesStatisticsResponse: MemoryStatisticsResponseDto?
     var duplicatesResponse: [DuplicateResponseDto]?
     var duplicatesError: Error?
+    /// Awaited by `getDuplicates` after the call is recorded, before the error check.
+    var duplicatesGate: (() async throws -> Void)?
     var serverStatisticsResponse: ServerStatsResponseDto?
     var lastUpdateSharedLinkId: String?
     var lastUpdateSharedLinkDto: SharedLinkEditDto?
@@ -682,6 +690,7 @@ final class MockImmichClient: ImmichClient, @unchecked Sendable {
 
     func getAssetsByCity() async throws -> [AssetResponseDto] {
         bump()
+        if let gate = citiesGate { try await gate() }
         if let e = globalError ?? citiesError { throw e }
         return citiesResponse ?? []
     }
@@ -711,9 +720,13 @@ final class MockImmichClient: ImmichClient, @unchecked Sendable {
         return statisticsResponse ?? SearchStatisticsResponseDto(total: 0)
     }
 
+    /// Suspension point of `getMapMarkers`, BEFORE the canned answer or error.
+    var mapMarkersGate: (() async throws -> Void)?
+
     func getMapMarkers(filter: MapMarkerFilter) async throws -> [MapMarkerResponseDto] {
         bump()
         lastMapMarkersFilter = filter
+        if let gate = mapMarkersGate { try await gate() }
         if let e = globalError ?? mapMarkersError { throw e }
         return mapMarkersResponse ?? []
     }
@@ -760,8 +773,12 @@ final class MockImmichClient: ImmichClient, @unchecked Sendable {
         return createAlbumResponse ?? cannedAlbum(id: "album-new", name: dto.albumName, count: dto.assetIds?.count ?? 0)
     }
 
+    /// Suspension point of `getAlbum`, BEFORE the canned answer or error.
+    var getAlbumGate: (() async throws -> Void)?
+
     func getAlbum(id: String) async throws -> AlbumResponseDto {
         bump()
+        if let gate = getAlbumGate { try await gate() }
         if let e = globalError ?? getAlbumError { throw e }
         return getAlbumResponse[id] ?? cannedAlbum(id: id)
     }
@@ -838,9 +855,13 @@ final class MockImmichClient: ImmichClient, @unchecked Sendable {
 
     // MARK: - Shared Links (AC-500..AC-518)
 
+    /// Suspension point of `getSharedLinks`, BEFORE the canned answer or error.
+    var sharedLinksGate: (() async throws -> Void)?
+
     func getSharedLinks(albumId: String?) async throws -> [SharedLinkResponseDto] {
         bump()
         lastSharedLinksAlbumId = albumId
+        if let gate = sharedLinksGate { try await gate() }
         if let e = globalError ?? sharedLinksError { throw e }
         return sharedLinksResponse ?? []
     }
@@ -1031,9 +1052,14 @@ final class MockImmichClient: ImmichClient, @unchecked Sendable {
 
     // MARK: - Partners (P0 api-surface-expansion; direction required)
 
+    /// Suspension point of `getPartners`, BEFORE the canned answer or error
+    /// (same pattern as `assetStatisticsGate`), once per direction.
+    var partnersGate: (() async throws -> Void)?
+
     func getPartners(direction: PartnerDirection) async throws -> [PartnerResponseDto] {
         bump()
         lastPartnersDirections.append(direction)
+        if let gate = partnersGate { try await gate() }
         if let e = globalError ?? partnersError { throw e }
         switch direction {
         case .sharedWith: return partnersSharedWithResponse ?? []
@@ -1071,10 +1097,14 @@ final class MockImmichClient: ImmichClient, @unchecked Sendable {
 
     // MARK: - Activity (P0 api-surface-expansion)
 
+    /// Suspension point of `getActivities`, BEFORE the canned answer or error.
+    var activitiesGate: (() async throws -> Void)?
+
     func getActivities(albumId: String, assetId: String?) async throws -> [ActivityResponseDto] {
         bump()
         lastActivitiesAlbumId = albumId
         lastActivitiesAssetId = assetId
+        if let gate = activitiesGate { try await gate() }
         if let e = globalError ?? activitiesError { throw e }
         return activitiesResponse ?? []
     }
@@ -1098,8 +1128,12 @@ final class MockImmichClient: ImmichClient, @unchecked Sendable {
 
     // MARK: - Memories (P0 api-surface-expansion)
 
+    /// Suspension point of `getMemories`, BEFORE the canned answer or error.
+    var memoriesGate: (() async throws -> Void)?
+
     func getMemories() async throws -> [MemoryResponseDto] {
         bump()
+        if let gate = memoriesGate { try await gate() }
         if let e = globalError ?? memoriesError { throw e }
         return memoriesResponse ?? []
     }
@@ -1176,6 +1210,7 @@ final class MockImmichClient: ImmichClient, @unchecked Sendable {
 
     func getDuplicates() async throws -> [DuplicateResponseDto] {
         bump()
+        if let gate = duplicatesGate { try await gate() }
         if let e = globalError ?? duplicatesError { throw e }
         return duplicatesResponse ?? []
     }
@@ -1220,8 +1255,12 @@ final class MockImmichClient: ImmichClient, @unchecked Sendable {
         if let e = globalError ?? sharedLinksError { throw e }
     }
 
+    /// Suspension point of `getUsers`, BEFORE the canned answer or error.
+    var getUsersGate: (() async throws -> Void)?
+
     func getUsers() async throws -> [UserResponseDto] {
         bump()
+        if let gate = getUsersGate { try await gate() }
         if let e = globalError ?? getUsersError { throw e }
         return getUsersResponse ?? []
     }
@@ -1403,9 +1442,13 @@ final class MockImmichClient: ImmichClient, @unchecked Sendable {
     var lastUntagAssetsTagId: String?
     var lastUntagAssetsIds: [String]?
 
+    /// Suspension point of `getAllTags`, BEFORE the canned answer or error.
+    var tagsGate: (() async throws -> Void)?
+
     func getAllTags() async throws -> [TagResponseDto] {
         bump()
         lock.lock(); getAllTagsCallCount += 1; lock.unlock()
+        if let gate = tagsGate { try await gate() }
         if let e = globalError ?? tagsError { throw e }
         return tagsResponse ?? []
     }
@@ -1459,9 +1502,14 @@ final class MockImmichClient: ImmichClient, @unchecked Sendable {
     var lastRemoveFromStackId: String?
     var lastRemoveFromStackAssetId: String?
     var stacksError: Error?
+    /// Awaited by `searchStacks` (the list) after the call is recorded, before the error check.
+    var stacksGate: (() async throws -> Void)?
+    /// Awaited by `getStack` (the detail) after the call is recorded, before the error check.
+    var stackGate: (() async throws -> Void)?
 
     func searchStacks(primaryAssetId: String?) async throws -> [StackResponseDto] {
         bump()
+        if let gate = stacksGate { try await gate() }
         if let e = globalError ?? stacksError { throw e }
         return stacksResponse ?? []
     }
@@ -1475,6 +1523,7 @@ final class MockImmichClient: ImmichClient, @unchecked Sendable {
 
     func getStack(id: String) async throws -> StackResponseDto {
         bump()
+        if let gate = stackGate { try await gate() }
         if let e = globalError ?? stacksError { throw e }
         return stackDetailResponses[id] ?? StackResponseDto(id: id, primaryAssetId: "", assets: [])
     }
@@ -1526,8 +1575,12 @@ final class MockImmichClient: ImmichClient, @unchecked Sendable {
     var lastRotateApiKeyId: String?
     var adminError: Error?
 
+    /// Suspension point of `getAdminUsers`, BEFORE the canned answer or error.
+    var adminUsersGate: (() async throws -> Void)?
+
     func getAdminUsers() async throws -> [UserAdminResponseDto] {
         bump()
+        if let gate = adminUsersGate { try await gate() }
         if let e = globalError ?? adminError { throw e }
         return adminUsersResponse ?? []
     }
@@ -1597,8 +1650,12 @@ final class MockImmichClient: ImmichClient, @unchecked Sendable {
         if let e = globalError ?? adminError { throw e }
     }
 
+    /// Suspension point of `getAPIKeys`, BEFORE the canned answer or error.
+    var apiKeysGate: (() async throws -> Void)?
+
     func getAPIKeys() async throws -> [ApiKeyResponseDto] {
         bump()
+        if let gate = apiKeysGate { try await gate() }
         if let e = globalError ?? adminError { throw e }
         return apiKeysResponse ?? []
     }
@@ -1642,6 +1699,8 @@ final class MockImmichClient: ImmichClient, @unchecked Sendable {
     /// which is not a state the server produces but is the honest empty value.
     var sessionsResponse: [SessionResponseDto]?
     var sessionsError: Error?
+    /// Awaited by `getSessions` after the call is recorded, before the error check.
+    var sessionsGate: (() async throws -> Void)?
     var deleteSessionError: Error?
     var deleteAllSessionsError: Error?
     /// Every id the single-session DELETE was called with, in order.
@@ -1650,6 +1709,7 @@ final class MockImmichClient: ImmichClient, @unchecked Sendable {
 
     func getSessions() async throws -> [SessionResponseDto] {
         bump()
+        if let gate = sessionsGate { try await gate() }
         if let e = globalError ?? sessionsError { throw e }
         return sessionsResponse ?? []
     }

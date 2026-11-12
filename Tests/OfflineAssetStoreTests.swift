@@ -454,7 +454,7 @@ final class OfflineAssetStoreTests: XCTestCase {
         try Self.seedLegacyContent(into: root)
 
         store.setActiveAccount(Self.accountA, otherAccountsRegistered: false)
-        let listing = await store.listing()
+        let listing = try await store.listing()
 
         XCTAssertEqual(listing.items.count, 2)
         XCTAssertEqual(listing.items.sorted { $0.id < $1.id }, Self.legacyInfos, "original metadata survives the move")
@@ -470,11 +470,11 @@ final class OfflineAssetStoreTests: XCTestCase {
         try Self.seedLegacyContent(into: root)
 
         store.setActiveAccount(Self.accountA, otherAccountsRegistered: true)
-        let forA = await store.listing()
+        let forA = try await store.listing()
         let legacy1ForA = await store.isCached(assetID: "legacy-1")
         let legacy2ForA = await store.isCached(assetID: "legacy-2")
         store.setActiveAccount(Self.accountB, otherAccountsRegistered: true)
-        let forB = await store.listing()
+        let forB = try await store.listing()
         let legacy1ForB = await store.isCached(assetID: "legacy-1")
         let legacy2ForB = await store.isCached(assetID: "legacy-2")
 
@@ -494,7 +494,7 @@ final class OfflineAssetStoreTests: XCTestCase {
     }
 
     func test_ACC_AC9_rootIsExcludedFromBackup_durably() async throws {
-        _ = await store.listing()
+        _ = try await store.listing()
         XCTAssertEqual(excluded(root), true, "serving a account excludes the root")
         XCTAssertNotEqual(excluded(root.deletingLastPathComponent()), true, "the parent is never excluded")
 
@@ -533,7 +533,7 @@ final class OfflineAssetStoreTests: XCTestCase {
         XCTAssertTrue(FileManager.default.fileExists(atPath: folder.appendingPathComponent("a1.jpg").path))
 
         store.setActiveAccount(Self.accountA, otherAccountsRegistered: true)
-        let forA = await store.listing()
+        let forA = try await store.listing()
         XCTAssertEqual(forA.items.map(\.id), ["a1"])
     }
 
@@ -558,7 +558,7 @@ final class OfflineAssetStoreTests: XCTestCase {
         XCTAssertTrue(FileManager.default.fileExists(atPath: folder.appendingPathComponent("a2.jpg").path))
 
         store.setActiveAccount(Self.accountA, otherAccountsRegistered: true)
-        let forA = await store.listing()
+        let forA = try await store.listing()
         XCTAssertEqual(forA.items.map(\.id), ["a2", "a1"], "activation never trims")
         XCTAssertEqual(forA.totalBytes, 900)
 
@@ -621,14 +621,14 @@ extension OfflineAssetStoreTests {
 
         // a: attached to A.
         try Self.seedLegacyContent(into: root)
-        let forA = await store.listing()
+        let forA = try await store.listing()
         XCTAssertEqual(forA.items.count, 2)
         let attachedSizes = regularFileSizes(under: folderA)
         store.setActiveAccount(Self.accountB, otherAccountsRegistered: false)
-        let bAlone = await store.listing()
+        let bAlone = try await store.listing()
         let bAloneCached = await store.isCached(assetID: "legacy-1")
         store.setActiveAccount(Self.accountB, otherAccountsRegistered: true)
-        let bWithOthers = await store.listing()
+        let bWithOthers = try await store.listing()
         XCTAssertTrue(bAlone.items.isEmpty)
         XCTAssertTrue(bWithOthers.items.isEmpty)
         XCTAssertFalse(bAloneCached)
@@ -639,12 +639,12 @@ extension OfflineAssetStoreTests {
         try FileManager.default.removeItem(at: root)
         store = makeStore(active: Self.accountA, others: true)
         try Self.seedLegacyContent(into: root)
-        let forAAside = await store.listing()
+        let forAAside = try await store.listing()
         XCTAssertTrue(forAAside.items.isEmpty)
         let asideSizes = regularFileSizes(under: store.unassignedURL)
         XCTAssertEqual(asideSizes["legacy-1.jpg"], 100)
         store.setActiveAccount(Self.accountB, otherAccountsRegistered: false)
-        let bLater = await store.listing()
+        let bLater = try await store.listing()
         let bLaterCached = await store.isCached(assetID: "legacy-1")
         XCTAssertTrue(bLater.items.isEmpty)
         XCTAssertFalse(bLaterCached)
@@ -655,7 +655,7 @@ extension OfflineAssetStoreTests {
     func test_OFF_AC17bis_unassignedIsExcludedFromBackup_durably() async throws {
         try Self.seedLegacyContent(into: root)
         store.setActiveAccount(Self.accountA, otherAccountsRegistered: true)
-        _ = await store.listing()
+        _ = try await store.listing()
 
         XCTAssertTrue(FileManager.default.fileExists(atPath: store.unassignedURL.appendingPathComponent("legacy-1.jpg").path))
         XCTAssertEqual(excluded(store.unassignedURL), true)
@@ -664,12 +664,12 @@ extension OfflineAssetStoreTests {
     func test_OFF_AC47_recreatedUnassigned_isExcludedAgain_parentNever() async throws {
         try Self.seedLegacyContent(into: root)
         store.setActiveAccount(Self.accountA, otherAccountsRegistered: true)
-        _ = await store.listing()
+        _ = try await store.listing()
         try FileManager.default.removeItem(at: store.unassignedURL)
         try Self.seedLegacyContent(into: root)
 
         let later = makeStore(active: Self.accountB, others: true)
-        _ = await later.listing()
+        _ = try await later.listing()
 
         XCTAssertTrue(FileManager.default.fileExists(atPath: later.unassignedURL.appendingPathComponent("legacy-1.jpg").path))
         XCTAssertEqual(excluded(later.unassignedURL), true)
@@ -683,7 +683,7 @@ extension OfflineAssetStoreTests {
             try Self.seedLegacyContent(into: root)
             try Data(repeating: 0x09, count: 10).write(to: root.appendingPathComponent("legacy-3.jpg.partial"))
 
-            let listing = await current.listing()
+            let listing = try await current.listing()
 
             let everything = (FileManager.default.enumerator(atPath: root.path)?.allObjects as? [String]) ?? []
             XCTAssertEqual(everything.filter { $0.hasSuffix(".partial") }, [], "others=\(others)")
@@ -701,7 +701,7 @@ extension OfflineAssetStoreTests {
         try FileManager.default.createDirectory(at: folderA, withIntermediateDirectories: true)
         try Data(repeating: 0x55, count: 50).write(to: folderA.appendingPathComponent("legacy-1.jpg"))
         try Self.seedLegacyContent(into: root)
-        _ = await jpgStore.listing()
+        _ = try await jpgStore.listing()
 
         XCTAssertGreaterThanOrEqual(scripted1.rootListings, 1)
         XCTAssertEqual(try Data(contentsOf: folderA.appendingPathComponent("legacy-1.jpg")), Data(repeating: 0x55, count: 50))
@@ -720,7 +720,7 @@ extension OfflineAssetStoreTests {
         try writeIndex([ownInfo("own-1", original: "OWN.jpg")], in: folderA)
         try Data(repeating: 0x33, count: 50).write(to: folderA.appendingPathComponent("own-1.jpg"))
         try Self.seedLegacyContent(into: root)
-        let listing = await indexStore.listing()
+        let listing = try await indexStore.listing()
 
         XCTAssertGreaterThanOrEqual(scripted2.rootListings, 1)
         let items = listing.items.sorted { $0.id < $1.id }
@@ -745,9 +745,9 @@ extension OfflineAssetStoreTests {
         try writeIndex([ownInfo("u1", original: "U1.jpg")], in: unassigned)
         let before = regularFileSizes(under: unassigned)
 
-        let first = await store.listing()
+        let first = try await store.listing()
         let cached = await store.isCached(assetID: "u1")
-        let reopened = await reopenedStore().listing()
+        let reopened = try await reopenedStore().listing()
 
         XCTAssertTrue(first.items.isEmpty)
         XCTAssertTrue(reopened.items.isEmpty)
@@ -763,7 +763,7 @@ extension OfflineAssetStoreTests {
         let scripted = ScriptedFileManager(failingMoves: ["legacy-1.jpg"], root: root, firstAtRoot: "legacy-1.jpg")
         let failing = makeStore(scripted, active: Self.accountA, others: false)
 
-        let listing = await failing.listing()
+        let listing = try await failing.listing()
         let cached = await failing.isCached(assetID: "legacy-1")
 
         XCTAssertEqual(listing.items.map(\.id), ["legacy-2"])
@@ -776,7 +776,7 @@ extension OfflineAssetStoreTests {
         XCTAssertGreaterThanOrEqual(scripted.rootListings, 1)
 
         let later = makeStore(active: Self.accountB, others: false)
-        let forB = await later.listing()
+        let forB = try await later.listing()
         let cachedForB = await later.isCached(assetID: "legacy-1")
 
         XCTAssertTrue(forB.items.isEmpty)
@@ -800,7 +800,7 @@ extension OfflineAssetStoreTests {
             }
             try Data(repeating: 0x07, count: 100).write(to: root.appendingPathComponent("legacy-1.jpg"))
 
-            let listing = await later.listing()
+            let listing = try await later.listing()
             let cached = await later.isCached(assetID: "legacy-1")
 
             XCTAssertTrue(listing.items.isEmpty, variant)
@@ -814,6 +814,28 @@ extension OfflineAssetStoreTests {
                 XCTAssertEqual(try FileManager.default.contentsOfDirectory(atPath: folderA.path), [], variant)
             }
         }
+    }
+
+    // AC-150 — a failed `prepare` is thrown, and the next read hits the disk
+    // again instead of trusting a half-loaded index.
+    func test_AC_150_store_retryAfterPrepareFailureReadsFolder() async throws {
+        let rootDirectory = root.deletingLastPathComponent().appendingPathComponent("blocked", isDirectory: true)
+        let blockedRoot = rootDirectory.appendingPathComponent("OfflineAssets", isDirectory: false)
+        try FileManager.default.createDirectory(at: rootDirectory, withIntermediateDirectories: true)
+        try Data("not a folder".utf8).write(to: blockedRoot)
+        let blocked = OfflineAssetStore(rootURL: blockedRoot, transport: transport, defaults: defaults)
+        blocked.setActiveAccount(Self.accountA, otherAccountsRegistered: false)
+
+        var firstFailed = false
+        do { _ = try await blocked.listing() } catch { firstFailed = true }
+        XCTAssertTrue(firstFailed, "an ordinary file at rootURL must make the listing throw")
+
+        try FileManager.default.removeItem(at: blockedRoot)
+        let listing = try await blocked.listing()
+        XCTAssertTrue(listing.items.isEmpty)
+        var isDirectory: ObjCBool = false
+        XCTAssertTrue(FileManager.default.fileExists(atPath: blockedRoot.path, isDirectory: &isDirectory))
+        XCTAssertTrue(isDirectory.boolValue, "the retry must read (and create) the folder")
     }
 }
 
