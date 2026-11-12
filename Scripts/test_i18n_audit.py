@@ -217,7 +217,7 @@ class FullVerdictTests(unittest.TestCase):
         self.assertIn("  - Half  missing: de, es, it", output)
 
     def test_AC_32_verdictIgnoresKeysWithoutWords(self) -> None:
-        code, output = self.run_main({}, {"%lld", "·"})
+        code, output = self.run_main({}, {"%@", "·"})
         self.assertEqual(code, 0, output)
 
 
