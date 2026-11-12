@@ -14,12 +14,6 @@ import SwiftUI
 // photo viewer, the memory player, RoadTrip and the shared-link pager all do), since
 // the cover's own background is clear so that the fade shows the screen beneath.
 
-enum PVCoverStyle: Equatable {
-    case system
-    case fade
-    case selfAnimated
-}
-
 /// Constant identity for the `isPresented:` flavour.
 private struct PVCoverToken: Identifiable {
     let id = 0

@@ -128,6 +128,15 @@ enum PVTransition: Equatable {
     }
 }
 
+/// How a full-screen cover is presented (see `PVFullScreenCover.swift`). Lives with the
+/// tokens because `PVMotion.coverStyle` returns it and this file also compiles into
+/// the share extension, which has no `Components/`.
+enum PVCoverStyle: Equatable {
+    case system
+    case fade
+    case selfAnimated
+}
+
 /// Scale and opacity a scrolling item takes at the edge of the screen.
 struct PVScrollEffect: Equatable {
     var scale: CGFloat
