@@ -96,7 +96,9 @@ WHICH VERSION IT ANNOUNCES, AND WHAT IT SERVES (L-20)
     and stays in `/__requests`, so a scenario can prove it never happened. The
     shell serves both route families (`/api/jobs` and `/api/queues`,
     `POST /api/people/{id}/merge` and `POST /api/people/merge`,
-    `GET /api/server/config` and `GET /api/public/config` + `GET /api/config`).
+    `GET /api/server/config` and `GET /api/public/config` + `GET /api/config`);
+    the two 3.2+ configs are built from what `GET /api/server/config` answers,
+    a feature stub's override included (`_served_config()`).
 """
 import json
 import os
