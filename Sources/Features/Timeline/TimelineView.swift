@@ -78,6 +78,9 @@ struct TimelineView: View {
     /// prepended): performed by `onChange` once the new items are drawn,
     /// because `scrollTo` on an id that is not laid out yet does nothing.
     @State private var scrollRequest: TimelineScrollRequest?
+    /// What the photo viewer needs to grow out of a thumbnail and shrink back
+    /// onto it (L-14): the thumbnails' frames and the scroll owed on close.
+    @State private var zoomSource = ViewerZoomSource()
 
     init(
         vm: TimelineViewModel,
@@ -112,6 +115,7 @@ struct TimelineView: View {
                     content
                 }
                 .scrollIndicators(scrollIndicatorVisibility)
+                .viewerZoomViewport(zoomSource)
                 // Feeds the scrubber's resting position: the ids the scroll
                 // view reports on screen. Fires on threshold crossings only.
                 .onScrollTargetVisibilityChange(idType: String.self) { ids in
@@ -252,6 +256,7 @@ struct TimelineView: View {
                 .onChange(of: scrollRequest) { _, request in
                     if let request { proxy.scrollTo(request.id, anchor: .top) }
                 }
+                .viewerZoomReveal(zoomSource, proxy: proxy)
                 .scrollDismissesKeyboard(.immediately)
                 // D7: Photos-style pinch-to-zoom grid. Simultaneous so it never
                 // blocks tap/long-press/scroll. `gridScale` commits on end, so
@@ -340,6 +345,7 @@ struct TimelineView: View {
         // at the stored value so a relaunch comes back at the density the user
         // left (3 when nothing was ever stored).
         .onAppear {
+            zoomSource.orderedIDs = { [vm = self.vm] in vm.items.map(\.id) }
             let stored = appSettings.tilesPerRow
             baseColumns = stored
             columnCount = stored
@@ -433,7 +439,8 @@ struct TimelineView: View {
             onArchive: { asset, archive in
                 await vm.setArchived(id: asset.id, archived: archive, handOffError: viewerItem != nil)
             },
-            onDismiss: { viewerOnScreen = false }
+            onDismiss: { viewerOnScreen = false },
+            zoomSource: zoomSource
         )
     }
 
@@ -583,6 +590,7 @@ struct TimelineView: View {
     private func sectionCells(_ items: [AssetReactItem], pinKey: String?) -> some View {
         ForEach(Array(items.enumerated()), id: \.element.id) { index, item in
             cellView(for: item)
+                .viewerZoomTile(id: item.id, source: zoomSource)
                 .id(item.id)
                 .task {
                     // Global last-item trigger — stays correct
@@ -697,8 +705,10 @@ struct TimelineView: View {
     /// timeline order (matches grid visual order — `groupedByDay` preserves it).
     private func openViewer(for item: AssetReactItem) {
         guard let idx = vm.items.firstIndex(where: { $0.id == item.id }) else { return }
-        viewerOnScreen = true
-        viewerItem = PhotoViewerItem(assets: vm.items, index: idx)
+        zoomSource.presentInstantly {
+            viewerOnScreen = true
+            viewerItem = PhotoViewerItem(assets: vm.items, index: idx)
+        }
     }
 
     /// Scrolls the timeline to `scrollTargetID` once that asset is loaded, then

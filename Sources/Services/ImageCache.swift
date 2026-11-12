@@ -13,7 +13,10 @@ actor ImageCache {
     /// Shared app-wide instance used by `AuthenticatedAsyncImage`.
     static let shared = ImageCache()
 
-    private let cache: NSCache<NSString, UIImage> = {
+    /// `NSCache` is documented thread-safe ("add, remove, and query items from
+    /// different threads without locking"), which is what makes the
+    /// synchronous `cachedImage(for:)` read sound. Never mutated outside this actor.
+    nonisolated(unsafe) private let cache: NSCache<NSString, UIImage> = {
         let c = NSCache<NSString, UIImage>()
         // Soft cap only — NSCache is free to ignore; it always honors memory
         // warnings by evicting. Avoids hard limits that would shrink the hit
@@ -24,6 +27,12 @@ actor ImageCache {
     }()
 
     func image(for url: URL) -> UIImage? {
+        cache.object(forKey: url.absoluteString as NSString)
+    }
+
+    /// Synchronous read for callers that must not wait (the viewer's opening
+    /// animation starts on the very next frame, with no `await`).
+    nonisolated func cachedImage(for url: URL) -> UIImage? {
         cache.object(forKey: url.absoluteString as NSString)
     }
 

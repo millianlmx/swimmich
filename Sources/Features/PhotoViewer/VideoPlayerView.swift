@@ -1,5 +1,7 @@
 import AVFoundation
+import Combine
 import SwiftUI
+import UIKit
 
 /// UIKit host that keeps an `AVPlayerLayer` pinned to its bounds (a plain
 /// `UIViewRepresentable` returning the player layer directly has no layout
@@ -71,9 +73,17 @@ struct VideoPlayerView: View {
     /// `false`: a looping video never reports `.ended`, and its ticker waits on
     /// exactly that to move to the next slide.
     var loopsVideo: Bool? = nil
+    /// Still shown until the video has its first image (L-14): the viewer's zoom
+    /// lands on it, so the page is never black between the flight and playback.
+    /// `nil` (every other caller) leaves the page exactly as it was.
+    var posterURL: URL? = nil
+    /// Provisional image under the poster — the flying image of the open.
+    var posterPlaceholder: UIImage? = nil
 
     @State private var vm: VideoPlaybackViewModel
     @State private var playerLayer: AVPlayerLayer?
+    @State private var posterVisible = true
+    @State private var posterOpacity: Double = 1
 
     /// Explicit init because the view model is seeded from the store, and the
     /// environment is not readable from a property initializer. Every parameter
@@ -93,7 +103,9 @@ struct VideoPlayerView: View {
         isPaused: Bool = false,
         onStatusChange: ((VideoPlaybackStatus) -> Void)? = nil,
         loopsVideo: Bool? = nil,
-        appSettings: AppSettingsStore = .shared
+        appSettings: AppSettingsStore = .shared,
+        posterURL: URL? = nil,
+        posterPlaceholder: UIImage? = nil
     ) {
         self.asset = asset
         self.baseURL = baseURL
@@ -107,6 +119,8 @@ struct VideoPlayerView: View {
         self.isPaused = isPaused
         self.onStatusChange = onStatusChange
         self.loopsVideo = loopsVideo
+        self.posterURL = posterURL
+        self.posterPlaceholder = posterPlaceholder
         _vm = State(initialValue: VideoPlaybackViewModel(appSettings: appSettings, loopsVideo: loopsVideo))
     }
 
@@ -117,6 +131,10 @@ struct VideoPlayerView: View {
             if let playerLayer {
                 VideoPlayerLayerView(playerLayer: playerLayer, videoGravity: videoGravity)
                     .ignoresSafeArea()
+            }
+
+            if let posterURL, posterVisible {
+                posterLayer(url: posterURL)
             }
 
             if case .failed = vm.status {
@@ -147,8 +165,14 @@ struct VideoPlayerView: View {
         .onDisappear {
             vm.pause()
         }
+        .task(id: playerLayer.map { ObjectIdentifier($0) }) {
+            await handOffPoster()
+        }
         .onChange(of: vm.status) { _, newStatus in
             onStatusChange?(newStatus)
+            if case .failed = newStatus {
+                posterVisible = false
+            }
             if case .ended = newStatus {
                 onPlaybackEnded?()
             }
@@ -167,6 +191,53 @@ struct VideoPlayerView: View {
         }
         .onTapGesture(perform: onSingleTap)
         .contentShape(Rectangle())
+    }
+
+    // MARK: - Poster (L-14)
+
+    /// The still, drawn on the frame the viewer's zoom lands on: the announced
+    /// ratio of the asset fitted in the page, which fills the window like the
+    /// video layer does. Decorative: the video is the page's content.
+    private func posterLayer(url: URL) -> some View {
+        GeometryReader { proxy in
+            let rect = ZoomGeometry.fittedRect(aspect: CGFloat(asset.aspectRatio), in: proxy.size)
+            AuthenticatedAsyncImage(
+                url: url,
+                token: token,
+                contentMode: .fill,
+                placeholder: posterPlaceholder
+            )
+            .frame(width: rect.width, height: rect.height)
+            .clipped()
+            .position(x: rect.midX, y: rect.midY)
+        }
+        .ignoresSafeArea()
+        .opacity(posterOpacity)
+        .allowsHitTesting(false)
+        .accessibilityHidden(true)
+    }
+
+    /// Removes the poster once the video has an image to show. Same frame →
+    /// replaced in place; a different one (the announced ratio was wrong) →
+    /// cross-faded, with no change of frame.
+    private func handOffPoster() async {
+        guard posterURL != nil, posterVisible, let layer = playerLayer else { return }
+        for await ready in layer.publisher(for: \.isReadyForDisplay).values where ready {
+            let posterRect = ZoomGeometry.fittedRect(aspect: CGFloat(asset.aspectRatio), in: layer.bounds.size)
+            switch ViewerZoomPlan.posterHandoff(posterRect: posterRect, videoRect: layer.videoRect) {
+            case .instant:
+                var transaction = Transaction()
+                transaction.disablesAnimations = true
+                withTransaction(transaction) { posterVisible = false }
+            case .crossFade:
+                withAnimation(PVMotion.gentle, completionCriteria: .removed) {
+                    posterOpacity = 0
+                } completion: {
+                    posterVisible = false
+                }
+            }
+            return
+        }
     }
 
     // MARK: - Transport

@@ -42,6 +42,9 @@ struct AlbumDetailView: View {
     /// True from the moment the viewer is requested until it is dismissed, so
     /// an action error is shown in the viewer's banner, then in the album alert.
     @State private var viewerOnScreen = false
+    /// What the photo viewer needs to grow out of a thumbnail and shrink back
+    /// onto it (L-14): the thumbnails' frames and the scroll owed on close.
+    @State private var zoomSource = ViewerZoomSource()
 
     private let columns = Array(repeating: GridItem(.flexible(), spacing: PVSpacing.s2), count: 3)
 
@@ -395,6 +398,9 @@ struct AlbumDetailView: View {
         .appSensoryFeedback(.success, trigger: vm.album?.albumThumbnailAssetId)
         .appSensoryFeedback(.selection, trigger: vm.selectionMode)
         .appSensoryFeedback(.selection, trigger: lastSelectionTick)
+        .onAppear {
+            zoomSource.orderedIDs = { [vm = self.vm] in vm.assets.map(\.id) }
+        }
         .photoViewer(
             item: $viewerItem,
             baseURL: auth.baseURL ?? URL(string: "https://example.com")!,
@@ -408,7 +414,8 @@ struct AlbumDetailView: View {
             onArchive: { asset, archive in
                 await vm.setArchived(id: asset.id, archived: archive, handOffError: viewerItem != nil)
             },
-            onDismiss: { viewerOnScreen = false }
+            onDismiss: { viewerOnScreen = false },
+            zoomSource: zoomSource
         )
         .fullScreenCover(isPresented: $presentingRoadTrip) {
             if let roadTripVM {
@@ -445,8 +452,10 @@ struct AlbumDetailView: View {
     /// Opens the Photos-style viewer at `item`, paging through album order.
     private func openViewer(for item: AssetReactItem) {
         guard let idx = vm.assets.firstIndex(where: { $0.id == item.id }) else { return }
-        viewerOnScreen = true
-        viewerItem = PhotoViewerItem(assets: vm.assets, index: idx)
+        zoomSource.presentInstantly {
+            viewerOnScreen = true
+            viewerItem = PhotoViewerItem(assets: vm.assets, index: idx)
+        }
     }
 
     // MARK: - Cell container — navigation vs selection-aware tap
@@ -558,6 +567,7 @@ struct AlbumDetailView: View {
                 .padding(.top, PVSpacing.s24)
             }
         } else {
+            ScrollViewReader { proxy in
             ScrollView {
                 heroHeader(for: album)
 
@@ -578,6 +588,8 @@ struct AlbumDetailView: View {
                     LazyVGrid(columns: columns, spacing: PVSpacing.s2) {
                         ForEach(vm.assets, id: \.id) { item in
                             cellView(for: item)
+                                .viewerZoomTile(id: item.id, source: zoomSource)
+                                .id(item.id)
                                 .onAppear {
                                     Task { await vm.loadMoreIfNeeded(currentItemId: item.id) }
                                 }
@@ -631,6 +643,9 @@ struct AlbumDetailView: View {
                 Button("Cancel", role: .cancel) { pendingRemoveAssetId = nil }
             } message: {
                 Text("The photo stays in your library.")
+            }
+            .viewerZoomViewport(zoomSource)
+            .viewerZoomReveal(zoomSource, proxy: proxy)
             }
         }
     }
