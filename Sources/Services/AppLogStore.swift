@@ -17,11 +17,23 @@ import Foundation
 /// nothing leaves the device on its own: the buffer dies with the process, and
 /// the export is a user action (`ShareLink` in `AppLogView`), never a background
 /// one.
+///
+/// **Masked at the door.** `record` passes every line through an
+/// `AppLogRedactor` before it is stored, so the buffer never holds a server's
+/// address nor a secret: the screen, the detail blocks, the clipboard and the
+/// export all read `snapshot()` and cannot leak what is not there. The
+/// redactor's vocabulary (`learn…`) only grows, for the life of the process —
+/// `clear()` empties the lines, not what the store has learnt. When it grows,
+/// the lines already kept are masked again; a generation counter closes the
+/// window between masking a line and storing it.
 final class AppLogStore: AppLogSink, @unchecked Sendable {
     private let lock = NSLock()
     /// Oldest first; `snapshot()` reverses for the screen.
     private var entries: [AppLogEntry] = []
     private let capacity: Int
+    private var redactor = AppLogRedactor()
+    /// Bumped, under the lock, each time the vocabulary grows.
+    private var generation = 0
 
     /// 500 lines — the bound the Flutter client's logger keeps, chosen there to
     /// hold a session's traffic without holding a session's memory.
@@ -30,13 +42,50 @@ final class AppLogStore: AppLogSink, @unchecked Sendable {
     }
 
     func record(_ entry: AppLogEntry) {
+        lock.lock()
+        let snapshotRedactor = redactor
+        let seen = generation
+        lock.unlock()
+
+        // The regexes run outside the lock: `record` is on every request's way
+        // out, and the lock is shared with the screen.
+        var masked = snapshotRedactor.redact(entry)
+
         lock.lock(); defer { lock.unlock() }
-        entries.append(entry)
+        if generation != seen {
+            // Something was learnt while this line was being masked: start again
+            // from the original with the current vocabulary.
+            masked = redactor.redact(entry)
+        }
+        entries.append(masked)
         // Surplus goes out the bottom: the newest lines are the ones that
         // describe what just failed, and they are what the operator is reading.
         if entries.count > capacity {
             entries.removeFirst(entries.count - capacity)
         }
+    }
+
+    func learnServer(_ baseURL: URL) {
+        learn { $0.learnServer(baseURL) }
+    }
+
+    func learnSecret(_ value: String) {
+        learn { $0.learnSecret(value) }
+    }
+
+    func learnRequest(_ request: URLRequest, customHeaderNames: [String]) {
+        learn { $0.learnRequest(request, customHeaderNames: customHeaderNames) }
+    }
+
+    /// Grows the vocabulary and, when it did, masks the kept lines again — with
+    /// what is new only: they were masked with the rest when they came in.
+    private func learn(_ grow: (inout AppLogRedactor) -> Bool) {
+        lock.lock(); defer { lock.unlock() }
+        let before = redactor
+        guard grow(&redactor) else { return }
+        generation += 1
+        let added = redactor.additions(since: before)
+        entries = entries.map { added.redact($0) }
     }
 
     /// A copy, most recent first — the order the screen lists and the export

@@ -21,7 +21,9 @@ enum AppLogLevel: String, Codable, Sendable, CaseIterable, Identifiable {
 /// in the URL's parameters, and a signed-in session's proof travels in the
 /// request's metadata, so a wider record would let a diagnostic screen display a
 /// usable credential. Every field below is safe to read out loud and safe to
-/// export.
+/// export — the narrowness handles the structure; `message`, `details` and `stack`
+/// may still quote an error's text (a URL, a token), which is why the buffer
+/// that keeps the lines masks them (`AppLogRedactor`).
 struct AppLogEntry: Identifiable, Equatable, Sendable {
     let id: UUID
     let date: Date
@@ -71,8 +73,22 @@ struct AppLogEntry: Identifiable, Equatable, Sendable {
 }
 
 /// Where the transport hands its lines.
+///
+/// `learn…` tell the sink what must never appear in a line (a server's address,
+/// a token, a password): the sink that keeps lines (`AppLogStore`) masks them at
+/// recording and keeps what it learnt for the life of the process. The default
+/// implementations ignore it, for sinks that keep nothing.
 protocol AppLogSink: Sendable {
     func record(_ entry: AppLogEntry)
+    func learnServer(_ baseURL: URL)
+    func learnSecret(_ value: String)
+    func learnRequest(_ request: URLRequest, customHeaderNames: [String])
+}
+
+extension AppLogSink {
+    func learnServer(_ baseURL: URL) {}
+    func learnSecret(_ value: String) {}
+    func learnRequest(_ request: URLRequest, customHeaderNames: [String]) {}
 }
 
 /// The sink that keeps nothing — the transport's default, so it stays usable

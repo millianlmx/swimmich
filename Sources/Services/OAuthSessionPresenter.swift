@@ -32,7 +32,7 @@ enum OAuthSessionPresenter {
                 activeSession = nil
                 activeAnchor = nil
                 if let error {
-                    log.warning("OAuth session ended with error: \(error.localizedDescription, privacy: .public)")
+                    log.warning("OAuth session ended with error: \(PublicLogText.describe(error), privacy: .public)")
                 }
                 continuation.resume(returning: callbackURL)
             }

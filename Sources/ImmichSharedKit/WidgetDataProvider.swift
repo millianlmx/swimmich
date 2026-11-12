@@ -234,18 +234,25 @@ public struct WidgetDataProvider: Sendable {
     private let activeTransport: (any WidgetDataTransport)?
     private let deadline: Duration
     private let logger = Logger(subsystem: "app.immich.swiftui", category: "widget-data")
+    /// Where the failure lines that name an error go. `nil` = `os.Logger`, in
+    /// clear (`privacy: .public`) — which is why such a line only ever carries
+    /// `PublicLogText.describe(error)`: its shape, never its text. A test
+    /// injects a collector to read the very line the app would publish.
+    private let publicLog: (@Sendable (String) -> Void)?
 
     private var transport: any WidgetDataTransport { activeTransport ?? makeTransport() }
 
     public init(
         sessionStore: any WidgetSessionStoring = WidgetSessionStore(),
         transport: @escaping @Sendable () -> any WidgetDataTransport = { URLSessionWidgetTransport() },
-        deadline: Duration = WidgetDataProvider.defaultDeadline
+        deadline: Duration = WidgetDataProvider.defaultDeadline,
+        publicLog: (@Sendable (String) -> Void)? = nil
     ) {
         self.sessionStore = sessionStore
         self.makeTransport = transport
         self.activeTransport = nil
         self.deadline = deadline
+        self.publicLog = publicLog
     }
 
     private init(running base: WidgetDataProvider, with transport: any WidgetDataTransport) {
@@ -253,6 +260,15 @@ public struct WidgetDataProvider: Sendable {
         self.makeTransport = base.makeTransport
         self.activeTransport = transport
         self.deadline = base.deadline
+        self.publicLog = base.publicLog
+    }
+
+    private func publishFailure(_ line: String) {
+        if let publicLog {
+            publicLog(line)
+        } else {
+            logger.error("\(line, privacy: .public)")
+        }
     }
 
     // MARK: Public surfaces
@@ -303,7 +319,7 @@ public struct WidgetDataProvider: Sendable {
             let selected = Array((cards[start...] + cards[..<start]).prefix(max(1, limit)))
             return WidgetMemoryFeed(cards: await hydrate(selected, session: session))
         } catch {
-            logger.error("memories fetch failed: \(String(describing: error), privacy: .public)")
+            publishFailure("memories fetch failed: \(PublicLogText.describe(error))")
             return .empty.empty(availability(for: error), hint: hint(for: error, session: session))
         }
     }
@@ -343,7 +359,7 @@ public struct WidgetDataProvider: Sendable {
                 newestCount: newest.count
             )
         } catch {
-            logger.error("wall fetch failed: \(String(describing: error), privacy: .public)")
+            publishFailure("wall fetch failed: \(PublicLogText.describe(error))")
             return .empty(availability(for: error), hint: hint(for: error, session: session))
         }
     }

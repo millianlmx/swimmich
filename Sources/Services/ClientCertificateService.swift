@@ -16,26 +16,30 @@ import Foundation
 ///
 /// A failure of the import or of the keychain write stops before step 1: the
 /// previous state, certificate included, stays in place. The password only
-/// lives in the arguments of `importCertificate`; nothing here logs or keeps it.
+/// lives in the arguments of `importCertificate`; nothing here keeps it, and the
+/// app log is told to mask it (`appLog.learnSecret`) before the import runs.
 final class ClientCertificateService: ClientCertificateManaging, @unchecked Sendable {
     private let store: any ClientIdentityStoring
     private let log: TLSChallengeLog
     private let sessions: [any SessionRenewing]
     private let reconnectRealtime: @MainActor () -> Void
     private let reloadWidgets: @Sendable () -> Void
+    private let appLog: any AppLogSink
 
     init(
         store: any ClientIdentityStoring,
         log: TLSChallengeLog,
         sessions: [any SessionRenewing],
         reconnectRealtime: @escaping @MainActor () -> Void,
-        reloadWidgets: @escaping @Sendable () -> Void
+        reloadWidgets: @escaping @Sendable () -> Void,
+        appLog: any AppLogSink = NoopAppLogSink()
     ) {
         self.store = store
         self.log = log
         self.sessions = sessions
         self.reconnectRealtime = reconnectRealtime
         self.reloadWidgets = reloadWidgets
+        self.appLog = appLog
     }
 
     func hasCertificate(for serverURL: URL) -> Bool {
@@ -45,6 +49,9 @@ final class ClientCertificateService: ClientCertificateManaging, @unchecked Send
 
     func importCertificate(_ data: Data, password: String, for serverURL: URL) async throws {
         guard let key = ServerKey(url: serverURL) else { throw ClientCertificateServiceError.invalidServer }
+        // Whether the import succeeds or not, the password must never reach a
+        // log line: a failure's text may quote what was typed.
+        appLog.learnSecret(password)
         let identity = try PKCS12Importer.identity(from: data, password: password)
         try store.save(identity, for: key)
         await applyChange(for: key)

@@ -26,6 +26,7 @@
 		4B8D2F6A90C1E37354A8D1B2 /* immich_stub_account_storage.py in Resources */ = {isa = PBXBuildFile; fileRef = 7E3A91C4D2B5F60811A9C3E7 /* immich_stub_account_storage.py */; };
 		12C01A0000000000000000B4 /* immich_stub_collections.py in Resources */ = {isa = PBXBuildFile; fileRef = 12C01A0000000000000000A4 /* immich_stub_collections.py */; };
 		078AE5EE5A8BF75A6C92E947 /* immich_stub_app_utilities.py in Resources */ = {isa = PBXBuildFile; fileRef = E1CC7019BA3B4C01BC01F2B0 /* immich_stub_app_utilities.py */; };
+		20DEB45231D98E5F1FD379B7 /* immich_stub_app_log.py in Resources */ = {isa = PBXBuildFile; fileRef = 5AFCA7C77F5D1A64ACCBB1F2 /* immich_stub_app_log.py */; };
 		07914DCB1519FAA42A0A9618 /* TrustEvaluatingURLSessionDelegate.swift in Sources */ = {isa = PBXBuildFile; fileRef = DCAE470CA70136D8F3AE85C5 /* TrustEvaluatingURLSessionDelegate.swift */; };
 		079B55DBDBAD0F58D94AFF9C /* AlbumDetailViewModelTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4D1D0D3443CFFD1BCEE6F042 /* AlbumDetailViewModelTests.swift */; };
 		07A656C35BDD8BA3E9EDFB01 /* OfflineAssetStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = A7115A3BD401B5702A2FA3CE /* OfflineAssetStore.swift */; };
@@ -202,6 +203,8 @@
 		544C847D80EEB9603FAFA8D7 /* WidgetDeepLink.swift in Sources */ = {isa = PBXBuildFile; fileRef = 60461A9F32464CAF976635D8 /* WidgetDeepLink.swift */; };
 		54771F5F040924CAA348FD5B /* SharedLinkViewerViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = FAED9946CE0FAEDE581A583E /* SharedLinkViewerViewModel.swift */; };
 		548AC5D468BE2D544D6007ED /* WidgetIntents.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9AEF768A3C27977FC9CEF8C4 /* WidgetIntents.swift */; };
+		D7689624CAD7612E1DDFB78F /* PublicLogText.swift in Sources */ = {isa = PBXBuildFile; fileRef = 10D69C2A77A2B63F9C39936F /* PublicLogText.swift */; };
+		37D48C832FDBF3660C34ED93 /* PublicLogText.swift in Sources */ = {isa = PBXBuildFile; fileRef = 10D69C2A77A2B63F9C39936F /* PublicLogText.swift */; };
 		54C2F7EB6719891AEF726BBB /* AlbumsTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 484079900F41D46E0DC1B904 /* AlbumsTests.swift */; };
 		54E8A6D7CCCCC08D9D51DFF5 /* TagsViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9FC730DA036DF7E108203F2D /* TagsViewModel.swift */; };
 		DF960F13748C827EBB9FC4B8 /* TagAssetsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 49AA9BC62AE85E9BA2F326E1 /* TagAssetsView.swift */; };
@@ -326,6 +329,8 @@
 		862A11D53CD87486D727AF07 /* CreateStackSheet.swift in Sources */ = {isa = PBXBuildFile; fileRef = 842F2EECEF261D29C4944347 /* CreateStackSheet.swift */; };
 		86658A5A059FD7F9D9C7EBC3 /* AppTheme.swift in Sources */ = {isa = PBXBuildFile; fileRef = 557C399C6EF9BEB0C99FA3C5 /* AppTheme.swift */; };
 		866D89BD9CF085F2C74DA1E7 /* AppLogEntry.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0E9AEEEBEDC9BE359C150261 /* AppLogEntry.swift */; };
+		AD9A11B66AEBF6F994719E8E /* AppLogRedactor.swift in Sources */ = {isa = PBXBuildFile; fileRef = DE0ABF933124E30F424D1621 /* AppLogRedactor.swift */; };
+		B09924C7D03B1491D90D0076 /* AppLogRedactionUITests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 09D345762E990EFD50346F30 /* AppLogRedactionUITests.swift */; };
 		868F0AB18E97FD3429CCEEED /* MockVideoPlaybackEngine.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8986002366C2702829706FC4 /* MockVideoPlaybackEngine.swift */; };
 		877969EB33DC0167152D4B6E /* SharedLinkViewerView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3CECF6B45B0DE5651C9B54AD /* SharedLinkViewerView.swift */; };
 		893C20C474681F778448A0F4 /* immich_stub_download_panel.py in Resources */ = {isa = PBXBuildFile; fileRef = 607CE3CE9738B53399D0FDEB /* immich_stub_download_panel.py */; };
@@ -354,6 +359,8 @@
 		9653475B05EF4C6C7ACDF084 /* ReadOnlyGuardClient.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4640402647BEE015629035EC /* ReadOnlyGuardClient.swift */; };
 		98173E063DB9597026A52FD1 /* WhatsNewViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = D0BB505FA73A9C029EA141CA /* WhatsNewViewModel.swift */; };
 		98263B84A08AB3F2232A8DAA /* ImmichAPIClientLogTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9F586B8942D65DEE666BB8C9 /* ImmichAPIClientLogTests.swift */; };
+		B0F74DDBAFE4B7B9EAD536CB /* AppLogRedactionTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = ADD622780F31E494EE16DB42 /* AppLogRedactionTests.swift */; };
+		8A2D1160CCEDCBE324FD0DDA /* PublicLogTextTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 74B1C6546D399F7A96DF2637 /* PublicLogTextTests.swift */; };
 		989446660BFF32E378E09957 /* TimelineViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 15168B21BF81DE8DB9FB219B /* TimelineViewModel.swift */; };
 		98B81684166F35092027B090 /* AlbumDetailView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3F0380C7550B8A39C96AE6C6 /* AlbumDetailView.swift */; };
 		99AD8F61EBBA14548694C7B0 /* ImmichFavoritesWidget.swift in Sources */ = {isa = PBXBuildFile; fileRef = FEC420980CEC8B5C54D39CEA /* ImmichFavoritesWidget.swift */; };
@@ -770,6 +777,8 @@
 		12C01A0000000000000000A1 /* LibraryCollection.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LibraryCollection.swift; sourceTree = "<group>"; };
 		12C01A0000000000000000A2 /* LibraryCollectionsSection.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LibraryCollectionsSection.swift; sourceTree = "<group>"; };
 		0E9AEEEBEDC9BE359C150261 /* AppLogEntry.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppLogEntry.swift; sourceTree = "<group>"; };
+		DE0ABF933124E30F424D1621 /* AppLogRedactor.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppLogRedactor.swift; sourceTree = "<group>"; };
+		10D69C2A77A2B63F9C39936F /* PublicLogText.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PublicLogText.swift; sourceTree = "<group>"; };
 		0F898CD7922DFE282D728D59 /* AppLanguageStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppLanguageStore.swift; sourceTree = "<group>"; };
 		0FEA7C783D9158AD24B26DAC /* AlbumPaginationUITests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AlbumPaginationUITests.swift; sourceTree = "<group>"; };
 		7C1A0E5B2D4F6A8091B3C5D4 /* AlbumRolesUITests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AlbumRolesUITests.swift; sourceTree = "<group>"; };
@@ -1059,6 +1068,8 @@
 		9F328B91EC338673FB2B2114 /* StackSheet.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StackSheet.swift; sourceTree = "<group>"; };
 		9F4DC04C9AE0A13B6A2ADF59 /* UploadViewModelLiveActivityTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = UploadViewModelLiveActivityTests.swift; sourceTree = "<group>"; };
 		9F586B8942D65DEE666BB8C9 /* ImmichAPIClientLogTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ImmichAPIClientLogTests.swift; sourceTree = "<group>"; };
+		ADD622780F31E494EE16DB42 /* AppLogRedactionTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppLogRedactionTests.swift; sourceTree = "<group>"; };
+		74B1C6546D399F7A96DF2637 /* PublicLogTextTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PublicLogTextTests.swift; sourceTree = "<group>"; };
 		9FC730DA036DF7E108203F2D /* TagsViewModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TagsViewModel.swift; sourceTree = "<group>"; };
 		49AA9BC62AE85E9BA2F326E1 /* TagAssetsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TagAssetsView.swift; sourceTree = "<group>"; };
 		552F2F580BAE6ABDD7C88AD5 /* TagAssetsViewModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TagAssetsViewModel.swift; sourceTree = "<group>"; };
@@ -1234,6 +1245,7 @@
 		7E3A91C4D2B5F60811A9C3E7 /* immich_stub_account_storage.py */ = {isa = PBXFileReference; lastKnownFileType = text.script.python; path = immich_stub_account_storage.py; sourceTree = "<group>"; };
 		12C01A0000000000000000A4 /* immich_stub_collections.py */ = {isa = PBXFileReference; lastKnownFileType = text.script.python; path = immich_stub_collections.py; sourceTree = "<group>"; };
 		E1CC7019BA3B4C01BC01F2B0 /* immich_stub_app_utilities.py */ = {isa = PBXFileReference; lastKnownFileType = text.script.python; path = immich_stub_app_utilities.py; sourceTree = "<group>"; };
+		5AFCA7C77F5D1A64ACCBB1F2 /* immich_stub_app_log.py */ = {isa = PBXFileReference; lastKnownFileType = text.script.python; path = immich_stub_app_log.py; sourceTree = "<group>"; };
 		E29CC6F1E097FB8CD0BB41CB /* ProfilePictureViewModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ProfilePictureViewModel.swift; sourceTree = "<group>"; };
 		E2F95250B0055E6099674D4D /* PhotoInfoPanel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PhotoInfoPanel.swift; sourceTree = "<group>"; };
 		E312F86B9F5AF422DB743B1B /* PhotoLibraryChangeMonitor.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PhotoLibraryChangeMonitor.swift; sourceTree = "<group>"; };
@@ -1262,6 +1274,7 @@
 		9C17E5A3B8D40F2661E4A7C9 /* AccountStorageUITests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AccountStorageUITests.swift; sourceTree = "<group>"; };
 		12C01A0000000000000000A3 /* ContentCollectionsUITests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ContentCollectionsUITests.swift; sourceTree = "<group>"; };
 		F12E4D5D4AEA776F68BF61B6 /* AppUtilitiesUITests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppUtilitiesUITests.swift; sourceTree = "<group>"; };
+		09D345762E990EFD50346F30 /* AppLogRedactionUITests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppLogRedactionUITests.swift; sourceTree = "<group>"; };
 		F16A79F9A783199F79D584A3 /* AlbumSyncServicing.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AlbumSyncServicing.swift; sourceTree = "<group>"; };
 		F240124D8EA51284282B0685 /* CleanupSettingsStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CleanupSettingsStore.swift; sourceTree = "<group>"; };
 		F2679282C07C9C8BC18DC066 /* AppLockService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppLockService.swift; sourceTree = "<group>"; };
@@ -1636,6 +1649,7 @@
 			isa = PBXGroup;
 			children = (
 				0E9AEEEBEDC9BE359C150261 /* AppLogEntry.swift */,
+				DE0ABF933124E30F424D1621 /* AppLogRedactor.swift */,
 			);
 			path = AppLog;
 			sourceTree = "<group>";
@@ -1781,6 +1795,8 @@
 				B972A41A9C5C3B9832109DE9 /* FreeUpSpaceViewModelTests.swift */,
 				54774062103708C960C68C33 /* ImageCacheTests.swift */,
 				9F586B8942D65DEE666BB8C9 /* ImmichAPIClientLogTests.swift */,
+				ADD622780F31E494EE16DB42 /* AppLogRedactionTests.swift */,
+				74B1C6546D399F7A96DF2637 /* PublicLogTextTests.swift */,
 				DD85A6F27E6B002D433EE957 /* ImmichAPIClientTests.swift */,
 				1E7ABF5B0551C81AE3ED4F8D /* LocalizationTests.swift */,
 				27692E2B260CCBE82D1B836A /* LocalizationTestSupport.swift */,
@@ -1896,6 +1912,7 @@
 				60461A9F32464CAF976635D8 /* WidgetDeepLink.swift */,
 				0B68BE1A771592CC297965EA /* WidgetImageEncoder.swift */,
 				9AEF768A3C27977FC9CEF8C4 /* WidgetIntents.swift */,
+				10D69C2A77A2B63F9C39936F /* PublicLogText.swift */,
 				80EE821268A56AE8EC712E95 /* WidgetSession.swift */,
 				5D429780BFEEB538496421A9 /* WidgetViews.swift */,
 			);
@@ -2155,6 +2172,7 @@
 				7E3A91C4D2B5F60811A9C3E7 /* immich_stub_account_storage.py */,
 				12C01A0000000000000000A4 /* immich_stub_collections.py */,
 				E1CC7019BA3B4C01BC01F2B0 /* immich_stub_app_utilities.py */,
+				5AFCA7C77F5D1A64ACCBB1F2 /* immich_stub_app_log.py */,
 				BBF6CB2BADD7C5BABCD243EA /* immich_stub_archive.py */,
 				1B949AE38E1E59FD0B8922B1 /* immich_stub_base.py */,
 				C506AACAC6418CB2888BD9D8 /* immich_stub_change_password.py */,
@@ -2276,6 +2294,7 @@
 				9C17E5A3B8D40F2661E4A7C9 /* AccountStorageUITests.swift */,
 				12C01A0000000000000000A3 /* ContentCollectionsUITests.swift */,
 				F12E4D5D4AEA776F68BF61B6 /* AppUtilitiesUITests.swift */,
+				09D345762E990EFD50346F30 /* AppLogRedactionUITests.swift */,
 				2A1531C60F36C47F188E6197 /* ArchiveUITests.swift */,
 				A66EE0FA03EC9D631FC0795C /* ChangePasswordUITests.swift */,
 				B454873E88BC71CB37D9B99C /* ChromecastUITests.swift */,
@@ -2692,6 +2711,7 @@
 				4B8D2F6A90C1E37354A8D1B2 /* immich_stub_account_storage.py in Resources */,
 				12C01A0000000000000000B4 /* immich_stub_collections.py in Resources */,
 				078AE5EE5A8BF75A6C92E947 /* immich_stub_app_utilities.py in Resources */,
+				20DEB45231D98E5F1FD379B7 /* immich_stub_app_log.py in Resources */,
 				EF937EDA299E4EC2A272D51B /* immich_stub_archive.py in Resources */,
 				BDCE810E91B275B20F82A24B /* immich_stub_base.py in Resources */,
 				34F5B8121C30F152F86C8862 /* immich_stub_change_password.py in Resources */,
@@ -2778,6 +2798,7 @@
 				584CC5810E9FA141C58ED536 /* WidgetDeepLink.swift in Sources */,
 				3A7F7B7DD988C8392097C021 /* WidgetImageEncoder.swift in Sources */,
 				C6BF9125C253B8600C414C48 /* WidgetIntents.swift in Sources */,
+				37D48C832FDBF3660C34ED93 /* PublicLogText.swift in Sources */,
 				57666B8D7B5522A5EAC994B8 /* WidgetSession.swift in Sources */,
 				FB104BA678506097C8298AE5 /* WidgetViews.swift in Sources */,
 			);
@@ -2854,6 +2875,8 @@
 				EB867EE92317B560ABE0DC31 /* FreeUpSpaceViewModelTests.swift in Sources */,
 				E85D85ABB6BA7A7CD9AE45F5 /* ImageCacheTests.swift in Sources */,
 				98263B84A08AB3F2232A8DAA /* ImmichAPIClientLogTests.swift in Sources */,
+				B0F74DDBAFE4B7B9EAD536CB /* AppLogRedactionTests.swift in Sources */,
+				8A2D1160CCEDCBE324FD0DDA /* PublicLogTextTests.swift in Sources */,
 				0F4B54EE5AF64A135626E9C5 /* ImmichAPIClientTests.swift in Sources */,
 				07337934F3A40C2673B6EF97 /* LocalLibraryViewModelTests.swift in Sources */,
 				1E74193A3B7A6BCF7FAF24A1 /* LocalizationTestSupport.swift in Sources */,
@@ -2959,6 +2982,7 @@
 				2D6F8B1E4A7C93500B3E5F81 /* AccountStorageUITests.swift in Sources */,
 				12C01A0000000000000000B3 /* ContentCollectionsUITests.swift in Sources */,
 				0AFE2D96811EBD78DCBE78CC /* AppUtilitiesUITests.swift in Sources */,
+				B09924C7D03B1491D90D0076 /* AppLogRedactionUITests.swift in Sources */,
 				B7F3BF2B6D9A909739FCD271 /* ArchiveUITests.swift in Sources */,
 				D54B53807EAA96C47323C18F /* ChangePasswordUITests.swift in Sources */,
 				ED454E2E4BDCEEF14626802C /* ChromecastUITests.swift in Sources */,
@@ -3060,6 +3084,8 @@
 				C761F2C61A0DA20D9E9703F3 /* AppLockWindowController.swift in Sources */,
 				BB9CC982AA19BB3E6C460FF2 /* AppLogDetailView.swift in Sources */,
 				866D89BD9CF085F2C74DA1E7 /* AppLogEntry.swift in Sources */,
+				AD9A11B66AEBF6F994719E8E /* AppLogRedactor.swift in Sources */,
+				D7689624CAD7612E1DDFB78F /* PublicLogText.swift in Sources */,
 				697AEEC0108AA4400749A717 /* AppLogStore.swift in Sources */,
 				125BD158D82AC98637D00C03 /* AppLogView.swift in Sources */,
 				11EA43FC92973767363E95E0 /* AppLogViewModel.swift in Sources */,
