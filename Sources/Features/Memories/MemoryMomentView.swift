@@ -207,6 +207,8 @@ struct MemoryMomentView: View {
         }
         .simultaneousGesture(TapGesture().onEnded { onOpenViewer(memory, index) })
         .accessibilityLabel(String(localized: "Open this memory's photos"))
+        .accessibilityAddTraits(.isButton)
+        .accessibilityIdentifier("memoryMomentHero")
     }
 
     /// The page after the last photo: a darkened preview of the next memory's
@@ -307,6 +309,7 @@ struct MemoryMomentView: View {
                 .buttonStyle(.plain)
                 .disabled(heroAsset == nil)
                 .accessibilityLabel(String(localized: "View in timeline"))
+                .accessibilityIdentifier("memoryMomentViewInTimeline")
             }
         }
         .contentShape(Rectangle())

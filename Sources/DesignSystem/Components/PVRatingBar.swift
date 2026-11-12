@@ -34,7 +34,8 @@ struct PVRatingBar: View {
                 }
                 .buttonStyle(.plain)
                 .accessibilityIdentifier("assetRatingStar_\(value)")
-                .accessibilityLabel(value == rating ? Text("Remove rating") : Text("Rate \(value) stars"))
+                .accessibilityLabel(Self.starLabel(value: value, rating: rating))
+                .accessibilityAddTraits(Self.isStarSelected(value: value, rating: rating) ? .isSelected : [])
             }
         }
         // Disabling the container disables every star: one in-flight write at a
@@ -47,6 +48,18 @@ struct PVRatingBar: View {
         .accessibilityIdentifier("assetRatingBar")
         .animation(PVMotion.fading(PVMotion.snappy, reduceMotion: reduceMotion), value: isEnabled)
         .appSensoryFeedback(.selection, trigger: rating)
+    }
+
+    /// Spoken action of star `value`: the current rank takes the rating back,
+    /// any other posts its own rank (the catalog agrees the plural).
+    static func starLabel(value: Int, rating: Int?, bundle: Bundle = .main, locale: Locale = .current) -> String {
+        if value == rating { return String(localized: "Remove rating", bundle: bundle, locale: locale) }
+        return String(localized: "Rate \(value) stars", bundle: bundle, locale: locale)
+    }
+
+    /// Stars 1…rating are selected; an unrated asset selects none.
+    static func isStarSelected(value: Int, rating: Int?) -> Bool {
+        value <= (rating ?? 0)
     }
 }
 

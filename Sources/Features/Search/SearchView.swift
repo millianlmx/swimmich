@@ -91,6 +91,7 @@ struct SearchView: View {
                             }
                             .disabled(vm.query.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
                             .accessibilityLabel("Save search")
+                            .accessibilityIdentifier("searchSaveButton")
                         }
                         SyncStatusButton { openSyncStatus() }
                         ProfileAvatarButton { openProfile() }
@@ -279,7 +280,9 @@ struct SearchView: View {
 
     /// Smart (CLIP semantic) vs Metadata (EXIF fields) search — folded into a
     /// compact menu so the Results area stays uncluttered.
+    @ViewBuilder
     private var searchModeMenu: some View {
+        let modeTitle = vm.searchMode == .smart ? String(localized: "Smart") : String(localized: "Metadata")
         Menu {
             Picker("Search Mode", selection: $vm.searchMode) {
                 Label("Smart", systemImage: "sparkles").tag(SearchViewModel.SearchMode.smart)
@@ -291,7 +294,8 @@ struct SearchView: View {
                 .foregroundStyle(Color.immichPrimary)
                 .frame(minWidth: 44, minHeight: 44)
         }
-        .accessibilityLabel("Search mode: \(vm.searchMode == .smart ? "Smart" : "Metadata")")
+        .accessibilityLabel(Text("Search mode: \(modeTitle)"))
+        .accessibilityIdentifier("searchModeMenu")
     }
 
     /// Star-rating filter (star-ratings): mono-valued — "Any rating" or 1…5 —

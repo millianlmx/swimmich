@@ -687,4 +687,56 @@ final class MapViewModelTests: XCTestCase {
         await mapA.loadMarkers()
         XCTAssertEqual(Set(mapA.markers.map(\.id)), Set(ids), "A is served from its own disk cache")
     }
+
+    // MARK: - VoiceOver labels (AC-34.3, AC-34.11, AC-34.2)
+
+    private func photo(city: String?, state: String?, country: String?) -> MapPhoto {
+        MapPhoto(from: MapMarkerResponseDto(id: "p1", lat: 1, lon: 2, city: city, state: state, country: country))
+    }
+
+    func test_AC_34_3_placeNameSkipsEmptyParts() {
+        XCTAssertEqual(photo(city: "Paris", state: nil, country: "France").placeName, "Paris, France")
+        XCTAssertEqual(photo(city: "", state: " ", country: "France").placeName, "France")
+        XCTAssertEqual(photo(city: nil, state: nil, country: nil).placeName, "")
+    }
+
+    func test_AC_34_3_thumbnailLabelNamesPlaceNeverType() throws {
+        let (bundle, locale) = try language("fr")
+        let located = photo(city: "Paris", state: nil, country: "France")
+        let unlocated = photo(city: nil, state: nil, country: nil)
+
+        XCTAssertEqual(located.accessibilityLabel(bundle: bundle, locale: locale), "Élément, Paris, France")
+        XCTAssertEqual(unlocated.accessibilityLabel(bundle: bundle, locale: locale), "Élément")
+
+        // The map does not know the media type: no language says photo or video.
+        for code in ["fr", "de", "es", "it"] {
+            let (bundle, locale) = try language(code)
+            for label in [
+                located.accessibilityLabel(bundle: bundle, locale: locale),
+                unlocated.accessibilityLabel(bundle: bundle, locale: locale),
+            ] {
+                for word in ["photo", "foto", "vidéo", "video", "vídeo"] {
+                    XCTAssertFalse(label.lowercased().contains(word), "\(code): \(label)")
+                }
+            }
+        }
+    }
+
+    func test_AC_34_11_markerLabels() throws {
+        let (bundle, locale) = try language("fr")
+        XCTAssertEqual(MapPhoto.groupAccessibilityLabel(count: 1, bundle: bundle, locale: locale), "1 élément")
+        XCTAssertEqual(MapPhoto.groupAccessibilityLabel(count: 4, bundle: bundle, locale: locale), "4 éléments")
+
+        let expected: [String: (one: String, many: String)] = [
+            "de": ("1 Element", "4 Elemente"),
+            "es": ("1 elemento", "4 elementos"),
+            "it": ("1 elemento", "4 elementi"),
+        ]
+        for (code, forms) in expected {
+            let (bundle, locale) = try language(code)
+            XCTAssertEqual(MapPhoto.groupAccessibilityLabel(count: 1, bundle: bundle, locale: locale), forms.one, code)
+            XCTAssertEqual(MapPhoto.groupAccessibilityLabel(count: 4, bundle: bundle, locale: locale), forms.many, code)
+            XCTAssertFalse(forms.many.lowercased().contains("photo"))
+        }
+    }
 }

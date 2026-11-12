@@ -255,11 +255,12 @@ struct VideoPlayerView: View {
                 }
                 .buttonStyle(.plain)
                 .accessibilityLabel("Replay")
+                .accessibilityIdentifier("videoPlayerReplay")
             } else {
                 HStack(spacing: PVSpacing.s32) {
-                    seekButton(symbol: "gobackward.15", delta: -15, label: "Back 15 seconds")
+                    seekButton(symbol: "gobackward.15", delta: -15, label: "Back 15 seconds", identifier: "videoPlayerBack15")
                     playPauseButton
-                    seekButton(symbol: "goforward.15", delta: 15, label: "Forward 15 seconds")
+                    seekButton(symbol: "goforward.15", delta: 15, label: "Forward 15 seconds", identifier: "videoPlayerForward15")
                 }
             }
 
@@ -310,7 +311,7 @@ struct VideoPlayerView: View {
         .accessibilityIdentifier("videoPlayerPlayPause")
     }
 
-    private func seekButton(symbol: String, delta: Double, label: LocalizedStringKey) -> some View {
+    private func seekButton(symbol: String, delta: Double, label: LocalizedStringKey, identifier: String) -> some View {
         Button {
             vm.seek(by: delta)
         } label: {
@@ -322,6 +323,7 @@ struct VideoPlayerView: View {
         }
         .buttonStyle(.plain)
         .accessibilityLabel(label)
+        .accessibilityIdentifier(identifier)
     }
 
     // MARK: - Failure

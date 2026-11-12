@@ -33,16 +33,21 @@ enum LongDateFormatter {
         return parser
     }()
 
+    /// Parses the first 10 characters (`"YYYY-MM-DD"`) as UTC noon; nil when they
+    /// are not a date. Noon keeps the calendar day stable in every time zone.
+    static func date(isoPrefix: String) -> Date? {
+        utcParser.date(from: "\(isoPrefix.prefix(10))T12:00:00Z")
+    }
+
     /// Formats an ISO-8601 `"YYYY-MM-DD..."` prefix as a `.long` localized
     /// date (e.g. "July 29, 2024"), no time, in the app's current language —
     /// `AppDateFormat` owns the formatter. Falls back to the 10-char prefix if
     /// parsing fails — never crashes the view over malformed input.
     static func format(isoPrefix: String) -> String {
-        let prefix = String(isoPrefix.prefix(10))
-        guard let date = utcParser.date(from: "\(prefix)T12:00:00Z") else {
-            return prefix
+        guard let parsed = date(isoPrefix: isoPrefix) else {
+            return String(isoPrefix.prefix(10))
         }
-        return AppDateFormat.string(from: date, style: .longDate)
+        return AppDateFormat.string(from: parsed, style: .longDate)
     }
 
     /// Parses a full ISO timestamp to a Date; nil when malformed. Handles both
