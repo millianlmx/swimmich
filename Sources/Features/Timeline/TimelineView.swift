@@ -30,7 +30,7 @@ struct TimelineView: View {
     @Environment(AuthViewModel.self) private var auth
     @Environment(\.openProfile) private var openProfile
     @Environment(\.openSyncStatus) private var openSyncStatus
-    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @PVReduceMotion private var reduceMotion
     /// App preferences (gap G22): the persisted density and grouping live in
     /// the store, so the pinch gesture, the Preferences stepper and this grid
     /// all drive one value.
@@ -228,7 +228,7 @@ struct TimelineView: View {
                         .onGeometryChange(for: CGSize.self) { $0.size } action: { topGroupSize = $0 }
                         .padding(.trailing, PVSpacing.s16)
                         .padding(.top, PVSpacing.s8)
-                        .transition(.opacity.combined(with: .move(edge: .top)))
+                        .transition(PVMotion.appearance(.opacityAndMove(.top), reduceMotion: reduceMotion).anyTransition)
                     }
                 }
                 // Date scrubber: fast-scroll handle on the trailing edge. It
@@ -314,7 +314,7 @@ struct TimelineView: View {
                         .accessibilityIdentifier("timelineScrollToTopButton")
                         .padding(.trailing, PVSpacing.s16)
                         .padding(.bottom, PVSpacing.s24)
-                        .transition(.opacity.combined(with: .move(edge: .bottom)))
+                        .transition(PVMotion.appearance(.opacityAndMove(.bottom), reduceMotion: reduceMotion).anyTransition)
                     }
                 }
                 .navigationTitle(vm.selectionMode ? Text("\(vm.selectedIds.count) selected") : Text(verbatim: ""))
@@ -334,7 +334,7 @@ struct TimelineView: View {
             .appSensoryFeedback(.success, trigger: lastFavoriteTick)
             .appSensoryFeedback(.warning, trigger: lastDeleteTick)
             // Spring on selection-mode transitions (AC-V04).
-            .animation(PVMotion.standard, value: vm.selectionMode)
+            .animation(PVMotion.movement(PVMotion.standard, reduceMotion: reduceMotion), value: vm.selectionMode)
         }
         .task {
             if vm.items.isEmpty {
@@ -465,7 +465,7 @@ struct TimelineView: View {
                 .frame(width: 36, height: 36)
                 .rotationEffect(.degrees(-90))
                 .animation(
-                    reduceMotion ? nil : .spring(duration: 0.5, bounce: 0.15),
+                    PVMotion.movement(.spring(duration: 0.5, bounce: 0.15), reduceMotion: reduceMotion),
                     value: engine.progressFraction
                 )
                 .accessibilityLabel("Backing up — \(engine.progressPercent) percent")
@@ -715,7 +715,7 @@ struct TimelineView: View {
     private func attemptTimelineScroll(proxy: ScrollViewProxy) {
         guard let target = scrollTargetID,
               vm.items.contains(where: { $0.id == target }) else { return }
-        withAnimation(PVMotion.adaptive(PVMotion.gentle, reduceMotion: reduceMotion)) {
+        withAnimation(PVMotion.movement(PVMotion.gentle, reduceMotion: reduceMotion)) {
             proxy.scrollTo(target, anchor: .top)
         }
         scrollTargetID = nil
@@ -760,7 +760,7 @@ struct TimelineView: View {
 
     private func scrollToTopTapped(proxy: ScrollViewProxy) {
         if vm.windowStartsAtNewest {
-            withAnimation(PVMotion.adaptive(PVMotion.gentle, reduceMotion: reduceMotion)) {
+            withAnimation(PVMotion.movement(PVMotion.gentle, reduceMotion: reduceMotion)) {
                 proxy.scrollTo("top", anchor: .top)
             }
         } else {

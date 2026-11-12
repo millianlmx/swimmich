@@ -8,6 +8,7 @@ import SwiftUI
 /// it is NEVER displayed in the UI (VM-J security). We only show a lock icon
 /// when the link is password-protected.
 struct SharedLinkSheet: View {
+    @PVReduceMotion private var reduceMotion
     @Bindable var vm: AlbumDetailViewModel
     @Environment(AuthViewModel.self) private var auth
 
@@ -61,13 +62,13 @@ struct SharedLinkSheet: View {
                     if let id = pendingRevokeId {
                         Task { await vm.revokeSharedLink(id: id) }
                     }
-                    withAnimation(PVMotion.snappy) {
+                    withAnimation(PVMotion.movement(PVMotion.snappy, reduceMotion: reduceMotion)) {
                         pendingRevokeId = nil
                         showRevokeConfirm = false
                     }
                 }
                 Button("Cancel", role: .cancel) {
-                    withAnimation(PVMotion.snappy) {
+                    withAnimation(PVMotion.movement(PVMotion.snappy, reduceMotion: reduceMotion)) {
                         pendingRevokeId = nil
                         showRevokeConfirm = false
                     }
@@ -212,7 +213,7 @@ struct SharedLinkSheet: View {
                 }
                 .swipeActions(edge: .trailing, allowsFullSwipe: true) {
                     Button("Revoke", systemImage: "trash", role: .destructive) {
-                        withAnimation(PVMotion.snappy) {
+                        withAnimation(PVMotion.movement(PVMotion.snappy, reduceMotion: reduceMotion)) {
                             pendingRevokeId = link.id
                         }
                         // Present the confirmation after the row has finished

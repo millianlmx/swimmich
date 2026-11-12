@@ -11,6 +11,7 @@ import SwiftUI
 /// "Continuer", pushing the sign-in step. The CTA is pinned to the bottom over
 /// a material bar — `.safeAreaInset` rides above the keyboard on iOS 17.
 struct ServerURLScreen: View {
+    @PVReduceMotion private var reduceMotion
     @Environment(AuthViewModel.self) private var auth
     let `continue`: () -> Void
 
@@ -98,7 +99,7 @@ struct ServerURLScreen: View {
         .onChange(of: auth.serverURLString) { _, _ in
             auth.serverStatus = .idle
         }
-        .animation(PVMotion.gentle, value: auth.serverStatus)
+        .animation(PVMotion.movement(PVMotion.gentle, reduceMotion: reduceMotion), value: auth.serverStatus)
         .sheet(item: $headersKey) { item in
             ServerHeadersSheet(serverKey: item.key, onSaved: { auth.customHeadersDidChange(for: $0) })
         }

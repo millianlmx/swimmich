@@ -69,7 +69,7 @@ struct MemoryPlaybackView: View {
     let token: String?
 
     @Environment(\.dismiss) private var dismiss
-    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @PVReduceMotion private var reduceMotion
 
     /// Vertical pager position, kept in step with `playback.page`.
     @State private var visiblePage: MemoryPlaybackViewModel.Page?
@@ -222,7 +222,7 @@ struct MemoryPlaybackView: View {
         guard visiblePage != page else { return }
         switch MemoryPlaybackMotion.pageChange(reduceMotion: reduceMotion) {
         case .slide:
-            withAnimation(PVMotion.adaptive(.easeInOut(duration: 0.4), reduceMotion: reduceMotion)) {
+            withAnimation(PVMotion.movement(.easeInOut(duration: 0.4), reduceMotion: reduceMotion)) {
                 visiblePage = page
             }
         case .fade:
@@ -244,7 +244,7 @@ struct MemoryPlaybackView: View {
     }
 
     private func appear() {
-        withAnimation(PVMotion.adaptive(.easeOut(duration: 0.4), reduceMotion: reduceMotion)) {
+        withAnimation(PVMotion.movement(.easeOut(duration: 0.4), reduceMotion: reduceMotion)) {
             appeared = true
         }
         if playback.isFinished { dismiss() }

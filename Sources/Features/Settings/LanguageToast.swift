@@ -13,7 +13,7 @@ struct LanguageToast: View {
     /// The only answer: acknowledge and drop the notice.
     var onDismiss: () -> Void
 
-    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @PVReduceMotion private var reduceMotion
 
     /// Entrance only: the banner fades — and slides, unless Reduce Motion is on
     /// — into place when the parent inserts it.
@@ -49,12 +49,12 @@ struct LanguageToast: View {
         }
         .padding(.horizontal, PVSpacing.s16)
         .opacity(isVisible ? 1 : 0)
-        .offset(y: isVisible || reduceMotion ? 0 : PVSpacing.s12)
+        .offset(y: PVMotion.offset(isVisible ? 0 : PVSpacing.s12, reduceMotion: reduceMotion))
         // No `accessibilityIdentifier` on the container: SwiftUI propagates it to
         // every descendant and OVERRIDES theirs, which would hide the button's
         // own identifier from the UI tests.
         .onAppear {
-            withAnimation(PVMotion.adaptive(PVMotion.snappy, reduceMotion: reduceMotion)) {
+            withAnimation(PVMotion.movement(PVMotion.snappy, reduceMotion: reduceMotion)) {
                 isVisible = true
             }
         }

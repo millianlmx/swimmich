@@ -4,6 +4,7 @@ import SwiftUI
 /// individual), with copy-URL + revoke, pull-to-refresh, and a `+` to create a
 /// new album-typed shared link. Backed by `SharedLinksViewModel`.
 struct SharedLinksView: View {
+    @PVReduceMotion private var reduceMotion
     @State var vm: SharedLinksViewModel
     /// Builds the public viewer's view model when it is presented (issue #22).
     /// A link visit needs the server the app is connected to, which only exists
@@ -75,19 +76,19 @@ struct SharedLinksView: View {
                             await vm.revoke(id: id)
                             // On success the row is gone from the data (it was
                             // already off-screen). On failure it slides back in.
-                            withAnimation(PVMotion.snappy) {
+                            withAnimation(PVMotion.movement(PVMotion.snappy, reduceMotion: reduceMotion)) {
                                 pendingRevokeId = nil
                                 showRevokeConfirm = false
                             }
                         }
                     } else {
-                        withAnimation(PVMotion.snappy) {
+                        withAnimation(PVMotion.movement(PVMotion.snappy, reduceMotion: reduceMotion)) {
                             showRevokeConfirm = false
                         }
                     }
                 }
                 Button("Cancel", role: .cancel) {
-                    withAnimation(PVMotion.snappy) {
+                    withAnimation(PVMotion.movement(PVMotion.snappy, reduceMotion: reduceMotion)) {
                         pendingRevokeId = nil
                         showRevokeConfirm = false
                     }
@@ -196,7 +197,7 @@ struct SharedLinksView: View {
                     }
                     .swipeActions(edge: .trailing, allowsFullSwipe: true) {
                         Button("Revoke", systemImage: "trash", role: .destructive) {
-                            withAnimation(PVMotion.snappy) {
+                            withAnimation(PVMotion.movement(PVMotion.snappy, reduceMotion: reduceMotion)) {
                                 pendingRevokeId = link.id
                             }
                             // Present the confirmation after the row has finished
@@ -248,7 +249,7 @@ struct SharedLinkRow: View {
     let onRevoke: () -> Void
     var cardBackground: Color = Color.bgSecondary
 
-    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @PVReduceMotion private var reduceMotion
     @State private var copied = false
     @State private var offsetX: CGFloat = 0
     @State private var rowWidth: CGFloat = 0
@@ -295,7 +296,7 @@ struct SharedLinkRow: View {
             .clipShape(RoundedRectangle(cornerRadius: PVRadius.lg, style: .continuous))
             .allowsHitTesting(!isPendingRevoke)
             .onChange(of: isPendingRevoke) { _, isPending in
-                withAnimation(PVMotion.snappy) {
+                withAnimation(PVMotion.movement(PVMotion.snappy, reduceMotion: reduceMotion)) {
                     if isPending {
                         // Slide the card out and collapse its cell so the list
                         // closes up behind it — no gap while the confirmation

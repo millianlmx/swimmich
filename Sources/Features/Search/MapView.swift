@@ -17,6 +17,7 @@ import UIKit
 /// (`vm.visibleAnnotations`, grid-subsampled at world zoom), so MapKit never
 /// receives the full library.
 struct MapSegmentView: View {
+    @PVReduceMotion private var reduceMotion
     @Bindable var vm: MapViewModel
     /// Local loading flag — guaranteed re-render (unlike observing the VM's
     /// `isLoading`, which can miss the first pass), so the spinner always
@@ -168,7 +169,7 @@ struct MapSegmentView: View {
             // Only the badge appears/disappears with the filter — the marker
             // set itself is never animated (thousands of annotations animating
             // makes the map jump).
-            .animation(PVMotion.snappy, value: vm.filter.isEmpty)
+            .animation(PVMotion.movement(PVMotion.snappy, reduceMotion: reduceMotion), value: vm.filter.isEmpty)
 
             // A filter that matches nothing is a state, not a blank map: say
             // which filter emptied it and offer the way out.
@@ -194,7 +195,7 @@ struct MapSegmentView: View {
         .pvFloating(.pill)
         .accessibilityElement(children: .combine)
         .accessibilityIdentifier("mapFilterActiveBadge")
-        .transition(.opacity.combined(with: .scale(scale: 0.92)))
+        .transition(PVMotion.appearance(.opacityAndScale(0.92), reduceMotion: reduceMotion).anyTransition)
     }
 
     private var settingsButton: some View {

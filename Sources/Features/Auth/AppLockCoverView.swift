@@ -23,7 +23,7 @@ struct AppLockCoverView: View {
     /// The lock screen's title. A resource, so tests can check its catalog key.
     static let title: LocalizedStringResource = "Swimmich Locked"
     let appLock: AppLockViewModel
-    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @PVReduceMotion private var reduceMotion
 
     var body: some View {
         let isLock = appLock.cover == .lock
@@ -50,7 +50,7 @@ struct AppLockCoverView: View {
         }
         .accessibilityElement(children: .contain)
         .accessibilityIdentifier(isLock ? "AppLockOverlay" : "AppLockPrivacyMask")
-        .animation(PVMotion.adaptive(PVMotion.gentle, reduceMotion: reduceMotion), value: appLock.cover)
+        .animation(PVMotion.movement(PVMotion.gentle, reduceMotion: reduceMotion), value: appLock.cover)
     }
 }
 

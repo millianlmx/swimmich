@@ -20,6 +20,7 @@ private struct ActivityFeedSheetItem: Identifiable {
 /// "Photos" section header. Toolbar menu offers share-link management + delete;
 /// per-asset context menu offers "Remove from album" (AC-510).
 struct AlbumDetailView: View {
+    @PVReduceMotion private var reduceMotion
     @Environment(AuthViewModel.self) private var auth
     @State private var vm: AlbumDetailViewModel
 
@@ -417,7 +418,7 @@ struct AlbumDetailView: View {
             onDismiss: { viewerOnScreen = false },
             zoomSource: zoomSource
         )
-        .fullScreenCover(isPresented: $presentingRoadTrip) {
+        .pvFullScreenCover(isPresented: $presentingRoadTrip) {
             if let roadTripVM {
                 RoadTripView(vm: roadTripVM)
             }
@@ -575,7 +576,7 @@ struct AlbumDetailView: View {
             .onTapGesture {
                 if vm.selectionMode { vm.exitSelectionMode() }
             }
-            .animation(PVMotion.standard, value: vm.selectionMode)
+            .animation(PVMotion.movement(PVMotion.standard, reduceMotion: reduceMotion), value: vm.selectionMode)
             .alert(
                 "Remove this photo from the album?",
                 isPresented: Binding(
@@ -749,12 +750,8 @@ struct AlbumDetailView: View {
                             .foregroundStyle(Color.textSecondaryPV)
                     }
                 }
-                .scrollTransition { content, phase in
-                    // Stretchy-header: scale up beyond bounds when pulled down.
-                    content
-                        .scaleEffect(phase.isIdentity ? 1 : 1.35, anchor: .top)
-                        .opacity(phase.isIdentity ? 1 : 0.92)
-                }
+                // Stretchy-header: scales up beyond bounds when pulled down (still under Reduce Motion).
+                .pvScrollEffect(scale: 1.35, opacity: 0.92, anchor: .top)
                 .overlay(alignment: .bottom) {
                     LinearGradient(
                         colors: [.clear, .black.opacity(0.55)],
@@ -764,6 +761,8 @@ struct AlbumDetailView: View {
                     .allowsHitTesting(false)
                 }
                 .clipped()
+                .accessibilityElement(children: .contain)
+                .accessibilityIdentifier("albumHeroImage")
 
         }
     }

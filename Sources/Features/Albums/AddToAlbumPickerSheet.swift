@@ -5,6 +5,7 @@ import SwiftUI
 /// rows — cover + name + count — + a "New Album" action that creates one with
 /// the selected assets pre-populated.
 struct AddToAlbumPickerSheet: View {
+    @PVReduceMotion private var reduceMotion
     let selectedAssetIds: Set<String>
     var onCompleted: () -> Void = {}
 
@@ -97,11 +98,11 @@ struct AddToAlbumPickerSheet: View {
             if addedAlbumId == album.id {
                 Image(systemName: "checkmark.circle.fill")
                     .foregroundStyle(Color.immichSuccess)
-                    .transition(.scale.combined(with: .opacity))
+                    .transition(PVMotion.appearance(.opacityAndScale(0), reduceMotion: reduceMotion).anyTransition)
             }
         }
         .contentShape(Rectangle())
-        .animation(PVMotion.snappy, value: addedAlbumId)
+        .animation(PVMotion.movement(PVMotion.snappy, reduceMotion: reduceMotion), value: addedAlbumId)
     }
 
     private func add(to albumId: String) async {

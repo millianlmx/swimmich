@@ -90,7 +90,7 @@ struct RootView: View {
 /// back. The bubble icon mirrors the active tab.
 private struct AuthenticatedRoot: View {
     @Environment(AuthViewModel.self) private var auth
-    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @PVReduceMotion private var reduceMotion
     @Environment(\.scenePhase) private var scenePhase
 
     /// Kept (not only consumed in `init`) so a screen can build a view model at
@@ -357,10 +357,10 @@ private struct AuthenticatedRoot: View {
             Group {
                 if downloads.isPanelVisible {
                     DownloadProgressPanel(vm: downloads) { showDownloadInfo = true }
-                        .transition(.opacity.combined(with: .move(edge: .bottom)))
+                        .transition(PVMotion.appearance(.opacityAndMove(.bottom), reduceMotion: reduceMotion).anyTransition)
                 }
             }
-            .animation(PVMotion.adaptive(PVMotion.standard, reduceMotion: reduceMotion), value: downloads.isPanelVisible)
+            .animation(PVMotion.movement(PVMotion.standard, reduceMotion: reduceMotion), value: downloads.isPanelVisible)
         }
         // The stack is the sheet's, not the screen's: `DownloadInfoView`
         // declares none, so there is exactly one navigation bar.
@@ -534,7 +534,7 @@ struct ProfileAvatarButton: View {
     /// Read-only mode (gap G17). The same store the hub's switch writes: the
     /// avatar is the second surface of that ONE boolean.
     @Environment(ReadOnlyModeStore.self) private var readOnly
-    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @PVReduceMotion private var reduceMotion
 
     var body: some View {
         ZStack {
@@ -557,7 +557,7 @@ struct ProfileAvatarButton: View {
                     .padding(2)
                     .background(Circle().fill(Color.bgPrimary))
                     .accessibilityHidden(true)
-                    .transition(.opacity.combined(with: .scale(scale: 0.7)))
+                    .transition(PVMotion.appearance(.opacityAndScale(0.7), reduceMotion: reduceMotion).anyTransition)
             }
         }
         // The pair is deliberate: a `Button` with a simultaneous long press
@@ -566,7 +566,7 @@ struct ProfileAvatarButton: View {
         .contentShape(Circle())
         .onTapGesture(perform: action)
         .onLongPressGesture(minimumDuration: 0.5) {
-            withAnimation(PVMotion.adaptive(PVMotion.standard, reduceMotion: reduceMotion)) {
+            withAnimation(PVMotion.movement(PVMotion.standard, reduceMotion: reduceMotion)) {
                 readOnly.toggle()
             }
         }

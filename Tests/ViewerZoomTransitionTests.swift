@@ -497,7 +497,7 @@ final class ViewerZoomTransitionTests: XCTestCase {
             ViewerZoomPlan.closeStyle(route: .reduce(to: CGRect(x: 0, y: 0, width: 100, height: 100)), hasHeroImage: true, reduceMotion: true),
             .fade
         )
-        XCTAssertTrue(ViewerZoomPlan.reduceMotion(system: true))
+        XCTAssertTrue(PVMotion.isReduced(system: true, testSwitch: false))
     }
 
     func test_AC_28_2_dragNeverScalesUnderReduceMotion() {

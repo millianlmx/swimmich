@@ -105,7 +105,7 @@ struct TimelineScrubber: View {
     /// VoiceOver adjustment to `monthIndex`.
     let onAdjust: (_ monthIndex: Int) -> Void
 
-    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @PVReduceMotion private var reduceMotion
     @State private var gesture = TimelineScrubberGesture()
     @State private var labelText = ""
     @State private var lingerTask: Task<Void, Never>?
@@ -237,7 +237,7 @@ struct TimelineScrubber: View {
         lingerTask = Task { @MainActor in
             try? await Task.sleep(for: Self.labelLinger)
             guard !Task.isCancelled else { return }
-            withAnimation(PVMotion.adaptive(.easeOut(duration: PVDuration.moderate), reduceMotion: reduceMotion)) {
+            withAnimation(PVMotion.fading(.easeOut(duration: PVDuration.moderate), reduceMotion: reduceMotion)) {
                 gesture.lingerExpired(token: token)
             }
         }

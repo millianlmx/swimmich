@@ -11,6 +11,7 @@ import SwiftUI
 /// Pushed from `BackupSettingsView`, itself pushed from `ProfileView`, which
 /// already carries the `NavigationStack` — hence none here.
 struct UploadDetailView: View {
+    @PVReduceMotion private var reduceMotion
     @Bindable var vm: UploadDetailViewModel
 
     var body: some View {
@@ -53,7 +54,7 @@ struct UploadDetailView: View {
             if vm.isRunning {
                 ProgressView(value: vm.progressFraction)
                     .tint(Color.immichPrimary)
-                    .animation(PVMotion.snappy, value: vm.progressFraction)
+                    .animation(PVMotion.movement(PVMotion.snappy, reduceMotion: reduceMotion), value: vm.progressFraction)
                     .accessibilityIdentifier("uploadDetailProgress")
             }
             PVAdaptiveStack(hAlignment: .center, spacing: PVSpacing.s12) {
@@ -83,7 +84,7 @@ struct UploadDetailView: View {
                     Text("\(vm.examinedCount) of \(vm.total)")
                         .font(.pvNumeric)
                         .foregroundStyle(Color.textSecondaryPV)
-                        .contentTransition(.numericText())
+                        .contentTransition(PVMotion.contentChange(.numericText(), reduceMotion: reduceMotion))
                 }
                 Spacer(minLength: PVSpacing.s8)
             }
@@ -100,7 +101,7 @@ struct UploadDetailView: View {
                 systemImage: vm.isCancelling ? "hourglass" : "stop.fill"
             )
             .frame(maxWidth: .infinity, minHeight: 44)
-            .contentTransition(.symbolEffect(.replace))
+            .contentTransition(PVMotion.contentChange(.symbolEffect(.replace), reduceMotion: reduceMotion))
         }
         .buttonStyle(.borderedProminent)
         .disabled(vm.isCancelling)
@@ -123,7 +124,7 @@ struct UploadDetailView: View {
                         .tint(Color.immichPrimary)
                     Text(fraction, format: .percent.precision(.fractionLength(0)))
                         .font(.pvNumeric)
-                        .contentTransition(.numericText())
+                        .contentTransition(PVMotion.contentChange(.numericText(), reduceMotion: reduceMotion))
                 }
             }
             .padding(PVSpacing.s12)
@@ -174,7 +175,7 @@ struct UploadDetailView: View {
                 LabeledContent("Uploaded") {
                     Text("\(vm.uploadedCount)")
                         .font(.pvNumeric)
-                        .contentTransition(.numericText())
+                        .contentTransition(PVMotion.contentChange(.numericText(), reduceMotion: reduceMotion))
                         .accessibilityIdentifier("uploadDetailUploadedValue")
                 }
                 LabeledContent("Size") {

@@ -18,7 +18,7 @@ struct AlbumsView: View {
     @Environment(\.openProfile) private var openProfile
     @Environment(\.openSyncStatus) private var openSyncStatus
     @Environment(\.colorScheme) private var colorScheme
-    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @PVReduceMotion private var reduceMotion
     @State private var presentingCreate = false
     @Namespace private var zoomNamespace
 
@@ -232,8 +232,8 @@ struct AlbumCardPressStyle: ButtonStyle {
 
     func makeBody(configuration: Configuration) -> some View {
         configuration.label
-            .scaleEffect(configuration.isPressed && !reduceMotion ? 0.97 : 1)
-            .animation(reduceMotion ? nil : PVMotion.snappy, value: configuration.isPressed)
+            .scaleEffect(PVMotion.scale(configuration.isPressed ? 0.97 : 1, reduceMotion: reduceMotion))
+            .animation(PVMotion.movement(PVMotion.snappy, reduceMotion: reduceMotion), value: configuration.isPressed)
     }
 }
 

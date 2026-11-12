@@ -39,7 +39,7 @@ struct MemoryMomentView: View {
     let onDelete: () -> Void
 
     @Environment(\.dismiss) private var dismiss
-    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @PVReduceMotion private var reduceMotion
     @Environment(\.openInTimeline) private var openInTimeline
 
     @State private var kenBurns = false
@@ -76,11 +76,11 @@ struct MemoryMomentView: View {
             VStack(spacing: PVSpacing.s0) {
                 topBar
                     .opacity(chromeVisible ? 1 : 0)
-                    .offset(y: chromeVisible ? 0 : -12)
+                    .offset(y: PVMotion.offset(chromeVisible ? 0 : -12, reduceMotion: reduceMotion))
                 Spacer()
                 bottomPanel
                     .opacity(chromeVisible ? 1 : 0)
-                    .offset(y: chromeVisible ? 0 : 24)
+                    .offset(y: PVMotion.offset(chromeVisible ? 0 : 24, reduceMotion: reduceMotion))
             }
             .padding(.top, safeInsets.top)
             .padding(.bottom, safeInsets.bottom)
@@ -92,7 +92,7 @@ struct MemoryMomentView: View {
         .onChange(of: heroAsset?.id) { _, newID in
             if isCurrent { restartKenBurns() }
             guard let newID, visibleItem != newID else { return }
-            withAnimation(isCurrent ? PVMotion.adaptive(.easeInOut(duration: 0.4), reduceMotion: reduceMotion) : nil) {
+            withAnimation(PVMotion.movement(.easeInOut(duration: 0.4), reduceMotion: reduceMotion || !isCurrent)) {
                 visibleItem = newID
             }
         }
@@ -425,7 +425,7 @@ struct MemoryMomentView: View {
                         .frame(width: index == heroIndex ? 8 : 6, height: index == heroIndex ? 8 : 6)
                 }
             }
-            .animation(PVMotion.standard, value: heroIndex)
+            .animation(PVMotion.movement(PVMotion.standard, reduceMotion: reduceMotion), value: heroIndex)
             .accessibilityLabel(String(localized: "Page \(heroIndex + 1) of \(memory.assets.count)"))
         }
     }
@@ -500,7 +500,7 @@ struct MemoryMomentView: View {
     private func restartKenBurns() {
         guard !reduceMotion else { return }
         kenBurns = false
-        withAnimation(.linear(duration: 10)) {
+        withAnimation(PVMotion.movement(.linear(duration: 10), reduceMotion: reduceMotion)) {
             kenBurns = true
         }
     }
