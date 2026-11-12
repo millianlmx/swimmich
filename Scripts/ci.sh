@@ -13,8 +13,9 @@
 #    `swimmich-ci`, created on first use so the CI never boots the developer's.
 # 4. Runs the UI scenarios listed in Scripts/ci-ui-scenarios.txt, each against
 #    its own Python stub from UITests/stubs/ (the scenarios not listed there are
-#    compiled, not run). A scenario that skips itself fails the CI: a skip only
-#    means its stub was unreachable, which proves nothing.
+#    compiled, not run), several at a time on a pool of simulators
+#    (`SWIMMICH_CI_UI_WORKERS`, 3 by default). A scenario that skips itself fails
+#    the CI: a skip only means its stub was unreachable, which proves nothing.
 #
 # DerivedData and SwiftPM checkouts live in a persistent cache: on the
 # self-hosted runner, a run only rebuilds what the commit changed.
@@ -62,7 +63,11 @@ if (( audit_status != 0 )); then
   fi
 fi
 
-udid=$(xcrun simctl list devices available -j | python3 -c '
+# The udid of the simulator named "$1", created on first use with the newest
+# installed iOS runtime that Xcode can drive.
+simulator_udid() {
+  local name="$1" found runtime
+  found=$(xcrun simctl list devices available -j | python3 -c '
 import json, sys
 name = sys.argv[1]
 for devices in json.load(sys.stdin)["devices"].values():
@@ -70,30 +75,34 @@ for devices in json.load(sys.stdin)["devices"].values():
         if device["name"] == name:
             print(device["udid"])
             raise SystemExit
-' "$SIM_NAME")
-if [[ -z "$udid" ]]; then
-  # The newest installed iOS runtime that Xcode can drive.
-  runtime=$(xcrun simctl list runtimes available -j | python3 -c '
+' "$name")
+  if [[ -z "$found" ]]; then
+    runtime=$(xcrun simctl list runtimes available -j | python3 -c '
 import json, sys
 ios = [r for r in json.load(sys.stdin)["runtimes"] if r["platform"] == "iOS"]
 ios.sort(key=lambda r: [int(p) for p in r["version"].split(".")])
 print(ios[-1]["identifier"] if ios else "")
 ')
-  [[ -n "$runtime" ]] || { echo "ci.sh: no iOS simulator runtime installed" >&2; exit 2; }
-  udid=$(xcrun simctl create "$SIM_NAME" "$DEVICE_TYPE" "$runtime")
-fi
+    [[ -n "$runtime" ]] || { echo "ci.sh: no iOS simulator runtime installed" >&2; return 2; }
+    found=$(xcrun simctl create "$name" "$DEVICE_TYPE" "$runtime")
+  fi
+  printf '%s\n' "$found"
+}
+
+udid=$(simulator_udid "$SIM_NAME")
 echo "ci.sh: simulator $SIM_NAME ($udid)"
 # Booted (and waited for) up front: a cold device handed to xcodebuild can fail
 # with "Invalid device state" before the first test.
 xcrun simctl bootstatus "$udid" -b >/dev/null
 
-common=(
+# Everything but the destination: each UI scenario picks its own simulator.
+project=(
   -project ImmichSwiftUI.xcodeproj
   -scheme ImmichSwiftUI
-  -destination "platform=iOS Simulator,id=$udid"
   -derivedDataPath "$CACHE/DerivedData"
   -clonedSourcePackagesDirPath "$CACHE/SourcePackages"
 )
+common=("${project[@]}" -destination "platform=iOS Simulator,id=$udid")
 
 # Signed for the simulator on purpose: CODE_SIGNING_ALLOWED=NO drops the
 # keychain-sharing entitlements, and the session-store tests then read nil.
@@ -124,11 +133,12 @@ report_errors() {
 
 build_log="$(mktemp)"
 media_dir="$(mktemp -d)"
-stub_pid=""
+worker_pids=()
 cleanup() {
   rm -f "$build_log" "$python_log" "$audit_log"
   rm -rf "$media_dir"
-  if [[ -n "$stub_pid" ]]; then kill "$stub_pid" 2>/dev/null || true; fi
+  local pid
+  for pid in ${worker_pids[@]+"${worker_pids[@]}"}; do kill "$pid" 2>/dev/null || true; done
 }
 trap cleanup EXIT
 if ! xcodebuild build-for-testing "${common[@]}" -quiet 2>&1 | tee "$build_log"; then
@@ -180,19 +190,25 @@ fi
 
 # UI scenarios. One line of Scripts/ci-ui-scenarios.txt per xcodebuild run:
 #
-#   <stub.py> <Class>[/<test>] [--erase] [--content-size <simctl category>]
+#   <stub.py> <Class>[/<test>] [--content-size <simctl category>]
 #             [--media <file name>]... [--skip <test>]...
 #
-# The stub is started on port 8421 for that line only, and must answer
-# `/__whoami` with its own pid (an orphan stub squatting the port would serve
-# another feature's data). `--erase` wipes the simulator first (Keychain, Photos,
-# defaults); `--content-size` sets the SYSTEM text size, which an app extension
-# follows (the app itself takes it as a launch argument), and is put back to
-# `large` afterwards; `--media` seeds a generated PNG under that file name into
-# Photos. A test that fails, or skips, fails the CI; every line still runs, so
-# one run reports every broken scenario.
+# The lines run several at a time, one per worker of a pool of
+# `SWIMMICH_CI_UI_WORKERS` simulators (3 by default): worker 1 is `$SIM_NAME`,
+# worker k is `$SIM_NAME-k`, created on first use. Each line gets a worker's
+# simulator freshly ERASED (no line inherits another's keychain, defaults,
+# Photos or lock: the order of the list does not matter), and its own stub on
+# the worker's port, 8421 + k - 1, which must answer `/__whoami` with its own pid
+# (an orphan stub squatting the port would serve another feature's data). The
+# scenario reaches it through `IMMICH_STUB_URL` (`TEST_RUNNER_IMMICH_STUB_URL`).
+# `--content-size` sets the SYSTEM text size, which an app extension follows
+# (the app itself takes it as a launch argument); `--media` seeds a generated
+# PNG under that file name into Photos. A test that fails, or skips, fails the
+# CI; every line still runs, so one run reports every broken scenario. A free
+# worker takes the next line: put the longest lines first.
 UI_LIST="Scripts/ci-ui-scenarios.txt"
-STUB_PORT=8421
+UI_WORKERS="${SWIMMICH_CI_UI_WORKERS:-3}"
+STUB_PORT_BASE=8421
 
 check_ui_summary() {
   local result="$1" label="$2" summary
@@ -213,13 +229,17 @@ if skipped or not passed:
 ' "$label"
 }
 
+# One line on one worker: run_scenario <index> <udid> <port> <stub.py> <selector> [options…].
+# Runs in its own subshell (see the pool below), so its stub dies with it.
 run_scenario() {
-  local index="$1" stub="$2" selector="$3"
-  shift 3
-  local erase=0 content_size="" media=() skips=() status=0 name file
+  local index="$1" sim="$2" port="$3" stub="$4" selector="$5"
+  shift 5
+  local content_size="" media=() skips=() status=0 name file
+  # Not local: the EXIT trap of the line's subshell reads it after the return.
+  stub_pid=""
+  trap '[[ -z "$stub_pid" ]] || kill "$stub_pid" 2>/dev/null || true' EXIT
   while (( $# )); do
     case "$1" in
-      --erase) erase=1 ;;
       --content-size) content_size="$2"; shift ;;
       --media) media+=("$2"); shift ;;
       --skip) skips+=("-skip-testing:ImmichSwiftUIUITests/${selector%%/*}/$2"); shift ;;
@@ -228,40 +248,39 @@ run_scenario() {
     shift
   done
   local label="$selector" result="build/ci/ui-$index.xcresult" stub_log="build/ci/ui-$index-stub.log"
-  echo "ci.sh: UI scenario $label (stub $stub)"
+  local media_here="$media_dir/$index"
+  echo "ci.sh: UI scenario $label (stub $stub, simulator $sim, port $port)"
 
-  # Called as `run_scenario … || …`, so `set -e` does not apply in here: every
-  # preparation step checks its own status.
-  if (( erase )); then
-    xcrun simctl shutdown "$udid" 2>/dev/null || true
-    if ! xcrun simctl erase "$udid" || ! xcrun simctl bootstatus "$udid" -b >/dev/null; then
-      echo "::error::$label: could not erase and boot the simulator"
-      return 1
-    fi
+  # Started as `run_scenario … || exit`, so `set -e` does not apply in here:
+  # every preparation step checks its own status.
+  xcrun simctl shutdown "$sim" 2>/dev/null || true
+  if ! xcrun simctl erase "$sim" || ! xcrun simctl bootstatus "$sim" -b >/dev/null; then
+    echo "::error::$label: could not erase and boot the simulator"
+    return 1
   fi
+  mkdir -p "$media_here"
   for name in ${media[@]+"${media[@]}"}; do
-    file="$media_dir/$name"
+    file="$media_here/$name"
     if ! python3 -c '
 import sys
 sys.path.insert(0, "UITests/stubs")
 from immich_stub_base import png
 open(sys.argv[1], "wb").write(png(sys.argv[2], size=64))
-' "$file" "$name" || ! xcrun simctl addmedia "$udid" "$file"; then
+' "$file" "$name" || ! xcrun simctl addmedia "$sim" "$file"; then
       echo "::error::$label: could not seed $name into Photos"
       return 1
     fi
   done
-  if [[ -n "$content_size" ]] && ! xcrun simctl ui "$udid" content_size "$content_size"; then
+  if [[ -n "$content_size" ]] && ! xcrun simctl ui "$sim" content_size "$content_size"; then
     echo "::error::$label: could not set the system text size to $content_size"
-    xcrun simctl ui "$udid" content_size large || true
     return 1
   fi
 
-  python3 -u "UITests/stubs/$stub" "$STUB_PORT" >"$stub_log" 2>&1 &
+  python3 -u "UITests/stubs/$stub" "$port" >"$stub_log" 2>&1 &
   stub_pid=$!
   local ready=0 attempt
   for attempt in $(seq 1 30); do
-    if curl -fsS "http://127.0.0.1:$STUB_PORT/__whoami" 2>/dev/null | python3 -c '
+    if curl -fsS "http://127.0.0.1:$port/__whoami" 2>/dev/null | python3 -c '
 import json, sys
 raise SystemExit(0 if json.load(sys.stdin).get("pid") == int(sys.argv[1]) else 1)
 ' "$stub_pid" 2>/dev/null; then
@@ -271,12 +290,12 @@ raise SystemExit(0 if json.load(sys.stdin).get("pid") == int(sys.argv[1]) else 1
     sleep 0.5
   done
   if (( ! ready )); then
-    echo "::error::$label: stub $stub did not answer /__whoami on port $STUB_PORT with its own pid"
+    echo "::error::$label: stub $stub did not answer /__whoami on port $port with its own pid"
     status=1
   else
     rm -rf "$result"
-    if ! TEST_RUNNER_IMMICH_STUB_URL="http://127.0.0.1:$STUB_PORT" xcodebuild test-without-building \
-      "${common[@]}" -quiet \
+    if ! TEST_RUNNER_IMMICH_STUB_URL="http://127.0.0.1:$port" xcodebuild test-without-building \
+      "${project[@]}" -destination "platform=iOS Simulator,id=$sim" -quiet \
       -only-testing:"ImmichSwiftUIUITests/$selector" ${skips[@]+"${skips[@]}"} \
       -resultBundlePath "$result" </dev/null; then
       report_failed_tests "$result"
@@ -288,21 +307,65 @@ raise SystemExit(0 if json.load(sys.stdin).get("pid") == int(sys.argv[1]) else 1
   kill "$stub_pid" 2>/dev/null || true
   wait "$stub_pid" 2>/dev/null || true
   stub_pid=""
-  if [[ -n "$content_size" ]]; then
-    xcrun simctl ui "$udid" content_size large || true
-  fi
   return "$status"
 }
 
-ui_failures=0
-ui_index=0
+ui_lines=()
 while IFS= read -r line <&3; do
   line="${line%%#*}"
   read -ra words <<<"$line"
   (( ${#words[@]} )) || continue
-  ui_index=$((ui_index + 1))
-  run_scenario "$ui_index" "${words[@]}" || ui_failures=$((ui_failures + 1))
+  ui_lines+=("${words[*]}")
 done 3<"$UI_LIST"
+
+(( UI_WORKERS >= 1 )) || { echo "ci.sh: SWIMMICH_CI_UI_WORKERS must be at least 1" >&2; exit 2; }
+(( UI_WORKERS <= ${#ui_lines[@]} )) || UI_WORKERS=${#ui_lines[@]}
+worker_udids=()
+for (( worker = 1; worker <= UI_WORKERS; worker++ )); do
+  if (( worker == 1 )); then
+    worker_udids+=("$udid")
+  else
+    worker_udids+=("$(simulator_udid "$SIM_NAME-$worker")")
+  fi
+done
+echo "ci.sh: ${#ui_lines[@]} UI scenario line(s) on $UI_WORKERS simulator(s): ${worker_udids[*]-}"
+
+# The pool. bash 3.2 (macOS) has no `wait -n`: each worker slot holds the pid
+# of its running line (empty when free), polled every 2 s. A line's output goes
+# to its own log, printed whole once the line ends, so the CI log never
+# interleaves two scenarios.
+mkdir -p build/ci
+worker_pids=()
+worker_lines=()
+for (( worker = 0; worker < UI_WORKERS; worker++ )); do worker_pids+=(""); worker_lines+=(""); done
+ui_failures=0
+next=0
+running=0
+while (( next < ${#ui_lines[@]} || running > 0 )); do
+  for (( worker = 0; worker < UI_WORKERS; worker++ )); do
+    pid="${worker_pids[worker]}"
+    if [[ -n "$pid" ]] && ! kill -0 "$pid" 2>/dev/null; then
+      if wait "$pid"; then line_status=0; else line_status=$?; fi
+      index="${worker_lines[worker]}"
+      cat "build/ci/ui-$index.log"
+      (( line_status == 0 )) || ui_failures=$((ui_failures + 1))
+      worker_pids[worker]=""
+      running=$((running - 1))
+      pid=""
+    fi
+    if [[ -z "$pid" ]] && (( next < ${#ui_lines[@]} )); then
+      index=$((next + 1))
+      read -ra words <<<"${ui_lines[next]}"
+      ( run_scenario "$index" "${worker_udids[worker]}" "$((STUB_PORT_BASE + worker))" "${words[@]}" || exit "$?" ) \
+        >"build/ci/ui-$index.log" 2>&1 &
+      worker_pids[worker]=$!
+      worker_lines[worker]="$index"
+      next=$((next + 1))
+      running=$((running + 1))
+    fi
+  done
+  (( running == 0 )) || sleep 2
+done
 if (( ui_failures )); then
   echo "ci.sh: $ui_failures UI scenario line(s) failed" >&2
   exit 65
