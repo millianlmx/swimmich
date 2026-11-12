@@ -91,8 +91,12 @@ print(ios[-1]["identifier"] if ios else "")
 
 udid=$(simulator_udid "$SIM_NAME")
 echo "ci.sh: simulator $SIM_NAME ($udid)"
-# Booted (and waited for) up front: a cold device handed to xcodebuild can fail
-# with "Invalid device state" before the first test.
+# Erased, then booted (and waited for) up front. Erased: the simulator outlives
+# a run, and a device another run left locked by Face ID fails the app lock's
+# unit tests. Booted: a cold device handed to xcodebuild can fail with "Invalid
+# device state" before the first test.
+xcrun simctl shutdown "$udid" 2>/dev/null || true
+xcrun simctl erase "$udid"
 xcrun simctl bootstatus "$udid" -b >/dev/null
 
 # Everything but the destination: each UI scenario picks its own simulator.
@@ -195,9 +199,8 @@ fi
 #
 # The lines run several at a time, one per worker of a pool of
 # `SWIMMICH_CI_UI_WORKERS` simulators (3 by default): worker k is
-# `$SIM_NAME-ui-k`, created on first use. None of them is the unit tests'
-# simulator: a UI line can leave a device locked by Face ID, and the next run's
-# unit tests (the app lock's among them) must not inherit it. Each line gets a worker's
+# `$SIM_NAME-ui-k`, created on first use, none of them the unit tests'
+# simulator (a UI line can leave a device locked by Face ID). Each line gets a worker's
 # simulator freshly ERASED (no line inherits another's keychain, defaults,
 # Photos or lock: the order of the list does not matter), and its own stub on
 # the worker's port, 8421 + k - 1, which must answer `/__whoami` with its own pid
