@@ -88,7 +88,6 @@ struct StackSheet: View {
                     Text(member.originalFileName)
                         .font(.pvBody)
                         .foregroundStyle(Color.textPrimaryPV)
-                        .lineLimit(1)
 
                     Spacer()
 

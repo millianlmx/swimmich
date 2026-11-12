@@ -30,26 +30,56 @@ struct AppLockCoverView: View {
         ZStack {
             Color.bgPrimary.ignoresSafeArea()
 
-            VStack(spacing: PVSpacing.s24) {
-                Image(systemName: "lock.fill")
-                    .font(.system(size: 56)) // DS-exempt: hero illustration §8.6
-                    .foregroundStyle(Color.textSecondaryPV)
-                if isLock {
-                    Text(Self.title)
-                        .font(.pvTitle)
-                        .accessibilityIdentifier("appLockTitle")
-                    Button {
-                        Task { _ = await appLock.authenticate() }
-                    } label: {
-                        Label("Unlock", systemImage: "faceid")
+            // Scrolls when the prompt outgrows the screen (large text); centred
+            // when it fits, by a clear spacer as tall as the visible area.
+            ScrollView {
+                ZStack {
+                    Color.clear
+                        .containerRelativeFrame(.vertical)
+                    if isLock {
+                        AppLockPrompt {
+                            Task { _ = await appLock.authenticate() }
+                        }
+                    } else {
+                        AppLockGlyph()
                     }
-                    .buttonStyle(PVPrimaryButtonStyle())
-                    .accessibilityIdentifier("appLockUnlockButton")
                 }
+                .frame(maxWidth: .infinity)
             }
+            .scrollBounceBehavior(.basedOnSize)
         }
         .accessibilityElement(children: .contain)
         .accessibilityIdentifier(isLock ? "AppLockOverlay" : "AppLockPrivacyMask")
         .animation(PVMotion.movement(PVMotion.gentle, reduceMotion: reduceMotion), value: appLock.cover)
+    }
+}
+
+private struct AppLockGlyph: View {
+    var body: some View {
+        Image(systemName: "lock.fill")
+            .font(.system(size: 56)) // DS-exempt: hero illustration §8.6
+            .foregroundStyle(Color.textSecondaryPV)
+    }
+}
+
+/// The lock's content: glyph, title, Unlock. The title wraps at large text sizes.
+struct AppLockPrompt: View {
+    let onUnlock: () -> Void
+
+    var body: some View {
+        VStack(spacing: PVSpacing.s24) {
+            AppLockGlyph()
+            Text(AppLockCoverView.title)
+                .font(.pvTitle)
+                .multilineTextAlignment(.center)
+                .fixedSize(horizontal: false, vertical: true)
+                .accessibilityIdentifier("appLockTitle")
+            Button(action: onUnlock) {
+                Label("Unlock", systemImage: "faceid")
+            }
+            .buttonStyle(PVPrimaryButtonStyle())
+            .accessibilityIdentifier("appLockUnlockButton")
+        }
+        .padding(.horizontal, PVSpacing.s24)
     }
 }

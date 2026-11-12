@@ -56,6 +56,7 @@ struct ProfilePictureView: View {
         .toolbar {
             ToolbarItem(placement: .principal) { ImmichAppBar(title: "Profile Picture") }
         }
+        .immichAppBarTitleHeader("Profile Picture")
         .task { await vm.load() }
         .refreshable { await vm.load() }
         .confirmationDialog(

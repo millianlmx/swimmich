@@ -99,11 +99,9 @@ struct DownloadInventoryView: View {
                 Text(info.displayName)
                     .font(.pvBody)
                     .foregroundStyle(Color.textPrimaryPV)
-                    .lineLimit(1)
                 Text(vm.subtitle(for: info))
                     .font(.pvCaption)
                     .foregroundStyle(Color.textSecondaryPV)
-                    .lineLimit(1)
             }
             Spacer()
             Text(vm.formattedSize(info))

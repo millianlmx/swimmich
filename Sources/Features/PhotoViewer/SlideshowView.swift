@@ -54,12 +54,13 @@ struct SlideshowView: View {
         .overlay(alignment: .bottom) {
             if Self.controlsShown(requested: showControls, voiceOverEnabled: voiceOverEnabled) { chromeFooter }
         }
+        .pvFullscreenChromeTextCap()
         .statusBarHidden(true)
         .task(id: tickerKey) { await runTicker() }
         .task(id: autoHideKey) { await autoHideControls() }
         .onAppear {
             vm.slideChanged()
-            vm.start()
+            if !Self.autoplayOff { vm.start() }
         }
         .onChange(of: vm.currentIndex) { old, new in
             directionForward = SlideshowDirection.isForward(from: old, to: new, count: vm.count)
@@ -205,13 +206,11 @@ struct SlideshowView: View {
     private var topBar: some View {
         HStack(spacing: PVSpacing.s12) {
             if let asset = vm.currentAsset {
-                Text("\(vm.currentIndex + 1) of \(vm.count)")
-                    .font(.pvCaption.weight(.semibold))
-                    .foregroundStyle(Color.white)
-                    .padding(.horizontal, PVSpacing.s12)
-                    .padding(.vertical, PVSpacing.s4)
-                    .pvFloating(.pill)
-                    .accessibilityLabel("Slide \(vm.currentIndex + 1) of \(vm.count): \(asset.hasPlayableMotion ? "Video" : "Photo")")
+                SlideshowCounterLabel(
+                    index: vm.currentIndex,
+                    count: vm.count,
+                    isVideo: asset.hasPlayableMotion
+                )
             }
 
             Spacer()
@@ -312,11 +311,7 @@ struct SlideshowView: View {
                 }
             }
         } label: {
-            Text(vm.speed.label)
-                .font(.pvCaption.weight(.semibold))
-                .foregroundStyle(Color.white)
-                .frame(minWidth: 44, minHeight: 40)
-                .pvFloating(.pill)
+            SlideshowSpeedLabel(text: vm.speed.label)
         }
         .accessibilityLabel("Slideshow Speed")
         .accessibilityValue(Text(verbatim: vm.speed.label))
@@ -352,5 +347,49 @@ struct SlideshowView: View {
         .buttonStyle(.plain)
         .accessibilityLabel(label)
         .accessibilityIdentifier(identifier)
+    }
+}
+
+extension SlideshowView {
+    /// UI-test switch, off in production (same model as `MemoryPlaybackProbe`):
+    /// `-uiTestSlideshowAutoplayOff YES` opens the show paused, so its chrome stays
+    /// up (it only hides itself while playing) and a scenario can measure it.
+    static let autoplayOffKey = "uiTestSlideshowAutoplayOff"
+    static let autoplayOff = UserDefaults.standard.bool(forKey: autoplayOffKey)
+}
+
+/// "n of N" pill of the slideshow. `index` is zero-based. Carries its own
+/// full-screen cap so it measures the same outside the slideshow.
+struct SlideshowCounterLabel: View {
+    let index: Int
+    let count: Int
+    let isVideo: Bool
+
+    var body: some View {
+        Text("\(index + 1) of \(count)")
+            .font(.pvCaption.weight(.semibold))
+            .foregroundStyle(Color.white)
+            .padding(.horizontal, PVSpacing.s12)
+            .padding(.vertical, PVSpacing.s4)
+            .pvFloating(.pill)
+            .accessibilityLabel("Slide \(index + 1) of \(count): \(isVideo ? "Video" : "Photo")")
+            .accessibilityIdentifier("slideshowCounter")
+            .pvFullscreenChromeTextCap()
+    }
+}
+
+/// Playback-speed pill of the slideshow. The vertical padding lets the frame
+/// grow with the text (it stays 40 pt at the default size: 16 + one line < 40).
+struct SlideshowSpeedLabel: View {
+    let text: String
+
+    var body: some View {
+        Text(text)
+            .font(.pvCaption.weight(.semibold))
+            .foregroundStyle(Color.white)
+            .padding(.vertical, PVSpacing.s8)
+            .frame(minWidth: 44, minHeight: 40)
+            .pvFloating(.pill)
+            .pvFullscreenChromeTextCap()
     }
 }

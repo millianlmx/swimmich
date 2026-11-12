@@ -28,6 +28,7 @@ struct LocalLibraryView: View {
         .toolbar {
             ToolbarItem(placement: .principal) { ImmichAppBar(title: "On this device") }
         }
+        .immichAppBarTitleHeader("On this device")
         .safeAreaInset(edge: .bottom) { selectionBar }
         .task { await reload() }
         .refreshable { await reload() }
@@ -49,7 +50,7 @@ struct LocalLibraryView: View {
 
     private var summaryCard: some View {
         VStack(spacing: PVSpacing.s8) {
-            HStack(alignment: .top, spacing: PVSpacing.s8) {
+            PVAdaptiveStack(hAlignment: .top, spacing: PVSpacing.s8) {
                 SummaryColumn(
                     title: "This device",
                     symbol: "iphone",
@@ -171,7 +172,7 @@ struct LocalLibraryView: View {
     private var selectionBar: some View {
         if vm.hasSelection {
             VStack(spacing: PVSpacing.s8) {
-                HStack(spacing: PVSpacing.s12) {
+                PVAdaptiveStack(spacing: PVSpacing.s12) {
                     Text("\(vm.selectionCount) selected")
                         .font(.pvHeadline)
                     if vm.hasVerdict {
@@ -195,7 +196,7 @@ struct LocalLibraryView: View {
                         .foregroundStyle(Color.textSecondaryPV)
                 }
 
-                HStack(spacing: PVSpacing.s8) {
+                PVAdaptiveStack(spacing: PVSpacing.s8) {
                     Button("Cancel") { vm.clearSelection() }
                         .buttonStyle(PVSubtleButtonStyle())
 
@@ -296,6 +297,7 @@ private struct ServerStorageColumn: View {
             usageRows
         }
         .frame(maxWidth: .infinity, alignment: .leading)
+        .labeledContentStyle(.pvAdaptive)
     }
 
     private var total: String {
@@ -351,7 +353,7 @@ private struct AlbumRow: View {
                 title
                     .font(.pvSubhead)
                     .foregroundStyle(Color.textPrimaryPV)
-                    .lineLimit(1)
+                    .multilineTextAlignment(.leading)
                 Spacer(minLength: 0)
                 Text("\(count)")
                     .font(.pvCaption)

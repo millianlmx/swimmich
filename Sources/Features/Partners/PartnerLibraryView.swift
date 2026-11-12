@@ -49,7 +49,16 @@ struct PartnerLibraryView: View {
             // One ScrollView through the error, empty and grid states: a state
             // change must not cancel the task of a pull-to-refresh in flight.
             ScrollView {
-                scrollContent
+                VStack(alignment: .leading, spacing: 0) {
+                    Text(verbatim: vm.partnerName)
+                        .font(.pvTitle)
+                        .foregroundStyle(Color.textPrimaryPV)
+                        .padding(.horizontal, PVSpacing.s16)
+                        .padding(.vertical, PVSpacing.s8)
+                        .accessibilityAddTraits(.isHeader)
+                        .accessibilityIdentifier("partnerLibraryTitle")
+                    scrollContent
+                }
             }
             .accessibilityIdentifier("partnerLibraryGrid")
             .refreshable { await vm.refresh() }
@@ -107,7 +116,7 @@ struct PartnerLibraryView: View {
             // "Try Again" from the badge: the photos stay, this stands in for it.
             ProgressView()
                 .padding(.vertical, PVSpacing.s8)
-                .accessibilityIdentifier("partnerLibraryLoading")
+                .accessibilityIdentifier("partnerLibraryRefreshing")
         } else if let message = vm.errorMessage {
             InlineErrorBadge(message: message, retry: { Task { await vm.load() } })
                 .padding(PVSpacing.s16)

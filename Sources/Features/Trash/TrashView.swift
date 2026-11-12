@@ -45,6 +45,7 @@ struct TrashView: View {
         .navigationBarTitleDisplayMode(.inline)
         .toolbar { toolbarContent }
         .toolbarBackground(.visible, for: .navigationBar)
+        .immichAppBarTitleHeader("Trash")
         .appSensoryFeedback(.success, trigger: lastRestoreTick)
         .appSensoryFeedback(.warning, trigger: lastDeleteTick)
         .alert(

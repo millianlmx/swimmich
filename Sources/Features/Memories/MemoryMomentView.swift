@@ -43,6 +43,7 @@ struct MemoryMomentView: View {
     @Environment(\.openInTimeline) private var openInTimeline
 
     @State private var kenBurns = false
+    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
     /// Horizontal pager position: an asset id, or `passageID` on the page after
     /// the last photo.
     @State private var visibleItem: String?
@@ -238,6 +239,7 @@ struct MemoryMomentView: View {
             }
         }
         .accessibilityHidden(true)
+        .pvFullscreenChromeTextCap()
     }
 
     private var nextMemory: MemoryResponseDto? {
@@ -283,13 +285,7 @@ struct MemoryMomentView: View {
                 Spacer(minLength: PVSpacing.s8)
 
                 let badge = MemoryTitlePresentation.badge(for: memory)
-                Label(badge.label, systemImage: badge.symbol)
-                    .font(.pvCaption.weight(.semibold))
-                    .foregroundStyle(.white)
-                    .lineLimit(1)
-                    .padding(.horizontal, PVSpacing.s12)
-                    .padding(.vertical, 6)
-                    .pvFloating(.pill)
+                MemoryTypeBadge(text: badge.label, symbol: badge.symbol)
 
                 Spacer(minLength: PVSpacing.s8)
 
@@ -316,15 +312,22 @@ struct MemoryMomentView: View {
         .padding(.horizontal, PVSpacing.s16)
         .padding(.top, PVSpacing.s8)
         .accessibilityHidden(!isCurrent)
+        .pvFullscreenChromeTextCap()
     }
 
     // MARK: - Bottom panel
 
     private var bottomPanel: some View {
         VStack(spacing: PVSpacing.s12) {
-            titleBlock
-            pageDots
-            chips
+            // Title + dots + chips scroll when they do not fit, instead of
+            // squeezing the title or climbing under the top bar.
+            ViewThatFits(in: .vertical) {
+                titleAndChips
+                ScrollView(.vertical) {
+                    titleAndChips
+                }
+                .scrollBounceBehavior(.basedOnSize)
+            }
             actionRow
                 .allowsHitTesting(isCurrent)
                 .accessibilityHidden(!isCurrent)
@@ -332,6 +335,16 @@ struct MemoryMomentView: View {
         .frame(maxWidth: .infinity)
         .padding(.horizontal, PVSpacing.s16)
         .padding(.bottom, PVSpacing.s16)
+        .layoutPriority(1)
+        .pvFullscreenChromeTextCap()
+    }
+
+    private var titleAndChips: some View {
+        VStack(spacing: PVSpacing.s12) {
+            MemoryTitleBlock(memory: memory, heroAsset: heroAsset)
+            pageDots
+            chips
+        }
     }
 
     /// The memory's mutations, over the hero. Each is a glass circle sized for
@@ -404,36 +417,6 @@ struct MemoryMomentView: View {
         .accessibilityLabel(label)
     }
 
-    /// The type-aware title: the year for an on-this-day memory, the person (and
-    /// their age at the photo on screen) for a birthday, the date otherwise.
-    private var titleBlock: some View {
-        VStack(spacing: PVSpacing.s4) {
-            let title = MemoryTitlePresentation.momentTitle(for: memory, asset: heroAsset)
-            if memory.type == .on_this_day {
-                Text(title)
-                    .font(.pvTitleXL)
-                    .foregroundStyle(.white)
-                    .monospacedDigit()
-                    .frame(maxWidth: .infinity)
-                    .accessibilityIdentifier("memoryTitle_\(memory.id)")
-            } else {
-                Text(title)
-                    .font(.pvH3)
-                    .foregroundStyle(.white)
-                    .lineLimit(2)
-                    .multilineTextAlignment(.center)
-                    .frame(maxWidth: .infinity)
-                    .accessibilityIdentifier("memoryTitle_\(memory.id)")
-            }
-            if let subtitle = MemoryTitlePresentation.momentSubtitle(for: memory) {
-                Text(subtitle)
-                    .font(.pvSubhead)
-                    .foregroundStyle(.white.opacity(0.9))
-                    .frame(maxWidth: .infinity)
-            }
-        }
-    }
-
     @ViewBuilder
     private var pageDots: some View {
         if memory.assets.count > 1 {
@@ -449,24 +432,38 @@ struct MemoryMomentView: View {
         }
     }
 
+    @ViewBuilder
     private var chips: some View {
-        ScrollView(.horizontal, showsIndicators: false) {
-            HStack(spacing: PVSpacing.s8) {
-                if let location = MemoryCardPresentation.locationLabel(for: memory) {
-                    MemoryChip(symbol: "mappin.and.ellipse", text: location)
-                }
-                if let camera = heroCameraLabel {
-                    MemoryChip(symbol: "camera", text: camera)
-                }
-                peopleChip
-                if let tags = MemoryMomentPresentation.tagsLabel(for: memory) {
-                    MemoryChip(symbol: "tag", text: tags)
-                }
-                if memory.isSaved {
-                    MemoryChip(symbol: "heart.fill", text: String(localized: "Saved"))
-                }
+        if dynamicTypeSize.isAccessibilitySize {
+            // A chip in a horizontal scroller gets an unbounded width and never
+            // wraps: at accessibility sizes they stack, each bounded by the panel.
+            VStack(alignment: .leading, spacing: PVSpacing.s8) {
+                chipItems
             }
-            .padding(.horizontal, PVSpacing.s16)
+        } else {
+            ScrollView(.horizontal, showsIndicators: false) {
+                HStack(spacing: PVSpacing.s8) {
+                    chipItems
+                }
+                .padding(.horizontal, PVSpacing.s16)
+            }
+        }
+    }
+
+    @ViewBuilder
+    private var chipItems: some View {
+        if let location = MemoryCardPresentation.locationLabel(for: memory) {
+            MemoryChip(symbol: "mappin.and.ellipse", text: location, identifier: "memoryChipLocation")
+        }
+        if let camera = heroCameraLabel {
+            MemoryChip(symbol: "camera", text: camera, identifier: "memoryChipCamera")
+        }
+        peopleChip
+        if let tags = MemoryMomentPresentation.tagsLabel(for: memory) {
+            MemoryChip(symbol: "tag", text: tags, identifier: "memoryChipTags")
+        }
+        if memory.isSaved {
+            MemoryChip(symbol: "heart.fill", text: String(localized: "Saved"), identifier: "memoryChipSaved")
         }
     }
 
@@ -495,6 +492,7 @@ struct MemoryMomentView: View {
             .padding(.vertical, 6)
             .pvFloating(.pill)
             .accessibilityLabel(MemoryMomentPresentation.peopleLabel(for: memory) ?? String(localized: "People"))
+            .accessibilityIdentifier("memoryChipPeople")
         }
     }
 
@@ -512,21 +510,97 @@ struct MemoryMomentView: View {
 
 /// Small glass capsule chip (icon + label) used over hero imagery. White glyphs
 /// over Liquid Glass — the scrim behind guarantees contrast on bright photos.
+/// The text wraps instead of being cut; the chip carries its own full-screen
+/// cap, so it measures the same wherever it is hosted.
 struct MemoryChip: View {
     let symbol: String
     let text: String
+    /// Accessibility identifier of the text (`memoryChipLocation`…), or none.
+    var identifier: String? = nil
 
     var body: some View {
-        HStack(spacing: PVSpacing.s4) {
+        HStack(alignment: .firstTextBaseline, spacing: PVSpacing.s4) {
             Image(systemName: symbol)
-                .font(.system(size: 11, weight: .semibold))
-            Text(text)
-                .font(.pvCaption.weight(.medium))
-                .lineLimit(1)
+                .font(.pvCaption.weight(.semibold))
+            label
         }
         .foregroundStyle(.white)
         .padding(.horizontal, PVSpacing.s8)
         .padding(.vertical, 6)
         .pvFloating(.pill)
+        .pvFullscreenChromeTextCap()
+    }
+
+    @ViewBuilder
+    private var label: some View {
+        let content = Text(text)
+            .font(.pvCaption.weight(.medium))
+            .multilineTextAlignment(.leading)
+            .fixedSize(horizontal: false, vertical: true)
+        if let identifier {
+            content.accessibilityIdentifier(identifier)
+        } else {
+            content
+        }
+    }
+}
+
+/// Type badge of the playback top bar (« Birthday », « On this day »…). The
+/// label wraps; the badge carries its own full-screen cap.
+struct MemoryTypeBadge: View {
+    let text: String
+    let symbol: String
+
+    var body: some View {
+        Label(text, systemImage: symbol)
+            .font(.pvCaption.weight(.semibold))
+            .foregroundStyle(.white)
+            .multilineTextAlignment(.center)
+            .padding(.horizontal, PVSpacing.s12)
+            .padding(.vertical, 6)
+            .pvFloating(.pill)
+            .accessibilityIdentifier("memoryMomentBadge")
+            .pvFullscreenChromeTextCap()
+    }
+}
+
+/// Type-aware title of a memory page: the year for an on-this-day memory, the
+/// person (and their age at the photo on screen) for a birthday, the date
+/// otherwise, then the subtitle. Shown whole at every size; carries its own
+/// full-screen cap.
+struct MemoryTitleBlock: View {
+    let memory: MemoryResponseDto
+    let heroAsset: AssetResponseDto?
+
+    var body: some View {
+        VStack(spacing: PVSpacing.s4) {
+            let title = MemoryTitlePresentation.momentTitle(for: memory, asset: heroAsset)
+            if memory.type == .on_this_day {
+                Text(title)
+                    .font(.pvTitleXL)
+                    .foregroundStyle(.white)
+                    .monospacedDigit()
+                    .fixedSize(horizontal: false, vertical: true)
+                    .frame(maxWidth: .infinity)
+                    .accessibilityIdentifier("memoryTitle_\(memory.id)")
+            } else {
+                Text(title)
+                    .font(.pvH3)
+                    .foregroundStyle(.white)
+                    .multilineTextAlignment(.center)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .frame(maxWidth: .infinity)
+                    .accessibilityIdentifier("memoryTitle_\(memory.id)")
+            }
+            if let subtitle = MemoryTitlePresentation.momentSubtitle(for: memory) {
+                Text(subtitle)
+                    .font(.pvSubhead)
+                    .foregroundStyle(.white.opacity(0.9))
+                    .multilineTextAlignment(.center)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .frame(maxWidth: .infinity)
+            }
+        }
+        .pvFullscreenChromeTextCap()
     }
 }

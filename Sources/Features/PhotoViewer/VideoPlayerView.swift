@@ -262,6 +262,7 @@ struct VideoPlayerView: View {
                     playPauseButton
                     seekButton(symbol: "goforward.15", delta: 15, label: "Forward 15 seconds", identifier: "videoPlayerForward15")
                 }
+                .pvFullscreenChromeTextCap()
             }
 
             Slider(
@@ -284,6 +285,7 @@ struct VideoPlayerView: View {
             .monospacedDigit()
             .foregroundStyle(Color.white)
             .padding(.horizontal, PVSpacing.s16)
+            .pvFullscreenChromeTextCap()
         }
         .padding(.bottom, PVSpacing.s12)
         .background(

@@ -1,0 +1,18 @@
+# UI scenarios run by Scripts/ci.sh after the unit tests, one xcodebuild run per
+# line, each against its own stub (UITests/stubs/<stub.py>, port 8421):
+#
+#   <stub.py> <Class>[/<test>] [--erase] [--content-size <simctl category>]
+#             [--media <file name>]... [--skip <test>]...
+#
+# A test that fails or skips itself fails the CI. Scenarios not listed here are
+# compiled by the CI, not run.
+
+# L-13 Dynamic Type (AC-26 to AC-26.9). The two tests with device prerequisites
+# run on their own lines: the share extension with the SYSTEM text size at AX5
+# and a long-named photo in Photos, then the lock screen on an erased device.
+# The lock line is LAST: it leaves Face ID lock on, and every other line needs
+# an app that opens unlocked. The first line erases the device for the same
+# reason (the simulator outlives a run: the previous run left its lock on).
+immich_stub_dynamic_type.py DynamicTypeUITests --erase --skip test_AC_26_4_appLock --skip test_AC_26_4_shareExtension
+immich_stub_dynamic_type.py DynamicTypeUITests/test_AC_26_4_shareExtension --content-size accessibility-extra-extra-extra-large --media Summer-holidays-in-the-Gorges-du-Verdon-with-the-whole-family.png
+immich_stub_dynamic_type.py DynamicTypeUITests/test_AC_26_4_appLock --erase

@@ -21,16 +21,18 @@ struct LanguageToast: View {
 
     var body: some View {
         GlassEffectContainer {
-            HStack(alignment: .top, spacing: PVSpacing.s12) {
-                Image(systemName: "globe")
-                    .font(.system(size: 20, weight: .semibold))
+            PVAdaptiveStack(hAlignment: .top, vAlignment: .trailing, spacing: PVSpacing.s12) {
+                HStack(alignment: .top, spacing: PVSpacing.s12) {
+                    Image(systemName: "globe")
+                        .font(.pvH5)
 
-                Text("Language changed. Some text updates after you reopen the app.")
-                    .font(.pvSubhead)
-                    .multilineTextAlignment(.leading)
-                    .fixedSize(horizontal: false, vertical: true)
-
-                Spacer(minLength: PVSpacing.s0)
+                    Text("Language changed. Some text updates after you reopen the app.")
+                        .font(.pvSubhead)
+                        .multilineTextAlignment(.leading)
+                        .fixedSize(horizontal: false, vertical: true)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .accessibilityIdentifier("languageToastMessage")
+                }
 
                 Button {
                     onDismiss()

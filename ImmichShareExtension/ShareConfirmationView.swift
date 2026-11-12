@@ -14,15 +14,21 @@ struct ShareConfirmationView: View {
     var onFinish: () -> Void
 
     var body: some View {
-        VStack(spacing: PVSpacing.s0) {
-            header
-            Divider().overlay(Color.separatorPV)
-            itemsList
-            Divider().overlay(Color.separatorPV)
-            albumRow
-            if let message = viewModel.errorMessage {
-                errorBadge(message)
+        ScrollView {
+            VStack(spacing: PVSpacing.s0) {
+                header
+                Divider().overlay(Color.separatorPV)
+                itemsList
+                Divider().overlay(Color.separatorPV)
+                albumRow
+                if let message = viewModel.errorMessage {
+                    errorBadge(message)
+                }
             }
+        }
+        // The action bar stays pinned: "Upload" can never be pushed off a
+        // thirty-item share, nor by large text.
+        .safeAreaInset(edge: .bottom, spacing: 0) {
             actionBar
         }
         .background(Color.bgPrimary)
@@ -52,7 +58,6 @@ struct ShareConfirmationView: View {
             Text(viewModel.serverLabel)
                 .font(.pvCaption)
                 .foregroundStyle(Color.textSecondaryPV)
-                .lineLimit(1)
                 .accessibilityIdentifier("shareExtensionServerLabel")
         }
         .padding(PVSpacing.s16)
@@ -62,29 +67,26 @@ struct ShareConfirmationView: View {
 
     // MARK: - Items
 
-    /// The only extensible zone: header, album and action bar stay fixed so
-    /// "Upload" can never be pushed off a thirty-item share.
+    /// One row per shared item, in the body's `ScrollView`; only the action bar
+    /// is pinned, so "Upload" is never pushed off a thirty-item share.
     private var itemsList: some View {
-        ScrollView {
-            LazyVStack(spacing: PVSpacing.s0) {
-                ForEach(Array(viewModel.items.enumerated()), id: \.element.id) { index, item in
-                    ShareItemRow(
-                        item: item,
-                        index: index,
-                        statusText: viewModel.statusText(for: item.status),
-                        onTap: { viewModel.toggle(item.id) }
-                    )
-                    Divider().overlay(Color.separatorPV)
-                }
+        LazyVStack(spacing: PVSpacing.s0) {
+            ForEach(Array(viewModel.items.enumerated()), id: \.element.id) { index, item in
+                ShareItemRow(
+                    item: item,
+                    index: index,
+                    statusText: viewModel.statusText(for: item.status),
+                    onTap: { viewModel.toggle(item.id) }
+                )
+                Divider().overlay(Color.separatorPV)
             }
         }
-        .frame(maxHeight: .infinity)
     }
 
     // MARK: - Album
 
     private var albumRow: some View {
-        HStack(spacing: PVSpacing.s8) {
+        PVAdaptiveStack(spacing: PVSpacing.s8) {
             Text(String(localized: "Album"))
                 .font(.pvBody)
                 .foregroundStyle(Color.textPrimaryPV)
@@ -100,6 +102,7 @@ struct ShareConfirmationView: View {
             .disabled(viewModel.isUploading)
             .accessibilityIdentifier("shareExtensionAlbumPicker")
         }
+        .frame(maxWidth: .infinity, alignment: .leading)
         .padding(.horizontal, PVSpacing.s16)
         .padding(.vertical, PVSpacing.s8)
     }
@@ -109,6 +112,7 @@ struct ShareConfirmationView: View {
     private func errorBadge(_ message: String) -> some View {
         HStack(alignment: .top, spacing: PVSpacing.s8) {
             Image(systemName: "exclamationmark.triangle")
+                .font(.pvCaption)
                 .foregroundStyle(Color.immichError)
             Text(message)
                 .font(.pvCaption)
@@ -158,18 +162,20 @@ private struct ShareItemRow: View {
         Button(action: onTap) {
             HStack(spacing: PVSpacing.s12) {
                 ShareThumbnail(item: item)
-                VStack(alignment: .leading, spacing: PVSpacing.s2) {
-                    Text(item.filename)
-                        .font(.pvSubhead)
-                        .foregroundStyle(Color.textPrimaryPV)
-                        .lineLimit(1)
-                    Text(item.byteCountText)
-                        .font(.pvCaption)
-                        .foregroundStyle(Color.textSecondaryPV)
+                PVAdaptiveStack(vAlignment: .leading, spacing: PVSpacing.s8) {
+                    VStack(alignment: .leading, spacing: PVSpacing.s2) {
+                        Text(item.filename)
+                            .font(.pvSubhead)
+                            .foregroundStyle(Color.textPrimaryPV)
+                            .accessibilityIdentifier("shareExtensionItemName_\(index)")
+                        Text(item.byteCountText)
+                            .font(.pvCaption)
+                            .foregroundStyle(Color.textSecondaryPV)
+                    }
+                    Spacer(minLength: PVSpacing.s8)
+                    ShareItemStatusIndicator(status: item.status)
+                        .accessibilityIdentifier("shareExtensionItemStatus_\(index)")
                 }
-                Spacer(minLength: PVSpacing.s8)
-                ShareItemStatusIndicator(status: item.status)
-                    .accessibilityIdentifier("shareExtensionItemStatus_\(index)")
                 Image(systemName: item.isSelected ? "checkmark.circle.fill" : "circle")
                     .font(.pvHeadline)
                     .foregroundStyle(item.isSelected ? Color.immichPrimary : Color.textSecondaryPV)
