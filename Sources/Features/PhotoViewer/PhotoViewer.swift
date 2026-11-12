@@ -306,6 +306,8 @@ struct PhotoViewer: View {
     @State private var editorVM: PhotoEditorViewModel?
     /// Transient "edited copy saved" banner; hidden after 3 s.
     @State private var editedCopyNotice: String?
+    /// Which save the banner reports (`savedCopy`, `savedEdits`, `removedEdits`): read by UI tests only.
+    @State private var editedNoticeKind = ""
     @State private var editedCopyTick = 0
     @State private var presentShare = false
     @State private var showCastSheet = false
@@ -487,6 +489,7 @@ struct PhotoViewer: View {
                         .pvFullscreenChromeTextCap()
                         .padding(.top, PVSpacing.s8)
                         .accessibilityIdentifier("editedCopySavedBanner")
+                        .modifier(SaveProbeValue(value: editedNoticeKind))
                         Spacer()
                     }
                     .transition(.opacity)
@@ -571,8 +574,18 @@ struct PhotoViewer: View {
             }
             .sheet(isPresented: $presentEdit, onDismiss: { editorVM = nil }) {
                 if let editorVM {
-                    PhotoEditorView(vm: editorVM, onSavedCopy: {
-                        editedCopyNotice = String(localized: "Edited copy saved")
+                    PhotoEditorView(vm: editorVM, onSaved: { reason in
+                        switch reason {
+                        case .savedEdits:
+                            editedCopyNotice = String(localized: "Edits saved")
+                            editedNoticeKind = "savedEdits"
+                        case .removedEdits:
+                            editedCopyNotice = String(localized: "Edits removed")
+                            editedNoticeKind = "removedEdits"
+                        case .savedCopy, .cancelled:
+                            editedCopyNotice = String(localized: "Edited copy saved")
+                            editedNoticeKind = "savedCopy"
+                        }
                         editedCopyTick &+= 1
                     })
                 }

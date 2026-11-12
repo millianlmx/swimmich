@@ -90,6 +90,14 @@ protocol ImmichClient: AnyObject, Sendable {
     /// drop the key), and the response is the updated asset, so the caller
     /// never needs a follow-up `getAsset`.
     func setAssetRating(id: String, rating: Int?) async throws -> AssetResponseDto
+
+    // MARK: - Asset edits
+    /// `GET /api/assets/:id/edits` (server ≥ 2.5.0): the non-destructive edit list.
+    func getAssetEdits(id: String) async throws -> AssetEditsResponseDto
+    /// `PUT /api/assets/:id/edits`: replaces the whole list (never empty).
+    func putAssetEdits(id: String, edits: [AssetEditItem]) async throws -> AssetEditsResponseDto
+    /// `DELETE /api/assets/:id/edits` (204): back to the original.
+    func deleteAssetEdits(id: String) async throws
     func deleteAssets(ids: [String], force: Bool?) async throws
 
     // MARK: - Trash (AC-300..AC-309)

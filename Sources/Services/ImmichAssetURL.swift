@@ -32,10 +32,15 @@ enum ImmichAssetURL {
         return components?.url ?? baseURL
     }
 
-    /// Original-file URL for a given asset.
-    static func original(assetId: String, baseURL: URL, sharedLink: SharedLinkCredential? = nil) -> URL {
+    /// Original-file URL for a given asset. `edited` (when not nil) is sent explicitly: `false` asks for
+    /// the file as uploaded, `true` for the server's edited rendering.
+    static func original(assetId: String, baseURL: URL, sharedLink: SharedLinkCredential? = nil,
+                         edited: Bool? = nil) -> URL {
         var url = baseURL.appendingPathComponent(ImmichAPI.assets.path("/\(assetId)/original"))
-        if let sharedLink { url.append(queryItems: [sharedLink.queryItem]) }
+        var items: [URLQueryItem] = []
+        if let sharedLink { items.append(sharedLink.queryItem) }
+        if let edited { items.append(URLQueryItem(name: "edited", value: edited ? "true" : "false")) }
+        if !items.isEmpty { url.append(queryItems: items) }
         return url
     }
 

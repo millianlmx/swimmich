@@ -590,7 +590,7 @@ final class EditorViewModelTests: XCTestCase {
         let gate = Gate()
         client.uploadGate = { await gate.wait() }
         let vm = editedVM(client: client, exportDirectory: exportDir())
-        XCTAssertTrue(vm.canSave)
+        XCTAssertTrue(vm.canSaveToPhotos)
         XCTAssertTrue(vm.canCancel)
 
         let task = vm.saveCopyToServer()
@@ -599,7 +599,7 @@ final class EditorViewModelTests: XCTestCase {
         await waitUntil { vm.saveStep == .uploading && client.uploads.count == 1 }
         XCTAssertEqual(vm.saveStep, .uploading)
         XCTAssertTrue(vm.isSaving)
-        XCTAssertFalse(vm.canSave)
+        XCTAssertFalse(vm.canSaveToPhotos)
         XCTAssertFalse(vm.canCancel)
         XCTAssertNil(vm.saveCopyToServer(), "a second save must be ignored")
         vm.cancel()
@@ -632,7 +632,7 @@ final class EditorViewModelTests: XCTestCase {
             XCTAssertNil(vm.saveStep)
             XCTAssertNil(vm.dismissReason)
             XCTAssertEqual(vm.editState, stateBefore)
-            XCTAssertTrue(vm.canSave, "Save must be available again to retry")
+            XCTAssertTrue(vm.canSaveToPhotos, "Save must be available again to retry")
         }
         client.uploadError = nil
         await vm.saveCopyToServer()?.value
@@ -647,7 +647,7 @@ final class EditorViewModelTests: XCTestCase {
         let vm = makeVM(client: client, exportDirectory: exportDir())
         vm.originalImage = UIImage(ciImage: CIImage(color: .red).cropped(to: CGRect(x: 0, y: 0, width: 10, height: 10)))
         vm.setExposure(0.2)
-        XCTAssertTrue(vm.canSave)
+        XCTAssertTrue(vm.canSaveToPhotos)
 
         await vm.saveCopyToServer()?.value
 
@@ -691,19 +691,19 @@ final class EditorViewModelTests: XCTestCase {
         let vm = makeVM(client: client, exportDirectory: exportDir())
 
         vm.setExposure(0.2)
-        XCTAssertFalse(vm.canSave, "no original loaded")
+        XCTAssertFalse(vm.canSaveToPhotos, "no original loaded")
         XCTAssertNil(vm.saveCopyToServer())
 
         vm.originalImage = Support.rawImage(width: 32, height: 32)
-        XCTAssertTrue(vm.canSave)
+        XCTAssertTrue(vm.canSaveToPhotos)
 
         vm.resetToOriginal()
-        XCTAssertFalse(vm.canSave, "no edit applied")
+        XCTAssertFalse(vm.canSaveToPhotos, "no edit applied")
         XCTAssertNil(vm.saveCopyToServer())
         XCTAssertEqual(client.requestCount, 0)
 
         vm.setWarmth(0.2)
-        XCTAssertTrue(vm.canSave)
+        XCTAssertTrue(vm.canSaveToPhotos)
     }
 
     // MARK: AC-14 / AC-15
@@ -715,7 +715,7 @@ final class EditorViewModelTests: XCTestCase {
         let vm = makeVM(client: client, store: store, exportDirectory: exportDir())
         await vm.loadState()
         vm.originalImage = Support.rawImage(width: 64, height: 48)
-        XCTAssertTrue(vm.canSave)
+        XCTAssertTrue(vm.canSaveToPhotos)
 
         await vm.saveCopyToServer()?.value
         XCTAssertEqual(vm.dismissReason, .savedCopy)
@@ -844,7 +844,7 @@ final class EditorViewModelTests: XCTestCase {
             XCTAssertNil(vm.dismissReason)
             XCTAssertEqual(vm.editState, stateBefore)
             XCTAssertNil(vm.saveStep)
-            XCTAssertTrue(vm.canSave, "Save to Photos must be available again to retry")
+            XCTAssertTrue(vm.canSaveToPhotos, "Save to Photos must be available again to retry")
         }
         XCTAssertNotEqual(UserFacingError.genericMessage, denied)
     }
@@ -861,7 +861,7 @@ final class EditorViewModelTests: XCTestCase {
         XCTAssertNotNil(task)
         XCTAssertEqual(vm.saveStep, .savingToPhotos)
         XCTAssertTrue(vm.isSaving)
-        XCTAssertFalse(vm.canSave)
+        XCTAssertFalse(vm.canSaveToPhotos)
         XCTAssertFalse(vm.canCancel)
         XCTAssertNil(vm.saveToPhotos(), "a second Save to Photos must be ignored")
         XCTAssertNil(vm.saveCopyToServer(), "Save must be ignored")
@@ -871,7 +871,7 @@ final class EditorViewModelTests: XCTestCase {
         await waitUntil { photos.saveImageCallCount == 1 }
         XCTAssertEqual(photos.saveImageCallCount, 1)
         XCTAssertEqual(vm.saveStep, .savingToPhotos)
-        XCTAssertFalse(vm.canSave)
+        XCTAssertFalse(vm.canSaveToPhotos)
         XCTAssertFalse(vm.canCancel)
         XCTAssertNil(vm.saveToPhotos())
         XCTAssertNil(vm.saveCopyToServer())
@@ -898,7 +898,7 @@ final class EditorViewModelTests: XCTestCase {
         await waitUntil { client.uploads.count == 1 }
 
         XCTAssertEqual(vm.saveStep, .uploading)
-        XCTAssertFalse(vm.canSave)
+        XCTAssertFalse(vm.canSaveToPhotos)
         XCTAssertNil(vm.saveToPhotos())
         XCTAssertEqual(photos.saveImageCallCount, 0)
 
@@ -913,12 +913,12 @@ final class EditorViewModelTests: XCTestCase {
         let vm = makeVM(client: client, photos: photos, exportDirectory: exportDir())
 
         vm.setExposure(0.2)
-        XCTAssertFalse(vm.canSave, "no original loaded")
+        XCTAssertFalse(vm.canSaveToPhotos, "no original loaded")
         XCTAssertNil(vm.saveToPhotos())
 
         vm.originalImage = Support.rawImage(width: 32, height: 32)
         vm.resetToOriginal()
-        XCTAssertFalse(vm.canSave, "no edit applied")
+        XCTAssertFalse(vm.canSaveToPhotos, "no edit applied")
         XCTAssertNil(vm.saveToPhotos())
 
         XCTAssertEqual(photos.saveImageCallCount, 0)
@@ -926,7 +926,7 @@ final class EditorViewModelTests: XCTestCase {
         XCTAssertNil(vm.saveStep)
 
         vm.setWarmth(0.2)
-        XCTAssertTrue(vm.canSave)
+        XCTAssertTrue(vm.canSaveToPhotos)
     }
 
     func test_AC22_readOnly_allowsSaveToPhotos() async throws {
