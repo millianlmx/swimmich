@@ -13,7 +13,7 @@
 #    `swimmich-ci`, created on first use so the CI never boots the developer's.
 # 4. Runs the UI scenarios listed in Scripts/ci-ui-scenarios.txt, each against
 #    its own Python stub from UITests/stubs/ (the scenarios not listed there are
-#    compiled, not run), several at a time on a pool of simulators
+#    compiled, not run), several at a time on a pool of simulators of their own
 #    (`SWIMMICH_CI_UI_WORKERS`, 3 by default). A scenario that skips itself fails
 #    the CI: a skip only means its stub was unreachable, which proves nothing.
 #
@@ -194,8 +194,10 @@ fi
 #             [--media <file name>]... [--skip <test>]...
 #
 # The lines run several at a time, one per worker of a pool of
-# `SWIMMICH_CI_UI_WORKERS` simulators (3 by default): worker 1 is `$SIM_NAME`,
-# worker k is `$SIM_NAME-k`, created on first use. Each line gets a worker's
+# `SWIMMICH_CI_UI_WORKERS` simulators (3 by default): worker k is
+# `$SIM_NAME-ui-k`, created on first use. None of them is the unit tests'
+# simulator: a UI line can leave a device locked by Face ID, and the next run's
+# unit tests (the app lock's among them) must not inherit it. Each line gets a worker's
 # simulator freshly ERASED (no line inherits another's keychain, defaults,
 # Photos or lock: the order of the list does not matter), and its own stub on
 # the worker's port, 8421 + k - 1, which must answer `/__whoami` with its own pid
@@ -322,11 +324,7 @@ done 3<"$UI_LIST"
 (( UI_WORKERS <= ${#ui_lines[@]} )) || UI_WORKERS=${#ui_lines[@]}
 worker_udids=()
 for (( worker = 1; worker <= UI_WORKERS; worker++ )); do
-  if (( worker == 1 )); then
-    worker_udids+=("$udid")
-  else
-    worker_udids+=("$(simulator_udid "$SIM_NAME-$worker")")
-  fi
+  worker_udids+=("$(simulator_udid "$SIM_NAME-ui-$worker")")
 done
 echo "ci.sh: ${#ui_lines[@]} UI scenario line(s) on $UI_WORKERS simulator(s): ${worker_udids[*]-}"
 
