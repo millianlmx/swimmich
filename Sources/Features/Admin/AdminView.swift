@@ -20,20 +20,37 @@ struct AdminView: View {
     @State private var pendingDeleteLibrary: LibraryResponseDto?
 
     var body: some View {
-        Group {
-            if vm.isLoading && vm.users.isEmpty {
-                ProgressView()
-                    .frame(maxWidth: .infinity, maxHeight: .infinity)
-            } else {
-                List {
-                    instanceStatsSection
-                    usersSection
-                    jobsSection
-                    librariesSection
+        // One `List` carries every state and `.refreshable`, so a state change
+        // never cancels the pull in flight. The instance totals come first and
+        // read on their own.
+        List {
+            instanceStatsSection
+            switch vm.renderState {
+            case .loading:
+                Section {
+                    ProgressView()
+                        .frame(maxWidth: .infinity)
+                        .pvLoadingIndicator("adminLoading")
+                        .listRowBackground(Color.clear)
                 }
-                .listStyle(.insetGrouped)
+            case .error(let message):
+                Section {
+                    PVErrorStateView(
+                        title: "Couldn't load administration",
+                        message: message,
+                        identifierPrefix: "admin",
+                        retry: { Task { await vm.load(force: true) } }
+                    )
+                    .listRowBackground(Color.clear)
+                }
+            case .empty:
+                listSections
+            case .data(let status):
+                reloadStatus(status)
+                listSections
             }
         }
+        .listStyle(.insetGrouped)
         .navigationTitle("Admin")
         .navigationBarTitleDisplayMode(.inline)
         .task { await vm.load() }
@@ -189,6 +206,15 @@ struct AdminView: View {
                     }
                 }
             }
+            if vm.jobs.isEmpty {
+                ContentUnavailableView(
+                    "No jobs",
+                    systemImage: "gearshape.2",
+                    description: Text("Jobs reported by the server appear here.")
+                )
+                .accessibilityIdentifier("adminJobsEmptyState")
+                .listRowBackground(Color.clear)
+            }
         } header: {
             Text("Jobs")
         }
@@ -223,8 +249,51 @@ struct AdminView: View {
                     }
                 }
             }
+            if vm.libraries.isEmpty {
+                ContentUnavailableView(
+                    "No external libraries",
+                    systemImage: "books.vertical",
+                    description: Text("External libraries added on the server appear here.")
+                )
+                .accessibilityIdentifier("adminLibrariesEmptyState")
+                .listRowBackground(Color.clear)
+            }
         } header: {
             Text("Libraries (\(vm.libraries.count))")
+        }
+    }
+
+    // MARK: - Read states
+
+    /// The three sections, shown once a read succeeded (an empty one then says
+    /// so; it never stands in for a failed read).
+    @ViewBuilder
+    private var listSections: some View {
+        usersSection
+        jobsSection
+        librariesSection
+    }
+
+    /// "Try Again" with data on screen: the indicator stands in for the banner
+    /// while the read runs; a failed refresh keeps the sections under it.
+    @ViewBuilder
+    private func reloadStatus(_ status: DataStatus) -> some View {
+        switch status {
+        case .idle:
+            EmptyView()
+        case .reloading:
+            Section {
+                ProgressView()
+                    .frame(maxWidth: .infinity)
+                    .pvLoadingIndicator("adminLoading")
+                    .listRowBackground(Color.clear)
+            }
+        case .failed(let message):
+            Section {
+                InlineErrorBadge(message: message, retry: { Task { await vm.load(force: true) } })
+                    .accessibilityIdentifier("adminRefreshError")
+                    .listRowBackground(Color.clear)
+            }
         }
     }
 

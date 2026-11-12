@@ -81,20 +81,15 @@ struct AlbumDetailView: View {
                 ContentUnavailableView("Album Deleted", systemImage: "trash")
             } else if let album = vm.album {
                 VStack(spacing: 0) {
-                    if let message = vm.loadErrorMessage {
-                        InlineErrorBadge(message: message, retry: { Task { await vm.load() } })
-                            .padding(PVSpacing.s16)
-                    }
+                    refreshStatus
                     content(for: album)
                 }
-            } else if vm.isLoading {
+            } else if case .error(let message) = vm.albumState {
+                errorState(message)
+            } else {
                 // First frame: hero renders from the grid-known DTO so the zoom
                 // transition lands on real content; skeleton below while loading.
                 loadingContent
-            } else if vm.loadErrorMessage != nil {
-                errorState
-            } else {
-                ContentUnavailableView("Album Unavailable", systemImage: "rectangle.stack")
             }
         }
         .navigationTitle(vm.selectionMode ? "\(vm.selectedIds.count) selected" : (vm.album?.albumName ?? initialAlbum.albumName))
@@ -438,15 +433,19 @@ struct AlbumDetailView: View {
         presentingRoadTrip = true
     }
 
-    private var errorState: some View {
-        ContentUnavailableView {
-            Label("Couldn't load album", systemImage: "wifi.exclamationmark")
-        } description: {
-            Text(vm.loadErrorMessage ?? "")
-        } actions: {
-            Button("Try Again") { Task { await vm.load() } }
-                .buttonStyle(PVPrimaryButtonStyle())
+    /// Album unknown and its read failed. The `ScrollView` carries the same
+    /// `.refreshable` as the grid, so a pull from here keeps the error up.
+    private func errorState(_ message: String) -> some View {
+        ScrollView {
+            PVErrorStateView(
+                title: "Couldn't load album",
+                message: message,
+                identifierPrefix: "albumDetail",
+                retry: { Task { await vm.reload() } }
+            )
+            .containerRelativeFrame(.vertical)
         }
+        .refreshable { await vm.refresh() }
     }
 
     /// Opens the Photos-style viewer at `item`, paging through album order.
@@ -551,73 +550,21 @@ struct AlbumDetailView: View {
 
             PVSkeletonGrid(rows: 4, columnCount: 3)
                 .padding(.horizontal, PVSpacing.s4)
+                .pvLoadingIndicator("albumDetailLoading")
         }
     }
 
     @ViewBuilder
     private func content(for album: AlbumResponseDto) -> some View {
-        if vm.assets.isEmpty && !vm.isLoading {
+        ScrollViewReader { proxy in
+            // One ScrollView through the loading, error, empty and grid states
+            // of the photos: a state change must not cancel the task of a
+            // pull-to-refresh in flight.
             ScrollView {
                 heroHeader(for: album)
-                ContentUnavailableView(
-                    "No Photos",
-                    systemImage: "photo",
-                    description: Text("Add photos from the Timeline using “Add to Album”.")
-                )
-                .padding(.top, PVSpacing.s24)
+                photosSection
             }
-        } else {
-            ScrollViewReader { proxy in
-            ScrollView {
-                heroHeader(for: album)
-
-                // "Photos" section header — Apple Photos style.
-                HStack {
-                    Text("Photos")
-                        .font(.pvCaption)
-                        .fontWeight(.semibold)
-                        .textCase(.uppercase)
-                        .foregroundStyle(Color.textSecondaryPV)
-                    Spacer()
-                }
-                .padding(.horizontal, PVSpacing.s4)
-                .padding(.top, PVSpacing.s8)
-                .padding(.bottom, PVSpacing.s2)
-
-                LazyVStack(alignment: .leading, spacing: PVSpacing.s2) {
-                    LazyVGrid(columns: columns, spacing: PVSpacing.s2) {
-                        ForEach(vm.assets, id: \.id) { item in
-                            cellView(for: item)
-                                .viewerZoomTile(id: item.id, source: zoomSource)
-                                .id(item.id)
-                                .onAppear {
-                                    Task { await vm.loadMoreIfNeeded(currentItemId: item.id) }
-                                }
-                        }
-                    }
-                    .padding(.horizontal, PVSpacing.s4)
-
-                    switch vm.gridFooter {
-                    case .none:
-                        EmptyView()
-                    case .error(let message):
-                        InlineErrorBadge(message: message, retry: { Task { await vm.loadMore() } })
-                            .padding(.horizontal, PVSpacing.s4)
-                    case .loadingMore:
-                        // Recreated on every `gridEndRevision`: the lazy stack only
-                        // builds the footer, and so only fires its `onAppear`, when it
-                        // is on screen after layout. An `onChange` ran before layout
-                        // and chained pages off-screen. No `.task(id:)`: it would
-                        // cancel the request in flight.
-                        ProgressView()
-                            .padding(.vertical, PVSpacing.s12)
-                            .frame(maxWidth: .infinity)
-                            .accessibilityIdentifier("albumLoadMore")
-                            .onAppear { Task { await vm.loadMore() } }
-                            .id(vm.gridEndRevision)
-                    }
-                }
-            }
+            .refreshable { await vm.refresh() }
             // D6: tap on empty grid area exits selection mode. Cell taps win
             // via their own onTapGesture (hit-tested first).
             .onTapGesture {
@@ -646,8 +593,111 @@ struct AlbumDetailView: View {
             }
             .viewerZoomViewport(zoomSource)
             .viewerZoomReveal(zoomSource, proxy: proxy)
+        }
+    }
+
+    /// "Photos" section header — Apple Photos style.
+    private var photosHeader: some View {
+        HStack {
+            Text("Photos")
+                .font(.pvCaption)
+                .fontWeight(.semibold)
+                .textCase(.uppercase)
+                .foregroundStyle(Color.textSecondaryPV)
+            Spacer()
+        }
+        .padding(.horizontal, PVSpacing.s4)
+        .padding(.top, PVSpacing.s8)
+        .padding(.bottom, PVSpacing.s2)
+    }
+
+    /// Below the hero: what the photos' own read says (`assetsState`).
+    @ViewBuilder
+    private var photosSection: some View {
+        switch vm.assetsState {
+        case .loading:
+            photosHeader
+            PVSkeletonGrid(rows: 4, columnCount: 3)
+                .padding(.horizontal, PVSpacing.s4)
+                .pvLoadingIndicator("albumDetailLoading")
+        case .error(let message):
+            PVErrorStateView(
+                title: "Couldn't load photos",
+                message: message,
+                identifierPrefix: "albumDetail",
+                retry: { Task { await vm.reload() } }
+            )
+        case .empty:
+            ContentUnavailableView(
+                "No Photos",
+                systemImage: "photo",
+                description: Text("Add photos from the Timeline using “Add to Album”.")
+            )
+            .padding(.top, PVSpacing.s24)
+            .accessibilityIdentifier("albumDetailEmptyState")
+        case .data:
+            photosHeader
+            photoGrid
+        }
+    }
+
+    private var photoGrid: some View {
+        LazyVStack(alignment: .leading, spacing: PVSpacing.s2) {
+            LazyVGrid(columns: columns, spacing: PVSpacing.s2) {
+                ForEach(vm.assets, id: \.id) { item in
+                    cellView(for: item)
+                        .viewerZoomTile(id: item.id, source: zoomSource)
+                        .id(item.id)
+                        .onAppear {
+                            Task { await vm.loadMoreIfNeeded(currentItemId: item.id) }
+                        }
+                }
+            }
+            .padding(.horizontal, PVSpacing.s4)
+
+            switch vm.gridFooter {
+            case .none:
+                EmptyView()
+            case .error(let message):
+                InlineErrorBadge(message: message, retry: { Task { await vm.loadMore() } })
+                    .padding(.horizontal, PVSpacing.s4)
+            case .loadingMore:
+                // Recreated on every `gridEndRevision`: the lazy stack only
+                // builds the footer, and so only fires its `onAppear`, when it
+                // is on screen after layout. An `onChange` ran before layout
+                // and chained pages off-screen. No `.task(id:)`: it would
+                // cancel the request in flight.
+                ProgressView()
+                    .padding(.vertical, PVSpacing.s12)
+                    .frame(maxWidth: .infinity)
+                    .accessibilityIdentifier("albumLoadMore")
+                    .onAppear { Task { await vm.loadMore() } }
+                    .id(vm.gridEndRevision)
             }
         }
+    }
+
+    /// Above the scroll view, while the album is shown: the banner of a failed
+    /// read (data kept), or a spinner standing in for it during its "Try Again".
+    @ViewBuilder
+    private var refreshStatus: some View {
+        if vm.loadErrorMessage != nil, vm.assetsState != .loading,
+           vm.albumState == .data(.reloading) || vm.assetsState == .data(.reloading) {
+            ProgressView()
+                .padding(PVSpacing.s8)
+                .pvLoadingIndicator("albumDetailLoading")
+        } else if let message = refreshErrorMessage {
+            InlineErrorBadge(message: message, retry: { Task { await vm.reload() } })
+                .padding(PVSpacing.s16)
+                .accessibilityIdentifier("albumDetailRefreshError")
+        }
+    }
+
+    /// The failure of a read that left data in place: the album's, else the photos'.
+    private var refreshErrorMessage: String? {
+        if case .data(.failed(let message)) = vm.albumState { return message }
+        if case .data(.failed(let message)) = vm.assetsState { return message }
+        return nil
     }
 
     /// Stretchy parallax hero: the album cover scales up when over-scrolled at

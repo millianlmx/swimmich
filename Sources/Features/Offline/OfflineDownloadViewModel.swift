@@ -30,6 +30,31 @@ final class OfflineDownloadViewModel {
     /// Asset that most recently finished downloading — drives the success haptic.
     private(set) var lastDownloadedID: String?
 
+    // MARK: - Listing state (L-16)
+
+    /// A read of the cache folder is in flight.
+    private(set) var isLoadingListing = false
+    /// A read has succeeded at least once.
+    private(set) var hasLoadedListing = false
+    /// Why the last read of the folder failed; cleared by a successful read.
+    /// Never written by a download or a removal: those use `errorMessage`.
+    private(set) var listingErrorMessage: String?
+    /// The read in flight comes from a pull-to-refresh.
+    private(set) var isRefreshingListing = false
+    private var listingGeneration = 0
+    private var refreshCount = 0
+
+    /// What the storage screens render, decided here and not in the views.
+    var listingState: ListRenderState {
+        .resolve(
+            isEmpty: cachedAssets.isEmpty,
+            hasLoaded: hasLoadedListing,
+            isLoading: isLoadingListing,
+            isRefreshing: isRefreshingListing,
+            loadError: listingErrorMessage
+        )
+    }
+
     var searchQuery: String = ""
 
     /// Per-asset download state. Observed on purpose: the share sheet reads
@@ -81,18 +106,46 @@ final class OfflineDownloadViewModel {
 
     // MARK: - Loading
 
+    /// Reads the folder on disk. Without a pull: the `.task` and every
+    /// "Try Again" call this. The cache is only replaced when the read
+    /// succeeds; a failure sets `listingErrorMessage` and keeps what is shown.
     func load() async {
         maxCacheSize = await store.maxCacheSize
         await reload()
     }
 
+    /// Pull-to-refresh: the same read, flagged so the screen keeps its current
+    /// rendering (empty, error or files) while the system control spins.
+    func refresh() async {
+        refreshCount += 1
+        isRefreshingListing = true
+        defer {
+            refreshCount -= 1
+            isRefreshingListing = refreshCount > 0
+        }
+        await load()
+    }
+
     private func reload() async {
-        let listing = await store.listing()
-        let mine = listing.accountID == accountID
-        cachedAssets = mine ? listing.items : []
-        cacheUsage = mine ? listing.totalBytes : 0
-        maxCacheSize = await store.maxCacheSize
-        index.apply(listing, from: store)
+        listingGeneration += 1
+        let generation = listingGeneration
+        isLoadingListing = true
+        defer { if generation == listingGeneration { isLoadingListing = false } }
+        do {
+            let listing = try await store.listing()
+            guard generation == listingGeneration else { return }
+            let mine = listing.accountID == accountID
+            cachedAssets = mine ? listing.items : []
+            cacheUsage = mine ? listing.totalBytes : 0
+            maxCacheSize = await store.maxCacheSize
+            index.apply(listing, from: store)
+            hasLoadedListing = true
+            listingErrorMessage = nil
+        } catch {
+            // A cancelled read (the view left) changes nothing.
+            guard generation == listingGeneration, let message = error.userFacingMessage else { return }
+            listingErrorMessage = message
+        }
     }
 
     // MARK: - Download

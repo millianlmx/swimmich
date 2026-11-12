@@ -327,4 +327,25 @@ final class UploadDetailViewModelTests: XCTestCase {
             UploadDetailViewModel.formattedBytes(0)
         )
     }
+
+    // MARK: - Pull to refresh (L-16)
+
+    /// The screen reads nothing: the pull neither asks the server anything nor
+    /// starts a backup, and leaves the projection exactly as it was.
+    @MainActor
+    func test_AC_156_uploadDetail_refreshStartsNothing() async {
+        let h = makeHarness(candidates: [candidate(id: "c1", size: 1024)])
+        h.client.bulkUploadCheckResponse = accepts("c1")
+        XCTAssertTrue(h.vm.isEmpty)
+        let requests = h.client.requestCount
+
+        await h.vm.refresh()
+
+        XCTAssertEqual(h.client.requestCount, requests, "no request")
+        XCTAssertFalse(h.vm.isRunning, "no backup started")
+        XCTAssertEqual(h.vm.total, 0)
+        XCTAssertEqual(h.vm.uploadedCount, 0)
+        XCTAssertTrue(h.source.exportedIDs.isEmpty)
+        XCTAssertTrue(h.vm.isEmpty, "the projection is unchanged")
+    }
 }

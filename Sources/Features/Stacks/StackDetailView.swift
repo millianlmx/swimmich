@@ -28,20 +28,13 @@ struct StackDetailView: View {
 
     var body: some View {
         Group {
-            if let stack = vm.selectedStack, stack.id == stackId {
-                content(stack)
-            } else if vm.isLoading {
+            switch vm.stackState {
+            case .loading:
                 ProgressView()
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
-            } else {
-                ContentUnavailableView {
-                    Label("Couldn't load stack", systemImage: "square.stack.3d.up.slash")
-                } description: {
-                    Text(vm.errorMessage ?? "This stack is no longer available.")
-                } actions: {
-                    Button("Retry") { Task { await vm.loadStack(id: stackId, force: true) } }
-                        .buttonStyle(PVPrimaryButtonStyle())
-                }
+                    .pvLoadingIndicator("stackDetailLoading")
+            default:
+                stackList
             }
         }
         .navigationTitle("Stack")
@@ -77,45 +70,90 @@ struct StackDetailView: View {
         .accessibilityIdentifier("stackDetailScreen")
     }
 
-    @ViewBuilder
-    private func content(_ stack: StackResponseDto) -> some View {
+    private var stackList: some View {
         List {
-            Section {
-                if let primary = stack.assets.first(where: { $0.id == stack.primaryAssetId }) ?? stack.assets.first {
-                    memberRow(primary, in: stack, isPrimary: true)
-                }
-            } header: {
-                Text("Cover")
-            } footer: {
-                Text("The cover is what your timeline shows for this stack.")
-            }
-
-            let others = stack.assets.filter { $0.id != stack.primaryAssetId }
-            if !others.isEmpty {
-                Section("Other photos") {
-                    ForEach(others, id: \.id) { member in
-                        memberRow(member, in: stack, isPrimary: false)
+            switch vm.stackState {
+            case .loading:
+                EmptyView()
+            case .error(let message):
+                unavailable(message)
+            case .empty:
+                // Read, and gone: unstacked, or never there.
+                unavailable(String(localized: "This stack is no longer available."))
+            case .data(let status):
+                switch status {
+                case .idle:
+                    EmptyView()
+                case .reloading:
+                    Section {
+                        ProgressView()
+                            .frame(maxWidth: .infinity)
+                            .pvLoadingIndicator("stackDetailLoading")
+                    }
+                case .failed(let message):
+                    Section {
+                        InlineErrorBadge(message: message, retry: { Task { await vm.loadStack(id: stackId, force: true) } })
+                            .accessibilityIdentifier("stackDetailRefreshError")
                     }
                 }
-            }
-
-            Section {
-                Button {
-                    showingAddPhotos = true
-                } label: {
-                    Label("Add photos", systemImage: "plus")
+                if let stack = vm.selectedStack, stack.id == stackId {
+                    content(stack)
                 }
-                .accessibilityIdentifier("addPhotosToStack")
-            } footer: {
-                Text("Adding re-creates the stack on the server, so this stack gets a new id. A photo that already belongs to another stack moves into this one.")
             }
+        }
+        .refreshable { await vm.refreshStack(id: stackId) }
+    }
 
-            Section {
-                Button(role: .destructive) {
-                    confirmingUnstack = true
-                } label: {
-                    Label("Unstack", systemImage: "square.stack.3d.up.slash")
+    @ViewBuilder
+    private func unavailable(_ message: String) -> some View {
+        Section {
+            PVErrorStateView(
+                title: "Couldn't load stack",
+                message: message,
+                identifierPrefix: "stackDetail",
+                retry: { Task { await vm.loadStack(id: stackId, force: true) } }
+            )
+            .listRowBackground(Color.clear)
+        }
+    }
+
+    @ViewBuilder
+    private func content(_ stack: StackResponseDto) -> some View {
+        Section {
+            if let primary = stack.assets.first(where: { $0.id == stack.primaryAssetId }) ?? stack.assets.first {
+                memberRow(primary, in: stack, isPrimary: true)
+            }
+        } header: {
+            Text("Cover")
+        } footer: {
+            Text("The cover is what your timeline shows for this stack.")
+        }
+
+        let others = stack.assets.filter { $0.id != stack.primaryAssetId }
+        if !others.isEmpty {
+            Section("Other photos") {
+                ForEach(others, id: \.id) { member in
+                    memberRow(member, in: stack, isPrimary: false)
                 }
+            }
+        }
+
+        Section {
+            Button {
+                showingAddPhotos = true
+            } label: {
+                Label("Add photos", systemImage: "plus")
+            }
+            .accessibilityIdentifier("addPhotosToStack")
+        } footer: {
+            Text("Adding re-creates the stack on the server, so this stack gets a new id. A photo that already belongs to another stack moves into this one.")
+        }
+
+        Section {
+            Button(role: .destructive) {
+                confirmingUnstack = true
+            } label: {
+                Label("Unstack", systemImage: "square.stack.3d.up.slash")
             }
         }
     }

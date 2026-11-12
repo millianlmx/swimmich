@@ -13,7 +13,18 @@ final class MemoriesViewModel {
 
     var memories: [MemoryResponseDto] = []
     var isLoading = false
+    /// True while `refresh()` runs: the system's refresh control is the
+    /// indicator then, not the screen's own.
+    private(set) var isRefreshing = false
+    /// True once the list was read and applied.
+    private(set) var hasLoaded = false
+    /// Failure of the last read of the list, cleared by a success. Written by
+    /// `load()` only.
+    private(set) var loadErrorMessage: String?
+    /// Failure of the last mutation (save, create, delete, add/remove assets).
     var errorMessage: String?
+    /// Bumped by every `load()`, so only the last read writes its result.
+    private var loadGeneration = 0
 
     // MARK: - Create flow
 
@@ -75,20 +86,46 @@ final class MemoriesViewModel {
 
     // MARK: - Load
 
+    /// What the list renders (S-1): loading, error, empty or the cards.
+    var renderState: ListRenderState {
+        .resolve(
+            isEmpty: memories.isEmpty,
+            hasLoaded: hasLoaded,
+            isLoading: isLoading,
+            isRefreshing: isRefreshing,
+            loadError: loadErrorMessage
+        )
+    }
+
     /// Loads the memory list, sorted by `memoryAt` descending (a birthday's
     /// `data.year` is a birth year and says nothing about its place in the list).
-    /// try-then-mutate: `memories` is replaced only on success.
+    /// Read without a pull (`.task`, every "Try Again"). try-then-mutate:
+    /// `memories` is replaced only on success; a newer read supersedes one
+    /// still in flight.
     func load() async {
+        loadGeneration += 1
+        let generation = loadGeneration
         isLoading = true
-        defer { isLoading = false }
+        defer { if generation == loadGeneration { isLoading = false } }
 
         do {
             let fetched = try await client.getMemories()
+            guard generation == loadGeneration else { return }
             memories = Self.sortedByMemoryAt(fetched)
-            errorMessage = nil
+            hasLoaded = true
+            loadErrorMessage = nil
         } catch {
-            errorMessage = error.userFacingMessage
+            guard generation == loadGeneration, let message = error.userFacingMessage else { return }
+            loadErrorMessage = message
         }
+    }
+
+    /// Pull-to-refresh: `load()` flagged so the screen keeps its current
+    /// rendering.
+    func refresh() async {
+        isRefreshing = true
+        await load()
+        isRefreshing = false
     }
 
     // MARK: - Save / unsave

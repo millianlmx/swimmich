@@ -64,6 +64,22 @@ final class LockedFolderViewModel {
     var bucketIndex = 0
     private(set) var loadedIds: Set<String> = []
 
+    /// True once `GET /api/auth/status` has answered, successfully or not.
+    /// `gate` cannot play this role: it is `.locked` from `init`.
+    private(set) var hasCheckedAccess = false
+    /// A read of the grid (the access check and the first page) is in flight.
+    private(set) var isLoading = false
+    /// True while `refresh()` runs: the system's refresh control is the
+    /// indicator then, not the screen's own.
+    private(set) var isRefreshing = false
+    /// True once the first page was read and applied.
+    private(set) var hasLoaded = false
+    /// Failure of the last read of the grid, cleared by a success. Written by
+    /// the reads only; `errorMessage` stays the doors' own.
+    private(set) var loadErrorMessage: String?
+    /// Bumped by every read, so only the last one writes its result.
+    private var readGeneration = 0
+
     /// The query that scopes **both** bucket reads to the folder. Held here
     /// rather than borrowed from `TimelineViewModel`: the folder is not a
     /// timeline filter, and the timeline's filter menu never learns this value.
@@ -106,28 +122,78 @@ final class LockedFolderViewModel {
     /// `visibility=locked` read answers an empty list rather than a 403, so an
     /// empty answer is indistinguishable from an empty folder.
     func refreshGate() async {
+        readGeneration += 1
+        let generation = readGeneration
+        isLoading = true
         isBusy = true
         errorMessage = nil
+        defer {
+            if generation == readGeneration {
+                isLoading = false
+                isBusy = false
+            }
+        }
         biometricsAvailable = biometricsProbe()
         canUnlockWithBiometrics = biometricsAvailable && pins.storedPIN(for: accountID) != nil
         do {
             let status = try await client.getAuthStatus()
+            hasCheckedAccess = true
+            guard generation == readGeneration else { return }
             if status.isElevated {
                 gate = .unlocked
-                await loadFirstPage()
-            } else if status.pinCode {
-                gate = .locked
+                await readFirstPage(generation: generation)
             } else {
-                gate = .needsSetup
+                // An elevation that expired (or never was) closes the folder:
+                // nothing locked stays in memory behind the door.
+                resetGrid()
+                gate = status.pinCode ? .locked : .needsSetup
             }
         } catch let e {
-            // The status route needs a session token: an account authenticated
-            // with an API key is answered 400 and can never elevate, so say so
-            // instead of showing a PIN field that would loop.
-            errorMessage = e.userFacingMessage
-            gate = pins.storedPIN(for: accountID) == nil ? .needsSetup : .locked
+            // A cancellation changes nothing.
+            guard generation == readGeneration, let message = e.userFacingMessage else { return }
+            hasCheckedAccess = true
+            if gate == .unlocked {
+                // The grid is on screen: it stays, the failure becomes its banner.
+                loadErrorMessage = message
+            } else {
+                // The status route needs a session token: an account authenticated
+                // with an API key is answered 400 and can never elevate, so say so
+                // instead of showing a PIN field that would loop.
+                errorMessage = message
+                gate = pins.storedPIN(for: accountID) == nil ? .needsSetup : .locked
+            }
         }
-        isBusy = false
+    }
+
+    /// Pull-to-refresh: `refreshGate()` flagged so the grid and its photos stay
+    /// in place while the access and the first page are read again.
+    func refresh() async {
+        isRefreshing = true
+        await refreshGate()
+        isRefreshing = false
+    }
+
+    /// What the grid renders.
+    var gridState: ListRenderState {
+        .resolve(
+            isEmpty: items.isEmpty,
+            hasLoaded: hasLoaded,
+            isLoading: isLoading,
+            isRefreshing: isRefreshing,
+            loadError: loadErrorMessage
+        )
+    }
+
+    /// Empties the grid and forgets that it was ever read.
+    private func resetGrid() {
+        items = []
+        buckets = []
+        selectedIds = []
+        loadedIds = []
+        selectionMode = false
+        bucketIndex = 0
+        hasLoaded = false
+        loadErrorMessage = nil
     }
 
     /// First-time PIN creation. Both guards are local and cost no round trip:
@@ -228,12 +294,12 @@ final class LockedFolderViewModel {
     /// the tap and the next status read.
     func relock() async {
         gate = .locked
-        items = []
-        buckets = []
-        selectedIds = []
-        loadedIds = []
-        selectionMode = false
-        bucketIndex = 0
+        // A read still in flight must not write locked photos back.
+        readGeneration += 1
+        isLoading = false
+        // The superseded read's `defer` no longer clears the door's busy flag.
+        isBusy = false
+        resetGrid()
         pinEntry = ""
         errorMessage = nil
         try? await client.lockAuthSession()
@@ -254,11 +320,19 @@ final class LockedFolderViewModel {
     /// reads carry the locked filter — drop it from either and the folder shows
     /// timeline assets.
     func loadFirstPage() async {
-        isLoadingMore = true
-        defer { isLoadingMore = false }
-        errorMessage = nil
+        readGeneration += 1
+        let generation = readGeneration
+        isLoading = true
+        defer { if generation == readGeneration { isLoading = false } }
+        await readFirstPage(generation: generation)
+    }
+
+    /// Reads the bucket list and its newest bucket into locals, then writes
+    /// the grid at once: the photos on screen stay until the answer, and a
+    /// failure or a newer read leaves them alone.
+    private func readFirstPage(generation: Int) async {
         do {
-            buckets = try await client.getTimeBuckets(
+            let fetched = try await client.getTimeBuckets(
                 isFavorite: nil,
                 isTrashed: nil,
                 personId: nil,
@@ -266,12 +340,33 @@ final class LockedFolderViewModel {
                 visibility: filterVisibility,
                 withStacked: true
             )
-            bucketIndex = 0
-            items = []
-            loadedIds = []
-            await loadNextBucket()
+            guard generation == readGeneration else { return }
+            var firstItems: [AssetReactItem] = []
+            var firstIds: Set<String> = []
+            if let first = fetched.first {
+                let columnar = try await client.getTimeBucket(
+                    timeBucket: first.timeBucket,
+                    personId: nil,
+                    withPartners: nil,
+                    visibility: filterVisibility,
+                    withStacked: true
+                )
+                guard generation == readGeneration else { return }
+                for item in AssetReactItem.zip(columnar) where !firstIds.contains(item.id) {
+                    firstItems.append(item)
+                    firstIds.insert(item.id)
+                }
+            }
+            buckets = fetched
+            bucketIndex = fetched.isEmpty ? 0 : 1
+            items = firstItems
+            loadedIds = firstIds
+            selectedIds.formIntersection(firstIds)
+            hasLoaded = true
+            loadErrorMessage = nil
         } catch let e {
-            errorMessage = e.userFacingMessage
+            guard generation == readGeneration, let message = e.userFacingMessage else { return }
+            loadErrorMessage = message
         }
     }
 
@@ -284,6 +379,7 @@ final class LockedFolderViewModel {
 
     private func loadNextBucket() async {
         guard bucketIndex < buckets.count else { return }
+        let generation = readGeneration
         let bucket = buckets[bucketIndex]
         do {
             let columnar = try await client.getTimeBucket(
@@ -293,6 +389,8 @@ final class LockedFolderViewModel {
                 visibility: filterVisibility,
                 withStacked: true
             )
+            // A first-page read that landed meanwhile replaced the grid.
+            guard generation == readGeneration else { return }
             let zipped = AssetReactItem.zip(columnar)
             for item in zipped where !loadedIds.contains(item.id) {
                 items.append(item)
@@ -300,6 +398,7 @@ final class LockedFolderViewModel {
             }
             bucketIndex += 1
         } catch let e {
+            guard generation == readGeneration else { return }
             errorMessage = e.userFacingMessage
         }
     }

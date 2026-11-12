@@ -42,7 +42,7 @@ final class PeopleViewModelTests: XCTestCase {
         XCTAssertEqual(vm.people.count, 2)
         XCTAssertEqual(vm.hiddenCount, 3)
         XCTAssertEqual(vm.total, 5)
-        XCTAssertNil(vm.errorMessage)
+        XCTAssertNil(vm.peopleLoadError)
     }
 
     @MainActor
@@ -53,7 +53,7 @@ final class PeopleViewModelTests: XCTestCase {
         await vm.load()
 
         XCTAssertTrue(vm.people.isEmpty)
-        XCTAssertEqual(vm.errorMessage, UserFacingError.serverErrorMessage)
+        XCTAssertEqual(vm.peopleLoadError, UserFacingError.serverErrorMessage)
     }
 
     @MainActor
@@ -278,9 +278,9 @@ final class PeopleViewModelTests: XCTestCase {
             let vm = makeVM(mock)
             await vm.load()
 
-            XCTAssertEqual(vm.errorMessage, expected)
+            XCTAssertEqual(vm.peopleLoadError, expected)
             for fragment in forbidden {
-                XCTAssertFalse(vm.errorMessage?.contains(fragment) == true, "leaked \"\(fragment)\"")
+                XCTAssertFalse(vm.peopleLoadError?.contains(fragment) == true, "leaked \"\(fragment)\"")
             }
         }
     }
@@ -1315,5 +1315,391 @@ final class PeopleViewModelTests: XCTestCase {
         XCTAssertEqual(statsCalls(mock, "s2"), 0)
         XCTAssertEqual(statsCalls(mock, "b1"), 1)
         XCTAssertEqual(mock.searchPersonCalls.count, 4)
+    }
+
+    // MARK: - List states (L-16)
+
+    private let serverError = APIError.serverError(500, "x")
+
+    /// Holds the first `getPeople` on `latch`; later ones pass.
+    private func holdingFirstPeopleCall(_ latch: TestLatch) -> ((PeopleCall) async throws -> Void) {
+        let calls = TestBox(0)
+        return { _ in
+            calls.value += 1
+            if calls.value == 1 { try await latch.wait() }
+        }
+    }
+
+    /// Holds the first `searchMetadata` on `latch`; later ones pass.
+    private func holdingFirstSearchCall(_ latch: TestLatch) -> ((MetadataSearchDto) async throws -> Void) {
+        let calls = TestBox(0)
+        return { _ in
+            calls.value += 1
+            if calls.value == 1 { try await latch.wait() }
+        }
+    }
+
+    @MainActor
+    func test_AC_149_people_loadingUntilFirstAnswer() async {
+        let mock = MockImmichClient()
+        mock.peopleResponse = peoplePage(["p1"], hasNext: nil)
+        let latch = TestLatch()
+        mock.peopleGate = { _ in try await latch.wait() }
+        let vm = makeVM(mock)
+        XCTAssertEqual(vm.peopleState, .loading)
+
+        let read = Task { @MainActor in await vm.load() }
+        await pollUntil("first read in flight") { mock.getPeopleCalls.count == 1 }
+
+        XCTAssertEqual(vm.peopleState, .loading)
+        latch.open()
+        await read.value
+        XCTAssertEqual(vm.peopleState, .data(.idle))
+    }
+
+    @MainActor
+    func test_AC_149_people_firstReadFailsShowsErrorNotEmpty() async {
+        let mock = MockImmichClient()
+        mock.peopleError = serverError
+        let vm = makeVM(mock)
+
+        await vm.load()
+
+        XCTAssertEqual(vm.peopleState, .error(UserFacingError.serverErrorMessage))
+        XCTAssertFalse(vm.peopleHasLoaded)
+        XCTAssertTrue(vm.people.isEmpty)
+        XCTAssertNil(vm.errorMessage, "the read never writes the action error")
+    }
+
+    @MainActor
+    func test_AC_149_people_successfulEmptyReadIsEmpty() async {
+        let vm = makeVM(MockImmichClient())
+
+        await vm.load()
+
+        XCTAssertEqual(vm.peopleState, .empty)
+        XCTAssertTrue(vm.peopleHasLoaded)
+    }
+
+    @MainActor
+    func test_AC_149_people_retryShowsLoadingThenData() async {
+        let mock = MockImmichClient()
+        mock.peopleError = serverError
+        let vm = makeVM(mock)
+        await vm.load()
+        mock.peopleError = nil
+        mock.peopleResponse = peoplePage(["p1"], hasNext: nil)
+        let latch = TestLatch()
+        mock.peopleGate = { _ in try await latch.wait() }
+        let before = mock.getPeopleCalls.count
+
+        let retry = Task { @MainActor in await vm.load(force: true) }
+        await pollUntil("retry in flight") { mock.getPeopleCalls.count == before + 1 }
+
+        XCTAssertTrue(vm.isLoading)
+        XCTAssertFalse(vm.isRefreshingPeople)
+        XCTAssertEqual(vm.peopleState, .loading)
+        latch.open()
+        await retry.value
+        XCTAssertEqual(vm.peopleState, .data(.idle))
+        XCTAssertEqual(vm.people.map(\.id), ["p1"])
+    }
+
+    @MainActor
+    func test_AC_152_people_refreshFailureKeepsDataThenRetryClears() async {
+        let mock = MockImmichClient()
+        mock.peopleResponse = peoplePage(["p1"], hasNext: nil)
+        let vm = makeVM(mock)
+        await vm.load()
+
+        mock.peopleError = serverError
+        await vm.refresh()
+
+        XCTAssertEqual(vm.peopleState, .data(.failed(UserFacingError.serverErrorMessage)))
+        XCTAssertEqual(vm.people.map(\.id), ["p1"])
+
+        mock.peopleError = nil
+        await vm.load(force: true)
+        XCTAssertEqual(vm.peopleState, .data(.idle))
+    }
+
+    @MainActor
+    func test_AC_154_people_refreshFromEmptyAndErrorReads() async {
+        let mock = MockImmichClient()
+        let vm = makeVM(mock)
+        await vm.load()
+        XCTAssertEqual(vm.peopleState, .empty)
+
+        // From the empty state.
+        let emptyLatch = TestLatch()
+        mock.peopleGate = { _ in try await emptyLatch.wait() }
+        let emptyBefore = mock.getPeopleCalls.count
+        let emptyPull = Task { @MainActor in await vm.refresh() }
+        await pollUntil("pull from empty in flight") { mock.getPeopleCalls.count == emptyBefore + 1 }
+        XCTAssertTrue(vm.isRefreshingPeople)
+        XCTAssertEqual(vm.peopleState, .empty)
+        mock.peopleResponse = peoplePage(["p1"], hasNext: nil)
+        emptyLatch.open()
+        await emptyPull.value
+        XCTAssertFalse(vm.isRefreshingPeople)
+        XCTAssertEqual(vm.peopleState, .data(.idle))
+
+        // From the error state.
+        mock.peopleGate = nil
+        mock.peopleResponse = nil
+        let failing = makeVM(mock)
+        mock.peopleError = serverError
+        await failing.load()
+        XCTAssertEqual(failing.peopleState, .error(UserFacingError.serverErrorMessage))
+        let errorLatch = TestLatch()
+        mock.peopleGate = { _ in try await errorLatch.wait() }
+        mock.peopleResponse = peoplePage(["p1"], hasNext: nil)
+        let errorBefore = mock.getPeopleCalls.count
+        let errorPull = Task { @MainActor in await failing.refresh() }
+        await pollUntil("pull from error in flight") { mock.getPeopleCalls.count == errorBefore + 1 }
+        XCTAssertTrue(failing.isRefreshingPeople)
+        XCTAssertEqual(failing.peopleState, .error(UserFacingError.serverErrorMessage),
+                       "the error stays while the pull reads")
+        mock.peopleError = nil
+        errorLatch.open()
+        await errorPull.value
+        XCTAssertEqual(failing.peopleState, .data(.idle))
+    }
+
+    @MainActor
+    func test_AC_154_people_refreshDuringReadIsNotIgnored() async {
+        let mock = MockImmichClient()
+        mock.peopleResponse = peoplePage(["p1"], hasNext: nil)
+        let latch = TestLatch()
+        mock.peopleGate = holdingFirstPeopleCall(latch)
+        let vm = makeVM(mock)
+
+        let first = Task { @MainActor in await vm.load() }
+        await pollUntil("first read in flight") { mock.getPeopleCalls.count == 1 }
+        await vm.refresh()
+        XCTAssertEqual(mock.getPeopleCalls.count, 2, "a pull during a read is a request of its own")
+        XCTAssertEqual(vm.peopleState, .data(.idle))
+
+        // The superseded read fails late: it must not write.
+        mock.peopleError = serverError
+        latch.open()
+        await first.value
+
+        XCTAssertEqual(vm.peopleState, .data(.idle))
+        XCTAssertFalse(vm.isLoading)
+    }
+
+    @MainActor
+    func test_AC_149_people_actionErrorDoesNotSetTheReadError() async {
+        let mock = MockImmichClient()
+        mock.peopleResponse = peoplePage(["p1"], hasNext: nil)
+        let vm = makeVM(mock)
+        await vm.load()
+
+        mock.peopleError = serverError
+        await vm.toggleFavorite(vm.people[0])
+
+        XCTAssertEqual(vm.errorMessage, UserFacingError.serverErrorMessage)
+        XCTAssertNil(vm.peopleLoadError)
+        XCTAssertEqual(vm.peopleState, .data(.idle))
+    }
+
+    // MARK: - Person detail states (L-16)
+
+    @MainActor
+    func test_AC_149_personAssets_loadingUntilFirstAnswer() async {
+        let mock = MockImmichClient()
+        mock.searchMetadataResponse = assetPage(["a1"], next: nil)
+        let latch = TestLatch()
+        mock.searchMetadataGate = { _ in try await latch.wait() }
+        let vm = makeVM(mock)
+        XCTAssertEqual(vm.assetsState, .loading)
+
+        let read = Task { @MainActor in await vm.select(self.makePerson(id: "p1")) }
+        await pollUntil("first read in flight") { mock.searchMetadataCalls.count == 1 }
+
+        XCTAssertEqual(vm.assetsState, .loading)
+        latch.open()
+        await read.value
+        XCTAssertEqual(vm.assetsState, .data(.idle))
+    }
+
+    @MainActor
+    func test_AC_149_personAssets_firstReadFailsShowsErrorNotEmpty() async {
+        let mock = MockImmichClient()
+        mock.searchMetadataError = serverError
+        let vm = makeVM(mock)
+
+        await vm.select(makePerson(id: "p1"))
+
+        XCTAssertEqual(vm.assetsState, .error(UserFacingError.serverErrorMessage))
+        XCTAssertFalse(vm.assetsHasLoaded)
+        XCTAssertTrue(vm.personAssets.isEmpty)
+    }
+
+    @MainActor
+    func test_AC_149_personAssets_successfulEmptyReadIsEmpty() async {
+        let vm = makeVM(MockImmichClient())
+
+        await vm.select(makePerson(id: "p1"))
+
+        XCTAssertEqual(vm.assetsState, .empty)
+        XCTAssertTrue(vm.assetsHasLoaded)
+    }
+
+    @MainActor
+    func test_AC_149_personAssets_retryShowsLoadingThenData() async {
+        let mock = MockImmichClient()
+        mock.searchMetadataError = serverError
+        let vm = makeVM(mock)
+        await vm.select(makePerson(id: "p1"))
+        mock.searchMetadataError = nil
+        mock.searchMetadataResponse = assetPage(["a1"], next: nil)
+        let latch = TestLatch()
+        mock.searchMetadataGate = { _ in try await latch.wait() }
+        let before = mock.searchMetadataCalls.count
+
+        let retry = Task { @MainActor in await vm.reloadPerson() }
+        await pollUntil("retry in flight") { mock.searchMetadataCalls.count == before + 1 }
+
+        XCTAssertTrue(vm.assetsLoading)
+        XCTAssertFalse(vm.assetsRefreshing)
+        XCTAssertEqual(vm.assetsState, .loading)
+        latch.open()
+        await retry.value
+        XCTAssertEqual(vm.assetsState, .data(.idle))
+        XCTAssertEqual(vm.personAssets.map(\.id), ["a1"])
+    }
+
+    @MainActor
+    func test_AC_152_personAssets_refreshFailureKeepsPhotosThenRetryClears() async {
+        let mock = MockImmichClient()
+        mock.searchMetadataResponse = assetPage(["a1"], next: nil)
+        let vm = makeVM(mock)
+        await vm.select(makePerson(id: "p1"))
+
+        mock.searchMetadataError = serverError
+        await vm.refreshPerson()
+
+        XCTAssertEqual(vm.assetsState, .data(.failed(UserFacingError.serverErrorMessage)))
+        XCTAssertEqual(vm.personAssets.map(\.id), ["a1"])
+
+        mock.searchMetadataError = nil
+        await vm.reloadPerson()
+        XCTAssertEqual(vm.assetsState, .data(.idle))
+    }
+
+    @MainActor
+    func test_AC_154_personAssets_refreshFromEmptyAndErrorReads() async {
+        let mock = MockImmichClient()
+        let vm = makeVM(mock)
+        await vm.select(makePerson(id: "p1"))
+        XCTAssertEqual(vm.assetsState, .empty)
+
+        // From the empty state.
+        let emptyLatch = TestLatch()
+        mock.searchMetadataGate = { _ in try await emptyLatch.wait() }
+        let emptyBefore = mock.searchMetadataCalls.count
+        let emptyPull = Task { @MainActor in await vm.refreshPerson() }
+        await pollUntil("pull from empty in flight") { mock.searchMetadataCalls.count == emptyBefore + 1 }
+        XCTAssertTrue(vm.assetsRefreshing)
+        XCTAssertEqual(vm.assetsState, .empty)
+        mock.searchMetadataResponse = assetPage(["a1"], next: nil)
+        emptyLatch.open()
+        await emptyPull.value
+        XCTAssertFalse(vm.assetsRefreshing)
+        XCTAssertEqual(vm.assetsState, .data(.idle))
+
+        // From the error state.
+        mock.searchMetadataGate = nil
+        mock.searchMetadataResponse = nil
+        let failing = makeVM(mock)
+        mock.searchMetadataError = serverError
+        await failing.select(makePerson(id: "p1"))
+        XCTAssertEqual(failing.assetsState, .error(UserFacingError.serverErrorMessage))
+        let errorLatch = TestLatch()
+        mock.searchMetadataGate = { _ in try await errorLatch.wait() }
+        mock.searchMetadataResponse = assetPage(["a1"], next: nil)
+        let errorBefore = mock.searchMetadataCalls.count
+        let errorPull = Task { @MainActor in await failing.refreshPerson() }
+        await pollUntil("pull from error in flight") { mock.searchMetadataCalls.count == errorBefore + 1 }
+        XCTAssertTrue(failing.assetsRefreshing)
+        XCTAssertEqual(failing.assetsState, .error(UserFacingError.serverErrorMessage),
+                       "the error stays while the pull reads")
+        mock.searchMetadataError = nil
+        errorLatch.open()
+        await errorPull.value
+        XCTAssertEqual(failing.assetsState, .data(.idle))
+    }
+
+    @MainActor
+    func test_AC_154_personAssets_refreshDuringReadIsNotIgnored() async {
+        let mock = MockImmichClient()
+        mock.searchMetadataResponse = assetPage(["a1"], next: nil)
+        let latch = TestLatch()
+        mock.searchMetadataGate = holdingFirstSearchCall(latch)
+        let vm = makeVM(mock)
+
+        let first = Task { @MainActor in await vm.select(self.makePerson(id: "p1")) }
+        await pollUntil("first read in flight") { mock.searchMetadataCalls.count == 1 }
+        await vm.refreshPerson()
+        XCTAssertEqual(mock.searchMetadataCalls.count, 2, "a pull during a read is a request of its own")
+        XCTAssertEqual(vm.assetsState, .data(.idle))
+
+        // The superseded read fails late: it must not write.
+        mock.searchMetadataError = serverError
+        latch.open()
+        await first.value
+
+        XCTAssertEqual(vm.assetsState, .data(.idle))
+        XCTAssertFalse(vm.assetsLoading)
+    }
+
+    @MainActor
+    func test_AC_158_personAssets_failureIsErrorAndRefreshRereads() async {
+        let mock = MockImmichClient()
+        mock.peopleResponse = peoplePage(["p1"], hasNext: nil)
+        mock.searchMetadataError = serverError
+        let vm = makeVM(mock)
+        await vm.load()
+
+        await vm.select(vm.people[0])
+        XCTAssertEqual(vm.assetsState, .error(UserFacingError.serverErrorMessage), "never \"No photos\"")
+
+        mock.searchMetadataError = nil
+        mock.searchMetadataResponse = assetPage(["a1", "a2"], next: nil)
+        let peopleCalls = mock.getPeopleCalls.count
+        let searches = mock.searchMetadataCalls.count
+        await vm.refreshPerson()
+
+        XCTAssertEqual(mock.getPeopleCalls.count, peopleCalls + 1, "the person is read again")
+        XCTAssertEqual(mock.searchMetadataCalls.count, searches + 1, "and so is its first page")
+        XCTAssertEqual(mock.searchMetadataCalls.last?.page, 1)
+        XCTAssertEqual(vm.personAssets.map(\.id), ["a1", "a2"])
+        XCTAssertEqual(vm.assetsState, .data(.idle))
+    }
+
+    /// The detail's `.task` replays on reappearance: a first read that failed
+    /// is not "loaded" and is read again by `select`.
+    @MainActor
+    func test_AC_149_personAssets_failedInitialReadIsReReadBySelect() async {
+        let mock = MockImmichClient()
+        mock.searchMetadataError = serverError
+        let vm = makeVM(mock)
+        let person = makePerson(id: "p1")
+        await vm.select(person)
+        XCTAssertEqual(vm.assetsState, .error(UserFacingError.serverErrorMessage))
+
+        mock.searchMetadataError = nil
+        mock.searchMetadataResponse = assetPage(["a1"], next: nil)
+        await vm.select(person)
+
+        XCTAssertEqual(mock.searchMetadataCalls.count, 2)
+        XCTAssertEqual(vm.personAssets.map(\.id), ["a1"])
+        XCTAssertEqual(vm.assetsState, .data(.idle))
+
+        // Loaded: the next `select` keeps the grid and asks nothing.
+        await vm.select(person)
+        XCTAssertEqual(mock.searchMetadataCalls.count, 2)
     }
 }

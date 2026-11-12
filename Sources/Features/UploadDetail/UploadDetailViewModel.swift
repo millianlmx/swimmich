@@ -58,6 +58,11 @@ final class UploadDetailViewModel {
         !isRunning && deferrals.isEmpty && failures.isEmpty && uploadedCount == 0
     }
 
+    /// Pull-to-refresh. There is nothing to read: every value above is a live
+    /// projection of the engine, so the screen is always current. It starts no
+    /// request and no backup, and returns at once.
+    func refresh() async {}
+
     // MARK: - Per-asset lists
 
     var failures: [BackupFailure] { engine.failures }

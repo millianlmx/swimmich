@@ -90,7 +90,7 @@ final class MemoriesViewModelTests: XCTestCase {
         await vm.load()
 
         XCTAssertTrue(vm.memories.isEmpty)
-        XCTAssertEqual(vm.errorMessage, UserFacingError.serverErrorMessage)
+        XCTAssertEqual(vm.loadErrorMessage, UserFacingError.serverErrorMessage)
     }
 
     @MainActor
@@ -116,7 +116,7 @@ final class MemoriesViewModelTests: XCTestCase {
         await vm.load()
 
         XCTAssertEqual(vm.memories.map(\.id), ["m1"])
-        XCTAssertEqual(vm.errorMessage, UserFacingError.serverErrorMessage)
+        XCTAssertEqual(vm.loadErrorMessage, UserFacingError.serverErrorMessage)
     }
 
     @MainActor
@@ -128,7 +128,7 @@ final class MemoriesViewModelTests: XCTestCase {
         await vm.load()
 
         XCTAssertTrue(vm.memories.isEmpty)
-        XCTAssertEqual(vm.errorMessage, UserFacingError.serverErrorMessage)
+        XCTAssertEqual(vm.loadErrorMessage, UserFacingError.serverErrorMessage)
     }
 
     // MARK: - Save / unsave
@@ -608,5 +608,178 @@ final class MemoriesViewModelTests: XCTestCase {
         XCTAssertEqual(mock.lastCreateMemoryDto?.type, .on_this_day)
         XCTAssertNil(mock.lastCreateMemoryDto?.data.personId)
         XCTAssertNil(mock.lastCreateMemoryDto?.data.personName)
+    }
+
+    // MARK: - List states (L-16)
+
+    private let serverError = APIError.serverError(500, "x")
+
+    @MainActor
+    func test_AC_142_memories_loadingUntilFirstAnswer() async {
+        let mock = MockImmichClient()
+        mock.memoriesResponse = [makeMemory(id: "m1", year: 2022)]
+        let latch = TestLatch()
+        mock.memoriesGate = { try await latch.wait() }
+        let vm = MemoriesViewModel(client: mock)
+        XCTAssertEqual(vm.renderState, .loading)
+
+        let read = Task { @MainActor in await vm.load() }
+        await pollUntil("first read in flight") { mock.requestCount == 1 }
+
+        XCTAssertEqual(vm.renderState, .loading)
+        latch.open()
+        await read.value
+        XCTAssertEqual(vm.renderState, .data(.idle))
+    }
+
+    @MainActor
+    func test_AC_147_memories_successfulEmptyReadIsEmptyState() async {
+        let vm = MemoriesViewModel(client: MockImmichClient())
+
+        await vm.load()
+
+        XCTAssertEqual(vm.renderState, .empty)
+        XCTAssertTrue(vm.hasLoaded)
+    }
+
+    @MainActor
+    func test_AC_149_memories_firstReadFailsShowsErrorNotEmpty() async {
+        let mock = MockImmichClient()
+        mock.memoriesError = serverError
+        let vm = MemoriesViewModel(client: mock)
+
+        await vm.load()
+
+        XCTAssertEqual(vm.renderState, .error(UserFacingError.serverErrorMessage))
+        XCTAssertFalse(vm.hasLoaded)
+        XCTAssertTrue(vm.memories.isEmpty)
+        XCTAssertNil(vm.errorMessage, "the read never writes the mutation error")
+    }
+
+    @MainActor
+    func test_AC_149_memories_retryShowsLoadingThenData() async {
+        let mock = MockImmichClient()
+        mock.memoriesError = serverError
+        let vm = MemoriesViewModel(client: mock)
+        await vm.load()
+        mock.memoriesError = nil
+        mock.memoriesResponse = [makeMemory(id: "m1", year: 2022)]
+        let latch = TestLatch()
+        mock.memoriesGate = { try await latch.wait() }
+        let before = mock.requestCount
+
+        let retry = Task { @MainActor in await vm.load() }
+        await pollUntil("retry in flight") { mock.requestCount == before + 1 }
+
+        XCTAssertTrue(vm.isLoading)
+        XCTAssertFalse(vm.isRefreshing)
+        XCTAssertEqual(vm.renderState, .loading)
+        latch.open()
+        await retry.value
+        XCTAssertEqual(vm.renderState, .data(.idle))
+        XCTAssertEqual(vm.memories.map(\.id), ["m1"])
+    }
+
+    @MainActor
+    func test_AC_152_memories_refreshFailureKeepsDataThenRetryClears() async {
+        let mock = MockImmichClient()
+        mock.memoriesResponse = [makeMemory(id: "m1", year: 2022)]
+        let vm = MemoriesViewModel(client: mock)
+        await vm.load()
+
+        mock.memoriesError = serverError
+        await vm.refresh()
+
+        XCTAssertEqual(vm.renderState, .data(.failed(UserFacingError.serverErrorMessage)))
+        XCTAssertEqual(vm.memories.map(\.id), ["m1"])
+
+        mock.memoriesError = nil
+        await vm.load()
+        XCTAssertEqual(vm.renderState, .data(.idle))
+    }
+
+    @MainActor
+    func test_AC_154_memories_refreshFromEmptyAndErrorReads() async {
+        let mock = MockImmichClient()
+        let vm = MemoriesViewModel(client: mock)
+        await vm.load()
+        XCTAssertEqual(vm.renderState, .empty)
+
+        // From the empty state.
+        let emptyLatch = TestLatch()
+        mock.memoriesGate = { try await emptyLatch.wait() }
+        let emptyBefore = mock.requestCount
+        let emptyPull = Task { @MainActor in await vm.refresh() }
+        await pollUntil("pull from empty in flight") { mock.requestCount == emptyBefore + 1 }
+        XCTAssertTrue(vm.isRefreshing)
+        XCTAssertEqual(vm.renderState, .empty)
+        mock.memoriesResponse = [makeMemory(id: "m1", year: 2022)]
+        emptyLatch.open()
+        await emptyPull.value
+        XCTAssertFalse(vm.isRefreshing)
+        XCTAssertEqual(vm.renderState, .data(.idle))
+
+        // From the error state.
+        mock.memoriesGate = nil
+        mock.memoriesResponse = nil
+        let failing = MemoriesViewModel(client: mock)
+        mock.memoriesError = serverError
+        await failing.load()
+        XCTAssertEqual(failing.renderState, .error(UserFacingError.serverErrorMessage))
+        let errorLatch = TestLatch()
+        mock.memoriesGate = { try await errorLatch.wait() }
+        mock.memoriesResponse = [makeMemory(id: "m1", year: 2022)]
+        let errorBefore = mock.requestCount
+        let errorPull = Task { @MainActor in await failing.refresh() }
+        await pollUntil("pull from error in flight") { mock.requestCount == errorBefore + 1 }
+        XCTAssertTrue(failing.isRefreshing)
+        XCTAssertEqual(failing.renderState, .error(UserFacingError.serverErrorMessage),
+                       "the error stays while the pull reads")
+        mock.memoriesError = nil
+        errorLatch.open()
+        await errorPull.value
+        XCTAssertEqual(failing.renderState, .data(.idle))
+    }
+
+    @MainActor
+    func test_AC_154_memories_refreshDuringReadIsNotIgnored() async {
+        let mock = MockImmichClient()
+        mock.memoriesResponse = [makeMemory(id: "m1", year: 2022)]
+        let latch = TestLatch()
+        let calls = TestBox(0)
+        mock.memoriesGate = {
+            calls.value += 1
+            if calls.value == 1 { try await latch.wait() }
+        }
+        let vm = MemoriesViewModel(client: mock)
+
+        let first = Task { @MainActor in await vm.load() }
+        await pollUntil("first read in flight") { mock.requestCount == 1 }
+        await vm.refresh()
+        XCTAssertEqual(mock.requestCount, 2, "a pull during a read is a request of its own")
+        XCTAssertEqual(vm.renderState, .data(.idle))
+
+        // The superseded read fails late: it must not write.
+        mock.memoriesError = serverError
+        latch.open()
+        await first.value
+
+        XCTAssertEqual(vm.renderState, .data(.idle))
+        XCTAssertFalse(vm.isLoading)
+    }
+
+    @MainActor
+    func test_AC_149_memories_mutationErrorDoesNotSetTheReadError() async {
+        let mock = MockImmichClient()
+        mock.memoriesResponse = [makeMemory(id: "m1", year: 2022)]
+        let vm = MemoriesViewModel(client: mock)
+        await vm.load()
+
+        mock.memoriesError = serverError
+        await vm.saveMemory(id: "m1")
+
+        XCTAssertEqual(vm.errorMessage, UserFacingError.serverErrorMessage)
+        XCTAssertNil(vm.loadErrorMessage)
+        XCTAssertEqual(vm.renderState, .data(.idle))
     }
 }

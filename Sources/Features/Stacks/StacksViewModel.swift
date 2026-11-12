@@ -16,11 +16,29 @@ final class StacksViewModel {
     let client: any ImmichClient
 
     var stacks: [StackResponseDto] = []
-    var isLoading = false
+
+    // List read (hub list). Written by `loadStacks` only.
+    private(set) var isLoadingStacks = false
+    private(set) var isRefreshingStacks = false
+    private(set) var stacksHasLoaded = false
+    private(set) var stacksLoadError: String?
+    private var stacksGeneration = 0
+
+    /// Failure of the last mutation or picker page. Never written by a read.
     var errorMessage: String?
 
     /// Stack currently opened in the detail screen (nil until it loads).
     var selectedStack: StackResponseDto?
+
+    // Detail read. Written by `loadStack` only.
+    /// The id the detail screen asked for: `selectedStack` is the data of the
+    /// screen only while it carries this id.
+    private(set) var stackId: String?
+    private(set) var isLoadingStack = false
+    private(set) var isRefreshingStack = false
+    private(set) var stackHasLoaded = false
+    private(set) var stackLoadError: String?
+    private var stackGeneration = 0
 
     // MARK: - Create flow
 
@@ -63,31 +81,93 @@ final class StacksViewModel {
 
     // MARK: - List
 
+    /// What the hub list renders.
+    var stacksState: ListRenderState {
+        .resolve(
+            isEmpty: stacks.isEmpty,
+            hasLoaded: stacksHasLoaded,
+            isLoading: isLoadingStacks,
+            isRefreshing: isRefreshingStacks,
+            loadError: stacksLoadError
+        )
+    }
+
+    /// Read without pull: `.task` (`force: false` leaves a read in flight
+    /// alone), "Try Again", and every reload after a mutation. The list is
+    /// replaced by a success only; a newer read supersedes one in flight.
     func loadStacks(force: Bool = false) async {
-        guard !(isLoading && !force) else { return }
-        isLoading = true
-        defer { isLoading = false }
+        guard !(isLoadingStacks && !force) else { return }
+        stacksGeneration += 1
+        let generation = stacksGeneration
+        isLoadingStacks = true
+        defer { if generation == stacksGeneration { isLoadingStacks = false } }
         do {
-            stacks = try await client.searchStacks(primaryAssetId: nil)
-            errorMessage = nil
+            let fetched = try await client.searchStacks(primaryAssetId: nil)
+            guard generation == stacksGeneration else { return }
+            stacks = fetched
+            stacksHasLoaded = true
+            stacksLoadError = nil
         } catch {
-            errorMessage = error.userFacingMessage
+            guard generation == stacksGeneration, let message = error.userFacingMessage else { return }
+            stacksLoadError = message
         }
     }
 
+    /// Pull-to-refresh of the list.
+    func refreshStacks() async {
+        isRefreshingStacks = true
+        await loadStacks(force: true)
+        isRefreshingStacks = false
+    }
+
+    // MARK: - Detail
+
+    /// What the detail screen renders: the stack asked for (`stackId`) is the
+    /// data. `.empty` is a stack that was read and is gone (unstacked).
+    var stackState: ListRenderState {
+        .resolve(
+            isEmpty: selectedStack == nil || selectedStack?.id != stackId,
+            hasLoaded: stackHasLoaded,
+            isLoading: isLoadingStack,
+            isRefreshing: isRefreshingStack,
+            loadError: stackLoadError
+        )
+    }
+
     /// Loads one stack and keeps it in `selectedStack` for the detail screen.
-    /// A failure surfaces through `errorMessage` and leaves the screen with
-    /// nothing to show — the detail view renders the error with a retry.
+    /// A failure surfaces through `stackLoadError` and keeps the stack that is
+    /// displayed; with none, the detail view renders the error with a retry.
     func loadStack(id: String, force: Bool = false) async {
-        if !force, let current = selectedStack, current.id == id { return }
-        isLoading = true
-        defer { isLoading = false }
-        do {
-            selectedStack = try await client.getStack(id: id)
-            errorMessage = nil
-        } catch {
-            errorMessage = error.userFacingMessage
+        if stackId != id {
+            stackId = id
+            stackHasLoaded = false
+            stackLoadError = nil
         }
+        if !force, let current = selectedStack, current.id == id {
+            stackHasLoaded = true
+            return
+        }
+        stackGeneration += 1
+        let generation = stackGeneration
+        isLoadingStack = true
+        defer { if generation == stackGeneration { isLoadingStack = false } }
+        do {
+            let fetched = try await client.getStack(id: id)
+            guard generation == stackGeneration else { return }
+            selectedStack = fetched
+            stackHasLoaded = true
+            stackLoadError = nil
+        } catch {
+            guard generation == stackGeneration, let message = error.userFacingMessage else { return }
+            stackLoadError = message
+        }
+    }
+
+    /// Pull-to-refresh of the detail: the members are read again.
+    func refreshStack(id: String) async {
+        isRefreshingStack = true
+        await loadStack(id: id, force: true)
+        isRefreshingStack = false
     }
 
     // MARK: - Mutations
@@ -182,6 +262,10 @@ final class StacksViewModel {
         do {
             let updated = try await client.createStack(assetIds: [primaryAssetId] + additions)
             selectedStack = updated
+            // The detail follows the new id: the stack it shows is read.
+            self.stackId = updated.id
+            stackHasLoaded = true
+            stackLoadError = nil
             errorMessage = nil
             await loadStacks(force: true)
             return updated.id

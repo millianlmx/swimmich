@@ -23,22 +23,49 @@ struct OfflineAssetsView: View {
             VStack(spacing: PVSpacing.s16) {
                 storageUsageCard
 
-                if let error = vm.errorMessage {
-                    InlineErrorBadge(message: error)
-                        .accessibilityIdentifier("offlineError")
-                }
-
-                if !vm.cachedAssets.isEmpty {
-                    searchField
-                }
-
-                if vm.cachedAssets.isEmpty {
+                switch vm.listingState {
+                case .loading:
+                    ProgressView()
+                        .frame(maxWidth: .infinity)
+                        .padding(.vertical, PVSpacing.s24)
+                        .pvLoadingIndicator("offlineLoading")
+                case .error(let message):
+                    PVErrorStateView(
+                        title: "Couldn't read downloaded files",
+                        message: message,
+                        identifierPrefix: "offline",
+                        retry: { Task { await vm.load() } }
+                    )
+                    .containerRelativeFrame(.vertical)
+                case .empty:
                     emptyState
-                } else if assets.isEmpty {
-                    noResultsState
-                } else {
-                    assetGrid
-                    clearAllButton
+                        .containerRelativeFrame(.vertical)
+                case .data(let status):
+                    switch status {
+                    case .idle:
+                        EmptyView()
+                    case .reloading:
+                        ProgressView()
+                            .pvLoadingIndicator("offlineLoading")
+                    case .failed(let message):
+                        InlineErrorBadge(message: message, retry: { Task { await vm.load() } })
+                            .accessibilityIdentifier("offlineRefreshError")
+                    }
+
+                    // A download or removal failure, never shown over the empty state.
+                    if let error = vm.errorMessage {
+                        InlineErrorBadge(message: error)
+                            .accessibilityIdentifier("offlineError")
+                    }
+
+                    searchField
+
+                    if assets.isEmpty {
+                        noResultsState
+                    } else {
+                        assetGrid
+                        clearAllButton
+                    }
                 }
             }
             .padding(PVSpacing.s16)
@@ -47,7 +74,7 @@ struct OfflineAssetsView: View {
         .navigationTitle("Offline Storage")
         .navigationBarTitleDisplayMode(.inline)
         .task { await vm.load() }
-        .refreshable { await vm.load() }
+        .refreshable { await vm.refresh() }
         .confirmationDialog(
             "Remove all offline photos?",
             isPresented: $showClearAllConfirm,

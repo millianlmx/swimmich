@@ -747,4 +747,263 @@ final class AlbumsTests: XCTestCase {
         XCTAssertFalse(vm.selectionMode)
         XCTAssertNil(vm.actionErrorMessage)
     }
+
+    // MARK: - List states (L-16)
+
+    private let serverError = APIError.serverError(500, "x")
+
+    private func detailMock(ids: [String] = ["p1", "p2"], name: String = "Holiday") -> MockImmichClient {
+        let mock = MockImmichClient()
+        mock.getAlbumResponse = ["alb": makeAlbum(id: "alb", name: name, count: ids.count)]
+        mock.searchMetadataResponse = makeSearchResponse(ids: ids)
+        return mock
+    }
+
+    func test_AC_142_albumDetail_loadingUntilFirstAnswer() async {
+        let mock = detailMock()
+        let latch = TestLatch()
+        mock.getAlbumGate = { try await latch.wait() }
+        let vm = AlbumDetailViewModel(client: mock, albumId: "alb")
+        XCTAssertEqual(vm.albumState, .loading)
+
+        let read = Task { @MainActor in await vm.load() }
+        await pollUntil("album read in flight") { mock.requestCount == 1 }
+
+        XCTAssertEqual(vm.albumState, .loading)
+        XCTAssertEqual(vm.assetsState, .loading)
+        latch.open()
+        await read.value
+        XCTAssertEqual(vm.albumState, .data(.idle))
+        XCTAssertEqual(vm.assetsState, .data(.idle))
+        XCTAssertTrue(vm.hasLoadedAssets)
+    }
+
+    func test_AC_142_albumDetail_photosLoadingWhileFirstPageIsInFlight() async {
+        let mock = detailMock()
+        let latch = TestLatch()
+        mock.searchMetadataGate = { _ in try await latch.wait() }
+        let vm = AlbumDetailViewModel(client: mock, albumId: "alb")
+
+        let read = Task { @MainActor in await vm.load() }
+        await pollUntil("page 1 in flight") { mock.requestCount == 2 }
+
+        XCTAssertNotNil(vm.album)
+        XCTAssertEqual(vm.assetsState, .loading, "never No Photos before the page arrived")
+        latch.open()
+        await read.value
+        XCTAssertEqual(vm.assetsState, .data(.idle))
+    }
+
+    func test_AC_147_albumDetail_emptyAlbumIsNoPhotosState() async {
+        let mock = detailMock(ids: [])
+        let vm = AlbumDetailViewModel(client: mock, albumId: "alb")
+
+        await vm.load()
+
+        XCTAssertEqual(vm.albumState, .data(.idle))
+        XCTAssertEqual(vm.assetsState, .empty)
+    }
+
+    /// With no album and an error, the screen used to land on "Album
+    /// Unavailable" once loading ended; it is now an error with a retry that
+    /// reads again.
+    func test_AC_151_albumDetail_unknownAlbumFailureIsRetryableError() async {
+        let mock = detailMock()
+        mock.getAlbumError = serverError
+        let vm = AlbumDetailViewModel(client: mock, albumId: "alb")
+
+        await vm.load()
+
+        XCTAssertNil(vm.album)
+        XCTAssertEqual(vm.albumState, .error(UserFacingError.serverErrorMessage))
+        XCTAssertFalse(vm.isLoading)
+        XCTAssertNil(vm.actionErrorMessage, "the read never writes the action error")
+
+        // "Try Again": the read without a pull, held by a gate.
+        mock.getAlbumError = nil
+        let latch = TestLatch()
+        mock.getAlbumGate = { try await latch.wait() }
+        let before = mock.requestCount
+        let retry = Task { @MainActor in await vm.reload() }
+        await pollUntil("retry in flight") { mock.requestCount == before + 1 }
+        XCTAssertTrue(vm.isLoading)
+        XCTAssertFalse(vm.isRefreshing)
+        XCTAssertEqual(vm.albumState, .loading)
+        latch.open()
+        await retry.value
+        XCTAssertEqual(vm.albumState, .data(.idle))
+        XCTAssertEqual(vm.assets.map(\.id), ["p1", "p2"])
+    }
+
+    func test_AC_149_albumDetail_firstPageFailureIsPhotosErrorWithAlbumKept() async {
+        let mock = detailMock()
+        mock.searchMetadataError = serverError
+        let vm = AlbumDetailViewModel(client: mock, albumId: "alb")
+
+        await vm.load()
+
+        XCTAssertEqual(vm.album?.albumName, "Holiday")
+        XCTAssertEqual(vm.albumState, .data(.idle))
+        XCTAssertEqual(vm.assetsState, .error(UserFacingError.serverErrorMessage))
+        XCTAssertFalse(vm.hasLoadedAssets)
+
+        mock.searchMetadataError = nil
+        await vm.reload()
+        XCTAssertEqual(vm.assetsState, .data(.idle))
+        XCTAssertTrue(vm.hasLoadedAssets)
+    }
+
+    func test_AC_152_albumDetail_refreshFailureKeepsPhotosThenRetryClears() async {
+        let mock = detailMock()
+        let vm = AlbumDetailViewModel(client: mock, albumId: "alb")
+        await vm.load()
+
+        mock.searchMetadataError = serverError
+        await vm.refresh()
+
+        XCTAssertEqual(vm.assetsState, .data(.failed(UserFacingError.serverErrorMessage)))
+        XCTAssertEqual(vm.assets.map(\.id), ["p1", "p2"])
+
+        mock.searchMetadataError = nil
+        await vm.reload()
+        XCTAssertEqual(vm.assetsState, .data(.idle))
+
+        // An album that fails to refresh keeps the album and the photos too.
+        mock.getAlbumError = serverError
+        await vm.refresh()
+        XCTAssertEqual(vm.albumState, .data(.failed(UserFacingError.serverErrorMessage)))
+        XCTAssertEqual(vm.album?.albumName, "Holiday")
+        XCTAssertEqual(vm.assets.map(\.id), ["p1", "p2"])
+    }
+
+    func test_AC_154_albumDetail_refreshFromAlbumErrorKeepsErrorWhileReading() async {
+        let mock = detailMock()
+        mock.getAlbumError = serverError
+        let vm = AlbumDetailViewModel(client: mock, albumId: "alb")
+        await vm.load()
+        XCTAssertEqual(vm.albumState, .error(UserFacingError.serverErrorMessage))
+
+        let latch = TestLatch()
+        mock.getAlbumGate = { try await latch.wait() }
+        mock.getAlbumError = nil
+        let before = mock.requestCount
+        let pull = Task { @MainActor in await vm.refresh() }
+        await pollUntil("pull in flight") { mock.requestCount == before + 1 }
+
+        XCTAssertTrue(vm.isRefreshing)
+        XCTAssertEqual(vm.albumState, .error(UserFacingError.serverErrorMessage),
+                       "the error stays while the pull reads")
+        latch.open()
+        await pull.value
+        XCTAssertFalse(vm.isRefreshing)
+        XCTAssertEqual(vm.albumState, .data(.idle))
+        XCTAssertEqual(vm.assetsState, .data(.idle))
+    }
+
+    func test_AC_154_albumDetail_refreshFromEmptyAndPhotosErrorReads() async {
+        // From the empty state.
+        let mock = detailMock(ids: [])
+        let vm = AlbumDetailViewModel(client: mock, albumId: "alb")
+        await vm.load()
+        XCTAssertEqual(vm.assetsState, .empty)
+        let emptyLatch = TestLatch()
+        mock.searchMetadataGate = { _ in try await emptyLatch.wait() }
+        let emptyBefore = mock.requestCount
+        let emptyPull = Task { @MainActor in await vm.refresh() }
+        await pollUntil("pull from empty in flight") { mock.requestCount == emptyBefore + 2 }
+        XCTAssertTrue(vm.isRefreshing)
+        XCTAssertEqual(vm.assetsState, .empty)
+        mock.searchMetadataResponse = makeSearchResponse(ids: ["p1"])
+        emptyLatch.open()
+        await emptyPull.value
+        XCTAssertEqual(vm.assetsState, .data(.idle))
+
+        // From the photos error state.
+        let failing = AlbumDetailViewModel(client: mock, albumId: "alb")
+        mock.searchMetadataGate = nil
+        mock.searchMetadataError = serverError
+        await failing.load()
+        XCTAssertEqual(failing.assetsState, .error(UserFacingError.serverErrorMessage))
+        let errorLatch = TestLatch()
+        mock.searchMetadataGate = { _ in try await errorLatch.wait() }
+        let errorBefore = mock.requestCount
+        let errorPull = Task { @MainActor in await failing.refresh() }
+        await pollUntil("pull from error in flight") { mock.requestCount == errorBefore + 2 }
+        XCTAssertTrue(failing.isRefreshing)
+        XCTAssertEqual(failing.assetsState, .error(UserFacingError.serverErrorMessage))
+        mock.searchMetadataError = nil
+        errorLatch.open()
+        await errorPull.value
+        XCTAssertEqual(failing.assetsState, .data(.idle))
+    }
+
+    func test_AC_154_albumDetail_refreshDuringReadIsNotIgnored() async {
+        let mock = detailMock()
+        let latch = TestLatch()
+        let calls = TestBox(0)
+        mock.getAlbumGate = {
+            calls.value += 1
+            if calls.value == 1 { try await latch.wait() }
+        }
+        let vm = AlbumDetailViewModel(client: mock, albumId: "alb")
+
+        let first = Task { @MainActor in await vm.load() }
+        await pollUntil("first read in flight") { mock.requestCount == 1 }
+        await vm.refresh()
+        XCTAssertEqual(mock.requestCount, 3, "a pull during a read is a read of its own (album + page 1)")
+        XCTAssertEqual(vm.albumState, .data(.idle))
+        XCTAssertEqual(vm.assetsState, .data(.idle))
+
+        // The superseded read fails late: it must not write.
+        mock.getAlbumError = serverError
+        latch.open()
+        await first.value
+
+        XCTAssertEqual(vm.albumState, .data(.idle))
+        XCTAssertFalse(vm.isLoading)
+    }
+
+    func test_AC_156_albumDetail_refreshReadsAlbumAndFirstPage() async {
+        let mock = detailMock(ids: ["p1"], name: "Old")
+        let vm = AlbumDetailViewModel(client: mock, albumId: "alb")
+        await vm.load()
+        let before = mock.requestCount
+
+        mock.getAlbumResponse = ["alb": makeAlbum(id: "alb", name: "Renamed", count: 2)]
+        mock.searchMetadataResponse = makeSearchResponse(ids: ["p1", "p2"])
+        await vm.refresh()
+
+        XCTAssertEqual(mock.requestCount, before + 2, "album, then page 1")
+        XCTAssertEqual(vm.album?.albumName, "Renamed")
+        XCTAssertEqual(vm.assets.map(\.id), ["p1", "p2"])
+        XCTAssertFalse(vm.isRefreshing)
+        XCTAssertEqual(vm.assetsState, .data(.idle))
+    }
+
+    func test_AC_156_albumDetail_reloadKeepsSelectionModeWhileLoadLeavesIt() async {
+        let mock = detailMock()
+        let vm = AlbumDetailViewModel(client: mock, albumId: "alb")
+        await vm.load()
+        vm.enterSelectionMode()
+        vm.toggleSelection(id: "p1")
+
+        await vm.reload()
+        XCTAssertTrue(vm.selectionMode, "a Try Again does not drop the user's selection mode")
+
+        await vm.load()
+        XCTAssertFalse(vm.selectionMode, "the .task read starts clean")
+    }
+
+    func test_AC_149_albumDetail_cancelledReadChangesNothing() async {
+        let mock = detailMock()
+        let vm = AlbumDetailViewModel(client: mock, albumId: "alb")
+        await vm.load()
+
+        mock.getAlbumError = URLError(.cancelled)
+        await vm.refresh()
+
+        XCTAssertEqual(vm.albumState, .data(.idle))
+        XCTAssertEqual(vm.assetsState, .data(.idle))
+        XCTAssertNil(vm.loadErrorMessage)
+    }
 }

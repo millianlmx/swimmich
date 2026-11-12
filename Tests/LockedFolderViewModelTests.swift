@@ -325,6 +325,234 @@ final class LockedFolderViewModelTests: XCTestCase {
         XCTAssertEqual(client.lockSessionCallCount, 1, "a folder without a PIN keeps its setup door")
         XCTAssertEqual(vm.gate, .needsSetup)
     }
+
+    // MARK: - List states (L-16)
+
+    private let serverError = APIError.serverError(500, "x")
+
+    /// Elevated session: the grid door, ready to read the first page.
+    private func elevated() { status(isElevated: true, pinCode: true) }
+
+    func test_AC_142_lockedFolder_loadingUntilFirstAnswer() async {
+        elevated()
+        stubLockedBucket(ids: ["locked-1"])
+        let latch = TestLatch()
+        client.authStatusGate = { try await latch.wait() }
+        XCTAssertEqual(vm.gridState, .loading)
+
+        let read = Task { @MainActor in await vm.refreshGate() }
+        await pollUntil("access check in flight") { self.client.authStatusCallCount == 1 }
+
+        XCTAssertEqual(vm.gridState, .loading)
+        XCTAssertFalse(vm.hasCheckedAccess)
+        latch.open()
+        await read.value
+        XCTAssertEqual(vm.gridState, .data(.idle))
+    }
+
+    func test_AC_144_lockedFolder_checkingThenLoadingThenEmpty() async {
+        elevated()
+        let accessLatch = TestLatch()
+        let pageLatch = TestLatch()
+        client.authStatusGate = { try await accessLatch.wait() }
+        client.timelineGate = { _ in try? await pageLatch.wait() }
+
+        let read = Task { @MainActor in await vm.refreshGate() }
+        await pollUntil("access check in flight") { self.client.authStatusCallCount == 1 }
+        XCTAssertFalse(vm.hasCheckedAccess, "the first check is still running")
+        XCTAssertEqual(vm.gridState, .loading)
+
+        accessLatch.open()
+        await pollUntil("first page in flight") { self.client.lastTimeBucketsVisibility != nil }
+        XCTAssertTrue(vm.hasCheckedAccess)
+        XCTAssertEqual(vm.gridState, .loading, "empty only once the first page arrived")
+
+        pageLatch.open()
+        await read.value
+        XCTAssertEqual(vm.gridState, .empty)
+    }
+
+    func test_AC_147_lockedFolder_successfulEmptyReadIsEmptyState() async {
+        elevated()
+
+        await vm.refreshGate()
+
+        XCTAssertEqual(vm.gridState, .empty)
+        XCTAssertTrue(vm.hasLoaded)
+    }
+
+    func test_AC_149_lockedFolder_firstReadFailsShowsErrorNotEmpty() async {
+        elevated()
+        client.timeBucketsErrorQueue = [serverError]
+
+        await vm.refreshGate()
+
+        XCTAssertEqual(vm.gridState, .error(UserFacingError.serverErrorMessage))
+        XCTAssertFalse(vm.hasLoaded)
+        XCTAssertTrue(vm.items.isEmpty)
+        XCTAssertEqual(vm.gate, .unlocked, "a failed page read does not close the folder")
+    }
+
+    func test_AC_149_lockedFolder_retryShowsLoadingThenData() async {
+        elevated()
+        client.timeBucketsErrorQueue = [serverError]
+        await vm.refreshGate()
+        stubLockedBucket(ids: ["locked-1"])
+        let latch = TestLatch()
+        client.timelineGate = { _ in try? await latch.wait() }
+        let before = client.requestCount
+
+        let retry = Task { @MainActor in await vm.refreshGate() }
+        await pollUntil("retry in flight") { self.client.requestCount == before + 2 }
+
+        XCTAssertTrue(vm.isLoading)
+        XCTAssertFalse(vm.isRefreshing)
+        XCTAssertEqual(vm.gridState, .loading)
+        latch.open()
+        await retry.value
+        XCTAssertEqual(vm.gridState, .data(.idle))
+        XCTAssertEqual(vm.items.map(\.id), ["locked-1"])
+    }
+
+    func test_AC_152_lockedFolder_refreshFailureKeepsDataThenRetryClears() async {
+        elevated()
+        stubLockedBucket(ids: ["locked-1"])
+        await vm.refreshGate()
+
+        client.timeBucketsErrorQueue = [serverError]
+        await vm.refresh()
+
+        XCTAssertEqual(vm.gridState, .data(.failed(UserFacingError.serverErrorMessage)))
+        XCTAssertEqual(vm.items.map(\.id), ["locked-1"])
+
+        await vm.refreshGate()
+        XCTAssertEqual(vm.gridState, .data(.idle))
+    }
+
+    func test_AC_152_lockedFolder_accessCheckFailureKeepsTheGrid() async {
+        elevated()
+        stubLockedBucket(ids: ["locked-1"])
+        await vm.refreshGate()
+
+        client.authStatusError = serverError
+        await vm.refresh()
+
+        XCTAssertEqual(vm.gate, .unlocked)
+        XCTAssertEqual(vm.gridState, .data(.failed(UserFacingError.serverErrorMessage)))
+        XCTAssertEqual(vm.items.map(\.id), ["locked-1"])
+    }
+
+    func test_AC_154_lockedFolder_refreshFromEmptyAndErrorReads() async {
+        elevated()
+        await vm.refreshGate()
+        XCTAssertEqual(vm.gridState, .empty)
+
+        // From the empty state.
+        let emptyLatch = TestLatch()
+        client.timelineGate = { _ in try? await emptyLatch.wait() }
+        let emptyBefore = client.requestCount
+        let emptyPull = Task { @MainActor in await vm.refresh() }
+        await pollUntil("pull from empty in flight") { self.client.requestCount == emptyBefore + 2 }
+        XCTAssertTrue(vm.isRefreshing)
+        XCTAssertEqual(vm.gridState, .empty)
+        stubLockedBucket(ids: ["locked-1"])
+        emptyLatch.open()
+        await emptyPull.value
+        XCTAssertFalse(vm.isRefreshing)
+        XCTAssertEqual(vm.gridState, .data(.idle))
+
+        // From the error state.
+        client.timelineGate = nil
+        client.bucketsResponse = []
+        let failing = LockedFolderViewModel(
+            client: client, pins: pins, accountID: Self.account,
+            evaluator: { true }, biometricsAvailable: { false }
+        )
+        client.timeBucketsErrorQueue = [serverError]
+        await failing.refreshGate()
+        XCTAssertEqual(failing.gridState, .error(UserFacingError.serverErrorMessage))
+        let errorLatch = TestLatch()
+        client.timelineGate = { _ in try? await errorLatch.wait() }
+        stubLockedBucket(ids: ["locked-2"])
+        let errorBefore = client.requestCount
+        let errorPull = Task { @MainActor in await failing.refresh() }
+        await pollUntil("pull from error in flight") { self.client.requestCount == errorBefore + 2 }
+        XCTAssertTrue(failing.isRefreshing)
+        XCTAssertEqual(failing.gridState, .error(UserFacingError.serverErrorMessage),
+                       "the error stays while the pull reads")
+        errorLatch.open()
+        await errorPull.value
+        XCTAssertEqual(failing.gridState, .data(.idle))
+    }
+
+    func test_AC_154_lockedFolder_refreshDuringReadIsNotIgnored() async {
+        elevated()
+        stubLockedBucket(ids: ["locked-1"])
+        let latch = TestLatch()
+        let calls = TestBox(0)
+        client.timelineGate = { key in
+            guard key == "buckets" else { return }
+            calls.value += 1
+            if calls.value == 1 { try? await latch.wait() }
+        }
+
+        let first = Task { @MainActor in await vm.refreshGate() }
+        await pollUntil("first read in flight") { self.client.requestCount == 2 }
+        await vm.refresh()
+        XCTAssertEqual(vm.gridState, .data(.idle))
+        XCTAssertEqual(client.authStatusCallCount, 2, "a pull during a read is a read of its own")
+
+        // The superseded read fails late: it must not write.
+        client.timeBucketsErrorQueue = [serverError]
+        latch.open()
+        await first.value
+
+        XCTAssertEqual(vm.gridState, .data(.idle))
+        XCTAssertFalse(vm.isLoading)
+    }
+
+    func test_AC_143_lockedFolder_dataKeptDuringRefresh() async {
+        elevated()
+        stubLockedBucket(ids: ["locked-1"])
+        await vm.refreshGate()
+        XCTAssertEqual(vm.items.map(\.id), ["locked-1"])
+
+        let accessLatch = TestLatch()
+        let pageLatch = TestLatch()
+        client.authStatusGate = { try await accessLatch.wait() }
+        client.timelineGate = { _ in try? await pageLatch.wait() }
+        let before = client.requestCount
+        let pull = Task { @MainActor in await vm.refresh() }
+
+        await pollUntil("access check in flight") { self.client.requestCount == before + 1 }
+        XCTAssertTrue(vm.hasCheckedAccess)
+        XCTAssertEqual(vm.gate, .unlocked)
+        XCTAssertEqual(vm.items.map(\.id), ["locked-1"])
+        XCTAssertEqual(vm.gridState, .data(.idle))
+
+        accessLatch.open()
+        await pollUntil("first page in flight") { self.client.requestCount == before + 2 }
+        XCTAssertEqual(vm.gate, .unlocked)
+        XCTAssertEqual(vm.items.map(\.id), ["locked-1"])
+        XCTAssertEqual(vm.gridState, .data(.idle))
+
+        pageLatch.open()
+        await pull.value
+        XCTAssertEqual(vm.items.map(\.id), ["locked-1"])
+        XCTAssertEqual(vm.gridState, .data(.idle))
+    }
+
+    func test_AC_143_lockedFolder_expiredElevationShowsTheDoorNotAnEmptyGrid() async {
+        elevated()
+        stubLockedBucket(ids: ["locked-1"])
+        await vm.refreshGate()
+
+        status(isElevated: false, pinCode: true)
+        await vm.refresh()
+
+        XCTAssertEqual(vm.gate, .locked)
+        XCTAssertTrue(vm.items.isEmpty, "nothing locked stays in memory behind the door")
+    }
 }
 
 // MARK: - Doubles
