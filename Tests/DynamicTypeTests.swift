@@ -145,7 +145,7 @@ final class DynamicTypeTests: XCTestCase {
         window.makeKeyAndVisible()
         defer { window.isHidden = true }
 
-        let proposal = CGSize(width: 393, height: .greatestFiniteMagnitude)
+        let proposal = CGSize(width: 393, height: CGFloat.greatestFiniteMagnitude)
         controller.view.layoutIfNeeded()
         let before = controller.sizeThatFits(in: proposal).height
 
