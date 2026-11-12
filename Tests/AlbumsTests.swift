@@ -963,6 +963,79 @@ final class AlbumsTests: XCTestCase {
         XCTAssertFalse(vm.isLoading)
     }
 
+    /// A pull from the unknown-album error must not publish the album before
+    /// page 1 has answered: the view would swap its scroll container (the one
+    /// carrying `.refreshable`) and SwiftUI would cancel the pull's task.
+    func test_AC_154_albumDetail_pullFromAlbumErrorPublishesAlbumOnlyAfterPageOne() async {
+        let mock = detailMock()
+        mock.getAlbumError = serverError
+        let vm = AlbumDetailViewModel(client: mock, albumId: "alb")
+        await vm.load()
+        XCTAssertEqual(vm.albumState, .error(UserFacingError.serverErrorMessage))
+
+        mock.getAlbumError = nil
+        let latch = TestLatch()
+        mock.searchMetadataGate = { _ in try await latch.wait() }
+        let before = mock.requestCount
+        let pull = Task { @MainActor in await vm.refresh() }
+        await pollUntil("page 1 of the pull in flight") { mock.requestCount == before + 2 }
+
+        XCTAssertNil(vm.album, "the error container stays until page 1 answered")
+        XCTAssertEqual(vm.albumState, .error(UserFacingError.serverErrorMessage))
+        latch.open()
+        await pull.value
+
+        XCTAssertEqual(vm.album?.albumName, "Holiday")
+        XCTAssertEqual(vm.assets.map(\.id), ["p1", "p2"], "page 1 was not dropped")
+        XCTAssertEqual(vm.albumState, .data(.idle))
+        XCTAssertEqual(vm.assetsState, .data(.idle))
+    }
+
+    /// Same pull, page 1 failing: the album is published and the photos carry the error.
+    func test_AC_154_albumDetail_pullFromAlbumErrorWithPageOneFailureKeepsAlbumAndPhotosError() async {
+        let mock = detailMock()
+        mock.getAlbumError = serverError
+        let vm = AlbumDetailViewModel(client: mock, albumId: "alb")
+        await vm.load()
+
+        mock.getAlbumError = nil
+        mock.searchMetadataError = serverError
+        await vm.refresh()
+
+        XCTAssertEqual(vm.album?.albumName, "Holiday")
+        XCTAssertEqual(vm.albumState, .data(.idle))
+        XCTAssertEqual(vm.assetsState, .error(UserFacingError.serverErrorMessage))
+    }
+
+    func test_AC_143_albumDetail_dataKeptDuringRefresh() async {
+        let mock = detailMock()
+        let vm = AlbumDetailViewModel(client: mock, albumId: "alb")
+        await vm.load()
+
+        // Pull: photos stay, the system control is the indicator.
+        let pullLatch = TestLatch()
+        mock.searchMetadataGate = { _ in try await pullLatch.wait() }
+        var before = mock.requestCount
+        let pull = Task { @MainActor in await vm.refresh() }
+        await pollUntil("pull page 1 in flight") { mock.requestCount == before + 2 }
+        XCTAssertEqual(vm.assets.map(\.id), ["p1", "p2"])
+        XCTAssertEqual(vm.assetsState, .data(.idle))
+        pullLatch.open()
+        await pull.value
+
+        // "Try Again" with photos: they stay, an indicator stands in for the banner.
+        let retryLatch = TestLatch()
+        mock.searchMetadataGate = { _ in try await retryLatch.wait() }
+        before = mock.requestCount
+        let retry = Task { @MainActor in await vm.reload() }
+        await pollUntil("retry page 1 in flight") { mock.requestCount == before + 2 }
+        XCTAssertEqual(vm.assets.map(\.id), ["p1", "p2"])
+        XCTAssertEqual(vm.assetsState, .data(.reloading))
+        retryLatch.open()
+        await retry.value
+        XCTAssertEqual(vm.assetsState, .data(.idle))
+    }
+
     func test_AC_156_albumDetail_refreshReadsAlbumAndFirstPage() async {
         let mock = detailMock(ids: ["p1"], name: "Old")
         let vm = AlbumDetailViewModel(client: mock, albumId: "alb")

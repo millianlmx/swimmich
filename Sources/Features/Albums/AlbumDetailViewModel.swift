@@ -294,11 +294,11 @@ final class AlbumDetailViewModel {
         isLoadingMore = false
 
         // Phase 1: album metadata.
+        let hadAlbum = album != nil
+        let fetched: AlbumResponseDto
         do {
-            let fetched = try await client.getAlbum(id: albumId)
+            fetched = try await client.getAlbum(id: albumId)
             guard g == loadGeneration else { return }
-            album = fetched
-            albumLoadError = nil
         } catch {
             guard g == loadGeneration else { return }
             isLoading = false
@@ -308,7 +308,21 @@ final class AlbumDetailViewModel {
 
         // Phase 2: page 1 via search (albumIds filter). A failure there still
         // leaves `album` populated.
-        await fetchFirstPage(generation: g)
+        if hadAlbum {
+            album = fetched
+            albumLoadError = nil
+            await fetchFirstPage(generation: g)
+        } else {
+            // Album unknown (the error state, with its own `.refreshable`): it
+            // is published only once page 1 has answered. Publishing it now
+            // would swap the screen's scroll container under a pull in flight,
+            // and SwiftUI cancels the pull's task with the container, which
+            // would drop page 1 and strand the skeleton.
+            await fetchFirstPage(generation: g, album: fetched)
+            guard g == loadGeneration else { return }
+            album = fetched
+            albumLoadError = nil
+        }
     }
 
     /// Pull-to-refresh: `reload()` flagged so the screen keeps its current
@@ -320,9 +334,10 @@ final class AlbumDetailViewModel {
     }
 
     /// Requests page 1 with the album's current order and replaces the grid.
-    /// Ignored (no mutation) when a newer load started meanwhile.
-    private func fetchFirstPage(generation g: Int) async {
-        let order = album?.order?.rawValue
+    /// Ignored (no mutation) when a newer load started meanwhile. `album` is
+    /// the freshly read metadata when `album` itself is not published yet.
+    private func fetchFirstPage(generation g: Int, album known: AlbumResponseDto? = nil) async {
+        let order = (known ?? album)?.order?.rawValue
         let epoch = removalEpoch
         let before = removedIdsSinceLoad
         isFetchingFirstPage = true

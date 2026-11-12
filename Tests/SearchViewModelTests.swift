@@ -1120,6 +1120,36 @@ final class SearchViewModelTests: XCTestCase {
         XCTAssertEqual(vm.explorePlaces.map(\.city), ["Rome"])
     }
 
+    func test_AC_143_explore_dataKeptDuringRefresh() async {
+        let mock = MockImmichClient()
+        mock.citiesResponse = [makeCityAsset(id: "t1", city: "Paris")]
+        let vm = SearchViewModel(client: mock)
+        await vm.loadExplore()
+
+        // Pull: cards stay, the system control is the indicator.
+        let pullLatch = TestLatch()
+        mock.citiesGate = { try await pullLatch.wait() }
+        var before = mock.requestCount
+        let pull = Task { @MainActor in await vm.refreshExplore() }
+        await pollUntil("pull in flight") { mock.requestCount == before + 1 }
+        XCTAssertEqual(vm.explorePlaces.map(\.city), ["Paris"])
+        XCTAssertEqual(vm.exploreState, .data(.idle))
+        pullLatch.open()
+        await pull.value
+
+        // "Try Again" with cards: they stay, an indicator stands in for the banner.
+        let retryLatch = TestLatch()
+        mock.citiesGate = { try await retryLatch.wait() }
+        before = mock.requestCount
+        let retry = Task { @MainActor in await vm.loadExplore(force: true) }
+        await pollUntil("retry in flight") { mock.requestCount == before + 1 }
+        XCTAssertEqual(vm.explorePlaces.map(\.city), ["Paris"])
+        XCTAssertEqual(vm.exploreState, .data(.reloading))
+        retryLatch.open()
+        await retry.value
+        XCTAssertEqual(vm.exploreState, .data(.idle))
+    }
+
     func test_AC_154_explore_refreshFromEmptyAndErrorReads() async {
         let mock = MockImmichClient()
         let vm = SearchViewModel(client: mock)
