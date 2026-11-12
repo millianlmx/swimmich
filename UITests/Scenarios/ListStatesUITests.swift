@@ -29,12 +29,8 @@ final class ListStatesUITests: XCTestCase {
     private let firstPhoto = "aaaaaaaa-1111-4111-8111-000000000001"
     private let searchText = "liststates"
 
-    /// The retry buttons the scenario reached: every one must be a button.
-    private var retryIdentifiersReached: [String] = []
-
     override func setUpWithError() throws {
         continueAfterFailure = false
-        retryIdentifiersReached = []
         app = XCUIApplication()
         try XCTSkipUnless(stubIsReachable(), "Local Immich stub not running on \(stub)")
     }
@@ -116,8 +112,6 @@ final class ListStatesUITests: XCTestCase {
         pull()
         XCTAssertTrue(element("downloadInfoRow_\(firstPhoto)").waitForExistence(timeout: 20),
                       "Download Info does not list the downloaded photo — \(screenText())")
-
-        assertRetriesAreButtons()
     }
 
     /// AC-142: an indicator, labelled for VoiceOver, until the first answer; no
@@ -152,7 +146,6 @@ final class ListStatesUITests: XCTestCase {
         arm("apiKeys", steps: "500", delay: 0)
         hubRow("apiKeysRow").tap()
         expectRetry("apiKeysErrorRetry")
-        assertRetriesAreButtons()
     }
 
     /// AC-154: from the error state, then from the empty state, a pull sends one
@@ -189,10 +182,13 @@ final class ListStatesUITests: XCTestCase {
                       "no loading indicator \(identifier) during the request — \(screenText())")
     }
 
+    /// The "Try Again" of an error state: reached, and a button, checked at
+    /// the moment it is on screen (the scenario pulls past it right after).
     private func expectRetry(_ identifier: String) {
         XCTAssertTrue(element(identifier).waitForExistence(timeout: 30),
                       "no \"Try Again\" \(identifier) after the 500 — \(screenText())")
-        retryIdentifiersReached.append(identifier)
+        XCTAssertTrue(app.buttons.matching(identifier: identifier).firstMatch.exists,
+                      "\(identifier) is not a button")
     }
 
     /// An error state that is a badge, not a `PVErrorStateView`: not part of AC-153.
@@ -207,13 +203,6 @@ final class ListStatesUITests: XCTestCase {
         XCTAssertEqual(indicator.label, "Loading…", "the indicator carries no VoiceOver label")
         for identifier in forbidden {
             XCTAssertFalse(element(identifier).exists, "\(identifier) is shown before the first answer")
-        }
-    }
-
-    private func assertRetriesAreButtons() {
-        for identifier in retryIdentifiersReached {
-            XCTAssertTrue(app.buttons.matching(identifier: identifier).firstMatch.exists,
-                          "\(identifier) is not a button")
         }
     }
 
