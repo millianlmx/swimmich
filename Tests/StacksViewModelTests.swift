@@ -334,7 +334,7 @@ final class StacksViewModelTests: XCTestCase {
     }
 
     @MainActor
-    func test_AC_149_stacks_successfulEmptyReadIsEmpty() async {
+    func test_AC_147_stacks_successfulEmptyReadIsEmptyState() async {
         let vm = StacksViewModel(client: MockImmichClient())
 
         await vm.loadStacks()

@@ -161,7 +161,7 @@ final class DuplicatesViewModelTests: XCTestCase {
     }
 
     @MainActor
-    func test_AC_149_duplicates_successfulEmptyReadIsEmpty() async {
+    func test_AC_147_duplicates_successfulEmptyReadIsEmptyState() async {
         let vm = DuplicatesViewModel(client: MockImmichClient())
 
         await vm.load()

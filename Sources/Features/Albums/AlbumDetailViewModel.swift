@@ -294,7 +294,10 @@ final class AlbumDetailViewModel {
         isLoadingMore = false
 
         // Phase 1: album metadata.
-        let hadAlbum = album != nil
+        // The error screen (album unknown AND a failed read) is the only
+        // rendering that must survive until page 1 answered; a first load
+        // (no error yet) publishes the album before page 1, as it always did.
+        let errorScreenShown = album == nil && albumLoadError != nil
         let fetched: AlbumResponseDto
         do {
             fetched = try await client.getAlbum(id: albumId)
@@ -308,12 +311,12 @@ final class AlbumDetailViewModel {
 
         // Phase 2: page 1 via search (albumIds filter). A failure there still
         // leaves `album` populated.
-        if hadAlbum {
+        if !errorScreenShown {
             album = fetched
             albumLoadError = nil
             await fetchFirstPage(generation: g)
         } else {
-            // Album unknown (the error state, with its own `.refreshable`): it
+            // Album unknown with the error screen up (its own `.refreshable`): it
             // is published only once page 1 has answered. Publishing it now
             // would swap the screen's scroll container under a pull in flight,
             // and SwiftUI cancels the pull's task with the container, which

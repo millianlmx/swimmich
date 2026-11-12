@@ -360,7 +360,7 @@ final class DeviceSessionsViewModelTests: XCTestCase {
     }
 
     @MainActor
-    func test_AC_149_deviceSessions_successfulEmptyReadIsEmpty() async {
+    func test_AC_147_deviceSessions_successfulEmptyReadIsEmptyState() async {
         let vm = DeviceSessionsViewModel(client: MockImmichClient())
 
         await vm.load()

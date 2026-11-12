@@ -1372,7 +1372,7 @@ final class PeopleViewModelTests: XCTestCase {
     }
 
     @MainActor
-    func test_AC_149_people_successfulEmptyReadIsEmpty() async {
+    func test_AC_147_people_successfulEmptyReadIsEmptyState() async {
         let vm = makeVM(MockImmichClient())
 
         await vm.load()
@@ -1538,7 +1538,7 @@ final class PeopleViewModelTests: XCTestCase {
     }
 
     @MainActor
-    func test_AC_149_personAssets_successfulEmptyReadIsEmpty() async {
+    func test_AC_147_personAssets_successfulEmptyReadIsEmptyState() async {
         let vm = makeVM(MockImmichClient())
 
         await vm.select(makePerson(id: "p1"))

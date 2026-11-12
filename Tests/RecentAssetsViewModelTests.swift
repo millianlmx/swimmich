@@ -301,7 +301,7 @@ final class RecentAssetsViewModelTests: XCTestCase {
     }
 
     @MainActor
-    func test_AC_149_recent_successfulEmptyReadIsEmpty() async {
+    func test_AC_147_recent_successfulEmptyReadIsEmptyState() async {
         let vm = RecentAssetsViewModel(client: MockImmichClient(), mode: .taken)
 
         await vm.load()
