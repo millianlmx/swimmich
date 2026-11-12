@@ -389,14 +389,45 @@ struct SearchView: View {
 
     @ViewBuilder
     private var resultsContent: some View {
-        if vm.isLoading && vm.results.isEmpty && vm.hasSearched {
-            ProgressView().frame(maxWidth: .infinity, maxHeight: .infinity)
-        } else if let msg = vm.errorMessage {
-            errorView(msg)
-        } else if vm.results.isEmpty {
-            if vm.hasSearched {
+        if !vm.hasSearched {
+            // No search done: nothing to refresh, so no `.refreshable` here.
+            ContentUnavailableView(
+                "Search your library",
+                systemImage: "magnifyingglass",
+                description: Text("Find photos by place, object, camera, or natural language.")
+            )
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
+        } else if case .loading = vm.resultsState {
+            ProgressView()
+                .pvLoadingIndicator("searchLoading")
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+        } else {
+            resultsScroll
+        }
+    }
+
+    /// One scroll container for the error, "No results" and the grid, so the
+    /// pull-to-refresh task is never torn down by a state change.
+    private var resultsScroll: some View {
+        ScrollViewReader { proxy in
+        ScrollView {
+            switch vm.resultsState {
+            case .loading:
+                EmptyView()
+            case .error(let message):
+                PVErrorStateView(
+                    title: "Couldn't load results",
+                    message: message,
+                    identifierPrefix: "search",
+                    retry: { Task { await vm.retryResults() } }
+                )
+                .frame(maxWidth: .infinity)
+                .padding(PVSpacing.s24)
+                .containerRelativeFrame(.vertical)
+            case .empty:
                 ContentUnavailableView {
                     Label("No results", systemImage: "magnifyingglass")
+                        .accessibilityIdentifier("searchEmptyState")
                 } description: {
                     Text("Try a different search term.")
                 } actions: {
@@ -409,113 +440,128 @@ struct SearchView: View {
                         .accessibilityIdentifier("searchNoResultsReset")
                     }
                 }
-                .frame(maxWidth: .infinity, maxHeight: .infinity)
-            } else {
-                ContentUnavailableView(
-                    "Search your library",
-                    systemImage: "magnifyingglass",
-                    description: Text("Find photos by place, object, camera, or natural language.")
-                )
-                .frame(maxWidth: .infinity, maxHeight: .infinity)
-            }
-        } else {
-            resultsGrid
-        }
-    }
-
-    private var resultsGrid: some View {
-        ScrollViewReader { proxy in
-        ScrollView {
-            // Mirrors the Photos timeline grid: LazyVStack + LazyVGrid with 2pt
-            // seams and a 4pt horizontal inset — no count header above the grid.
-            LazyVStack(alignment: .leading, spacing: PVSpacing.s2) {
-                if vm.isFilterActive {
-                    activeFiltersBar
-                        .padding(.horizontal, PVSpacing.s4)
-                        .padding(.bottom, PVSpacing.s8)
-                }
-                LazyVGrid(columns: columns, spacing: PVSpacing.s2) {
-                    ForEach(vm.results) { item in
-                        AssetThumbnailCell(
-                            asset: item,
-                            baseURL: auth.baseURL ?? URL(string: "https://example.com")!,
-                            token: auth.accessToken,
-                            onTap: { openViewer(for: item) }
-                        )
-                        .buttonStyle(.plain)
-                        .viewerZoomTile(id: item.id, source: zoomSource)
-                        .id(item.id)
-                        .onAppear {
-                            // AC-406: trigger next page when the last cell appears.
-                            if item.id == vm.results.last?.id {
-                                Task { await vm.loadMore() }
-                            }
-                        }
-                    }
-                }
-                .padding(.horizontal, PVSpacing.s4)
-                if vm.isLoading {
-                    ProgressView()
-                        .padding(.vertical, PVSpacing.s12)
-                        .frame(maxWidth: .infinity)
-                }
+                .frame(maxWidth: .infinity)
+                .containerRelativeFrame(.vertical)
+            case .data(let status):
+                resultsGridContent(status)
             }
         }
+        .refreshable { await vm.refreshResults() }
         .viewerZoomViewport(zoomSource)
         .viewerZoomReveal(zoomSource, proxy: proxy)
         }
     }
 
-    @ViewBuilder
-    private var exploreView: some View {
-        // Distinguish "loading first page" from "genuinely empty" so the user
-        // sees a spinner on first open instead of the empty-state.
-        if vm.explorePlaces.isEmpty && !vm.isLoading {
-            ContentUnavailableView(
-                "No places yet",
-                systemImage: "mappin.and.ellipse",
-                description: Text("Photos with a recognized location will appear here as places you can explore.")
-            )
-            .frame(maxWidth: .infinity, maxHeight: .infinity)
-        } else if vm.explorePlaces.isEmpty {
-            ProgressView().frame(maxWidth: .infinity, maxHeight: .infinity)
-        } else {
-            ScrollView {
-                LazyVStack(spacing: PVSpacing.s12) {
-                    ForEach(vm.explorePlaces) { place in
-                        Button {
-                            Task { await vm.searchByExplore(field: .city, value: place.city) }
-                        } label: {
-                            ExplorePlaceCard(
-                                place: place,
-                                baseURL: auth.baseURL ?? URL(string: "https://example.com")!,
-                                token: auth.accessToken
-                            )
+    private func resultsGridContent(_ status: DataStatus) -> some View {
+        // Mirrors the Photos timeline grid: LazyVStack + LazyVGrid with 2pt
+        // seams and a 4pt horizontal inset — no count header above the grid.
+        LazyVStack(alignment: .leading, spacing: PVSpacing.s2) {
+            if case .failed(let message) = status {
+                InlineErrorBadge(message: message, retry: { Task { await vm.retryResults() } })
+                    .padding(.horizontal, PVSpacing.s4)
+                    .accessibilityIdentifier("searchRefreshError")
+            }
+            if vm.isFilterActive {
+                activeFiltersBar
+                    .padding(.horizontal, PVSpacing.s4)
+                    .padding(.bottom, PVSpacing.s8)
+            }
+            LazyVGrid(columns: columns, spacing: PVSpacing.s2) {
+                ForEach(vm.results) { item in
+                    AssetThumbnailCell(
+                        asset: item,
+                        baseURL: auth.baseURL ?? URL(string: "https://example.com")!,
+                        token: auth.accessToken,
+                        onTap: { openViewer(for: item) }
+                    )
+                    .buttonStyle(.plain)
+                    .viewerZoomTile(id: item.id, source: zoomSource)
+                    .id(item.id)
+                    .onAppear {
+                        // AC-406: trigger next page when the last cell appears.
+                        // A failed page waits for its "Try Again" instead of
+                        // looping on the cell that is still on screen.
+                        if item.id == vm.results.last?.id, vm.errorMessage == nil {
+                            Task { await vm.loadMore() }
                         }
-                        .buttonStyle(.plain)
-                        .disabled(vm.isLoading)
-                        .accessibilityIdentifier("explorePlaceCard_\(place.city)")
                     }
                 }
-                .padding(.horizontal, PVSpacing.s12)
-                .padding(.vertical, PVSpacing.s8)
             }
-            .refreshable { await vm.refreshExplore() }
+            .padding(.horizontal, PVSpacing.s4)
+            if status == .reloading {
+                ProgressView()
+                    .pvLoadingIndicator("searchLoading")
+                    .padding(.vertical, PVSpacing.s12)
+                    .frame(maxWidth: .infinity)
+            }
         }
     }
 
-    private func errorView(_ msg: String) -> some View {
-        VStack(spacing: PVSpacing.s12) {
-            Image(systemName: "exclamationmark.triangle")
-                .font(.pvTitle)
-                .foregroundStyle(Color.immichWarning)
-            Text(msg)
-                .font(.pvBody)
-                .foregroundStyle(Color.textSecondaryPV)
-                .multilineTextAlignment(.center)
+    @ViewBuilder
+    private var exploreView: some View {
+        // The first read shows a spinner outside the scroll container; every
+        // other state lives in one ScrollView that carries the pull-to-refresh.
+        if case .loading = vm.exploreState {
+            ProgressView()
+                .pvLoadingIndicator("exploreLoading")
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+        } else {
+            ScrollView {
+                switch vm.exploreState {
+                case .loading:
+                    EmptyView()
+                case .error(let message):
+                    PVErrorStateView(
+                        title: "Couldn't load places",
+                        message: message,
+                        identifierPrefix: "explore",
+                        retry: { Task { await vm.loadExplore(force: true) } }
+                    )
+                    .frame(maxWidth: .infinity)
+                    .padding(PVSpacing.s24)
+                    .containerRelativeFrame(.vertical)
+                case .empty:
+                    ContentUnavailableView(
+                        "No places yet",
+                        systemImage: "mappin.and.ellipse",
+                        description: Text("Photos with a recognized location will appear here as places you can explore.")
+                    )
+                    .accessibilityIdentifier("exploreEmptyState")
+                    .frame(maxWidth: .infinity)
+                    .containerRelativeFrame(.vertical)
+                case .data(let status):
+                    LazyVStack(spacing: PVSpacing.s12) {
+                        switch status {
+                        case .idle:
+                            EmptyView()
+                        case .reloading:
+                            ProgressView()
+                                .pvLoadingIndicator("exploreLoading")
+                        case .failed(let message):
+                            InlineErrorBadge(message: message, retry: { Task { await vm.loadExplore(force: true) } })
+                                .accessibilityIdentifier("exploreRefreshError")
+                        }
+                        ForEach(vm.explorePlaces) { place in
+                            Button {
+                                Task { await vm.searchByExplore(field: .city, value: place.city) }
+                            } label: {
+                                ExplorePlaceCard(
+                                    place: place,
+                                    baseURL: auth.baseURL ?? URL(string: "https://example.com")!,
+                                    token: auth.accessToken
+                                )
+                            }
+                            .buttonStyle(.plain)
+                            .disabled(vm.isLoadingExplore)
+                            .accessibilityIdentifier("explorePlaceCard_\(place.city)")
+                        }
+                    }
+                    .padding(.horizontal, PVSpacing.s12)
+                    .padding(.vertical, PVSpacing.s8)
+                }
+            }
+            .refreshable { await vm.refreshExplore() }
         }
-        .padding()
-        .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
 }
 

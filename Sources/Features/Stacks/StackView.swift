@@ -9,44 +9,14 @@ struct StackView: View {
 
     var body: some View {
         Group {
-            if vm.isLoading && vm.stacks.isEmpty {
+            if vm.stacksState == .loading {
+                // Outside the list: the list (and its `.refreshable`) only
+                // exists once there is something to say besides "loading".
                 ProgressView()
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
-            } else if vm.stacks.isEmpty {
-                ContentUnavailableView {
-                    Label("No stacks yet", systemImage: "square.stack.3d.down.right")
-                } description: {
-                    Text(vm.errorMessage ?? "Group similar photos — bursts, edits, brackets — to keep your timeline clean.")
-                } actions: {
-                    if vm.errorMessage != nil {
-                        Button("Retry") { Task { await vm.loadStacks(force: true) } }
-                            .buttonStyle(PVPrimaryButtonStyle())
-                    }
-                }
+                    .pvLoadingIndicator("stacksLoading")
             } else {
-                List {
-                    if let errorMessage = vm.errorMessage {
-                        Text(errorMessage)
-                            .font(.pvCaption)
-                            .foregroundStyle(Color.immichError)
-                    }
-
-                    ForEach(vm.stacks, id: \.id) { stack in
-                        NavigationLink {
-                            StackDetailView(stackId: stack.id, vm: vm)
-                        } label: {
-                            StackRowView(stack: stack)
-                        }
-                        .accessibilityIdentifier("stackRow_\(stack.id)")
-                        .swipeActions(edge: .trailing) {
-                            Button(role: .destructive) {
-                                Task { await vm.deleteStack(id: stack.id) }
-                            } label: {
-                                Label("Unstack", systemImage: "square.stack.3d.up.slash")
-                            }
-                        }
-                    }
-                }
+                stackList
             }
         }
         .navigationTitle("Stacks")
@@ -63,12 +33,79 @@ struct StackView: View {
             }
         }
         .task { await vm.loadStacks() }
-        .refreshable { await vm.loadStacks(force: true) }
         .sheet(isPresented: $vm.showCreate) {
             CreateStackSheet(vm: vm)
         }
         .accessibilityElement(children: .contain)
         .accessibilityIdentifier("stacksScreen")
+    }
+
+    private var stackList: some View {
+        List {
+            switch vm.stacksState {
+            case .loading:
+                EmptyView()
+            case .error(let message):
+                Section {
+                    PVErrorStateView(
+                        title: "Couldn't load stacks",
+                        message: message,
+                        identifierPrefix: "stacks",
+                        retry: { Task { await vm.loadStacks(force: true) } }
+                    )
+                    .listRowBackground(Color.clear)
+                }
+            case .empty:
+                Section {
+                    ContentUnavailableView {
+                        Label("No stacks yet", systemImage: "square.stack.3d.down.right")
+                    } description: {
+                        Text("Group similar photos — bursts, edits, brackets — to keep your timeline clean.")
+                    }
+                    .accessibilityIdentifier("stacksEmptyState")
+                    .listRowBackground(Color.clear)
+                }
+            case .data(let status):
+                switch status {
+                case .idle:
+                    EmptyView()
+                case .reloading:
+                    Section {
+                        ProgressView()
+                            .frame(maxWidth: .infinity)
+                            .pvLoadingIndicator("stacksLoading")
+                    }
+                case .failed(let message):
+                    Section {
+                        InlineErrorBadge(message: message, retry: { Task { await vm.loadStacks(force: true) } })
+                            .accessibilityIdentifier("stacksRefreshError")
+                    }
+                }
+                ForEach(vm.stacks, id: \.id) { stack in
+                    NavigationLink {
+                        StackDetailView(stackId: stack.id, vm: vm)
+                    } label: {
+                        StackRowView(stack: stack)
+                    }
+                    .accessibilityIdentifier("stackRow_\(stack.id)")
+                    .swipeActions(edge: .trailing) {
+                        Button(role: .destructive) {
+                            Task { await vm.deleteStack(id: stack.id) }
+                        } label: {
+                            Label("Unstack", systemImage: "square.stack.3d.up.slash")
+                        }
+                    }
+                }
+            }
+            // A mutation's failure (unstack, create) keeps its own message and
+            // never replaces the list.
+            if let message = vm.errorMessage {
+                Section {
+                    InlineErrorBadge(message: message)
+                }
+            }
+        }
+        .refreshable { await vm.refreshStacks() }
     }
 }
 

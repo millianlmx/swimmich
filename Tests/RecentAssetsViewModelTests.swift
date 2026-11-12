@@ -157,8 +157,10 @@ final class RecentAssetsViewModelTests: XCTestCase {
         let vm = RecentAssetsViewModel(client: mock, mode: .added)
         await vm.load()
 
-        XCTAssertNotNil(vm.errorMessage, "the screen replays refresh() from this message")
+        XCTAssertNotNil(vm.errorMessage, "the screen replays load() from this message")
         XCTAssertTrue(vm.dayGroups.isEmpty)
+        XCTAssertFalse(vm.hasLoaded)
+        XCTAssertEqual(vm.renderState, .error(vm.errorMessage ?? ""))
         XCTAssertFalse(vm.isLoading)
     }
 
@@ -238,5 +240,230 @@ final class RecentAssetsViewModelTests: XCTestCase {
                 XCTAssertEqual(call.filters, mock.lastTimeBucketsFilters, "\(mode) \(call.timeBucket)")
             }
         }
+    }
+
+    // MARK: - List states (L-16)
+
+    private let serverError = APIError.serverError(500, "x")
+
+    /// One day, one asset: the smallest data a read can return.
+    @MainActor
+    private func oneDayMock(_ day: String = "2024-07-02", id: String = "b1") -> MockImmichClient {
+        let mock = MockImmichClient()
+        mock.bucketsResponse = [TimeBucketsResponseDto(timeBucket: day, count: 1)]
+        mock.bucketResponses = [day: columnar(ids: [id], day: day)]
+        return mock
+    }
+
+    /// Suspends every `getTimeBuckets` on `latch` (or only the first one) and
+    /// counts how many arrived.
+    private func bucketsGate(
+        _ latch: TestLatch,
+        calls: TestBox<Int>,
+        firstOnly: Bool = false
+    ) -> (String) async -> Void {
+        return { key in
+            guard key == "buckets" else { return }
+            calls.value += 1
+            if !firstOnly || calls.value == 1 { try? await latch.wait() }
+        }
+    }
+
+    @MainActor
+    func test_AC_142_recent_loadingUntilFirstAnswer() async {
+        let mock = oneDayMock()
+        let latch = TestLatch()
+        let calls = TestBox(0)
+        mock.timelineGate = bucketsGate(latch, calls: calls)
+        let vm = RecentAssetsViewModel(client: mock, mode: .taken)
+        XCTAssertEqual(vm.renderState, .loading)
+
+        let read = Task { @MainActor in await vm.load() }
+        await pollUntil("first read in flight") { calls.value == 1 }
+
+        XCTAssertEqual(vm.renderState, .loading)
+        latch.open()
+        await read.value
+        XCTAssertEqual(vm.renderState, .data(.idle))
+    }
+
+    @MainActor
+    func test_AC_149_recent_firstReadFailsShowsErrorNotEmpty() async {
+        let mock = oneDayMock()
+        mock.globalError = serverError
+        let vm = RecentAssetsViewModel(client: mock, mode: .taken)
+
+        await vm.load()
+
+        XCTAssertEqual(vm.renderState, .error(UserFacingError.serverErrorMessage))
+        XCTAssertFalse(vm.hasLoaded)
+        XCTAssertTrue(vm.dayGroups.isEmpty)
+    }
+
+    @MainActor
+    func test_AC_147_recent_successfulEmptyReadIsEmptyState() async {
+        let vm = RecentAssetsViewModel(client: MockImmichClient(), mode: .taken)
+
+        await vm.load()
+
+        XCTAssertEqual(vm.renderState, .empty)
+        XCTAssertTrue(vm.hasLoaded)
+        XCTAssertFalse(vm.hasMore)
+    }
+
+    @MainActor
+    func test_AC_149_recent_retryShowsLoadingThenData() async {
+        let mock = oneDayMock()
+        mock.globalError = serverError
+        let vm = RecentAssetsViewModel(client: mock, mode: .taken)
+        await vm.load()
+        mock.globalError = nil
+        let latch = TestLatch()
+        let calls = TestBox(0)
+        mock.timelineGate = bucketsGate(latch, calls: calls)
+
+        let retry = Task { @MainActor in await vm.load() }
+        await pollUntil("retry in flight") { calls.value == 1 }
+
+        XCTAssertTrue(vm.isLoading)
+        XCTAssertFalse(vm.isRefreshing)
+        XCTAssertEqual(vm.renderState, .loading)
+        latch.open()
+        await retry.value
+        XCTAssertEqual(vm.renderState, .data(.idle))
+        XCTAssertEqual(vm.dayGroups.flatMap { $0.items.map(\.id) }, ["b1"])
+    }
+
+    @MainActor
+    func test_AC_152_recent_refreshFailureKeepsDataThenRetryClears() async {
+        let mock = oneDayMock()
+        let vm = RecentAssetsViewModel(client: mock, mode: .taken)
+        await vm.load()
+
+        mock.globalError = serverError
+        await vm.refresh()
+
+        XCTAssertEqual(vm.renderState, .data(.failed(UserFacingError.serverErrorMessage)))
+        XCTAssertEqual(vm.dayGroups.flatMap { $0.items.map(\.id) }, ["b1"])
+
+        mock.globalError = nil
+        await vm.load()
+        XCTAssertEqual(vm.renderState, .data(.idle))
+    }
+
+    @MainActor
+    func test_AC_152_recent_loadMoreFailureKeepsDaysAsBanner() async {
+        let mock = twoDayMock()
+        let vm = RecentAssetsViewModel(client: mock, mode: .taken)
+        await vm.load()
+
+        mock.timeBucketErrorQueue = [serverError]
+        await vm.loadMore()
+
+        XCTAssertEqual(vm.renderState, .data(.failed(UserFacingError.serverErrorMessage)))
+        XCTAssertEqual(vm.dayGroups.map(\.id), ["2024-07-02"])
+        XCTAssertTrue(vm.hasMore, "the sentinel can ask again")
+
+        await vm.loadMore()
+        XCTAssertEqual(vm.renderState, .data(.idle))
+        XCTAssertEqual(vm.dayGroups.map(\.id), ["2024-07-02", "2024-07-01"])
+    }
+
+    @MainActor
+    func test_AC_154_recent_refreshFromEmptyAndErrorReads() async {
+        let mock = MockImmichClient()
+        let vm = RecentAssetsViewModel(client: mock, mode: .taken)
+        await vm.load()
+        XCTAssertEqual(vm.renderState, .empty)
+
+        // From the empty state.
+        let emptyLatch = TestLatch()
+        let emptyCalls = TestBox(0)
+        mock.timelineGate = bucketsGate(emptyLatch, calls: emptyCalls)
+        let emptyPull = Task { @MainActor in await vm.refresh() }
+        await pollUntil("pull from empty in flight") { emptyCalls.value == 1 }
+        XCTAssertTrue(vm.isRefreshing)
+        XCTAssertEqual(vm.renderState, .empty)
+        mock.bucketsResponse = [TimeBucketsResponseDto(timeBucket: "2024-07-02", count: 1)]
+        mock.bucketResponses = ["2024-07-02": columnar(ids: ["b1"], day: "2024-07-02")]
+        emptyLatch.open()
+        await emptyPull.value
+        XCTAssertFalse(vm.isRefreshing)
+        XCTAssertEqual(vm.renderState, .data(.idle))
+
+        // From the error state.
+        mock.timelineGate = nil
+        let failing = RecentAssetsViewModel(client: mock, mode: .taken)
+        mock.globalError = serverError
+        await failing.load()
+        XCTAssertEqual(failing.renderState, .error(UserFacingError.serverErrorMessage))
+        let errorLatch = TestLatch()
+        let errorCalls = TestBox(0)
+        mock.timelineGate = bucketsGate(errorLatch, calls: errorCalls)
+        let errorPull = Task { @MainActor in await failing.refresh() }
+        await pollUntil("pull from error in flight") { errorCalls.value == 1 }
+        XCTAssertTrue(failing.isRefreshing)
+        XCTAssertEqual(failing.renderState, .error(UserFacingError.serverErrorMessage),
+                       "the error stays while the pull reads")
+        mock.globalError = nil
+        errorLatch.open()
+        await errorPull.value
+        XCTAssertEqual(failing.renderState, .data(.idle))
+    }
+
+    @MainActor
+    func test_AC_154_recent_refreshDuringReadIsNotIgnored() async {
+        let mock = oneDayMock()
+        let latch = TestLatch()
+        let calls = TestBox(0)
+        mock.timelineGate = bucketsGate(latch, calls: calls, firstOnly: true)
+        let vm = RecentAssetsViewModel(client: mock, mode: .taken)
+
+        let first = Task { @MainActor in await vm.load() }
+        await pollUntil("first read in flight") { calls.value == 1 }
+        await vm.refresh()
+        XCTAssertEqual(calls.value, 2, "a pull during a read is a request of its own")
+        XCTAssertEqual(vm.renderState, .data(.idle))
+
+        // The superseded read fails late: it must not write.
+        mock.globalError = serverError
+        latch.open()
+        await first.value
+
+        XCTAssertEqual(vm.renderState, .data(.idle))
+        XCTAssertFalse(vm.isLoading)
+    }
+
+    /// The grid on screen survives a refresh until the first day of the new
+    /// series arrived (try-then-write).
+    @MainActor
+    func test_AC_143_recent_gridKeptUntilFirstDayArrives() async {
+        let mock = oneDayMock("2024-07-02", id: "b1")
+        let vm = RecentAssetsViewModel(client: mock, mode: .taken)
+        await vm.load()
+        XCTAssertEqual(vm.dayGroups.map(\.id), ["2024-07-02"])
+
+        mock.bucketsResponse = [TimeBucketsResponseDto(timeBucket: "2024-07-03", count: 1)]
+        mock.bucketResponses = ["2024-07-03": columnar(ids: ["d1"], day: "2024-07-03")]
+        let bucketsLatch = TestLatch()
+        let dayLatch = TestLatch()
+        mock.timelineGate = { key in
+            try? await (key == "buckets" ? bucketsLatch : dayLatch).wait()
+        }
+        let pull = Task { @MainActor in await vm.refresh() }
+        await pollUntil("buckets request in flight") { mock.requestCount == 3 }
+
+        XCTAssertEqual(vm.dayGroups.map(\.id), ["2024-07-02"], "kept while the bucket list is read")
+        XCTAssertEqual(vm.renderState, .data(.idle))
+        bucketsLatch.open()
+        await pollUntil("first day request in flight") { mock.requestCount == 4 }
+
+        XCTAssertEqual(vm.dayGroups.map(\.id), ["2024-07-02"], "kept while the first day is read")
+        XCTAssertEqual(vm.renderState, .data(.idle))
+        dayLatch.open()
+        await pull.value
+
+        XCTAssertEqual(vm.dayGroups.map(\.id), ["2024-07-03"])
+        XCTAssertEqual(vm.renderState, .data(.idle))
     }
 }

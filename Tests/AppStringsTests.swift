@@ -352,6 +352,48 @@ final class AppStringsTests: XCTestCase {
         }
     }
 
+    /// Keys introduced by L-16 (S-30) plus the two every list state relies on.
+    func test_AC_147_listStateKeysAreTranslatedInEveryShippedLanguage() throws {
+        let strings = try XCTUnwrap(try Self.loadCatalog()["strings"] as? [String: Any])
+        let keys = [
+            "Couldn't load partners", "Couldn't load users", "Couldn't load results",
+            "Couldn't load places", "Couldn't read downloaded files", "Couldn't load API keys",
+            "Couldn't load administration", "Couldn't load activity", "Couldn't load devices",
+            "Couldn't load stacks",
+            "No partners yet",
+            "Partners who share their library with you, and people you share yours with, appear here.",
+            "No photos or videos yet", "Photos and videos you back up appear here.",
+            "Keys you create let apps and scripts use your account.",
+            "Albums in your Photos library appear here.",
+            "No jobs", "Jobs reported by the server appear here.",
+            "No external libraries", "External libraries added on the server appear here.",
+            "This stack is no longer available.",
+            "Group similar photos — bursts, edits, brackets — to keep your timeline clean.",
+            "Try Again", "Loading…",
+        ]
+        for key in keys {
+            let entry = try XCTUnwrap(strings[key] as? [String: Any], "Missing key \(key)")
+            let localizations = try XCTUnwrap(entry["localizations"] as? [String: Any], key)
+            for language in ["de", "es", "fr", "it"] {
+                let unit = (localizations[language] as? [String: Any])?["stringUnit"] as? [String: Any]
+                XCTAssertEqual(unit?["state"] as? String, "translated", "\(language): \(key)")
+                XCTAssertFalse((unit?["value"] as? String ?? "").isEmpty, "\(language): \(key)")
+            }
+        }
+    }
+
+    func test_AC_153_retryLabelIsCatalogTryAgain() throws {
+        let strings = try XCTUnwrap(try Self.loadCatalog()["strings"] as? [String: Any])
+        let entry = try XCTUnwrap(strings["Try Again"] as? [String: Any])
+        let localizations = try XCTUnwrap(entry["localizations"] as? [String: Any])
+        let french = (localizations["fr"] as? [String: Any])?["stringUnit"] as? [String: Any]
+        XCTAssertEqual(french?["value"] as? String, "Réessayer")
+        for language in ["de", "es", "it"] {
+            let unit = (localizations[language] as? [String: Any])?["stringUnit"] as? [String: Any]
+            XCTAssertEqual(unit?["state"] as? String, "translated", language)
+        }
+    }
+
     /// True when a key carries something a translator can act on: format
     /// specifiers and punctuation alone do not.
     private static func hasWords(_ key: String) -> Bool {

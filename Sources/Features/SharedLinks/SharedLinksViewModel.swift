@@ -13,8 +13,17 @@ final class SharedLinksViewModel {
 
     var sharedLinks: [SharedLinkResponseDto] = []
     var isLoading = false
-    var loadErrorMessage: String?
+    /// True while `refresh()` runs: the system's refresh control is the
+    /// indicator then, not the screen's own.
+    private(set) var isRefreshing = false
+    /// True once the list was read and applied.
+    private(set) var hasLoaded = false
+    /// Failure of the last read of the list, cleared by a success. Written by
+    /// `load()` only; actions use `actionErrorMessage`.
+    private(set) var loadErrorMessage: String?
     var actionErrorMessage: String?
+    /// Bumped by every `load()`, so only the last read writes its result.
+    private var loadGeneration = 0
 
     init(client: any ImmichClient) {
         self.client = client
@@ -22,20 +31,43 @@ final class SharedLinksViewModel {
 
     // MARK: - Load
 
+    /// What the list renders (S-1): loading, error, empty or the rows.
+    var renderState: ListRenderState {
+        .resolve(
+            isEmpty: sharedLinks.isEmpty,
+            hasLoaded: hasLoaded,
+            isLoading: isLoading,
+            isRefreshing: isRefreshing,
+            loadError: loadErrorMessage
+        )
+    }
+
+    /// Read without a pull (`.task`, every "Try Again"). The list is replaced
+    /// only by a success; a newer read supersedes one still in flight.
     func load() async {
+        loadGeneration += 1
+        let generation = loadGeneration
         isLoading = true
-        defer { isLoading = false }
+        defer { if generation == loadGeneration { isLoading = false } }
         do {
             // albumId: nil → list ALL shared links for the authenticated user.
-            sharedLinks = try await client.getSharedLinks(albumId: nil)
+            let fetched = try await client.getSharedLinks(albumId: nil)
+            guard generation == loadGeneration else { return }
+            sharedLinks = fetched
+            hasLoaded = true
             loadErrorMessage = nil
         } catch {
-            loadErrorMessage = error.userFacingMessage
+            guard generation == loadGeneration, let message = error.userFacingMessage else { return }
+            loadErrorMessage = message
         }
     }
 
+    /// Pull-to-refresh: `load()` flagged so the screen keeps its current
+    /// rendering.
     func refresh() async {
+        isRefreshing = true
         await load()
+        isRefreshing = false
     }
 
     // MARK: - Revoke

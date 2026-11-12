@@ -34,7 +34,7 @@ final class StacksViewModelTests: XCTestCase {
 
         XCTAssertEqual(vm.stacks.map(\.id), ["s1"])
         XCTAssertEqual(vm.stacks.first?.assets.count, 2)
-        XCTAssertNil(vm.errorMessage)
+        XCTAssertNil(vm.stacksLoadError)
     }
 
     @MainActor
@@ -46,7 +46,7 @@ final class StacksViewModelTests: XCTestCase {
         await vm.loadStacks()
 
         XCTAssertTrue(vm.stacks.isEmpty)
-        XCTAssertEqual(vm.errorMessage, UserFacingError.serverErrorMessage)
+        XCTAssertEqual(vm.stacksLoadError, UserFacingError.serverErrorMessage)
     }
 
     @MainActor
@@ -157,7 +157,7 @@ final class StacksViewModelTests: XCTestCase {
         await vm.loadStack(id: "s1")
 
         XCTAssertNil(vm.selectedStack, "the detail screen renders its error state")
-        XCTAssertEqual(vm.errorMessage, UserFacingError.genericMessage)
+        XCTAssertEqual(vm.stackLoadError, UserFacingError.genericMessage)
     }
 
     // MARK: - Create picker
@@ -286,5 +286,410 @@ final class StacksViewModelTests: XCTestCase {
         XCTAssertNil(result, "the sheet stays open on failure")
         XCTAssertEqual(vm.selectedStack?.id, "old", "and the screen still shows the stack")
         XCTAssertEqual(vm.errorMessage, UserFacingError.genericMessage)
+    }
+
+    // MARK: - List states (L-16)
+
+    private let serverError = APIError.serverError(500, "x")
+
+    /// Holds the first request of a route on `latch`; later ones pass.
+    private func holdingFirstCall(_ latch: TestLatch) -> (() async throws -> Void) {
+        let calls = TestBox(0)
+        return {
+            calls.value += 1
+            if calls.value == 1 { try await latch.wait() }
+        }
+    }
+
+    @MainActor
+    func test_AC_142_stacks_loadingUntilFirstAnswer() async {
+        let mock = MockImmichClient()
+        mock.stacksResponse = [stack(id: "s1", primary: "a1", members: ["a1", "a2"])]
+        let latch = TestLatch()
+        mock.stacksGate = { try await latch.wait() }
+        let vm = StacksViewModel(client: mock)
+        XCTAssertEqual(vm.stacksState, .loading)
+
+        let read = Task { @MainActor in await vm.loadStacks() }
+        await pollUntil("first read in flight") { mock.requestCount == 1 }
+
+        XCTAssertEqual(vm.stacksState, .loading)
+        latch.open()
+        await read.value
+        XCTAssertEqual(vm.stacksState, .data(.idle))
+    }
+
+    @MainActor
+    func test_AC_149_stacks_firstReadFailsShowsErrorNotEmpty() async {
+        let mock = MockImmichClient()
+        mock.stacksError = serverError
+        let vm = StacksViewModel(client: mock)
+
+        await vm.loadStacks()
+
+        XCTAssertEqual(vm.stacksState, .error(UserFacingError.serverErrorMessage))
+        XCTAssertFalse(vm.stacksHasLoaded)
+        XCTAssertTrue(vm.stacks.isEmpty)
+        XCTAssertNil(vm.errorMessage, "the read never writes the action error")
+    }
+
+    @MainActor
+    func test_AC_147_stacks_successfulEmptyReadIsEmptyState() async {
+        let vm = StacksViewModel(client: MockImmichClient())
+
+        await vm.loadStacks()
+
+        XCTAssertEqual(vm.stacksState, .empty)
+        XCTAssertTrue(vm.stacksHasLoaded)
+    }
+
+    @MainActor
+    func test_AC_149_stacks_retryShowsLoadingThenData() async {
+        let mock = MockImmichClient()
+        mock.stacksError = serverError
+        let vm = StacksViewModel(client: mock)
+        await vm.loadStacks()
+        mock.stacksError = nil
+        mock.stacksResponse = [stack(id: "s1", primary: "a1", members: ["a1", "a2"])]
+        let latch = TestLatch()
+        mock.stacksGate = { try await latch.wait() }
+        let before = mock.requestCount
+
+        let retry = Task { @MainActor in await vm.loadStacks(force: true) }
+        await pollUntil("retry in flight") { mock.requestCount == before + 1 }
+
+        XCTAssertTrue(vm.isLoadingStacks)
+        XCTAssertFalse(vm.isRefreshingStacks)
+        XCTAssertEqual(vm.stacksState, .loading)
+        latch.open()
+        await retry.value
+        XCTAssertEqual(vm.stacksState, .data(.idle))
+        XCTAssertEqual(vm.stacks.map(\.id), ["s1"])
+    }
+
+    @MainActor
+    func test_AC_152_stacks_refreshFailureKeepsDataThenRetryClears() async {
+        let mock = MockImmichClient()
+        mock.stacksResponse = [stack(id: "s1", primary: "a1", members: ["a1", "a2"])]
+        let vm = StacksViewModel(client: mock)
+        await vm.loadStacks()
+
+        mock.stacksError = serverError
+        await vm.refreshStacks()
+
+        XCTAssertEqual(vm.stacksState, .data(.failed(UserFacingError.serverErrorMessage)))
+        XCTAssertEqual(vm.stacks.map(\.id), ["s1"])
+
+        mock.stacksError = nil
+        await vm.loadStacks(force: true)
+        XCTAssertEqual(vm.stacksState, .data(.idle))
+    }
+
+    @MainActor
+    func test_AC_154_stacks_refreshFromEmptyAndErrorReads() async {
+        let mock = MockImmichClient()
+        let vm = StacksViewModel(client: mock)
+        await vm.loadStacks()
+        XCTAssertEqual(vm.stacksState, .empty)
+
+        // From the empty state.
+        let emptyLatch = TestLatch()
+        mock.stacksGate = { try await emptyLatch.wait() }
+        let emptyBefore = mock.requestCount
+        let emptyPull = Task { @MainActor in await vm.refreshStacks() }
+        await pollUntil("pull from empty in flight") { mock.requestCount == emptyBefore + 1 }
+        XCTAssertTrue(vm.isRefreshingStacks)
+        XCTAssertEqual(vm.stacksState, .empty)
+        mock.stacksResponse = [stack(id: "s1", primary: "a1", members: ["a1", "a2"])]
+        emptyLatch.open()
+        await emptyPull.value
+        XCTAssertFalse(vm.isRefreshingStacks)
+        XCTAssertEqual(vm.stacksState, .data(.idle))
+
+        // From the error state.
+        mock.stacksGate = nil
+        mock.stacksResponse = nil
+        let failing = StacksViewModel(client: mock)
+        mock.stacksError = serverError
+        await failing.loadStacks()
+        XCTAssertEqual(failing.stacksState, .error(UserFacingError.serverErrorMessage))
+        let errorLatch = TestLatch()
+        mock.stacksGate = { try await errorLatch.wait() }
+        mock.stacksResponse = [stack(id: "s1", primary: "a1", members: ["a1", "a2"])]
+        let errorBefore = mock.requestCount
+        let errorPull = Task { @MainActor in await failing.refreshStacks() }
+        await pollUntil("pull from error in flight") { mock.requestCount == errorBefore + 1 }
+        XCTAssertTrue(failing.isRefreshingStacks)
+        XCTAssertEqual(failing.stacksState, .error(UserFacingError.serverErrorMessage),
+                       "the error stays while the pull reads")
+        mock.stacksError = nil
+        errorLatch.open()
+        await errorPull.value
+        XCTAssertEqual(failing.stacksState, .data(.idle))
+    }
+
+    @MainActor
+    func test_AC_154_stacks_refreshDuringReadIsNotIgnored() async {
+        let mock = MockImmichClient()
+        mock.stacksResponse = [stack(id: "s1", primary: "a1", members: ["a1", "a2"])]
+        let latch = TestLatch()
+        mock.stacksGate = holdingFirstCall(latch)
+        let vm = StacksViewModel(client: mock)
+
+        let first = Task { @MainActor in await vm.loadStacks() }
+        await pollUntil("first read in flight") { mock.requestCount == 1 }
+        await vm.refreshStacks()
+        XCTAssertEqual(mock.requestCount, 2, "a pull during a read is a request of its own")
+        XCTAssertEqual(vm.stacksState, .data(.idle))
+
+        // The superseded read fails late: it must not write.
+        mock.stacksError = serverError
+        latch.open()
+        await first.value
+
+        XCTAssertEqual(vm.stacksState, .data(.idle))
+        XCTAssertFalse(vm.isLoadingStacks)
+    }
+
+    @MainActor
+    func test_AC_149_stacks_actionErrorDoesNotSetTheReadError() async {
+        let mock = MockImmichClient()
+        mock.stacksResponse = [stack(id: "s1", primary: "a1", members: ["a1", "a2"])]
+        let vm = StacksViewModel(client: mock)
+        await vm.loadStacks()
+
+        mock.stacksError = serverError
+        await vm.updatePrimary(stackId: "s1", assetId: "a2")
+
+        XCTAssertNotNil(vm.errorMessage)
+        XCTAssertNil(vm.stacksLoadError)
+        XCTAssertEqual(vm.stacksState, .data(.idle))
+    }
+
+    @MainActor
+    func test_AC_160_stacks_failureIsErrorAndRefreshFailureKeepsStacks() async {
+        let mock = MockImmichClient()
+        mock.stacksError = serverError
+        let vm = StacksViewModel(client: mock)
+
+        await vm.loadStacks()
+        XCTAssertEqual(vm.stacksState, .error(UserFacingError.serverErrorMessage), "never the empty state")
+
+        mock.stacksError = nil
+        mock.stacksResponse = [stack(id: "s1", primary: "a1", members: ["a1", "a2"])]
+        await vm.loadStacks(force: true)
+        XCTAssertEqual(vm.stacksState, .data(.idle))
+
+        mock.stacksError = serverError
+        await vm.refreshStacks()
+        XCTAssertEqual(vm.stacksState, .data(.failed(UserFacingError.serverErrorMessage)))
+        XCTAssertEqual(vm.stacks.map(\.id), ["s1"])
+    }
+
+    // MARK: - Detail states (L-16)
+
+    @MainActor
+    func test_AC_142_stackDetail_loadingUntilFirstAnswer() async {
+        let mock = MockImmichClient()
+        mock.stackDetailResponses["s1"] = stack(id: "s1", primary: "a1", members: ["a1", "a2"])
+        let latch = TestLatch()
+        mock.stackGate = { try await latch.wait() }
+        let vm = StacksViewModel(client: mock)
+        XCTAssertEqual(vm.stackState, .loading)
+
+        let read = Task { @MainActor in await vm.loadStack(id: "s1") }
+        await pollUntil("first read in flight") { mock.requestCount == 1 }
+
+        XCTAssertEqual(vm.stackState, .loading)
+        latch.open()
+        await read.value
+        XCTAssertEqual(vm.stackState, .data(.idle))
+        XCTAssertEqual(vm.selectedStack?.id, "s1")
+    }
+
+    @MainActor
+    func test_AC_154_stackDetail_otherStackIsLoadingNotTheStaleOne() async {
+        let mock = MockImmichClient()
+        mock.stackDetailResponses["s1"] = stack(id: "s1", primary: "a1", members: ["a1", "a2"])
+        let vm = StacksViewModel(client: mock)
+        await vm.loadStack(id: "s1")
+        let latch = TestLatch()
+        mock.stackGate = { try await latch.wait() }
+        let before = mock.requestCount
+
+        let read = Task { @MainActor in await vm.loadStack(id: "s2") }
+        await pollUntil("second stack read in flight") { mock.requestCount == before + 1 }
+
+        XCTAssertEqual(vm.stackState, .loading, "s1 is not the stack asked for")
+        latch.open()
+        await read.value
+        XCTAssertEqual(vm.stackState, .data(.idle))
+        XCTAssertEqual(vm.selectedStack?.id, "s2")
+    }
+
+    @MainActor
+    func test_AC_154_stackDetail_firstReadFailsShowsErrorNotEmpty() async {
+        let mock = MockImmichClient()
+        mock.stacksError = serverError
+        let vm = StacksViewModel(client: mock)
+
+        await vm.loadStack(id: "s1")
+
+        XCTAssertEqual(vm.stackState, .error(UserFacingError.serverErrorMessage))
+        XCTAssertFalse(vm.stackHasLoaded)
+        XCTAssertNil(vm.selectedStack)
+        XCTAssertNil(vm.errorMessage, "the read never writes the action error")
+    }
+
+    @MainActor
+    func test_AC_154_stackDetail_unstackedStackIsEmpty() async {
+        let mock = MockImmichClient()
+        mock.stackDetailResponses["s1"] = stack(id: "s1", primary: "a1", members: ["a1", "a2"])
+        let vm = StacksViewModel(client: mock)
+        await vm.loadStack(id: "s1")
+
+        await vm.deleteStack(id: "s1")
+
+        XCTAssertNil(vm.selectedStack)
+        XCTAssertEqual(vm.stackState, .empty)
+    }
+
+    @MainActor
+    func test_AC_154_stackDetail_retryShowsLoadingThenData() async {
+        let mock = MockImmichClient()
+        mock.stacksError = serverError
+        let vm = StacksViewModel(client: mock)
+        await vm.loadStack(id: "s1")
+        mock.stacksError = nil
+        mock.stackDetailResponses["s1"] = stack(id: "s1", primary: "a1", members: ["a1", "a2"])
+        let latch = TestLatch()
+        mock.stackGate = { try await latch.wait() }
+        let before = mock.requestCount
+
+        let retry = Task { @MainActor in await vm.loadStack(id: "s1", force: true) }
+        await pollUntil("retry in flight") { mock.requestCount == before + 1 }
+
+        XCTAssertTrue(vm.isLoadingStack)
+        XCTAssertFalse(vm.isRefreshingStack)
+        XCTAssertEqual(vm.stackState, .loading)
+        latch.open()
+        await retry.value
+        XCTAssertEqual(vm.stackState, .data(.idle))
+    }
+
+    @MainActor
+    func test_AC_154_stackDetail_refreshFailureKeepsStackThenRetryClears() async {
+        let mock = MockImmichClient()
+        mock.stackDetailResponses["s1"] = stack(id: "s1", primary: "a1", members: ["a1", "a2"])
+        let vm = StacksViewModel(client: mock)
+        await vm.loadStack(id: "s1")
+
+        mock.stacksError = serverError
+        await vm.refreshStack(id: "s1")
+
+        XCTAssertEqual(vm.stackState, .data(.failed(UserFacingError.serverErrorMessage)))
+        XCTAssertEqual(vm.selectedStack?.assets.count, 2)
+
+        mock.stacksError = nil
+        await vm.loadStack(id: "s1", force: true)
+        XCTAssertEqual(vm.stackState, .data(.idle))
+    }
+
+    @MainActor
+    func test_AC_154_stackDetail_refreshFromEmptyAndErrorReads() async {
+        let mock = MockImmichClient()
+        mock.stackDetailResponses["s1"] = stack(id: "s1", primary: "a1", members: ["a1", "a2"])
+        let vm = StacksViewModel(client: mock)
+        await vm.loadStack(id: "s1")
+        await vm.deleteStack(id: "s1")
+        XCTAssertEqual(vm.stackState, .empty)
+
+        // From the empty state (the stack is gone, then back).
+        let emptyLatch = TestLatch()
+        mock.stackGate = { try await emptyLatch.wait() }
+        let emptyBefore = mock.requestCount
+        let emptyPull = Task { @MainActor in await vm.refreshStack(id: "s1") }
+        await pollUntil("pull from empty in flight") { mock.requestCount == emptyBefore + 1 }
+        XCTAssertTrue(vm.isRefreshingStack)
+        XCTAssertEqual(vm.stackState, .empty)
+        emptyLatch.open()
+        await emptyPull.value
+        XCTAssertFalse(vm.isRefreshingStack)
+        XCTAssertEqual(vm.stackState, .data(.idle))
+
+        // From the error state.
+        mock.stackGate = nil
+        let failing = StacksViewModel(client: mock)
+        mock.stacksError = serverError
+        await failing.loadStack(id: "s1")
+        XCTAssertEqual(failing.stackState, .error(UserFacingError.serverErrorMessage))
+        let errorLatch = TestLatch()
+        mock.stackGate = { try await errorLatch.wait() }
+        let errorBefore = mock.requestCount
+        let errorPull = Task { @MainActor in await failing.refreshStack(id: "s1") }
+        await pollUntil("pull from error in flight") { mock.requestCount == errorBefore + 1 }
+        XCTAssertTrue(failing.isRefreshingStack)
+        XCTAssertEqual(failing.stackState, .error(UserFacingError.serverErrorMessage),
+                       "the error stays while the pull reads")
+        mock.stacksError = nil
+        errorLatch.open()
+        await errorPull.value
+        XCTAssertEqual(failing.stackState, .data(.idle))
+    }
+
+    @MainActor
+    func test_AC_154_stackDetail_refreshDuringReadIsNotIgnored() async {
+        let mock = MockImmichClient()
+        mock.stackDetailResponses["s1"] = stack(id: "s1", primary: "a1", members: ["a1", "a2"])
+        let latch = TestLatch()
+        mock.stackGate = holdingFirstCall(latch)
+        let vm = StacksViewModel(client: mock)
+
+        let first = Task { @MainActor in await vm.loadStack(id: "s1") }
+        await pollUntil("first read in flight") { mock.requestCount == 1 }
+        await vm.refreshStack(id: "s1")
+        XCTAssertEqual(mock.requestCount, 2, "a pull during a read is a request of its own")
+        XCTAssertEqual(vm.stackState, .data(.idle))
+
+        // The superseded read fails late: it must not write.
+        mock.stacksError = serverError
+        latch.open()
+        await first.value
+
+        XCTAssertEqual(vm.stackState, .data(.idle))
+        XCTAssertFalse(vm.isLoadingStack)
+    }
+
+    @MainActor
+    func test_AC_156_stackDetail_refreshReloadsStack() async {
+        let mock = MockImmichClient()
+        mock.stackDetailResponses["s1"] = stack(id: "s1", primary: "a1", members: ["a1", "a2"])
+        let vm = StacksViewModel(client: mock)
+        await vm.loadStack(id: "s1")
+        XCTAssertEqual(vm.selectedStack?.assets.count, 2)
+        let before = mock.requestCount
+
+        mock.stackDetailResponses["s1"] = stack(id: "s1", primary: "a1", members: ["a1", "a2", "a3"])
+        await vm.refreshStack(id: "s1")
+
+        XCTAssertEqual(mock.requestCount, before + 1)
+        XCTAssertEqual(vm.selectedStack?.assets.count, 3)
+        XCTAssertEqual(vm.stackState, .data(.idle))
+        XCTAssertFalse(vm.isRefreshingStack)
+    }
+
+    @MainActor
+    func test_AC_154_stackDetail_actionErrorDoesNotSetTheReadError() async {
+        let mock = MockImmichClient()
+        mock.stackDetailResponses["s1"] = stack(id: "s1", primary: "a1", members: ["a1", "a2"])
+        let vm = StacksViewModel(client: mock)
+        await vm.loadStack(id: "s1")
+
+        mock.stacksError = serverError
+        await vm.updatePrimary(stackId: "s1", assetId: "a2")
+
+        XCTAssertNotNil(vm.errorMessage)
+        XCTAssertNil(vm.stackLoadError)
+        XCTAssertEqual(vm.stackState, .data(.idle))
     }
 }

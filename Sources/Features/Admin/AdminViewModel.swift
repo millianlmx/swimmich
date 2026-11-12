@@ -15,7 +15,18 @@ final class AdminViewModel {
     var libraries: [LibraryResponseDto] = []
 
     var isLoading = false
+    /// True while `refresh()` runs: the system's refresh control is the
+    /// indicator then, not the screen's own.
+    private(set) var isRefreshing = false
+    /// True once users, jobs and libraries were read and applied.
+    private(set) var hasLoaded = false
+    /// Failure of the last read of the three lists, cleared by a success.
+    /// Written by `load` only.
+    private(set) var loadErrorMessage: String?
+    /// Failure of the last mutation (user, job, library).
     var errorMessage: String?
+    /// Bumped by every `load`, so only the last read writes its result.
+    private var loadGeneration = 0
 
     /// Instance-wide totals (`GET /api/server/statistics`, administrators only).
     private(set) var instanceStats: ServerStatsResponseDto?
@@ -29,21 +40,41 @@ final class AdminViewModel {
     /// Sorted queue names so the jobs list is stable across refreshes.
     var sortedJobNames: [String] { jobs.keys.sorted() }
 
+    /// What the three lists render (`data` = the users).
+    var renderState: ListRenderState {
+        .resolve(
+            isEmpty: users.isEmpty,
+            hasLoaded: hasLoaded,
+            isLoading: isLoading,
+            isRefreshing: isRefreshing,
+            loadError: loadErrorMessage
+        )
+    }
+
+    /// First read, "Try Again", `.task` and the reload after a mutation (never
+    /// pulls). The lists are replaced only by a success; a newer read
+    /// supersedes one still in flight. Without `force`, a read already in
+    /// flight is not duplicated.
     func load(force: Bool = false) async {
         guard !(isLoading && !force) else { return }
+        loadGeneration += 1
+        let generation = loadGeneration
         isLoading = true
-        defer { isLoading = false }
+        defer { if generation == loadGeneration { isLoading = false } }
         do {
             async let u = client.getAdminUsers()
             async let j = client.getJobsStatus()
             async let l = client.getLibraries()
             let (users, jobs, libraries) = try await (u, j, l)
+            guard generation == loadGeneration else { return }
             self.users = users
             self.jobs = jobs
             self.libraries = libraries
-            errorMessage = nil
+            hasLoaded = true
+            loadErrorMessage = nil
         } catch {
-            errorMessage = error.userFacingMessage
+            guard generation == loadGeneration, let message = error.userFacingMessage else { return }
+            loadErrorMessage = message
         }
     }
 
@@ -51,7 +82,9 @@ final class AdminViewModel {
     /// parallel. Each keeps its own outcome.
     func refresh() async {
         async let stats: Void = loadInstanceStats()
+        isRefreshing = true
         await load(force: true)
+        isRefreshing = false
         await stats
     }
 

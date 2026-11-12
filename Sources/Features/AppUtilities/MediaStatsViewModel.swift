@@ -36,12 +36,23 @@ final class MediaStatsViewModel {
 
     var offlineBytes: Int64 { offline.cacheUsage }
 
+    /// Why the offline cache could not be read, or `nil`. While set, the cache
+    /// facts above are not measurements and the screen shows "Unavailable".
+    var offlineListingErrorMessage: String? { offline.listingErrorMessage }
+
+    /// The account's own counts were read and are 0 photos and 0 videos.
+    var serverCountsAreEmpty: Bool {
+        if case .loaded(let counts) = storage.counts { return counts.total == 0 }
+        return false
+    }
+
     // MARK: - Loading
 
-    /// Refreshes the device's half (the offline cache is a projection, not a
-    /// live read), then the account's two server reads; re-entrancy guarded.
+    /// Re-reads the device's half (the offline cache is a projection of the
+    /// disk), then the account's two server reads. Action of the `.task`, the
+    /// `.refreshable` and every "Try Again": the screen has no list, its rows
+    /// stay in place, so there is no refreshing state.
     func load() async {
-        guard !isLoading else { return }
         isLoading = true
         defer { isLoading = false }
         await offline.load()

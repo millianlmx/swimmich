@@ -129,6 +129,19 @@ final class SearchViewModel {
     private(set) var nextCursor: String? = nil
     var canLoadMore: Bool { nextPage != nil || nextCursor != nil }
     var hasSearched: Bool = false
+    /// Whether the last failed read was a `loadMore()` (decides what "Try Again" re-runs).
+    private var lastFailureWasLoadMore = false
+
+    /// Render state of the results (S-1); `hasSearched` plays the role of `hasLoaded`.
+    var resultsState: ListRenderState {
+        .resolve(
+            isEmpty: results.isEmpty,
+            hasLoaded: hasSearched,
+            isLoading: isLoading,
+            isRefreshing: isRefreshing,
+            loadError: errorMessage
+        )
+    }
 
     // Explore (AC-404) — Places list powered by GET /search/cities.
     private(set) var exploreData: [SearchExploreResponseDto] = []
@@ -185,6 +198,18 @@ final class SearchViewModel {
 
     // UI state
     private(set) var isLoading: Bool = false
+    private(set) var isRefreshing: Bool = false
+    /// Reads in flight; `isLoading` is true while any is, so a superseded read
+    /// ending never hides a newer one.
+    private var readsInFlight = 0
+    private func beginRead() {
+        readsInFlight += 1
+        isLoading = true
+    }
+    private func endRead() {
+        readsInFlight -= 1
+        isLoading = readsInFlight > 0
+    }
     var errorMessage: String? = nil
 
     /// Debounce for live search (queryDidChange). Tests override with `.zero`.
@@ -256,8 +281,8 @@ final class SearchViewModel {
         // empty query but pre-sets the filter, so we only clear when there is
         // actual free-text to run.)
         if !lastQueried.isEmpty { pendingExploreFilter = nil }
-        isLoading = true
-        defer { isLoading = false }
+        beginRead()
+        defer { endRead() }
 
         // Reset pagination state (AC-404b: not accumulated).
         results = []
@@ -266,6 +291,7 @@ final class SearchViewModel {
         nextPage = nil
         nextCursor = nil
         errorMessage = nil
+        lastFailureWasLoadMore = false
         hasSearched = true
 
         do {
@@ -293,8 +319,8 @@ final class SearchViewModel {
     func loadMore() async {
         guard !isLoading, canLoadMore else { return }
         let gen = searchGeneration
-        isLoading = true
-        defer { isLoading = false }
+        beginRead()
+        defer { endRead() }
 
         let nextPageNumber = currentPage + 1
         do {
@@ -303,10 +329,58 @@ final class SearchViewModel {
             guard gen == searchGeneration else { return }
             currentPage = nextPageNumber
             applyResponse(resp, append: true)
+            errorMessage = nil
+            lastFailureWasLoadMore = false
         } catch {
             if UserFacingError.isCancellation(error) { return }
             guard gen == searchGeneration else { return }
             errorMessage = error.userFacingMessage
+            lastFailureWasLoadMore = true
+        }
+    }
+
+    /// Read without pull (S-7): re-runs the current search — same text, mode,
+    /// filters and OCR toggle — from page 1. `results` stay on screen until the
+    /// answer replaces them; a failure keeps them and sets `errorMessage`.
+    /// Never touches `isRefreshing`, never swallowed by an in-flight read.
+    func replaySearch() async {
+        guard hasSearched else { return }
+        let gen = searchGeneration + 1
+        searchGeneration = gen
+        beginRead()
+        defer { endRead() }
+
+        do {
+            let resp = try await dispatchSearch(page: 1)
+            guard gen == searchGeneration else { return }
+            loadedIds = []
+            currentPage = 1
+            applyResponse(resp)
+            errorMessage = nil
+            lastFailureWasLoadMore = false
+        } catch {
+            if UserFacingError.isCancellation(error) { return }
+            guard gen == searchGeneration else { return }
+            errorMessage = error.userFacingMessage
+            lastFailureWasLoadMore = false
+        }
+    }
+
+    /// Pull-to-refresh (S-3): `replaySearch()` with `isRefreshing` raised.
+    /// Nothing to refresh before the first search.
+    func refreshResults() async {
+        guard hasSearched else { return }
+        isRefreshing = true
+        defer { isRefreshing = false }
+        await replaySearch()
+    }
+
+    /// Both "Try Again" buttons: the page that failed, or the whole search.
+    func retryResults() async {
+        if lastFailureWasLoadMore {
+            await loadMore()
+        } else {
+            await replaySearch()
         }
     }
 
@@ -403,6 +477,7 @@ final class SearchViewModel {
         nextPage = nil
         nextCursor = nil
         errorMessage = nil
+        lastFailureWasLoadMore = false
         hasSearched = false
     }
 
@@ -509,6 +584,22 @@ final class SearchViewModel {
     /// persistent, so a once-per-VM fetch would never reflect new uploads.
     private let exploreStaleInterval: TimeInterval = 5 * 60
     private var exploreLoadedAt: Date? = nil
+    /// Explore's own read state (S-8): never shared with the search results.
+    private(set) var isLoadingExplore = false
+    private(set) var isRefreshingExplore = false
+    private(set) var exploreLoadError: String? = nil
+    private var exploreGeneration = 0
+
+    /// Render state of the Places list (S-1); `hasLoaded` = a first answer arrived.
+    var exploreState: ListRenderState {
+        .resolve(
+            isEmpty: explorePlaces.isEmpty,
+            hasLoaded: exploreLoadedAt != nil,
+            isLoading: isLoadingExplore,
+            isRefreshing: isRefreshingExplore,
+            loadError: exploreLoadError
+        )
+    }
     /// Max concurrent per-city count fetches during enrichment.
     private let exploreCountConcurrency = 6
 
@@ -522,30 +613,39 @@ final class SearchViewModel {
     /// POST /search/statistics per city (concurrency-limited) and update each
     /// place's photoCount as it arrives, re-sorting by count desc.
     func loadExplore(force: Bool = false) async {
-        guard !isLoading else { return }
         let stale = exploreLoadedAt.map { Date().timeIntervalSince($0) > exploreStaleInterval } ?? true
         guard force || explorePlaces.isEmpty || stale else { return }
-        isLoading = true
-        defer { isLoading = false }
+        // Latest read wins: a read started while another is in flight
+        // supersedes it, and only the latest one writes (S-3).
+        exploreGeneration += 1
+        let gen = exploreGeneration
+        isLoadingExplore = true
+        defer { if gen == exploreGeneration { isLoadingExplore = false } }
 
         do {
             let assets = try await client.getAssetsByCity()
+            guard gen == exploreGeneration else { return }
+            // Try then write: the cards are replaced only by the answer.
             explorePlaces = Self.buildPlaces(from: assets)
             exploreLoadedAt = Date()
-            if !explorePlaces.isEmpty { errorMessage = nil }
+            exploreLoadError = nil
+            // The list is read; the per-city counts below only decorate it.
+            isLoadingExplore = false
             // Enrich counts concurrently; updates are visible progressively.
             await enrichPlaceCounts()
         } catch {
+            // A cancellation changes nothing (S-3).
             if UserFacingError.isCancellation(error) { return }
-            errorMessage = error.userFacingMessage
+            guard gen == exploreGeneration else { return }
+            exploreLoadError = error.userFacingMessage
         }
     }
 
-    /// Pull-to-refresh: clears cached data then forces a fresh fetch.
+    /// Pull-to-refresh: the `refresh()` of S-3 around `loadExplore(force: true)`.
+    /// The cards stay on screen until the answer replaces them.
     func refreshExplore() async {
-        explorePlaces = []
-        exploreData = []
-        exploreLoadedAt = nil
+        isRefreshingExplore = true
+        defer { isRefreshingExplore = false }
         await loadExplore(force: true)
     }
 

@@ -17,11 +17,22 @@ final class AlbumDetailViewModel {
     private var loadedIds: Set<String> = []
     var sharedLinks: [SharedLinkResponseDto] = []
 
-    // Pre-load state: true from init so the first rendered frame shows the
-    // spinner, not the "Album Unavailable" fallback (`.task` runs after the
-    // initial body evaluation). `load()` re-sets it and clears it on exit.
+    // Pre-load state: true from init so `.task` has nothing to race with
+    // (the share sheet's actions stay disabled until the first read ends).
+    // `reload()` re-sets it and clears it on exit.
     var isLoading = true
-    var loadErrorMessage: String?
+    /// True while `refresh()` runs: the system's refresh control is the
+    /// indicator then, not the screen's own.
+    private(set) var isRefreshing = false
+    /// True once page 1 of the grid was read and applied.
+    private(set) var hasLoadedAssets = false
+    /// Failure of the last read of the album (`getAlbum`), cleared by a success.
+    private(set) var albumLoadError: String?
+    /// Failure of the last read of page 1, cleared by a success.
+    private(set) var assetsLoadError: String?
+    /// Failure of the last read of the screen, album first. Written by reads
+    /// only; actions use `actionErrorMessage`.
+    var loadErrorMessage: String? { albumLoadError ?? assetsLoadError }
     var actionErrorMessage: String?
     var isDeleted = false
 
@@ -243,39 +254,93 @@ final class AlbumDetailViewModel {
 
     // MARK: - Load (AC-508)
 
-    /// Two-phase load: album metadata (try-then-mutate `album`) THEN page 1 of
-    /// the assets via searchMetadata. A failure in the second phase still
-    /// leaves `album` populated. Later pages come from `loadMore()`.
+    /// What the screen renders for the album itself (`data` = the album).
+    var albumState: ListRenderState {
+        .resolve(
+            isEmpty: album == nil,
+            hasLoaded: album != nil,
+            isLoading: isLoading,
+            isRefreshing: isRefreshing,
+            loadError: albumLoadError
+        )
+    }
+
+    /// What the screen renders for the photo grid (`data` = the photos).
+    var assetsState: ListRenderState {
+        .resolve(
+            isEmpty: assets.isEmpty,
+            hasLoaded: hasLoadedAssets,
+            isLoading: isLoading,
+            isRefreshing: isRefreshing,
+            loadError: assetsLoadError
+        )
+    }
+
+    /// The read of the `.task`: leaves selection mode (selection is scoped to
+    /// the current asset list), then `reload()`.
     func load() async {
+        exitSelectionMode()
+        await reload()
+    }
+
+    /// Read without a pull, for every "Try Again": album metadata, then page 1
+    /// of the assets. Data are replaced only by the responses; a failure keeps
+    /// them; selection mode is left as it is. A newer read supersedes one
+    /// still in flight.
+    func reload() async {
         loadGeneration += 1
         let g = loadGeneration
         isLoading = true
         isLoadingMore = false
 
-        // Selection is scoped to the current asset list; a reload starts clean.
-        exitSelectionMode()
-
         // Phase 1: album metadata.
+        // The error screen (album unknown AND a failed read) is the only
+        // rendering that must survive until page 1 answered; a first load
+        // (no error yet) publishes the album before page 1, as it always did.
+        let errorScreenShown = album == nil && albumLoadError != nil
+        let fetched: AlbumResponseDto
         do {
-            let fetched = try await client.getAlbum(id: albumId)
+            fetched = try await client.getAlbum(id: albumId)
             guard g == loadGeneration else { return }
-            album = fetched
-            loadErrorMessage = nil
         } catch {
             guard g == loadGeneration else { return }
-            loadErrorMessage = error.userFacingMessage
             isLoading = false
+            if let message = error.userFacingMessage { albumLoadError = message }
             return
         }
 
-        // Phase 2: page 1 via search (albumIds filter).
-        await fetchFirstPage(generation: g)
+        // Phase 2: page 1 via search (albumIds filter). A failure there still
+        // leaves `album` populated.
+        if !errorScreenShown {
+            album = fetched
+            albumLoadError = nil
+            await fetchFirstPage(generation: g)
+        } else {
+            // Album unknown with the error screen up (its own `.refreshable`): it
+            // is published only once page 1 has answered. Publishing it now
+            // would swap the screen's scroll container under a pull in flight,
+            // and SwiftUI cancels the pull's task with the container, which
+            // would drop page 1 and strand the skeleton.
+            await fetchFirstPage(generation: g, album: fetched)
+            guard g == loadGeneration else { return }
+            album = fetched
+            albumLoadError = nil
+        }
+    }
+
+    /// Pull-to-refresh: `reload()` flagged so the screen keeps its current
+    /// rendering.
+    func refresh() async {
+        isRefreshing = true
+        await reload()
+        isRefreshing = false
     }
 
     /// Requests page 1 with the album's current order and replaces the grid.
-    /// Ignored (no mutation) when a newer load started meanwhile.
-    private func fetchFirstPage(generation g: Int) async {
-        let order = album?.order?.rawValue
+    /// Ignored (no mutation) when a newer load started meanwhile. `album` is
+    /// the freshly read metadata when `album` itself is not published yet.
+    private func fetchFirstPage(generation g: Int, album known: AlbumResponseDto? = nil) async {
+        let order = (known ?? album)?.order?.rawValue
         let epoch = removalEpoch
         let before = removedIdsSinceLoad
         isFetchingFirstPage = true
@@ -303,13 +368,14 @@ final class AlbumDetailViewModel {
             }
             removedSinceLastPage = 0
             loadMoreErrorMessage = nil
-            loadErrorMessage = nil
+            assetsLoadError = nil
+            hasLoadedAssets = true
             gridEndRevision += 1
         } catch {
             guard g == loadGeneration else { return }
             // Album metadata already populated; surface the error but keep
             // `album` and the grid intact (try-then-mutate discipline).
-            loadErrorMessage = error.userFacingMessage
+            if let message = error.userFacingMessage { assetsLoadError = message }
         }
     }
 
@@ -572,9 +638,9 @@ final class AlbumDetailViewModel {
     func refreshAlbum() async {
         do {
             album = try await client.getAlbum(id: albumId)
-            loadErrorMessage = nil
+            albumLoadError = nil
         } catch {
-            loadErrorMessage = error.userFacingMessage
+            if let message = error.userFacingMessage { albumLoadError = message }
         }
     }
 
@@ -597,9 +663,8 @@ final class AlbumDetailViewModel {
     func loadSharedLinks() async {
         do {
             sharedLinks = try await client.getSharedLinks(albumId: albumId)
-            loadErrorMessage = nil
         } catch {
-            loadErrorMessage = error.userFacingMessage
+            actionErrorMessage = error.userFacingMessage
         }
     }
 

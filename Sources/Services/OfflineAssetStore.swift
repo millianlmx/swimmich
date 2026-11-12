@@ -396,21 +396,20 @@ actor OfflineAssetStore {
 
     /// Snapshot of the active account's copies, tagged with the scope it was
     /// read under so the UI mirror can drop it when the account changed since.
-    func listing() -> OfflineListing {
+    /// Without an active account the listing is empty (not an error); a folder
+    /// that cannot be prepared throws, so a screen shows a retryable error
+    /// instead of a false "no downloaded files" (L-16).
+    func listing() throws -> OfflineListing {
         let s = scope.snapshot()
         guard let id = s.accountID else {
-            _ = try? prepare(s)
+            _ = try prepare(s)
             return OfflineListing(accountID: nil, scopeEpoch: s.epoch, folderURL: nil, items: [])
         }
-        guard let folder = try? prepare(s) else {
-            return OfflineListing(
-                accountID: id, scopeEpoch: s.epoch, folderURL: folderURL(forAccount: id), items: []
-            )
-        }
+        let folder = try prepare(s)
         return OfflineListing(
             accountID: id,
             scopeEpoch: s.epoch,
-            folderURL: folder,
+            folderURL: folder ?? folderURL(forAccount: id),
             items: index.values.sorted { $0.cachedAt > $1.cachedAt }
         )
     }
@@ -506,8 +505,10 @@ actor OfflineAssetStore {
 
     private func loadIndexIfNeeded(folder: URL, otherAccountsRegistered: Bool) throws {
         guard !didLoadIndex else { return }
-        didLoadIndex = true
+        // Only once the folder exists: a failure here must be retried by the
+        // next read, not remembered as an empty index (L-16).
         try ensureFolderExists(folder)
+        didLoadIndex = true
         adoptLegacyContent(into: folder, otherAccountsRegistered: otherAccountsRegistered)
         // Drop half-written payloads from a previous run that a jetsam kill
         // (or an interrupted move) left behind.

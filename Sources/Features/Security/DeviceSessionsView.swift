@@ -27,11 +27,36 @@ struct DeviceSessionsView: View {
 
     var body: some View {
         List {
-            if vm.isLoading && vm.sessions.isEmpty {
+            switch vm.renderState {
+            case .loading:
                 loadingPlaceholders
-            } else if vm.sessions.isEmpty {
-                emptyState
-            } else {
+            case .error(let message):
+                Section {
+                    PVErrorStateView(
+                        title: "Couldn't load devices",
+                        message: message,
+                        identifierPrefix: "deviceSessions",
+                        retry: { Task { await vm.load() } }
+                    )
+                    .listRowBackground(Color.clear)
+                }
+            case .empty:
+                Section {
+                    emptyState
+                }
+            case .data(let status):
+                switch status {
+                case .idle:
+                    EmptyView()
+                case .reloading:
+                    Section {
+                        ProgressView()
+                            .frame(maxWidth: .infinity)
+                            .pvLoadingIndicator("deviceSessionsLoading")
+                    }
+                case .failed(let message):
+                    errorSection(message)
+                }
                 // "This device" is written first, and it carries nothing
                 // destructive: the only revocation in this view lives in the
                 // `otherSessions` branch below, so it cannot reach the session
@@ -67,8 +92,14 @@ struct DeviceSessionsView: View {
                 }
             }
 
+            // An action's failure (revoke, lock, unlock) keeps its own message
+            // and never replaces the list.
             if let message = vm.errorMessage {
-                errorSection(message)
+                Section {
+                    InlineErrorBadge(message: message)
+                        .accessibilityIdentifier("deviceSessionsActionError")
+                        .listRowBackground(Color.clear)
+                }
             }
         }
         .listStyle(.insetGrouped)
@@ -78,7 +109,7 @@ struct DeviceSessionsView: View {
         .navigationTitle("Connected Devices")
         .navigationBarTitleDisplayMode(.inline)
         .task { await vm.load() }
-        .refreshable { await vm.load() }
+        .refreshable { await vm.refresh() }
         .toolbar { toolbar }
         // A PIN is a single six-digit field, so it is an alert and not a sheet.
         .alert("Unlock", isPresented: $showUnlock) {
@@ -136,8 +167,8 @@ struct DeviceSessionsView: View {
 
     // MARK: - States
 
-    /// The failure stays in context: the rows already loaded remain listed and
-    /// revocable, and the retry is the reload itself.
+    /// The failure of a read stays in context: the rows already loaded remain
+    /// listed and revocable, and the retry is the reload itself.
     private func errorSection(_ message: String) -> some View {
         Section {
             InlineErrorBadge(message: message, retry: { Task { await vm.load() } })
@@ -156,20 +187,18 @@ struct DeviceSessionsView: View {
         .listRowBackground(Color.clear)
     }
 
-    /// Two sections of template rows, `.redacted` rather than shimmered: the
-    /// repository's skeleton is `PVSkeletonGrid`, a *grid* animation, and this
-    /// screen is a list.
-    @ViewBuilder
+    /// Template rows, `.redacted` rather than shimmered: the repository's
+    /// skeleton is `PVSkeletonGrid`, a *grid* animation, and this screen is a
+    /// list. One element for the whole block, so one identifier carries it.
     private var loadingPlaceholders: some View {
-        ForEach(0..<2, id: \.self) { index in
-            Section {
-                ForEach(0..<3, id: \.self) { _ in
+        Section {
+            VStack(spacing: 0) {
+                ForEach(0..<4, id: \.self) { _ in
                     DeviceSessionPlaceholderRow()
                         .redacted(reason: .placeholder)
                 }
-            } header: {
-                Text(index == 0 ? "This device" : "Other devices")
             }
+            .pvLoadingIndicator("deviceSessionsLoading")
         }
     }
 

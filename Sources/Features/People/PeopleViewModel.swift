@@ -36,6 +36,15 @@ final class PeopleViewModel {
     var total = 0
     var showingHidden = false
     var isLoading = false
+    /// True while `refresh()` runs: the system's refresh control is the
+    /// indicator then, not the screen's own.
+    private(set) var isRefreshingPeople = false
+    /// True once the list was read and applied.
+    private(set) var peopleHasLoaded = false
+    /// Failure of the last read of the list, cleared by a success. Written by
+    /// `load` only.
+    private(set) var peopleLoadError: String?
+    /// Failure of the last action (rename, favorite, hide, birthday, merge).
     var errorMessage: String?
 
     /// Per-person asset counts (GET /people/{id}/statistics), keyed by person id.
@@ -73,7 +82,13 @@ final class PeopleViewModel {
     /// Faces drill-down state.
     var personAssets: [AssetReactItem] = []
     var assetsLoading = false
+    /// Failure of the last read of the person's first page, cleared by a
+    /// success. Written by `fetchAssets` only.
     var assetsError: String?
+    /// True once the selected person's first page was read and applied.
+    private(set) var assetsHasLoaded = false
+    /// True while `refreshPerson()` runs.
+    private(set) var assetsRefreshing = false
     var selectedPersonID: String?
 
     /// Grid pagination.
@@ -118,6 +133,28 @@ final class PeopleViewModel {
 
     // MARK: - Displayed order
 
+    /// What the list renders (outside search mode).
+    var peopleState: ListRenderState {
+        .resolve(
+            isEmpty: people.isEmpty,
+            hasLoaded: peopleHasLoaded,
+            isLoading: isLoading,
+            isRefreshing: isRefreshingPeople,
+            loadError: peopleLoadError
+        )
+    }
+
+    /// What the selected person's grid renders.
+    var assetsState: ListRenderState {
+        .resolve(
+            isEmpty: personAssets.isEmpty,
+            hasLoaded: assetsHasLoaded,
+            isLoading: assetsLoading,
+            isRefreshing: assetsRefreshing,
+            loadError: assetsError
+        )
+    }
+
     /// Favorites, by photo count descending (server order on ties).
     var featuredPeople: [PersonResponseDto] {
         sortedByCount(people.filter { $0.isFavorite == true })
@@ -157,16 +194,24 @@ final class PeopleViewModel {
         guard visit != lastVisit else { return }
         lastVisit = visit
         exitSearch()
-        await refresh()
+        await reloadList()
     }
 
-    /// Pull to refresh, "Refresh people", "Retry": page 1, then every count.
-    /// In search mode: the search again and the counts of its results only.
+    /// Pull to refresh and "Refresh people": the read flagged so the screen
+    /// keeps its current rendering. In search mode: the search again and the
+    /// counts of its results only.
     func refresh() async {
+        isRefreshingPeople = true
+        defer { isRefreshingPeople = false }
         if isSearchActive {
             await relaunchSearch(refreshAllCounts: true)
             return
         }
+        await reloadList()
+    }
+
+    /// Page 1, then every count.
+    private func reloadList() async {
         await load(force: true)
         await loadStatistics()
     }
@@ -189,11 +234,13 @@ final class PeopleViewModel {
             hasMorePeople = page.hasNextPage == true
             nextPeoplePage = 2
             peopleLoadMoreError = nil
+            peopleHasLoaded = true
+            peopleLoadError = nil
             errorMessage = nil
             peopleEndRevision += 1
         } catch {
             guard g == peopleGeneration, let message = error.userFacingMessage else { return }
-            errorMessage = message
+            peopleLoadError = message
         }
     }
 
@@ -460,8 +507,13 @@ final class PeopleViewModel {
 
     func select(_ person: PersonResponseDto) async {
         // The detail's `.task` replays when it reappears: keep the pagination.
+        // A first read that failed is not "loaded": it is read again here.
         if selectedPersonID == person.id, assetsLoadedForID == person.id { return }
         selectedPersonID = person.id
+        // The grid now shown is this person's, not the one `assetsLoadedForID`
+        // remembers: without this, reopening a person whose neighbour failed or
+        // was cancelled would skip the read and stay on the indicator.
+        assetsLoadedForID = nil
         resetAssetsGrid()
         await loadAssets()
     }
@@ -469,7 +521,6 @@ final class PeopleViewModel {
     func loadAssets() async {
         guard let id = selectedPersonID else { return }
         if assetsLoadedForID == id { return }
-        assetsLoadedForID = id
         await fetchAssets(id)
     }
 
@@ -478,14 +529,32 @@ final class PeopleViewModel {
         await fetchAssets(id)
     }
 
+    /// Read without pull of the person detail: the person (name, birthday and
+    /// image come from the first page of the list), then page 1 of the photos.
+    /// The data stays until the answer.
+    func reloadPerson() async {
+        guard let id = selectedPersonID else { return }
+        await fetchAssets(id, rereadingPerson: true)
+    }
+
+    /// Pull to refresh of the person detail.
+    func refreshPerson() async {
+        assetsRefreshing = true
+        await reloadPerson()
+        assetsRefreshing = false
+    }
+
     /// Loads page 1 and replaces the grid. The old grid stays on screen while
     /// the request is in flight; a page 2 of the old series is dropped.
-    private func fetchAssets(_ id: String) async {
+    /// `assetsLoadedForID` is set by a success only.
+    private func fetchAssets(_ id: String, rereadingPerson: Bool = false) async {
         assetsGeneration += 1
         let g = assetsGeneration
         assetsLoading = true
         isLoadingMoreAssets = false
         defer { if g == assetsGeneration { assetsLoading = false } }
+        if rereadingPerson { await load(force: true) }
+        guard g == assetsGeneration, selectedPersonID == id else { return }
         do {
             let resp = try await client.searchMetadata(dto: assetsDto(id, page: 1))
             guard g == assetsGeneration, selectedPersonID == id else { return }
@@ -494,6 +563,8 @@ final class PeopleViewModel {
             loadedAssetIds = seen
             assetsNextPage = resp.assets.nextPage.flatMap(Int.init)
             hasMoreAssets = assetsNextPage != nil
+            assetsLoadedForID = id
+            assetsHasLoaded = true
             assetsError = nil
             assetsLoadMoreError = nil
             assetsEndRevision += 1
@@ -546,6 +617,7 @@ final class PeopleViewModel {
         hasMoreAssets = false
         isLoadingMoreAssets = false
         assetsError = nil
+        assetsHasLoaded = false
         assetsLoadMoreError = nil
     }
 
@@ -553,6 +625,7 @@ final class PeopleViewModel {
         assetsGeneration += 1
         selectedPersonID = nil
         assetsLoadedForID = nil
+        assetsRefreshing = false
         assetsLoading = false
         resetAssetsGrid()
     }
