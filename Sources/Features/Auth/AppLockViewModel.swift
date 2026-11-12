@@ -178,7 +178,7 @@ final class AppLockViewModel: AppLockService {
         return await withCheckedContinuation { (continuation: CheckedContinuation<Bool, Never>) in
             context.evaluatePolicy(
                 .deviceOwnerAuthentication,
-                localizedReason: String(localized: Self.unlockReason)
+                localizedReason: String(localized: AppLockViewModel.unlockReason)
             ) { success, _ in
                 continuation.resume(returning: success)
             }
