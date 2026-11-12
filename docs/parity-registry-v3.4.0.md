@@ -473,7 +473,7 @@ Chaque écran principal a une ligne par aspect. « États » regroupe le chargem
 | L-10 | Certificat client (TLS mutuel) | B-14 | livré | 957e65e06f5d | AC-21, AC-22, AC-37 |
 | L-11 | Journal applicatif partagé sans secrets | B-15 | livré | 3df9fadb64de | AC-23, AC-127, AC-128, AC-129, AC-130, AC-131, AC-132 |
 | L-12 | Collections de contenu accessibles hors du hub « Me » | B-16 | livré | 3780fbb1916b | AC-24, AC-25, AC-133, AC-134, AC-135, AC-136, AC-137, AC-138, AC-139, AC-140, AC-141 |
-| L-13 | Texte lisible à toutes les tailles Dynamic Type | B-17 | livré | 2401ec133515 | AC-26 |
+| L-13 | Texte lisible à toutes les tailles Dynamic Type | B-17 | livré | 46e25209dfc5 | AC-26 |
 | L-14 | Visionneuse : ouverture et fermeture par zoom depuis la vignette | B-18 | livré | 23d8069 | AC-27 (non vérifié à l'exécution), AC-27.1 (non vérifié à l'exécution), AC-27.2 (non vérifié à l'exécution), AC-27.3 (non vérifié à l'exécution), AC-27.4 (non vérifié à l'exécution), AC-27.5 (non vérifié à l'exécution), AC-27.6 (non vérifié à l'exécution), AC-27.7 (non vérifié à l'exécution), AC-27.8 (non vérifié à l'exécution), AC-28 (non vérifié à l'exécution), AC-28.1 (non vérifié à l'exécution), AC-28.2 (non vérifié à l'exécution) |
 | L-15 | Identité Swimmich et matériau unique des commandes flottantes | B-19 | livré | f5bf0f0 | AC-29 (non vérifié à l'exécution), AC-29.1, AC-29.2, AC-29.3, AC-30, AC-30.1, AC-30.2, AC-30.3, AC-30.4, AC-30.5 |
 | L-16 | États de chargement, vide, erreur et rafraîchissement sur chaque liste | B-20 | livré | bfb14467dfa0 | AC-31, AC-142, AC-143, AC-144, AC-145, AC-146, AC-147, AC-148, AC-149, AC-150, AC-151, AC-152, AC-153, AC-154, AC-155, AC-156, AC-157, AC-158, AC-159, AC-160, AC-161 |
