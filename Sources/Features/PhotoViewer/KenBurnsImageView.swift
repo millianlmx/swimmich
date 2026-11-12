@@ -13,7 +13,7 @@ struct KenBurnsImageView: View {
     var localFileURL: URL? = nil
     var onSingleTap: () -> Void = {}
 
-    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @PVReduceMotion private var reduceMotion
 
     var body: some View {
         // `SwiftUI.` qualification: the app ships its own `TimelineView` (photo

@@ -635,6 +635,7 @@ enum BackupLegendKind {
 
 /// Backup settings screen — the real backup UI (was a scaffold).
 struct BackupSettingsView: View {
+    @PVReduceMotion private var reduceMotion
     @Environment(AuthViewModel.self) private var auth
     /// Read-only mode (gap G17): the run CTA is the one control that greys out
     /// instead of disappearing, explained by its own footer.
@@ -824,7 +825,7 @@ struct BackupSettingsView: View {
                         Text("\(vm.failedAssetCount)")
                             .font(.pvNumeric)
                             .foregroundStyle(Color.immichError)
-                            .contentTransition(.numericText())
+                            .contentTransition(PVMotion.contentChange(.numericText(), reduceMotion: reduceMotion))
                     }
                 } label: {
                     Label("Upload details", systemImage: "list.bullet.rectangle")
@@ -1021,7 +1022,7 @@ struct BackupSettingsView: View {
                     Text("\(engine.progressPercent)%")
                         .font(.pvSubhead.weight(.semibold))
                         .foregroundStyle(.secondary)
-                        .contentTransition(.numericText())
+                        .contentTransition(PVMotion.contentChange(.numericText(), reduceMotion: reduceMotion))
                 }
             }
             if scanning {
@@ -1031,12 +1032,12 @@ struct BackupSettingsView: View {
             } else {
                 ProgressView(value: engine.progressFraction)
                     .tint(Color.immichPrimary)
-                    .animation(PVMotion.snappy, value: engine.progressFraction)
+                    .animation(PVMotion.movement(PVMotion.snappy, reduceMotion: reduceMotion), value: engine.progressFraction)
             }
             if !scanning {
                 HStack(spacing: PVSpacing.s4) {
                     Text("\(engine.examinedCount) of \(engine.total)")
-                        .contentTransition(.numericText())
+                        .contentTransition(PVMotion.contentChange(.numericText(), reduceMotion: reduceMotion))
                     if let eta = etaText { Text("· \(eta)") }
                     Spacer()
                 }

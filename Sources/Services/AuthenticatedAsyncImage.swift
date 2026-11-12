@@ -100,6 +100,7 @@ struct AuthenticatedAsyncImage: View {
     @State private var placeholderImage: UIImage?
     @State private var didFail = false
     @State private var loadState: ImageLoadState = .placeholder
+    @PVReduceMotion private var reduceMotion
 
     init(
         url: URL?,
@@ -152,7 +153,7 @@ struct AuthenticatedAsyncImage: View {
                     .overlay(Image(systemName: "photo").foregroundStyle(Color.textSecondaryPV))
             }
         }
-        .animation(PVMotion.gentle, value: image != nil)
+        .animation(PVMotion.fading(PVMotion.gentle, reduceMotion: reduceMotion), value: image != nil)
         // Keyed on the offline copy too: going offline→cached (or removing the
         // cached file) must re-run the load, even though the URL is unchanged.
         .task(id: localFileURL?.path ?? url?.absoluteString) {
@@ -270,29 +271,42 @@ struct AuthenticatedAsyncImage: View {
 /// even on slow networks.
 struct ShimmerPlaceholder: View {
     @State private var phase: CGFloat = -1
+    @PVReduceMotion private var reduceMotion
 
     var body: some View {
         Rectangle()
             .fill(Color.bgTertiary.opacity(0.12))
-            .overlay(
-                LinearGradient(
-                    colors: [
-                        .clear,
-                        Color.white.opacity(0.35), // DS-exempt: infinite shimmer, not interactive
-                        .clear
-                    ],
-                    startPoint: .leading,
-                    endPoint: .trailing
-                )
-                .offset(x: phase * 320)
-                .mask(Rectangle())
-            )
-            .clipped()
-            .onAppear {
-                // DS-exempt: infinite shimmer, not interactive
-                withAnimation(.linear(duration: 1.1).repeatForever(autoreverses: false)) {
-                    phase = 1
+            .overlay {
+                if PVMotion.shimmerVisible(reduceMotion: reduceMotion) {
+                    LinearGradient(
+                        colors: [
+                            .clear,
+                            Color.white.opacity(0.35), // DS-exempt: infinite shimmer, not interactive
+                            .clear
+                        ],
+                        startPoint: .leading,
+                        endPoint: .trailing
+                    )
+                    .offset(x: phase * 320)
+                    .mask(Rectangle())
                 }
             }
+            .clipped()
+            .onAppear { startShimmer() }
+            .onChange(of: reduceMotion) { _, reduced in
+                // Back to the start without animating, then loop again once motion is allowed.
+                var transaction = Transaction()
+                transaction.disablesAnimations = true
+                withTransaction(transaction) { phase = -1 }
+                if !reduced { startShimmer() }
+            }
+    }
+
+    /// Infinite shimmer loop; never started under Reduce Motion.
+    private func startShimmer() {
+        guard !reduceMotion else { return }
+        withAnimation(PVMotion.shimmerLoop(duration: 1.1, reduceMotion: reduceMotion)) {
+            phase = 1
+        }
     }
 }

@@ -15,6 +15,7 @@ import SwiftUI
 /// Rendering both actions on every row would be a lie: each request only
 /// matches one of the two directions.
 struct PartnersView: View {
+    @PVReduceMotion private var reduceMotion
     @Bindable var vm: PartnersViewModel
 
     @Environment(AuthViewModel.self) private var auth
@@ -103,12 +104,12 @@ struct PartnersView: View {
                 guard let partner = partnerPendingRemoval else { return }
                 Task {
                     await vm.remove(partnerId: partner.id)
-                    withAnimation(PVMotion.snappy) { partnerPendingRemoval = nil }
+                    withAnimation(PVMotion.movement(PVMotion.snappy, reduceMotion: reduceMotion)) { partnerPendingRemoval = nil }
                 }
             }
             .accessibilityIdentifier("confirmStopSharing")
             Button("Cancel", role: .cancel) {
-                withAnimation(PVMotion.snappy) { partnerPendingRemoval = nil }
+                withAnimation(PVMotion.movement(PVMotion.snappy, reduceMotion: reduceMotion)) { partnerPendingRemoval = nil }
             }
         } message: {
             Text("They lose access to your library. Your photos stay on the server, and your own timeline is unaffected.")
@@ -171,7 +172,7 @@ struct PartnersView: View {
             } else {
                 ForEach(vm.sharing, id: \.id) { partner in
                     PartnerRow(partner: partner, mode: .outgoing, onRemove: {
-                        withAnimation(PVMotion.snappy) { partnerPendingRemoval = partner }
+                        withAnimation(PVMotion.movement(PVMotion.snappy, reduceMotion: reduceMotion)) { partnerPendingRemoval = partner }
                         showPartnerRemoveConfirm = true
                     }, onOpenLibrary: openLibraryAction(for: partner, direction: .sharedBy))
                 }
