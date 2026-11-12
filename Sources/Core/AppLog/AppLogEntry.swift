@@ -21,7 +21,9 @@ enum AppLogLevel: String, Codable, Sendable, CaseIterable, Identifiable {
 /// in the URL's parameters, and a signed-in session's proof travels in the
 /// request's metadata, so a wider record would let a diagnostic screen display a
 /// usable credential. Every field below is safe to read out loud and safe to
-/// export.
+/// export — the narrowness handles the structure; `message`, `details` and `stack`
+/// may still quote an error's text (a URL, a token), which is why the buffer
+/// that keeps the lines masks them (`AppLogRedactor`).
 struct AppLogEntry: Identifiable, Equatable, Sendable {
     let id: UUID
     let date: Date
