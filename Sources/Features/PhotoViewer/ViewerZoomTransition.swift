@@ -130,6 +130,13 @@ enum ViewerZoomPlan {
         return CGRect(x: centre.x - size.width / 2, y: centre.y - size.height / 2, width: size.width, height: size.height)
     }
 
+    /// Where the image is when a closing drag is released: its rest frame
+    /// (`displayed`, recorded before the drag) as the pager's scale and move
+    /// carry it. `pager` is the pager's REST frame — scaling is about its centre.
+    static func dragStartFrame(displayed: CGRect, pager: CGRect, drag: ViewerDragTransform) -> CGRect {
+        draggedRect(displayed, transform: drag, anchor: CGPoint(x: pager.midX, y: pager.midY))
+    }
+
     // MARK: - Displayed frame
 
     /// The frame, in the page's global space, a photo page draws its image in:

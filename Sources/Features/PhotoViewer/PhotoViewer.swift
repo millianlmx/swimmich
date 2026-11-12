@@ -456,7 +456,12 @@ struct PhotoViewer: View {
 
                 if !localAssets.isEmpty {
                     pagerView
-                        .onGeometryChange(for: CGRect.self) { $0.frame(in: .global) } action: { frameBook.pagerFrame = $0 }
+                        .onGeometryChange(for: CGRect.self) { $0.frame(in: .global) } action: { frame in
+                            // Under a closing drag the pager is scaled and moved by the
+                            // modifiers below, which also move its `.global` frame: that
+                            // frame is not the pager's rest frame, the pivot of the close.
+                            frameBook.reportPager(frame, frozen: closeDragLock == true)
+                        }
                         .opacity(pagerOpacity)
                         .scaleEffect(dragTransform.scale)
                         .offset(dragTransform.offset)
@@ -1542,7 +1547,15 @@ struct PhotoViewer: View {
 final class ViewerFrameBook {
     /// Displayed image frame per asset id, `.global`, zoom and pan included.
     var pageFrames: [String: CGRect] = [:]
-    var pagerFrame: CGRect?
+    private(set) var pagerFrame: CGRect?
+
+    /// Records the pager's `.global` frame, unless `frozen`: while a closing drag
+    /// scales and moves the pager that frame is the transformed one, and the
+    /// close pivots on the rest frame recorded before the drag.
+    func reportPager(_ frame: CGRect, frozen: Bool) {
+        guard !frozen else { return }
+        pagerFrame = frame
+    }
 }
 
 /// Makes an animation's end awaitable once, whichever of its completion and its
@@ -1796,8 +1809,7 @@ extension PhotoViewer {
     private func startFrame(for asset: AssetReactItem, drag: ViewerDragTransform?) -> CGRect {
         let displayed = displayedFrame(for: asset)
         guard let drag else { return displayed }
-        let pager = frameBook.pagerFrame ?? windowRect
-        return ViewerZoomPlan.draggedRect(displayed, transform: drag, anchor: CGPoint(x: pager.midX, y: pager.midY))
+        return ViewerZoomPlan.dragStartFrame(displayed: displayed, pager: frameBook.pagerFrame ?? windowRect, drag: drag)
     }
 
     /// The image that flies back: what the page displays, else the thumbnail
