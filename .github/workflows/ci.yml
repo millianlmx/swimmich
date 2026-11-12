@@ -24,7 +24,8 @@ jobs:
     # Required by the branch protection of `main` under this exact name.
     name: Unit tests (iOS simulator)
     runs-on: [self-hosted, macOS, ARM64, xcode]
-    timeout-minutes: 45
+    # Unit tests, then the UI scenarios of Scripts/ci-ui-scenarios.txt.
+    timeout-minutes: 120
     steps:
       - uses: actions/checkout@v4
 
@@ -33,15 +34,15 @@ jobs:
           xcodebuild -version
           xcodegen --version
 
-      - name: Build and run unit tests
+      - name: Build, run unit tests and listed UI scenarios
         run: Scripts/ci.sh
 
-      - name: Keep the result bundle
+      - name: Keep the result bundles and stub logs
         if: failure()
         uses: actions/upload-artifact@v4
         with:
-          name: unit-tests-xcresult
-          path: build/ci/unit-tests.xcresult
+          name: test-results
+          path: build/ci/
           retention-days: 7
 
   ipa:

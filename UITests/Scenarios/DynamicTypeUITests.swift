@@ -41,6 +41,9 @@ import XCTest
 ///   and put it back afterwards with `xcrun simctl ui booted content_size large`. Like
 ///   `ShareExtensionUITests`, the photo must be the newest one of the Photos library.
 ///
+/// The CI runs this class with these prerequisites (`Scripts/ci.sh`, three lines of
+/// `Scripts/ci-ui-scenarios.txt`); a test that skips itself fails it.
+///
 /// Helpers are copied from the other scenarios on purpose: one file per feature.
 final class DynamicTypeUITests: XCTestCase {
 
@@ -954,16 +957,23 @@ final class DynamicTypeUITests: XCTestCase {
         guard let activity else { return XCTFail("the share sheet has no Swimmich activity") }
         activity.tap()
 
-        let name = photos.staticTexts.matching(identifier: "shareExtensionItemName_0").firstMatch
+        // The row is ONE accessibility element (`.accessibilityElement(children: .combine)`
+        // in ShareConfirmationView): its name text is not queryable on its own, so the
+        // row's frame is measured. Its label carries the whole file name.
+        let row = photos.buttons.matching(identifier: "shareExtensionItemRow_0").firstMatch
         let count = photos.staticTexts.matching(identifier: "shareExtensionHeaderCount").firstMatch
-        XCTAssertTrue(name.waitForExistence(timeout: 40), "the share sheet never listed the file")
+        XCTAssertTrue(row.waitForExistence(timeout: 40), "the share sheet never listed the file")
         XCTAssertTrue(count.waitForExistence(timeout: 10), "no count in the sheet's header")
+        XCTAssertTrue(row.label.contains("Gorges-du-Verdon"),
+                      "the sheet is not showing the seeded long-named file — row reads \(row.label)")
         let screen = photos.windows.firstMatch.frame
-        XCTAssertGreaterThanOrEqual(name.frame.height, 1.8 * count.frame.height,
-                                    "the long file name (\(name.frame.height) pt) is not shown on several lines "
-                                    + "(count: \(count.frame.height) pt) — is the system text size at AX5, and the seeded name long?")
-        XCTAssertGreaterThanOrEqual(name.frame.minX, 0, "the file name starts left of the sheet")
-        XCTAssertLessThanOrEqual(name.frame.maxX, screen.width + 0.5, "the file name runs past the sheet")
+        // A one-line name plus its size line is about twice the header's line at AX5;
+        // three header lines or more means the name wraps over several lines.
+        XCTAssertGreaterThanOrEqual(row.frame.height, 3 * count.frame.height,
+                                    "the long file name is not shown on several lines (row: \(row.frame.height) pt, "
+                                    + "count: \(count.frame.height) pt) — is the system text size at AX5?")
+        XCTAssertGreaterThanOrEqual(row.frame.minX, 0, "the file row starts left of the sheet")
+        XCTAssertLessThanOrEqual(row.frame.maxX, screen.width + 0.5, "the file row runs past the sheet")
 
         let upload = photos.buttons.matching(identifier: "shareExtensionUploadButton").firstMatch
         XCTAssertTrue(upload.waitForExistence(timeout: 15), "no upload button")

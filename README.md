@@ -155,12 +155,12 @@ xcodebuild test -destination 'platform=iOS Simulator,name=iPhone 17'
 ### CI and signed IPA
 
 ```bash
-Scripts/ci.sh            # what CI runs: xcodegen generate, build both test bundles, unit tests
+Scripts/ci.sh            # what CI runs: xcodegen generate, build both test bundles, unit tests, listed UI scenarios
 Scripts/ipa.sh [version] # Release archive + IPA signed Apple Distribution in build/ipa/Swimmich.ipa
 ```
 
 - **CI** (`.github/workflows/ci.yml`) runs `Scripts/ci.sh` on every push, any branch, on a self-hosted Mac runner (labels `self-hosted, macOS, ARM64, xcode`). It uses a dedicated simulator, `swimmich-ci`, and keeps DerivedData in `~/Library/Caches/swimmich-ci`, so a run only rebuilds what changed. The job `Unit tests (iOS simulator)` is the check `main` requires. There is no `pull_request` trigger: a fork's pull request never runs code on that Mac.
-- **UI scenarios** are compiled by CI, not run: each needs its own stub from `UITests/stubs/`.
+- **UI scenarios** listed in `Scripts/ci-ui-scenarios.txt` run after the unit tests, each against its own stub from `UITests/stubs/` (port 8421), with the device prerequisites the line declares (`--erase`, `--content-size`, `--media`). A scenario that fails or skips itself fails the CI. The other scenarios are compiled, not run.
 - **Signed IPA**: on `main` and on `v<version>` tags, once the tests pass, the `Signed IPA` job runs `Scripts/ipa.sh` and keeps `Swimmich.ipa` as a workflow artifact for 14 days. A tag sets the marketing version, and the build number is the UTC time (`YYYYMMDD.HHMM`). Signing is automatic, through the Apple ID signed in to Xcode on the runner's Mac: if that account signs out or its session expires, the job fails. An App Store Connect API key (`ASC_KEY_ID`, `ASC_ISSUER_ID`, `ASC_KEY_PATH`) replaces it when set. Nothing is uploaded. `Scripts/ipa.sh --upload` sends the build to TestFlight, once the app has its record on App Store Connect.
 - **Runner trap:** the runner's LaunchAgent must not set `SessionCreate`. `svc.sh install` sets it, and then codesign cannot reach the login keychain (`errSecInternalComponent`).
 
