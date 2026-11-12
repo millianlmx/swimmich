@@ -124,7 +124,7 @@ public struct ToggleFavoriteIntent: AppIntent {
                 return
             }
         } catch {
-            log("favorite write failed for asset \(assetId): \(String(describing: error))")
+            log("favorite write failed for asset \(assetId): \(PublicLogText.describe(error))")
             return
         }
 

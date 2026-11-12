@@ -165,7 +165,10 @@ final class ImmichAPIClient: ImmichClient, SessionRenewing, @unchecked Sendable 
     // MARK: - Auth
 
     func login(email: String, password: String) async throws -> LoginResponseDto {
-        try await sendNoAuth(.POST, path: ImmichAPI.auth.path("/login"), body: AnyEncodable(LoginCredentialDto(email: email, password: password)))
+        log.learnSecret(password)
+        let response: LoginResponseDto = try await sendNoAuth(.POST, path: ImmichAPI.auth.path("/login"), body: AnyEncodable(LoginCredentialDto(email: email, password: password)))
+        log.learnSecret(response.accessToken)
+        return response
     }
 
     func logout() async throws -> LogoutResponseDto {
@@ -180,7 +183,9 @@ final class ImmichAPIClient: ImmichClient, SessionRenewing, @unchecked Sendable 
         newPassword: String,
         invalidateSessions: Bool
     ) async throws -> UserAdminResponseDto {
-        try await sendAuthed(
+        log.learnSecret(currentPassword)
+        log.learnSecret(newPassword)
+        return try await sendAuthed(
             .POST,
             path: ImmichAPI.auth.path("/change-password"),
             body: AnyEncodable(ChangePasswordDto(password: currentPassword, newPassword: newPassword, invalidateSessions: invalidateSessions))
@@ -198,6 +203,7 @@ final class ImmichAPIClient: ImmichClient, SessionRenewing, @unchecked Sendable 
     }
 
     func setupPinCode(_ pinCode: String) async throws {
+        log.learnSecret(pinCode)
         _ = try await sendAuthedRaw(
             .POST,
             path: ImmichAPI.auth.path("/pin-code"),
@@ -206,12 +212,16 @@ final class ImmichAPIClient: ImmichClient, SessionRenewing, @unchecked Sendable 
     }
 
     func changePinCode(dto: PinCodeChangeDto) async throws {
+        log.learnSecret(dto.newPinCode)
+        if let current = dto.pinCode { log.learnSecret(current) }
+        if let password = dto.password { log.learnSecret(password) }
         _ = try await sendAuthedRaw(.PUT, path: ImmichAPI.auth.path("/pin-code"), body: AnyEncodable(dto))
     }
 
     /// POST (not PUT) on the session routes: the server creates an elevation
     /// for the current session rather than replacing a resource.
     func unlockAuthSession(pinCode: String) async throws {
+        log.learnSecret(pinCode)
         _ = try await sendAuthedRaw(
             .POST,
             path: ImmichAPI.auth.path("/session/unlock"),
@@ -238,11 +248,14 @@ final class ImmichAPIClient: ImmichClient, SessionRenewing, @unchecked Sendable 
     }
 
     func exchangeOAuthCode(url: String, state: String, codeVerifier: String) async throws -> LoginResponseDto {
-        try await sendNoAuth(
+        log.learnSecret(codeVerifier)
+        let response: LoginResponseDto = try await sendNoAuth(
             .POST,
             path: ImmichAPI.oauthCallback.path(""),
             body: AnyEncodable(OAuthCallbackRequestDto(url: url, state: state, codeVerifier: codeVerifier))
         )
+        log.learnSecret(response.accessToken)
+        return response
     }
 
     // MARK: - Timeline
@@ -463,6 +476,7 @@ final class ImmichAPIClient: ImmichClient, SessionRenewing, @unchecked Sendable 
     }
 
     func loginToSharedLink(_ credential: SharedLinkCredential, password: String) async throws -> SharedLinkResponseDto {
+        log.learnSecret(password)
         let response = try await sendSharedLinkRaw(
             .POST,
             path: ImmichAPI.sharedLinks.path("/login"),
@@ -778,11 +792,15 @@ final class ImmichAPIClient: ImmichClient, SessionRenewing, @unchecked Sendable 
         // array is not `Encodable` — only `[String: Any]` would type-check, and
         // `Any` does not conform — so each side is erased before the body.
         let body: [String: AnyEncodable] = ["name": AnyEncodable(name), "permissions": AnyEncodable(permissions)]
-        return try await sendAuthed(.POST, path: ImmichAPI.apiKeys.path(""), body: AnyEncodable(body))
+        let created: ApiKeyCreateResponseDto = try await sendAuthed(.POST, path: ImmichAPI.apiKeys.path(""), body: AnyEncodable(body))
+        log.learnSecret(created.secret)
+        return created
     }
 
     func rotateAPIKey(id: String) async throws -> ApiKeyCreateResponseDto {
-        try await sendAuthed(.POST, path: ImmichAPI.apiKeys.path("/\(id)/rotate"))
+        let rotated: ApiKeyCreateResponseDto = try await sendAuthed(.POST, path: ImmichAPI.apiKeys.path("/\(id)/rotate"))
+        log.learnSecret(rotated.secret)
+        return rotated
     }
 
     func deleteAPIKey(id: String) async throws {
@@ -1160,9 +1178,19 @@ final class ImmichAPIClient: ImmichClient, SessionRenewing, @unchecked Sendable 
         return request
     }
 
+    /// What the log must never show, learnt before the request leaves: this
+    /// server's address and the credentials the request carries (token, custom
+    /// headers, cookie, link key). The custom header NAMES come from the
+    /// in-memory registry `baseRequest` already read — no Keychain access.
+    private func learnForLog(_ request: URLRequest) {
+        if let base = baseURL { log.learnServer(base) }
+        log.learnRequest(request, customHeaderNames: customHeaders.headers(for: request.url).map(\.name))
+    }
+
     private func dispatch(_ request: URLRequest) async throws -> (Data, URLResponse) {
         let start = Date()
         bumpRequestCount()
+        learnForLog(request)
         do {
             let result = try await ServerRedirectTaskDelegate.data(for: request, on: currentSession)
             noteAnswer(of: request, response: result.1)
@@ -1199,6 +1227,7 @@ final class ImmichAPIClient: ImmichClient, SessionRenewing, @unchecked Sendable 
     private func dispatchUpload(_ request: URLRequest, fromFile fileURL: URL) async throws -> (Data, URLResponse) {
         let start = Date()
         bumpRequestCount()
+        learnForLog(request)
         do {
             let result = try await ServerRedirectTaskDelegate.upload(for: request, fromFile: fileURL, on: currentSession)
             noteAnswer(of: request, response: result.1)

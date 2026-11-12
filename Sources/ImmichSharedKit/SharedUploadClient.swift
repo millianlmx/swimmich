@@ -77,13 +77,18 @@ public struct SharedUploadClient: ShareUploading {
     private let customHeaders: [CustomHTTPHeader]
     private let session: URLSession
     private let logger = Logger(subsystem: "app.immich.swiftui", category: "share-upload")
+    /// Where the failure line goes; `nil` = `os.Logger` in clear. The line only
+    /// ever carries the numeric code of the transport error (never its text,
+    /// which may quote the server's URL). A test injects a collector.
+    private let publicLog: (@Sendable (String) -> Void)?
 
     public init(
         baseURL: String,
         token: String,
         deviceId: String,
         customHeaders: [CustomHTTPHeader] = [],
-        session: URLSession = URLSessionWidgetTransport.interactive()
+        session: URLSession = URLSessionWidgetTransport.interactive(),
+        publicLog: (@Sendable (String) -> Void)? = nil
     ) {
         var trimmed = baseURL
         while trimmed.hasSuffix("/") { trimmed.removeLast() }
@@ -92,6 +97,7 @@ public struct SharedUploadClient: ShareUploading {
         self.deviceId = deviceId
         self.customHeaders = customHeaders
         self.session = session
+        self.publicLog = publicLog
     }
 
     /// Ends this client's session. The share extension builds one client per
@@ -236,7 +242,12 @@ public struct SharedUploadClient: ShareUploading {
             // An extension that fails silently is worse than one that fails
             // loudly: this line is what a `log stream` on device shows when a
             // share produces no visible error at all.
-            logger.error("share upload transport failed: \(code, privacy: .public)")
+            let line = "share upload transport failed: \(code)"
+            if let publicLog {
+                publicLog(line)
+            } else {
+                logger.error("\(line, privacy: .public)")
+            }
             throw ShareUploadError.transport(code)
         }
         guard let http = raw as? HTTPURLResponse else {

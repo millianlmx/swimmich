@@ -71,8 +71,22 @@ struct AppLogEntry: Identifiable, Equatable, Sendable {
 }
 
 /// Where the transport hands its lines.
+///
+/// `learn…` tell the sink what must never appear in a line (a server's address,
+/// a token, a password): the sink that keeps lines (`AppLogStore`) masks them at
+/// recording and keeps what it learnt for the life of the process. The default
+/// implementations ignore it, for sinks that keep nothing.
 protocol AppLogSink: Sendable {
     func record(_ entry: AppLogEntry)
+    func learnServer(_ baseURL: URL)
+    func learnSecret(_ value: String)
+    func learnRequest(_ request: URLRequest, customHeaderNames: [String])
+}
+
+extension AppLogSink {
+    func learnServer(_ baseURL: URL) {}
+    func learnSecret(_ value: String) {}
+    func learnRequest(_ request: URLRequest, customHeaderNames: [String]) {}
 }
 
 /// The sink that keeps nothing — the transport's default, so it stays usable
