@@ -179,7 +179,15 @@ final class DynamicTypeUITests: XCTestCase {
     @discardableResult
     private func reveal(_ identifier: String, timeout: TimeInterval = 6) -> Bool {
         let target = element(identifier)
-        if target.waitForExistence(timeout: timeout) { return true }
+        // A short look first: an element below the fold of a lazy list never
+        // appears by waiting, so the full `timeout` is only spent once scrolling
+        // failed (the screen may still be loading).
+        if target.waitForExistence(timeout: min(timeout, 2)) || sweep(to: target) { return true }
+        return target.waitForExistence(timeout: max(timeout - 2, 0)) || sweep(to: target)
+    }
+
+    /// Scrolls down, then up, until `target` exists.
+    private func sweep(to target: XCUIElement) -> Bool {
         for goingDown in [true, false] {
             for _ in 0..<12 where !target.exists {
                 if goingDown { app.swipeUp() } else { app.swipeDown() }
@@ -349,27 +357,27 @@ final class DynamicTypeUITests: XCTestCase {
     /// The size and language of the last launch, so a helper can relaunch as is.
     private var launched: (size: TextSize, language: String) = (.l, "en")
 
-    private func configure(_ size: TextSize, language: String) {
+    /// `signedOut` passes `-authServerURL ()`: the restore finds no server and wipes
+    /// the session, so the app opens on the onboarding. Without it the session is
+    /// kept, and a relaunch lands on the timeline in a few seconds.
+    private func configure(_ size: TextSize, language: String, signedOut: Bool) {
         launched = (size, language)
         let locale = language == "de" ? "de_DE" : "en_US"
         app.launchArguments = [
             "-AppleLanguages", "(\(language))", "-AppleLocale", locale,
-            "-authServerURL", "()",
             "-UIPreferredContentSizeCategoryName", size.rawValue,
             // The slideshow opens paused: its chrome hides itself 3 s into a playing show.
             "-uiTestSlideshowAutoplayOff", "YES",
-        ]
+        ] + (signedOut ? ["-authServerURL", "()"] : [])
     }
 
-    private func dismissSystemSignInAlertIfPresent() {
+    /// The system's sign-in consent, or the app's own alert, when either is up.
+    private func acceptSignInConsent() {
+        let labels = labelPredicate(["Continue", "Continuer"])
         let springboard = XCUIApplication(bundleIdentifier: "com.apple.springboard")
-        for label in ["Continue", "Continuer"] {
-            let button = springboard.alerts.buttons[label]
-            if button.waitForExistence(timeout: 6) { button.tap(); return }
-        }
-        for label in ["Continue", "Continuer"] {
-            let button = app.alerts.buttons[label]
-            if button.waitForExistence(timeout: 2) { button.tap(); return }
+        for button in [springboard.alerts.buttons.matching(labels).firstMatch,
+                       app.alerts.buttons.matching(labels).firstMatch] where button.exists {
+            button.tap()
         }
     }
 
@@ -379,12 +387,10 @@ final class DynamicTypeUITests: XCTestCase {
     @discardableResult
     private func tapAuthorizeInProvider(timeout: TimeInterval = 60) -> Bool {
         let safari = XCUIApplication(bundleIdentifier: "com.apple.SafariViewService")
-        let springboard = XCUIApplication(bundleIdentifier: "com.apple.springboard")
-        let consent = springboard.alerts.buttons.matching(labelPredicate(["Continue", "Continuer"])).firstMatch
         let predicate = NSPredicate(format: "label CONTAINS 'Authorize'")
         let candidates = [safari.links.matching(predicate).firstMatch, safari.buttons.matching(predicate).firstMatch]
         let shown = waitUntil(timeout) {
-            if consent.exists { consent.tap() }
+            acceptSignInConsent()
             return candidates.contains { $0.exists }
         }
         guard shown, let authorize = candidates.first(where: { $0.exists }) else { return false }
@@ -423,63 +429,52 @@ final class DynamicTypeUITests: XCTestCase {
 
         scrollToHittable("loginSSOButton")
         element("loginSSOButton").tap()
-        dismissSystemSignInAlertIfPresent()
         XCTAssertTrue(tapAuthorizeInProvider(), "Authorize link not reachable in the auth sheet")
     }
 
+    /// The shell, then the timeline. "What's New" is dismissed if it shows; a
+    /// signed-in account has normally seen it, so it is not waited for.
     private func finishLaunch() {
         XCTAssertTrue(app.tabBars.firstMatch.waitForExistence(timeout: 40), "the app never reached the shell — \(screenText())")
         let whatsNewDone = element("whatsNewDoneButton")
-        if whatsNewDone.waitForExistence(timeout: 8) {
-            if !whatsNewDone.isHittable { scrollToHittable("whatsNewDoneButton") }
-            whatsNewDone.tap()
+        let tile = element("assetTile_\(tiles[0])")
+        let rendered = waitUntil(40) {
+            if whatsNewDone.exists {
+                if !whatsNewDone.isHittable { scrollToHittable("whatsNewDoneButton") }
+                whatsNewDone.tap()
+            }
+            return tile.exists
         }
-        XCTAssertTrue(element("assetTile_\(tiles[0])").waitForExistence(timeout: 40),
-                      "the timeline never rendered against \(stub) — \(screenText())")
+        XCTAssertTrue(rendered, "the timeline never rendered against \(stub) — \(screenText())")
     }
 
-    /// Launches the app at `size`. On a signed-out device it walks the onboarding
-    /// (`onScreen`, see `completeOnboarding`). With `onScreen` set while the session
-    /// is still there, it signs out first, so the onboarding is on screen again.
-    private func launchApp(_ size: TextSize, language: String = "en", onScreen: ((String) -> Void)? = nil) {
+    /// Launches the app at `size`. Signed out (`signedOut`, or `onScreen` set) it
+    /// walks the onboarding (`onScreen`, see `completeOnboarding`); otherwise the
+    /// stored session is kept, and the onboarding is only walked if the stub
+    /// rejected it.
+    private func launchApp(_ size: TextSize, language: String = "en", signedOut: Bool = false,
+                           onScreen: ((String) -> Void)? = nil) {
         app.terminate()
-        configure(size, language: language)
+        configure(size, language: language, signedOut: signedOut || onScreen != nil)
         app.launch()
-        var state = ""
+        var onboarding = false
         _ = waitUntil(45) {
-            if element("welcomeTitle").exists { state = "onboarding"; return true }
-            if app.tabBars.firstMatch.exists { state = "shell"; return true }
-            return false
+            if element("welcomeTitle").exists { onboarding = true; return true }
+            return app.tabBars.firstMatch.exists
         }
-        if state == "shell", onScreen != nil {
-            signOut()
-            state = "onboarding"
-        }
-        if state == "onboarding" || (state == "" && element("welcomeTitle").waitForExistence(timeout: 5)) {
-            completeOnboarding(onScreen)
-        }
+        if onboarding { completeOnboarding(onScreen) }
         finishLaunch()
     }
 
     private func launchSignedIn(_ size: TextSize, language: String = "en") {
         reset()
         setProvider("manual")
-        launchApp(size, language: language)
+        launchApp(size, language: language, signedOut: true)
     }
 
     /// Cold relaunch at `size` (the session is kept).
     private func relaunch(_ size: TextSize, language: String = "en") {
         launchApp(size, language: language)
-    }
-
-    private func signOut() {
-        openMe()
-        scrollToHittable("logoutButton")
-        element("logoutButton").tap()
-        let confirm = element("logoutConfirmButton")
-        XCTAssertTrue(confirm.waitForExistence(timeout: 10), "no logout confirmation — \(screenText())")
-        confirm.tap()
-        XCTAssertTrue(element("welcomeTitle").waitForExistence(timeout: 40), "logout did not reach the welcome screen")
     }
 
     // MARK: - Navigation
@@ -1015,9 +1010,7 @@ final class DynamicTypeUITests: XCTestCase {
 
     /// AC-26.4: the share extension (system text size, see the file header).
     func test_AC_26_4_shareExtension() throws {
-        reset()
-        setProvider("manual")
-        launchApp(.l)
+        launchSignedIn(.l)
         sleep(3) // the keychain write of the sign-in
         app.terminate()
         sleep(3)
