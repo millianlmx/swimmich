@@ -866,8 +866,10 @@ final class DynamicTypeUITests: XCTestCase {
         // People: the long name whole.
         relaunch(.ax5)
         openLibraryRow("peopleRow")
-        XCTAssertTrue(element("personName_\(shortPerson)").waitForExistence(timeout: 25), "no people — \(screenText())")
-        assertFullyShown(long: "personName_\(longPerson)", short: "personName_\(shortPerson)")
+        // The row is one combined accessibility element (PeopleView `personRow`): the
+        // name's own identifier is hidden, so the rows are compared (same caption line).
+        XCTAssertTrue(element("personRow_\(shortPerson)").waitForExistence(timeout: 25), "no people — \(screenText())")
+        assertFullyShown(long: "personRow_\(longPerson)", short: "personRow_\(shortPerson)")
 
         // The map: the active-filter badge whole.
         relaunch(.ax5)
