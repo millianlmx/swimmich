@@ -31,60 +31,61 @@ struct TrashView: View {
     }
 
     var body: some View {
-        NavigationStack {
-            ScrollView {
-                content
-            }
-            .refreshable { await vm.refresh() }
-            .safeAreaInset(edge: .top, spacing: 0) {
-                trashLoadErrorBanner
-            }
-            .scrollDismissesKeyboard(.immediately)
-            .navigationTitle(Text(verbatim: ""))
-            .navigationBarTitleDisplayMode(.inline)
-            .toolbar { toolbarContent }
-            .toolbarBackground(.visible, for: .navigationBar)
-            .appSensoryFeedback(.success, trigger: lastRestoreTick)
-            .appSensoryFeedback(.warning, trigger: lastDeleteTick)
-            .alert(
-                "Delete Permanently?",
-                isPresented: Binding(
-                    get: { pendingDeletePermanentID != nil },
-                    set: { if !$0 { pendingDeletePermanentID = nil } }
-                )
-            ) {
-                Button("Delete", role: .destructive) {
-                    if let id = pendingDeletePermanentID {
-                        Task {
-                            await vm.deletePermanently(id: id)
-                            lastDeleteTick &+= 1
-                        }
-                    }
-                    pendingDeletePermanentID = nil
-                }
-                Button("Cancel", role: .cancel) { pendingDeletePermanentID = nil }
-            } message: {
-                Text("This asset will be permanently deleted. Action cannot be undone.")
-            }
-            .alert("Empty Trash?", isPresented: $pendingEmptyAll) {
-                Button("Empty Trash", role: .destructive) {
+        // No `NavigationStack` of its own: the screen is pushed from the Albums
+        // tab's Library section, so it shares the tab's single navigation bar.
+        ScrollView {
+            content
+        }
+        .refreshable { await vm.refresh() }
+        .safeAreaInset(edge: .top, spacing: 0) {
+            trashLoadErrorBanner
+        }
+        .scrollDismissesKeyboard(.immediately)
+        .navigationTitle(Text(verbatim: ""))
+        .navigationBarTitleDisplayMode(.inline)
+        .toolbar { toolbarContent }
+        .toolbarBackground(.visible, for: .navigationBar)
+        .appSensoryFeedback(.success, trigger: lastRestoreTick)
+        .appSensoryFeedback(.warning, trigger: lastDeleteTick)
+        .alert(
+            "Delete Permanently?",
+            isPresented: Binding(
+                get: { pendingDeletePermanentID != nil },
+                set: { if !$0 { pendingDeletePermanentID = nil } }
+            )
+        ) {
+            Button("Delete", role: .destructive) {
+                if let id = pendingDeletePermanentID {
                     Task {
-                        await vm.emptyTrash()
+                        await vm.deletePermanently(id: id)
                         lastDeleteTick &+= 1
                     }
                 }
-                Button("Cancel", role: .cancel) {}
-            } message: {
-                Text("All items in trash will be permanently deleted. Action cannot be undone.")
+                pendingDeletePermanentID = nil
             }
-            .alert("Something went wrong", isPresented: Binding(
-                get: { vm.actionErrorMessage != nil },
-                set: { if !$0 { vm.actionErrorMessage = nil } }
-            )) {
-                Button("OK", role: .cancel) {}
-            } message: {
-                Text(verbatim: vm.actionErrorMessage ?? "")
+            Button("Cancel", role: .cancel) { pendingDeletePermanentID = nil }
+        } message: {
+            Text("This asset will be permanently deleted. Action cannot be undone.")
+        }
+        .alert("Empty Trash?", isPresented: $pendingEmptyAll) {
+            Button("Empty Trash", role: .destructive) {
+                Task {
+                    await vm.emptyTrash()
+                    lastDeleteTick &+= 1
+                }
             }
+            .accessibilityIdentifier("trashEmptyConfirmButton")
+            Button("Cancel", role: .cancel) {}
+        } message: {
+            Text("All items in trash will be permanently deleted. Action cannot be undone.")
+        }
+        .alert("Something went wrong", isPresented: Binding(
+            get: { vm.actionErrorMessage != nil },
+            set: { if !$0 { vm.actionErrorMessage = nil } }
+        )) {
+            Button("OK", role: .cancel) {}
+        } message: {
+            Text(verbatim: vm.actionErrorMessage ?? "")
         }
         .task {
             if vm.items.isEmpty {
@@ -103,6 +104,8 @@ struct TrashView: View {
                 Task { await vm.deletePermanently(id: asset.id) }
             }
         )
+        .accessibilityElement(children: .contain)
+        .accessibilityIdentifier("trashScreen")
     }
 
     /// Opens the Photos-style viewer at `item`, paging through trash order.
@@ -258,6 +261,7 @@ struct TrashView: View {
                 Label("Empty Trash", systemImage: "trash")
             }
             .disabled(vm.isLoading || vm.items.isEmpty) // AC-316
+            .accessibilityIdentifier("trashEmptyButton")
         }
     }
 }

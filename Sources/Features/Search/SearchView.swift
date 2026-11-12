@@ -479,6 +479,7 @@ struct SearchView: View {
                         }
                         .buttonStyle(.plain)
                         .disabled(vm.isLoading)
+                        .accessibilityIdentifier("explorePlaceCard_\(place.city)")
                     }
                 }
                 .padding(.horizontal, PVSpacing.s12)

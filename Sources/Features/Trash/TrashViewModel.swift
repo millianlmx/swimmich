@@ -74,7 +74,9 @@ final class TrashViewModel {
         guard bucketIndex < buckets.count else { return }
         let bucket = buckets[bucketIndex]
         do {
-            let columnar = try await client.getTimeBucket(timeBucket: bucket.timeBucket, personId: nil, withPartners: nil, visibility: nil, withStacked: nil)
+            // The server filters a period by the same flags as the month list:
+            // without `isTrashed` it answers with the month's live photos.
+            let columnar = try await client.getTimeBucket(timeBucket: bucket.timeBucket, isFavorite: nil, isTrashed: true, personId: nil, withPartners: nil, visibility: nil, withStacked: nil, orderBy: nil)
             let zipped = AssetReactItem.zip(columnar)
             for item in zipped where !loadedIds.contains(item.id) {
                 items.append(item)

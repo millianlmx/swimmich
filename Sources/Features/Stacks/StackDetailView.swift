@@ -73,6 +73,8 @@ struct StackDetailView: View {
             baseURL: auth.baseURL ?? URL(string: "https://example.com")!,
             token: auth.accessToken
         )
+        .accessibilityElement(children: .contain)
+        .accessibilityIdentifier("stackDetailScreen")
     }
 
     @ViewBuilder
@@ -155,6 +157,7 @@ struct StackDetailView: View {
             }
         }
         .buttonStyle(.plain)
+        .accessibilityIdentifier("stackMember_\(member.id)")
         .swipeActions(edge: .trailing) {
             if !isPrimary {
                 Button(role: .destructive) {

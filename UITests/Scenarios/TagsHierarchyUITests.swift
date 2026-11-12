@@ -171,16 +171,6 @@ final class TagsHierarchyUITests: XCTestCase {
 
     private func tile(_ assetId: String) -> XCUIElement { element("assetTile_\(assetId)") }
 
-    /// A row of the "Me" hub, by identifier; scrolled into view first.
-    private func hubRow(_ identifier: String) -> XCUIElement {
-        let row = app.buttons.matching(identifier: identifier).firstMatch
-        for _ in 0..<6 where !row.exists {
-            app.swipeUp()
-            sleep(1)
-        }
-        return row
-    }
-
     // MARK: - Wire helpers
 
     /// One entry of the stub's request log, with the fields this stub notes.
@@ -245,10 +235,26 @@ final class TagsHierarchyUITests: XCTestCase {
         sleep(4) // the sheet animates in; the Form is not hittable before it does
     }
 
+    /// Albums tab → Library section → Tags tile. A Me sheet still on screen is
+    /// pulled down first: it covers the tab bar. The Albums ScrollView is scrolled
+    /// only when the tile is not hittable.
     private func openTags() {
-        openHub()
-        let row = hubRow("tagsRow")
-        XCTAssertTrue(row.waitForExistence(timeout: 10), "Tags row missing in the Me hub — \(screenText())")
+        for _ in 0..<4 {
+            if app.buttons.matching(identifier: "profileAvatar").firstMatch.isHittable { break }
+            let top = app.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.1))
+            let bottom = app.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.97))
+            top.press(forDuration: 0.1, thenDragTo: bottom)
+            sleep(1)
+        }
+        let albums = app.tabBars.buttons["Albums"]
+        XCTAssertTrue(albums.waitForExistence(timeout: 15), "Albums tab missing — \(screenText())")
+        albums.tap()
+        let row = app.buttons.matching(identifier: "tagsRow").firstMatch
+        XCTAssertTrue(row.waitForExistence(timeout: 10), "Tags tile missing in the Albums library — \(screenText())")
+        for _ in 0..<4 where !row.isHittable {
+            app.swipeUp()
+            sleep(1)
+        }
         row.tap()
         XCTAssertTrue(element("createTagButton").waitForExistence(timeout: 15), "the Tags screen never opened")
     }
@@ -408,9 +414,7 @@ final class TagsHierarchyUITests: XCTestCase {
             }
         }
         XCTAssertEqual(toggle.value as? String, "1", "read-only mode did not turn on")
-        let tagsRow = hubRow("tagsRow")
-        XCTAssertTrue(tagsRow.waitForExistence(timeout: 10), "Tags row missing")
-        tagsRow.tap()
+        openTags()
         XCTAssertTrue(row("root", tag(voyages)).waitForExistence(timeout: 15), "Voyages row missing")
         let before = tagRowIdentifiers()
 
@@ -424,7 +428,8 @@ final class TagsHierarchyUITests: XCTestCase {
         shot("ac78-read-only")
 
         // Read-only off, server in error.
-        goBack()
+        goBack() // the Tags screen → the Albums tab
+        openHub()
         let toggleAgain = app.switches.matching(identifier: "readOnlyModeToggle").firstMatch
         for _ in 0..<8 where !toggleAgain.exists {
             app.swipeUp()
@@ -437,9 +442,7 @@ final class TagsHierarchyUITests: XCTestCase {
         }
         XCTAssertEqual(toggleAgain.value as? String, "0", "read-only mode did not turn off")
         get("/api/__tags/fail-create")
-        let tagsRowAgain = hubRow("tagsRow")
-        XCTAssertTrue(tagsRowAgain.waitForExistence(timeout: 10), "Tags row missing")
-        tagsRowAgain.tap()
+        openTags()
         XCTAssertTrue(row("root", tag(voyages)).waitForExistence(timeout: 15), "Voyages row missing")
 
         createTag(named: "Italie", under: tag(voyages))

@@ -1,12 +1,13 @@
 import SwiftUI
 
-/// One of the two "recent" consult screens (gap G13) — pushed from the "Me" hub.
+/// One of the two "recent" consult screens (gap G13) — pushed from the Albums
+/// tab's Library section (L-12).
 ///
 /// A **gallery**, not an editor: no selection, no context menu, no action on an
 /// asset. Editing belongs to the Photos tab, whose grid carries those actions;
 /// here the long press is deliberately inert.
 ///
-/// It also declares no `NavigationStack` of its own: `ProfileView` already owns
+/// It also declares no `NavigationStack` of its own: the Albums tab already owns
 /// one, and a second stack would stack a second navigation bar (the trap
 /// `LanguageSettingsView` paid for). Same contract as `OfflineAssetsView`.
 struct RecentAssetsView: View {
@@ -24,6 +25,8 @@ struct RecentAssetsView: View {
             .navigationBarTitleDisplayMode(.inline)
             .background(Color.bgPrimary)
             .task { await vm.load() }
+            .accessibilityElement(children: .contain)
+            .accessibilityIdentifier(vm.mode == .taken ? "recentTakenScreen" : "recentAddedScreen")
     }
 
     // MARK: - States

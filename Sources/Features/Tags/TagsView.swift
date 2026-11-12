@@ -9,7 +9,7 @@ struct TagAssetsRoute: Hashable {
 /// Tag management screen (gap #2, L-03): the tags as an indented, fully
 /// expanded hierarchy; a touch on any row — parent included — opens its photos.
 /// Create under a parent from the toolbar, delete with swipe. Pushed from the
-/// Me section (ProfileView) — TrashView pattern (no own NavigationStack).
+/// Albums tab's Library section (L-12) — TrashView pattern (no own NavigationStack).
 struct TagsView: View {
     @Bindable var vm: TagsViewModel
 
@@ -75,5 +75,7 @@ struct TagsView: View {
             CreateTagSheet(vm: vm)
                 .presentationDetents([.medium, .large])
         }
+        .accessibilityElement(children: .contain)
+        .accessibilityIdentifier("tagsScreen")
     }
 }

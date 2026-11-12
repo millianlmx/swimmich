@@ -4,7 +4,7 @@ import XCTest
 /// the People screen sends `GET /api/search/person` after a debounce, and the
 /// answer REPLACES the paged list.
 ///
-/// It drives the real app (onboarding → SSO → Me hub → People) against
+/// It drives the real app (onboarding → SSO → Albums tab → People) against
 /// `immich_stub_people_search.py` and asserts on BOTH surfaces: the rows
 /// (`personRow_<id>`) and the states (`peopleSearchEmpty`, `peopleSearchError`) on
 /// screen, and what really crossed the wire, read back from the stub's request log
@@ -227,11 +227,12 @@ final class PeopleSearchUITests: XCTestCase {
         }
     }
 
-    /// A row of the "Me" hub, by IDENTIFIER. A `Form` only publishes what it
-    /// rendered, so the row is scrolled into view first.
-    private func hubRow(_ identifier: String) -> XCUIElement {
+    /// A tile of the Albums tab's Library section, by IDENTIFIER. The Albums
+    /// ScrollView is scrolled only when the tile is not hittable.
+    private func libraryRow(_ identifier: String) -> XCUIElement {
         let row = app.buttons.matching(identifier: identifier).firstMatch
-        for _ in 0..<6 where !row.exists {
+        _ = row.waitForExistence(timeout: 10)
+        for _ in 0..<6 where !row.isHittable {
             app.swipeUp()
             sleep(1)
         }
@@ -244,7 +245,7 @@ final class PeopleSearchUITests: XCTestCase {
         app.descendants(matching: .any).matching(identifier: "personRow_\(id)").firstMatch
     }
 
-    /// Timeline → Me hub → People, all by identifier.
+    /// Timeline → Albums tab → People, all by identifier.
     private func enterPeopleList(expecting id: String) {
         XCTAssertTrue(app.tabBars.buttons["Photos"].waitForExistence(timeout: 30),
                       "the app is not on the authenticated shell")
@@ -255,15 +256,13 @@ final class PeopleSearchUITests: XCTestCase {
             shot("ps02-whats-new")
             whatsNewDone.tap()
         }
-        let hub = app.buttons.matching(identifier: "profileAvatar").firstMatch
-        XCTAssertTrue(hub.waitForExistence(timeout: 20), "Profile avatar missing")
-        hub.tap()
-        XCTAssertTrue(app.buttons.matching(identifier: "profilePictureRow").firstMatch.waitForExistence(timeout: 20),
-                      "the Me hub never opened:\n\(app.debugDescription)")
-        let peopleRow = hubRow("peopleRow")
+        app.tabBars.buttons["Albums"].tap()
+        XCTAssertTrue(element("albumsLibrarySection").waitForExistence(timeout: 20),
+                      "the Albums library never appeared:\n\(app.debugDescription)")
+        let peopleRow = libraryRow("peopleRow")
         if !peopleRow.waitForExistence(timeout: 15) {
-            shot("ps03b-me-hub-without-people-row")
-            XCTFail("People row missing in the Me hub:\n\(app.debugDescription)")
+            shot("ps03b-albums-without-people-row")
+            XCTFail("People tile missing in the Albums library:\n\(app.debugDescription)")
         }
         peopleRow.tap()
         XCTAssertTrue(personRow(id).waitForExistence(timeout: 30),
@@ -539,10 +538,10 @@ final class PeopleSearchUITests: XCTestCase {
             shot("ps78-pop-not-on-results")
             print("AC-78 navigation bars: \(app.navigationBars.allElementsBoundByIndex.map(\.identifier))")
             print("AC-78 screen reads: \(app.staticTexts.allElementsBoundByIndex.map(\.label))")
-            let onHub = app.buttons.matching(identifier: "peopleRow").firstMatch.exists
-            print("AC-78 hub row present: \(onHub)")
-            XCTFail(onHub
-                ? "the pop from Alice's card landed on the Me hub, not on the search results"
+            let onAlbums = element("albumsLibrarySection").exists
+            print("AC-78 Albums library present: \(onAlbums)")
+            XCTFail(onAlbums
+                ? "the pop from Alice's card landed on the Albums tab, not on the search results"
                 : "the pop from Alice's card landed on an unknown screen, not on the search results")
             return
         }
@@ -558,7 +557,8 @@ final class PeopleSearchUITests: XCTestCase {
         shot("ps78-back-on-results")
     }
 
-    /// AC-79: leaving for the Me hub and coming back is a NEW visit: empty field.
+    /// AC-79: leaving People back to the Albums tab and coming in again is a NEW
+    /// visit: empty field.
     func test_People_AC_79_newVisitFromMeStartsEmpty() throws {
         searchAliAndAwaitResults()
         dismissKeyboard()
@@ -568,30 +568,23 @@ final class PeopleSearchUITests: XCTestCase {
         let searches = searchRequests().count
 
         // Leave without touching the field: Cancel and the clear button would
-        // empty it themselves. Strategies in order, the next only if the hub row
-        // did not show up.
-        let hubPeopleRow = app.buttons.matching(identifier: "peopleRow").firstMatch
+        // empty it themselves. Strategies in order, the next only if the Albums
+        // library did not show up.
+        let library = element("albumsLibrarySection")
         var strategy = "(a) BackButton"
         let backButton = app.buttons.matching(identifier: "BackButton").firstMatch
         if backButton.exists && backButton.isHittable { backButton.tap() }
-        if !hubPeopleRow.waitForExistence(timeout: 10) {
+        if !library.waitForExistence(timeout: 10) {
             strategy = "(b) edge swipe"
             app.coordinate(withNormalizedOffset: CGVector(dx: 0.01, dy: 0.5))
                 .press(forDuration: 0.1, thenDragTo: app.coordinate(withNormalizedOffset: CGVector(dx: 0.85, dy: 0.5)))
         }
-        if !hubPeopleRow.waitForExistence(timeout: 10) {
-            strategy = "(c) avatar -> profile picture row"
-            let avatar = app.buttons.matching(identifier: "profileAvatar").firstMatch
-            XCTAssertTrue(avatar.waitForExistence(timeout: 20),
-                          "neither the Me hub nor the timeline is on screen:\n\(app.debugDescription)")
-            avatar.tap()
-            XCTAssertTrue(app.buttons.matching(identifier: "profilePictureRow").firstMatch.waitForExistence(timeout: 20),
-                          "the Me hub never opened after touching the avatar")
-        }
         print("AC-79 way out of People: \(strategy)")
+        XCTAssertTrue(library.waitForExistence(timeout: 20),
+                      "going back from People must reach the Albums library (`albumsLibrarySection`):\n\(app.debugDescription)")
 
-        let peopleRow = hubRow("peopleRow")
-        XCTAssertTrue(peopleRow.waitForExistence(timeout: 20), "the People row is missing in the Me hub")
+        let peopleRow = libraryRow("peopleRow")
+        XCTAssertTrue(peopleRow.waitForExistence(timeout: 20), "the People tile is missing in the Albums library")
         peopleRow.tap()
 
         XCTAssertTrue(personRow(adaId).waitForExistence(timeout: 30), "the paged list never came back")

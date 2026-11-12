@@ -183,6 +183,23 @@ final class TrashViewModelTests: XCTestCase {
         XCTAssertEqual(vm.actionErrorMessage, localizedString("Something went wrong. Please try again."))
     }
 
+    // MARK: - AC-133: every period read repeats the trash filter
+
+    func test_AC_133_loadNextBucket_repeatsTrashFilterOnEachPeriod() async throws {
+        let mock = makeMock()
+        let vm = TrashViewModel(client: mock)
+        await vm.load()
+        await vm.loadMore()
+        await vm.refresh()
+
+        XCTAssertEqual(mock.timeBucketCalls.map(\.timeBucket), ["2024-07-01", "2024-06-01", "2024-07-01"])
+        let monthList = try XCTUnwrap(mock.lastTimeBucketsFilters)
+        for call in mock.timeBucketCalls {
+            XCTAssertEqual(call.filters.isTrashed, true, "period \(call.timeBucket) must be read with isTrashed=true")
+            XCTAssertEqual(call.filters, monthList, "period \(call.timeBucket) must repeat the month list's filters")
+        }
+    }
+
     // MARK: - AC-305: refresh() resets + first bucket only + error path
 
     func test_AC_305_refresh_trash() async {

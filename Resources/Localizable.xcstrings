@@ -5494,6 +5494,34 @@
         }
       }
     },
+    "Library" : {
+      "localizations" : {
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Bibliothèque"
+          }
+        },
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Mediathek"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Biblioteca"
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Libreria"
+          }
+        }
+      }
+    },
     "Library ID" : {
       "localizations" : {
         "fr" : {
@@ -8682,34 +8710,6 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Pronti al caricamento"
-          }
-        }
-      }
-    },
-    "Recently" : {
-      "localizations" : {
-        "fr" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Récemment"
-          }
-        },
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Kürzlich"
-          }
-        },
-        "es" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Recientemente"
-          }
-        },
-        "it" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Di recente"
           }
         }
       }

@@ -12,60 +12,62 @@ struct DuplicatesView: View {
     private let columns = Array(repeating: GridItem(.flexible(), spacing: PVSpacing.s2), count: 3)
 
     var body: some View {
-        NavigationStack {
-            Group {
-                if vm.groups.isEmpty && vm.isLoading {
-                    ProgressView("Checking for duplicates…")
-                        .frame(maxWidth: .infinity, maxHeight: .infinity)
-                } else if let error = vm.errorMessage, vm.groups.isEmpty {
-                    ContentUnavailableView {
-                        Label("Couldn't load duplicates", systemImage: "rectangle.on.rectangle")
-                    } description: {
-                        Text(error)
-                    } actions: {
-                        Button("Try Again") { Task { await vm.load() } }
-                            .buttonStyle(PVPrimaryButtonStyle())
-                    }
-                } else if vm.groups.isEmpty {
-                    ContentUnavailableView(
-                        "No Duplicates",
-                        systemImage: "checkmark.seal",
-                        description: Text("Duplicated photos will appear here for easy cleanup.")
-                    )
-                } else {
-                    ScrollView {
-                        LazyVStack(spacing: PVSpacing.s16) {
-                            ForEach(vm.groups, id: \.duplicateId) { group in
-                                groupCard(group)
-                            }
+        // No `NavigationStack` of its own: pushed from the Albums tab's Library
+        // section, it shares the tab's single navigation bar.
+        Group {
+            if vm.groups.isEmpty && vm.isLoading {
+                ProgressView("Checking for duplicates…")
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+            } else if let error = vm.errorMessage, vm.groups.isEmpty {
+                ContentUnavailableView {
+                    Label("Couldn't load duplicates", systemImage: "rectangle.on.rectangle")
+                } description: {
+                    Text(error)
+                } actions: {
+                    Button("Try Again") { Task { await vm.load() } }
+                        .buttonStyle(PVPrimaryButtonStyle())
+                }
+            } else if vm.groups.isEmpty {
+                ContentUnavailableView(
+                    "No Duplicates",
+                    systemImage: "checkmark.seal",
+                    description: Text("Duplicated photos will appear here for easy cleanup.")
+                )
+            } else {
+                ScrollView {
+                    LazyVStack(spacing: PVSpacing.s16) {
+                        ForEach(vm.groups, id: \.duplicateId) { group in
+                            groupCard(group)
                         }
-                        .padding(PVSpacing.s16)
                     }
-                    .refreshable { await vm.load() }
+                    .padding(PVSpacing.s16)
                 }
-            }
-            .navigationTitle("Duplicates")
-            .navigationBarTitleDisplayMode(.inline)
-            .task { await vm.load() }
-            .confirmationDialog(
-                deletePrompt,
-                isPresented: Binding(
-                    get: { pendingDeleteId != nil },
-                    set: { if !$0 { pendingDeleteId = nil } }
-                ),
-                titleVisibility: .visible
-            ) {
-                Button("Delete", role: .destructive) {
-                    if let id = pendingDeleteId {
-                        Task { await vm.deleteGroup(id: id) }
-                    }
-                    pendingDeleteId = nil
-                }
-                Button("Cancel", role: .cancel) { pendingDeleteId = nil }
-            } message: {
-                Text("The suggested copies are kept. This cannot be undone.")
+                .refreshable { await vm.load() }
             }
         }
+        .navigationTitle("Duplicates")
+        .navigationBarTitleDisplayMode(.inline)
+        .task { await vm.load() }
+        .confirmationDialog(
+            deletePrompt,
+            isPresented: Binding(
+                get: { pendingDeleteId != nil },
+                set: { if !$0 { pendingDeleteId = nil } }
+            ),
+            titleVisibility: .visible
+        ) {
+            Button("Delete", role: .destructive) {
+                if let id = pendingDeleteId {
+                    Task { await vm.deleteGroup(id: id) }
+                }
+                pendingDeleteId = nil
+            }
+            Button("Cancel", role: .cancel) { pendingDeleteId = nil }
+        } message: {
+            Text("The suggested copies are kept. This cannot be undone.")
+        }
+        .accessibilityElement(children: .contain)
+        .accessibilityIdentifier("duplicatesScreen")
     }
 
     private var pendingCount: Int {
@@ -121,5 +123,7 @@ struct DuplicatesView: View {
         .padding(PVSpacing.s16)
         .background(Color.gray.opacity(0.12))
         .clipShape(RoundedRectangle(cornerRadius: PVRadius.lg, style: .continuous))
+        .accessibilityElement(children: .contain)
+        .accessibilityIdentifier("duplicateGroup_\(group.duplicateId)")
     }
 }

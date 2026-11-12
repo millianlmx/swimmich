@@ -91,6 +91,7 @@ struct RootView: View {
 private struct AuthenticatedRoot: View {
     @Environment(AuthViewModel.self) private var auth
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @Environment(\.scenePhase) private var scenePhase
 
     /// Kept (not only consumed in `init`) so a screen can build a view model at
     /// presentation time — the shared-link viewer needs the connected server,
@@ -241,7 +242,23 @@ private struct AuthenticatedRoot: View {
                 MemoriesView(vm: memories)
             }
             Tab("Albums", systemImage: "square.stack", value: RootTab.albums) {
-                AlbumsView(vm: albums)
+                AlbumsView(
+                    vm: albums,
+                    library: LibraryDestinations(
+                        recentTaken: recentTaken,
+                        recentAdded: recentAdded,
+                        trash: trash,
+                        people: people,
+                        tags: tags,
+                        stacks: stacks,
+                        partners: partners,
+                        offline: offline,
+                        folders: folders,
+                        localLibrary: localLibrary,
+                        duplicates: duplicates,
+                        lockedFolder: lockedFolder
+                    )
+                )
             }
             Tab("Shared", systemImage: "person.2.fill", value: RootTab.shared) {
                 SharedLinksView(vm: sharedLinks) { baseURL, externalDomain in
@@ -323,6 +340,14 @@ private struct AuthenticatedRoot: View {
                 map.isPhotoSheetPresented = false
             }
         }
+        // The locked folder closes when the app leaves the foreground, whichever
+        // tab is up and whether or not its screen is on display: the elevation
+        // is the session's, and the view that used to carry this rule is only
+        // alive while it is pushed.
+        .onChange(of: scenePhase) { _, phase in
+            guard phase != .active else { return }
+            Task { await lockedFolder.relockIfUnlocked() }
+        }
         // Download queue (gap G10): the capsule rides above the tab bar from
         // every tab and stays up while a transfer runs — that is the point of
         // the feature. Declared before the sheets below so the detail screen
@@ -356,29 +381,17 @@ private struct AuthenticatedRoot: View {
         // the avatar button that every tab's navigation bar exposes.
         .sheet(isPresented: $showProfile) {
             ProfileView(
-                trash: trash,
                 storage: storage,
                 upload: upload,
                 uploadDetail: uploadDetail,
-                duplicates: duplicates,
-                people: people,
-                tags: tags,
-                stacks: stacks,
-                partners: partners,
                 admin: admin,
-                offline: offline,
-                recentTaken: recentTaken,
-                recentAdded: recentAdded,
                 notifications: notifications,
                 language: language,
                 deviceSessions: deviceSessions,
                 appSettings: appSettings,
                 readOnly: readOnly,
-                localLibrary: localLibrary,
                 freeUpSpace: freeUpSpace,
-                folders: folders,
                 profilePicture: profilePicture,
-                lockedFolder: lockedFolder,
                 changePassword: changePassword,
                 apiKeys: apiKeys,
                 whatsNew: whatsNew,
@@ -397,10 +410,9 @@ private struct AuthenticatedRoot: View {
             // `NavigationStackCoordinator.setViewControllers`). Values injected
             // one level up (`auth`, `appSettings`, on `RootView`'s own body) do
             // arrive, which is why the hub itself always looked fine. Re-stating
-            // them here is what makes the whole hub tree — Backup, Offline
-            // Storage, Folders, On this device, Free Up Space, the
-            // rest — see the same instances the tabs use, instead of silently
-            // getting nothing.
+            // them here is what makes the whole hub tree — Backup, Free Up
+            // Space, the rest — see the same instances the tabs use, instead of
+            // silently getting nothing.
             .environment(upload)
             .environment(readOnly)
             .environment(albums)

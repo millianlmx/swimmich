@@ -284,10 +284,26 @@ final class PartnerLibraryUITests: XCTestCase {
         sleep(4) // the sheet animates in; the Form is not hittable before it does
     }
 
+    /// Albums tab → Library section → Partners tile. A Me sheet still on screen is
+    /// pulled down first: it covers the tab bar. The Albums ScrollView is scrolled
+    /// only when the tile is not hittable.
     private func openPartners() {
-        openHub()
-        let row = hubRow("partnersRow")
-        XCTAssertTrue(row.waitForExistence(timeout: 10), "Partners row missing in the Me hub — \(screenText())")
+        for _ in 0..<4 {
+            if app.buttons.matching(identifier: "profileAvatar").firstMatch.isHittable { break }
+            let top = app.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.1))
+            let bottom = app.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.97))
+            top.press(forDuration: 0.1, thenDragTo: bottom)
+            sleep(1)
+        }
+        let albums = app.tabBars.buttons["Albums"]
+        XCTAssertTrue(albums.waitForExistence(timeout: 15), "Albums tab missing — \(screenText())")
+        albums.tap()
+        let row = app.buttons.matching(identifier: "partnersRow").firstMatch
+        XCTAssertTrue(row.waitForExistence(timeout: 10), "Partners tile missing in the Albums library — \(screenText())")
+        for _ in 0..<4 where !row.isHittable {
+            app.swipeUp()
+            sleep(1)
+        }
         row.tap()
         XCTAssertTrue(element("invitePartner").waitForExistence(timeout: 15), "the Partners screen never opened")
     }
@@ -507,9 +523,7 @@ final class PartnerLibraryUITests: XCTestCase {
         }
         goBack() // Preferences → the hub, still on screen
 
-        let partners = hubRow("partnersRow")
-        XCTAssertTrue(partners.waitForExistence(timeout: 10), "Partners row missing in the Me hub")
-        partners.tap()
+        openPartners() // the Me sheet is still up behind Preferences: it is pulled down first
         openLibrary(partnerA)
         let first = libraryTile(aSept(1))
         XCTAssertTrue(first.waitForExistence(timeout: 20))

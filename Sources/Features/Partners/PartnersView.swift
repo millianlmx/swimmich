@@ -1,7 +1,7 @@
 import SwiftUI
 
-/// Partner sharing screen (P3, issue #14). Pushed from the Me hub
-/// (`ProfileView`) — TrashView/TagsView pattern, no own `NavigationStack`.
+/// Partner sharing screen (P3, issue #14). Pushed from the Albums tab's Library
+/// section (L-12) — TrashView/TagsView pattern, no own `NavigationStack`.
 ///
 /// Two sections, two responsibilities, and they are **not** interchangeable:
 ///
@@ -80,6 +80,8 @@ struct PartnersView: View {
         } message: {
             Text("They lose access to your library. Your photos stay on the server, and your own timeline is unaffected.")
         }
+        .accessibilityElement(children: .contain)
+        .accessibilityIdentifier("partnersScreen")
     }
 
     // MARK: - Sections

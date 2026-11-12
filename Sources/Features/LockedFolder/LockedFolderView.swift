@@ -1,19 +1,20 @@
 import SwiftUI
 
-/// The locked folder (gap G12) — pushed from the Me sheet's `Security` section.
+/// The locked folder (gap G12) — pushed from the Albums tab's Library section
+/// (L-12).
 ///
 /// Three doors, one screen: whichever state the session is in, the user stands
 /// in front of the same view, so no back-and-forth can route around the PIN.
 ///
-/// No `NavigationStack` of its own (the Me sheet owns the stack, exactly like
+/// No `NavigationStack` of its own (the Albums tab owns the stack, exactly like
 /// the other pushed screens; a second one would draw a second navigation bar),
 /// and no re-lock on `onDisappear`: pushing the photo viewer makes this view
 /// disappear, which would ask for the PIN after every photo. The explicit
-/// "Lock now" button and the scene-phase rule cover the intent.
+/// "Lock now" button covers the intent; backgrounding the app re-locks an open
+/// folder from `AuthenticatedRoot` (`relockIfUnlocked`), whichever tab is up.
 struct LockedFolderView: View {
     let vm: LockedFolderViewModel
 
-    @Environment(\.scenePhase) private var scenePhase
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     var body: some View {
@@ -31,12 +32,6 @@ struct LockedFolderView: View {
         .background(Color.bgPrimary)
         .animation(PVMotion.adaptive(PVMotion.standard, reduceMotion: reduceMotion), value: vm.gate)
         .task { await vm.refreshGate() }
-        // Backgrounding closes the folder: the elevation is the *session's*, and
-        // the grid must not still be readable when the phone comes back.
-        .onChange(of: scenePhase) { _, phase in
-            guard phase != .active else { return }
-            Task { await vm.relock() }
-        }
     }
 }
 

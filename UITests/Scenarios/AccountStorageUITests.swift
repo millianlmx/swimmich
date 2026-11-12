@@ -436,8 +436,22 @@ final class AccountStorageUITests: XCTestCase {
         Thread.sleep(forTimeInterval: 1)
     }
 
+    /// Opens "On this device" from the Library section of the Albums tab. The Me
+    /// sheet, when still up, is pulled down first: it covers the tab bar.
     private func openLocalLibrary() {
-        reveal("localLibraryRow")
+        for _ in 0..<4 {
+            if app.buttons.matching(identifier: "profileAvatar").firstMatch.isHittable { break }
+            let top = app.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.1))
+            let bottom = app.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.97))
+            top.press(forDuration: 0.1, thenDragTo: bottom)
+            Thread.sleep(forTimeInterval: 1)
+        }
+        dismissWhatsNewIfPresent()
+        let albums = app.tabBars.buttons["Albums"]
+        XCTAssertTrue(albums.waitForExistence(timeout: 15), "no Albums tab — \(screenReads())")
+        albums.tap()
+        let tile = app.buttons.matching(identifier: "localLibraryRow").firstMatch
+        for _ in 0..<4 where !tile.waitForExistence(timeout: 3) || !tile.isHittable { app.swipeUp() }
         openRow("localLibraryRow")
         // The screen asks for Photos access when it opens: a system alert left
         // unanswered blocks everything behind it.
