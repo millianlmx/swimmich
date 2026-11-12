@@ -97,7 +97,7 @@ Vocabulaire. Statut d'une fonction : `présent`, `partiel`, `absent` ou `hors p�
 | F-10.4 | Photo de visage par défaut (featured photo) | présent | docs §10 | Sources/Features/People/PeopleView.swift:336 (Set as cover), Sources/Features/People/PeopleViewModel.swift:375-379 | — |
 | F-10.5 | Cacher des personnes de la vue Explore / timeline | présent | docs §10 | Sources/Features/People/PeopleView.swift:134-141 | — |
 | F-10.6 | Date de naissance → affichage de l'âge sur la photo | partiel | docs §10 ; `mobile/lib/presentation/widgets/asset_viewer/asset_details/people_details.widget.dart@v3.4.0` (`formatAge`) | Date éditable sur la page personne (Sources/Features/People/PeopleView.swift:277-285, Sources/Features/People/BirthdayEditorSheet.swift:49-53) ; âge absent de la photo (Sources/Features/PhotoViewer/PhotoInfoPanel.swift:200-224 : nom seul) | B-28 |
-| F-10.7 | Fusion de personnes (`POST /api/people/{id}/merge`, route dépréciée) | présent | docs §10 ; PR #31555 (v3.2.1) | Sources/Features/People/PeopleView.swift:424-445 (mergeMenu), Sources/Core/Protocols/ImmichClient.swift:229-230, Sources/Services/ImmichAPIClient.swift:516-517 | — |
+| F-10.7 | Fusion de personnes (`POST /api/people/merge` dès v3.2.1, `POST /api/people/{id}/merge` avant) | présent | docs §10 ; PR #31555 (v3.2.1) | Sources/Features/People/PeopleView.swift:475-498 (mergeMenu), Sources/Core/Protocols/ImmichClient.swift:236-237, Sources/Services/ImmichAPIClient.swift:656-664 (route choisie d'après la version du serveur) | — |
 | F-10.8 | Favoriser une personne (épinglée en tête de liste) | présent | docs §10 | Sources/Features/People/PeopleView.swift:78-84, Sources/Features/People/PeopleView.swift:210-214, Sources/Features/People/PeopleView.swift:291-292 | — |
 | F-10.9 | Visages affichés dans le détail de l'asset | présent | docs §10 | Sources/Features/PhotoViewer/PhotoInfoPanel.swift:200-224 (facesCard), Sources/Features/PhotoViewer/FaceAssignSheet.swift:22-29 | — |
 | F-10.10 | Réexécution de la reconnaissance faciale (Swimmich : Administration > tâches, réservé aux admins : Sources/Features/Admin/AdminView.swift:159-194) | hors périmètre | docs §10 ; Recherche négative : `presentation/actions/` (24 fichiers) et `presentation/widgets/people/` n'ont aucune action de reconnaissance faciale (mobile/lib@v3.4.0) → 0 | — | Exclu : absent du mobile v3.4.0 (aucune action de visages dans `GeneralBottomSheet`) |
@@ -480,7 +480,7 @@ Chaque écran principal a une ligne par aspect. « États » regroupe le chargem
 | L-17 | Pluriels et traductions complètes | B-21 | livré | c9ae978f4cb1 | AC-32 (non vérifié à l'exécution), AC-32.1, AC-32.2, AC-32.3, AC-32.4, AC-32.5, AC-32.6, AC-32.7, AC-32.8, AC-32.9 |
 | L-18 | Réduire les animations : fondus à la place des mouvements | B-22 | livré | 5bf3ca5 | AC-33 (non vérifié à l'exécution), AC-162 (non vérifié à l'exécution), AC-163 (non vérifié à l'exécution), AC-164 (non vérifié à l'exécution), AC-165 (non vérifié à l'exécution), AC-166 (non vérifié à l'exécution), AC-167 (non vérifié à l'exécution), AC-168 (non vérifié à l'exécution), AC-169 (non vérifié à l'exécution), AC-170 (non vérifié à l'exécution), AC-171 (non vérifié à l'exécution), AC-172, AC-173 |
 | L-19 | VoiceOver : un libellé explicite sur chaque bouton | B-23 | planifié | — | — |
-| L-20 | Compatibilité Immich v3.4.0 sans routes dépréciées | B-24 | planifié | — | — |
+| L-20 | Compatibilité Immich v3.4.0 sans routes dépréciées | B-24 | livré | 892bfd504933 | AC-35 (non vérifié à l'exécution), AC-36, AC-174, AC-175, AC-176, AC-177, AC-178, AC-179, AC-180 |
 | L-21 | Retouches non destructives sur le serveur | B-25 | planifié | — | — |
 | L-22 | Sauvegarde des retouches faites sur le téléphone, empilées sur l'original | B-26 | planifié | — | — |
 | L-23 | Recherche : personnes, filtres complets et sélection multiple | B-27 | planifié | — | — |
@@ -518,7 +518,7 @@ Chaque écran principal a une ligne par aspect. « États » regroupe le chargem
 - L-17 : AC-32
 - L-18 : AC-33, AC-162, AC-163, AC-164, AC-165, AC-166, AC-167, AC-168, AC-169, AC-170, AC-171, AC-172, AC-173
 - L-19 : AC-34
-- L-20 : AC-35, AC-36
+- L-20 : AC-35, AC-36, AC-174, AC-175, AC-176, AC-177, AC-178, AC-179, AC-180
 - L-21 : AC-39, AC-40
 - L-22 : AC-41
 - L-23 : AC-42, AC-43, AC-44
@@ -537,6 +537,8 @@ Chaque écran principal a une ligne par aspect. « États » regroupe le chargem
 Vérification manuelle hors AC prouvés : AC-94 (L-04, mesure d'à-coups Instruments sur iPhone réel, preuve `.harness/evidence/AC-94/verdict.txt` ; non réalisée à la livraison : aucun iPhone sur le poste harnais, décision #7 du lot). L-08 : volets XCUITest d'AC-18 à AC-18.6 (`PartnerLibraryUITests`) compilés par la CI, non exécutés ; preuve CI par les tests unitaires de `PartnerLibraryViewModelTests`, `PartnersViewModelTests` et `ImmichAPIClientTests`.
 
 Ce run (B-1, B-2) : registre, corrections de documentation, script de contrôle et table des lots, livrés par la fonctionnalité « Parité Immich et interface SwiftUI premium ». AC prouvés : AC-1, AC-2, AC-3, AC-4, AC-38 (`Scripts/check-parity-registry.sh all`). Aucun comportement de l'app ne change : seuls des commentaires de trois fichiers Swift et de la documentation sont touchés.
+
+L-20 (B-24) : critères complémentaires AC-174 à AC-180 inscrits par le lot (décision #3). Volets XCUITest d'AC-36 et d'AC-174 à AC-180 (`RouteCompatUITests`, stub `immich_stub_route_compat.py`) compilés par la CI, non exécutés ; preuve CI par `Tests/ServerRouteCompatTests.swift` (client sur un `URLProtocol` privé, `AuthViewModel` sur le mock) et par `Scripts/test_stub_routes.py` (table de routes du socle des stubs). Le rejeu des scénarios existants contre `IMMICH_STUB_VERSION=3.4.0` puis `2.0.0` (AC-35) demande un simulateur : non exécuté.
 
 L-09 (B-13) : volets XCUITest d'AC-19, AC-20 et AC-116 à AC-125 (`CustomHeadersUITests`, stub `immich_stub_proxy_headers.py`) compilés par la CI, non exécutés ; preuve CI par les tests unitaires (`CustomHeaderValidationTests`, `ServerRequestAuthorizationTests`, `ServerRedirectPolicyTests`, `CustomHeadersViewModelTests`, `CustomHeadersRegistryTests`, `CustomHeadersSecrecyTests`, `AVVideoPlaybackEngineTests` et les ajouts à `ImmichAPIClientTests`, `WidgetDataProviderTests`, `ShareUploadClientTests`, `AuthViewModelTests`, `ServerSessionsTests`, `RealtimeServiceTests`, `OfflineAssetStoreTests`, `SaveToLibraryViewModelTests`, `EditorViewModelTests`). Le widget n'est pas piloté dans SpringBoard (session et transport testés en unitaire).
 
@@ -557,21 +559,21 @@ L-16 (B-20) : sous-besoins B-20.1 à B-20.4 et critères complémentaires AC-142
 
 #### Routes remplaçantes par version (L-20)
 
-Relevé de l'OpenAPI amont `open-api/immich-openapi-specs.json` par tag. Les trois remplaçantes apparaissent à trois versions différentes ; le critère AC-36 est donc écrit avec un stub par seuil (décision #18).
+Relevé de l'OpenAPI amont `open-api/immich-openapi-specs.json` par tag (`x-immich-history`). Les trois remplaçantes apparaissent à trois versions différentes (v2.4.0, v3.2.0, v3.2.1) ; le critère AC-36 est donc écrit avec un stub par seuil (décision #18). Seuils codés en un seul endroit, `ImmichRouteThreshold` (`Sources/Core/Constants.swift:52-56`) : `queues` 2.4.0, `config` 3.2.0, `peopleMerge` 3.2.1.
 
-| Route | v2.0.0 | v2.7.5 | v3.0.0 | v3.1.0 | v3.2.0 | v3.2.1 | v3.4.0 |
-|---|---|---|---|---|---|---|---|
-| `GET /jobs` | présent | déprécié | déprécié | déprécié | déprécié | déprécié | déprécié |
-| `GET /queues` | absent | présent | présent | présent | présent | présent | présent |
-| `GET /server/config` | présent | présent | présent | présent | déprécié | déprécié | déprécié |
-| `GET /public/config` | absent | absent | absent | absent | présent | présent | présent |
-| `POST /people/{id}/merge` | présent | présent | présent | présent | présent | déprécié | déprécié |
-| `POST /people/merge` | absent | absent | absent | absent | absent | présent | présent |
-| `GET /server/features` | présent | présent | présent | présent | déprécié | déprécié | déprécié |
+| Route | v2.0.0 | v2.4.0 | v2.7.5 | v3.0.0 | v3.1.0 | v3.2.0 | v3.2.1 | v3.4.0 |
+|---|---|---|---|---|---|---|---|---|
+| `GET /jobs` | présent | déprécié | déprécié | déprécié | déprécié | déprécié | déprécié | déprécié |
+| `GET /queues` | absent | présent | présent | présent | présent | présent | présent | présent |
+| `GET /server/config` | présent | présent | présent | présent | présent | déprécié | déprécié | déprécié |
+| `GET /public/config` | absent | absent | absent | absent | absent | présent | présent | présent |
+| `POST /people/{id}/merge` | présent | présent | présent | présent | présent | présent | déprécié | déprécié |
+| `POST /people/merge` | absent | absent | absent | absent | absent | absent | présent | présent |
+| `GET /server/features` | présent | présent | présent | présent | présent | déprécié | déprécié | déprécié |
 
-Appels dépréciés de Swimmich : `POST /api/people/{id}/merge` (`Sources/Services/ImmichAPIClient.swift:516-517`, appelé par `Sources/Features/People/PeopleViewModel.swift:433-439` ; `/people/merge` exige la cible en première position de `ids`, PR #31555), `GET /api/server/config` (`Sources/Services/ImmichAPIClient.swift:104-105`, `Sources/Features/Auth/AuthViewModel.swift:165` et `:236` ; remplaçante `/public/config`, PR #30881), `GET /api/jobs` et `PUT /api/jobs/{name}` (`Sources/Services/ImmichAPIClient.swift:684-689`, `Sources/Features/Admin/AdminViewModel.swift:37-42` et `:89-90` ; en v3.4.0 le démarrage `start` n'a aucune remplaçante, la pause et la reprise passent par `PUT /queues/{name}` et le vidage par `DELETE /queues/{name}/jobs`). Ni les widgets ni l'extension de partage n'appellent ces routes.
+Appels dépréciés de Swimmich, désormais routés d'après la version du serveur (lue par `GET /api/server/version`, gardée par adresse dans le client réseau ; version illisible → routes anciennes) : `POST /api/people/{id}/merge` (`Sources/Services/ImmichAPIClient.swift:656-664`, appelé par `Sources/Features/People/PeopleViewModel.swift:480-500` ; `/people/merge` exige la cible en première position de `ids`, PR #31555), `GET /api/server/config` (`Sources/Services/ImmichAPIClient.swift:168-190`, appelé par `Sources/Features/Auth/AuthViewModel.swift:197` et `:291` ; remplaçantes `/public/config` et `/config`, PR #30881), `GET /api/jobs` et `PUT /api/jobs/{name}` (`Sources/Services/ImmichAPIClient.swift:830-869`, appelé par `Sources/Features/Admin/AdminViewModel.swift:153-160` ; en v3.4.0 le démarrage `start` et « Clear failed » n'ont aucune remplaçante à effet identique et restent sur `PUT /jobs/{name}`, la pause (sauf `backgroundTask`, que `PUT /queues/{name}` refuse) et la reprise passent par `PUT /queues/{name}` et le vidage par `DELETE /queues/{name}/jobs`). Ni les widgets ni l'extension de partage n'appellent ces routes. Les stubs servent chacun les seules routes de leur version (`ROUTE_TABLE` de `UITests/stubs/immich_stub_base.py`, `IMMICH_STUB_VERSION`) ; le rejeu des scénarios UI existants contre 3.4.0 puis 2.0.0 (AC-35) demande un simulateur et n'a pas été exécuté.
 
-AC-36 (B-24) : Given quatre stubs, un par seuil d'apparition des routes remplaçantes, journal `/__requests` actif, chacun ne servant que les routes de l'OpenAPI amont de sa version, citée dans le registre (décision #18) : v2.0.0 (routes anciennes seulement : `POST /api/people/{id}/merge`, `GET /api/server/config`, `/api/jobs`), v3.1.x (en plus `/api/queues`), v3.2.0 (en plus `GET /api/public/config`) et v3.4.0 (en plus `POST /api/people/merge`). When, contre chacun, l'utilisateur fusionne deux personnes, que l'app lit la configuration du serveur et qu'un administrateur ouvre les tâches, Then chaque action réussit, sans erreur à l'écran. Le journal du stub montre quelle route a servi : jamais une route que ce serveur ne sert pas.
+AC-36 (B-24) : Given quatre stubs, un par seuil d'apparition des routes remplaçantes, journal `/__requests` actif, chacun ne servant que les routes de l'OpenAPI amont de sa version, citée dans le registre (décision #18) : v2.0.0 (routes anciennes seulement : `POST /api/people/{id}/merge`, `GET /api/server/config`, `/api/jobs`), v3.1.x (en plus `/api/queues`), v3.2.0 (en plus `GET /api/public/config` et `GET /api/config`) et v3.4.0 (en plus `POST /api/people/merge`). When, contre chacun, l'utilisateur fusionne deux personnes, que l'app lit la configuration avant puis après la connexion et qu'un administrateur ouvre les tâches, Then chaque action réussit, sans erreur à l'écran. Le journal du stub montre quelle route a servi : jamais une route que ce serveur ne sert pas.
 
 ## D. Besoins ajoutés par l'audit
 
