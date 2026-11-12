@@ -167,6 +167,40 @@ final class ViewerZoomTransitionTests: XCTestCase {
         XCTAssertEqual(about.midY, 500 + (250 - 500) * 0.8, accuracy: 0.001)
     }
 
+    /// The close starts from where the pager has carried the image: scaled about
+    /// the pager's REST centre. The pager's frame read during the drag is the
+    /// transformed one (its centre moved by the offset), which would shift the
+    /// start by offset × (1 − scale) — 160 pt for a 400 pt drag.
+    func test_AC_27_4_dragStartPivotsOnRestPagerFrame() {
+        let pagerRest = CGRect(x: 0, y: 0, width: 393, height: 852)
+        let displayed = CGRect(x: 0, y: 100, width: 393, height: 300)
+        let drag = ViewerZoomPlan.dragTransform(translation: CGSize(width: 0, height: 400), reduceMotion: false)
+
+        let start = ViewerZoomPlan.dragStartFrame(displayed: displayed, pager: pagerRest, drag: drag)
+        XCTAssertEqual(start.midX, 196.5, accuracy: 0.001)
+        XCTAssertEqual(start.midY, 426 + (250 - 426) * 0.6 + 400, accuracy: 0.001)
+        XCTAssertEqual(start.width, 393 * 0.6, accuracy: 0.001)
+        XCTAssertEqual(start.height, 300 * 0.6, accuracy: 0.001)
+
+        let pagerMoved = ViewerZoomPlan.draggedRect(pagerRest, transform: drag)
+        let shifted = ViewerZoomPlan.dragStartFrame(displayed: displayed, pager: pagerMoved, drag: drag)
+        XCTAssertEqual(shifted.midY - start.midY, 400 * (1 - 0.6), accuracy: 0.001)
+    }
+
+    /// A pager frame reported while a closing drag holds is ignored, so the rest
+    /// frame recorded before the drag stays the pivot.
+    func test_AC_27_4_pagerFrameFrozenWhileClosingDrag() {
+        let book = ViewerFrameBook()
+        let rest = CGRect(x: 0, y: 0, width: 393, height: 852)
+        book.reportPager(rest, frozen: false)
+        let drag = ViewerZoomPlan.dragTransform(translation: CGSize(width: 0, height: 400), reduceMotion: false)
+        book.reportPager(ViewerZoomPlan.draggedRect(rest, transform: drag), frozen: true)
+        assertRect(book.pagerFrame ?? .zero, rest)
+        // Once the drag has ended (reset to rest), reports are taken again.
+        book.reportPager(CGRect(x: 0, y: 59, width: 393, height: 700), frozen: false)
+        assertRect(book.pagerFrame ?? .zero, CGRect(x: 0, y: 59, width: 393, height: 700))
+    }
+
     func test_AC_27_4_releaseUsesUnchangedThresholds() {
         let under = ViewerZoomPlan.dragTransform(translation: CGSize(width: 0, height: 75), reduceMotion: false)
         XCTAssertFalse(PhotoViewerSwipeDecision.shouldClose(progress: under.progress, velocity: 0))
