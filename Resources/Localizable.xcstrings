@@ -17613,31 +17613,30 @@
         }
       }
     },
-    "Album Unavailable" : {
-      "extractionState" : "stale",
+    "Group similar photos — bursts, edits, brackets — to keep your timeline clean." : {
       "localizations" : {
         "de" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Album nicht verfügbar"
+            "value" : "Gruppiere ähnliche Fotos – Serienaufnahmen, Bearbeitungen, Belichtungsreihen –, um deine Zeitleiste übersichtlich zu halten."
           }
         },
         "es" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Álbum no disponible"
+            "value" : "Agrupa fotos similares (ráfagas, ediciones, secuencias) para mantener limpia tu línea de tiempo."
           }
         },
         "fr" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Album indisponible"
+            "value" : "Regroupez les photos similaires (rafales, retouches, bracketing) pour garder votre chronologie propre."
           }
         },
         "it" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Album non disponibile"
+            "value" : "Raggruppa foto simili (scatti in sequenza, modifiche, bracketing) per mantenere ordinata la tua timeline."
           }
         }
       }
@@ -29928,30 +29927,30 @@
         }
       }
     },
-    "Shared with you" : {
+    "This stack is no longer available." : {
       "localizations" : {
         "de" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Mit dir geteilt"
+            "value" : "Dieser Stapel ist nicht mehr verfügbar."
           }
         },
         "es" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Compartido contigo"
+            "value" : "Esta pila ya no está disponible."
           }
         },
         "fr" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Partagé avec vous"
+            "value" : "Cette pile n'est plus disponible."
           }
         },
         "it" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Condivisi con te"
+            "value" : "Questo gruppo non è più disponibile."
           }
         }
       }
@@ -37200,62 +37199,6 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Qui compaiono le librerie esterne aggiunte sul server."
-          }
-        }
-      }
-    },
-    "This stack is no longer available." : {
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Dieser Stapel ist nicht mehr verfügbar."
-          }
-        },
-        "es" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Esta pila ya no está disponible."
-          }
-        },
-        "fr" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Cette pile n'est plus disponible."
-          }
-        },
-        "it" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Questo gruppo non è più disponibile."
-          }
-        }
-      }
-    },
-    "Group similar photos — bursts, edits, brackets — to keep your timeline clean." : {
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Gruppiere ähnliche Fotos – Serienaufnahmen, Bearbeitungen, Belichtungsreihen –, um deine Zeitleiste übersichtlich zu halten."
-          }
-        },
-        "es" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Agrupa fotos similares (ráfagas, ediciones, secuencias) para mantener limpia tu línea de tiempo."
-          }
-        },
-        "fr" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Regroupez les photos similaires (rafales, retouches, bracketing) pour garder votre chronologie propre."
-          }
-        },
-        "it" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Raggruppa foto simili (scatti in sequenza, modifiche, bracketing) per mantenere ordinata la tua timeline."
           }
         }
       }
