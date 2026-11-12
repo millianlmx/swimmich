@@ -368,6 +368,9 @@ final class DynamicTypeUITests: XCTestCase {
             "-UIPreferredContentSizeCategoryName", size.rawValue,
             // The slideshow opens paused: its chrome hides itself 3 s into a playing show.
             "-uiTestSlideshowAutoplayOff", "YES",
+            // A memory stays on its moment: a slow measurement of its buttons would
+            // otherwise read them after auto-play moved on.
+            "-uiTestMemoryAutoplayOff", "YES",
         ] + (signedOut ? ["-authServerURL", "()"] : [])
     }
 
