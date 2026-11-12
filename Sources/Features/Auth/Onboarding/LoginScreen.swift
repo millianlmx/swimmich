@@ -10,6 +10,7 @@ import SwiftUI
 /// `auth.isAuthenticated` swaps straight into the main TabView — the app
 /// opening is the confirmation.
 struct LoginScreen: View {
+    @PVReduceMotion private var reduceMotion
     @Environment(AuthViewModel.self) private var auth
 
     enum Field: Hashable { case email, password }
@@ -83,7 +84,7 @@ struct LoginScreen: View {
                 Spacer(minLength: PVSpacing.s48)
             }
             .padding(PVSpacing.s24)
-            .animation(PVMotion.gentle, value: auth.errorMessage)
+            .animation(PVMotion.movement(PVMotion.gentle, reduceMotion: reduceMotion), value: auth.errorMessage)
         }
         .scrollDismissesKeyboard(.immediately)
         .background(Color.bgPrimary.ignoresSafeArea())

@@ -14,6 +14,7 @@ import SwiftUI
 /// - `scrollTransition` parallax on cell CONTENT only (FM-3 mitigation).
 /// - Context menu (Favorite toggle / Delete).
 struct AssetThumbnailCell: View {
+    @PVReduceMotion private var reduceMotion
     let asset: AssetReactItem
     let baseURL: URL
     let token: String?
@@ -90,13 +91,9 @@ struct AssetThumbnailCell: View {
                     .accessibilityAddTraits(onTap == nil ? [] : .isButton)
                     .accessibilityAddTraits(selectionMode && isSelected ? .isSelected : [])
                     .accessibilityIdentifier("assetTile_\(asset.id)")
-                    .scrollTransition { content, phase in
-                        // Parallax: scale + fade slightly as the cell exits viewport.
-                        // Applied to image CONTENT only (FM-3), never the Section.
-                        content
-                            .scaleEffect(phase.isIdentity ? 1.0 : 0.94)
-                            .opacity(phase.isIdentity ? 1.0 : 0.9)
-                    }
+                    // Parallax: scale + fade slightly as the cell exits viewport (still under
+                    // Reduce Motion). Applied to image CONTENT only (FM-3), never the Section.
+                    .pvScrollEffect(scale: 0.94, opacity: 0.9)
             }
             .overlay { selectionTint }
             .overlay {
@@ -116,9 +113,9 @@ struct AssetThumbnailCell: View {
             }
             .clipShape(RoundedRectangle(cornerRadius: PVRadius.xs, style: .continuous))
             // Pro selection: selected cells recede slightly (scale 0.96) w/ spring.
-            .scaleEffect(selectionMode && isSelected ? 0.96 : 1.0)
-            .animation(PVMotion.snappy, value: isSelected)
-            .animation(PVMotion.snappy, value: selectionMode)
+            .scaleEffect(PVMotion.scale(selectionMode && isSelected ? 0.96 : 1.0, reduceMotion: reduceMotion))
+            .animation(PVMotion.movement(PVMotion.snappy, reduceMotion: reduceMotion), value: isSelected)
+            .animation(PVMotion.movement(PVMotion.snappy, reduceMotion: reduceMotion), value: selectionMode)
             .contentShape(Rectangle())
             .onTapGesture { onTap?() }
 
@@ -400,8 +397,8 @@ struct AssetThumbnailCell: View {
         if selectionMode {
             Image(systemName: isSelected ? "checkmark.circle.fill" : "circle")
                 .font(.pvHeadline)
-                .symbolEffect(.bounce, value: isSelected)
-                .contentTransition(.symbolEffect(.replace))
+                .pvSymbolBounce(value: isSelected)
+                .contentTransition(PVMotion.contentChange(.symbolEffect(.replace), reduceMotion: reduceMotion))
                 .foregroundStyle(isSelected ? Color.immichPrimary : Color.white) // DS-exempt: badge contrast on material (white branch)
                 .shadow(color: .black.opacity(0.25), radius: 1.5) // DS-exempt: micro-badge shadow
                 .padding(8)

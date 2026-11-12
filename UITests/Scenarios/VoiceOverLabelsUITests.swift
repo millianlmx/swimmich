@@ -622,8 +622,9 @@ final class VoiceOverLabelsUITests: XCTestCase {
 
     private func assertFilmstrip(_ lang: Lang) {
         let context = "\(lang.code), filmstrip"
-        assertButton("filmstripItem_\(photoID)", label: filmstripLabel(isVideo: false, position: 1, count: 2, lang), context)
-        assertButton("filmstripItem_\(videoID)", label: filmstripLabel(isVideo: true, position: 2, count: 2, lang), context)
+        // Filmstrip cells keep main's index identifier (L-18): the photo is 1st, the video 2nd.
+        assertButton("viewerFilmstripCell_0", label: filmstripLabel(isVideo: false, position: 1, count: 2, lang), context)
+        assertButton("viewerFilmstripCell_1", label: filmstripLabel(isVideo: true, position: 2, count: 2, lang), context)
     }
 
     private func assertStarBar(_ lang: Lang, rating: Int?, identifier: (Int) -> String, context: String) {

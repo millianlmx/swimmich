@@ -10,6 +10,7 @@ import SwiftUI
 /// It declares its own `NavigationStack` because it is presented *over* the
 /// Search tab (whose stack lives in `SearchView`), not pushed from the "Me" hub.
 struct SearchFilterSheet: View {
+    @PVReduceMotion private var reduceMotion
     @Bindable var vm: SearchViewModel
 
     @Environment(\.dismiss) private var dismiss
@@ -147,7 +148,7 @@ struct SearchFilterSheet: View {
                 .font(.system(size: 28)) // DS-exempt: 100 pt-scale rating glyphs (star-ratings)
                 .foregroundStyle(rank <= (vm.filter.rating ?? 0) ? Color.immichPrimary : Color.textSecondaryPV)
                 .frame(width: 44, height: 44)
-                .contentTransition(.symbolEffect(.replace))
+                .contentTransition(PVMotion.contentChange(.symbolEffect(.replace), reduceMotion: reduceMotion))
         }
         .buttonStyle(.plain)
         .accessibilityIdentifier(identifier)

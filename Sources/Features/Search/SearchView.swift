@@ -14,6 +14,7 @@ import SwiftUI
 ///
 /// People / faces deferred to a future iteration (cahier L136).
 struct SearchView: View {
+    @PVReduceMotion private var reduceMotion
     @Bindable var vm: SearchViewModel
     @Bindable var mapVM: MapViewModel
     @Environment(AuthViewModel.self) private var auth
@@ -188,11 +189,11 @@ struct SearchView: View {
                             .padding(.horizontal, PVSpacing.s4)
                             .frame(minWidth: 18, minHeight: 18)
                             .background(Color.immichPrimary, in: Capsule())
-                            .contentTransition(.numericText())
+                            .contentTransition(PVMotion.contentChange(.numericText(), reduceMotion: reduceMotion))
                             .accessibilityHidden(true)
                     }
                 }
-                .contentTransition(.symbolEffect(.replace))
+                .contentTransition(PVMotion.contentChange(.symbolEffect(.replace), reduceMotion: reduceMotion))
         }
         .accessibilityIdentifier("searchFilterButton")
         .accessibilityLabel("Filters")

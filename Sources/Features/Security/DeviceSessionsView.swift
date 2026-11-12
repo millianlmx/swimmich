@@ -19,7 +19,7 @@ import SwiftUI
 struct DeviceSessionsView: View {
     @Bindable var vm: DeviceSessionsViewModel
 
-    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @PVReduceMotion private var reduceMotion
 
     @State private var showRevokeAllConfirm = false
     @State private var showUnlock = false
@@ -219,7 +219,7 @@ struct DeviceSessionsView: View {
                 }
             } label: {
                 Image(systemName: vm.isElevated ? "lock.open" : "lock")
-                    .contentTransition(.symbolEffect(.replace))
+                    .contentTransition(PVMotion.contentChange(.symbolEffect(.replace), reduceMotion: reduceMotion))
             }
             .accessibilityLabel(Text(vm.isElevated ? "Lock session" : "Unlock"))
             // A failed probe leaves the elevation unconfirmed: the control keeps
@@ -228,7 +228,7 @@ struct DeviceSessionsView: View {
             .accessibilityValue(vm.isElevationStale ? Text("Unknown") : Text(verbatim: ""))
             .accessibilityIdentifier("deviceSessionsLockButton")
             .animation(
-                PVMotion.adaptive(PVMotion.standard, reduceMotion: reduceMotion),
+                PVMotion.movement(PVMotion.standard, reduceMotion: reduceMotion),
                 value: vm.isElevated
             )
 

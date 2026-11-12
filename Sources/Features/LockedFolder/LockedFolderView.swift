@@ -15,7 +15,7 @@ import SwiftUI
 struct LockedFolderView: View {
     let vm: LockedFolderViewModel
 
-    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @PVReduceMotion private var reduceMotion
 
     var body: some View {
         Group {
@@ -36,7 +36,7 @@ struct LockedFolderView: View {
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .background(Color.bgPrimary)
-        .animation(PVMotion.adaptive(PVMotion.standard, reduceMotion: reduceMotion), value: vm.gate)
+        .animation(PVMotion.movement(PVMotion.standard, reduceMotion: reduceMotion), value: vm.gate)
         .task { await vm.refreshGate() }
     }
 }
@@ -47,7 +47,7 @@ struct LockedFolderView: View {
 private struct LockedFolderSetupView: View {
     @Bindable var vm: LockedFolderViewModel
     @FocusState private var focused: Bool
-    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @PVReduceMotion private var reduceMotion
 
     private var canSubmit: Bool {
         !vm.isBusy && vm.pinEntry.count == 6 && vm.pinEntry == vm.confirmationEntry
@@ -99,7 +99,7 @@ private struct LockedFolderSetupView: View {
 
             Spacer()
         }
-        .animation(PVMotion.adaptive(PVMotion.standard, reduceMotion: reduceMotion), value: vm.errorMessage)
+        .animation(PVMotion.movement(PVMotion.standard, reduceMotion: reduceMotion), value: vm.errorMessage)
         .padding(PVSpacing.s16)
         .onAppear { focused = true }
     }
@@ -111,7 +111,7 @@ private struct LockedFolderSetupView: View {
 private struct LockedFolderPINView: View {
     @Bindable var vm: LockedFolderViewModel
     @FocusState private var focused: Bool
-    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @PVReduceMotion private var reduceMotion
 
     var body: some View {
         VStack(spacing: PVSpacing.s24) {
@@ -159,7 +159,7 @@ private struct LockedFolderPINView: View {
 
             Spacer()
         }
-        .animation(PVMotion.adaptive(PVMotion.standard, reduceMotion: reduceMotion), value: vm.errorMessage)
+        .animation(PVMotion.movement(PVMotion.standard, reduceMotion: reduceMotion), value: vm.errorMessage)
         .padding(PVSpacing.s24)
         .onAppear { focused = true }
     }
@@ -172,7 +172,7 @@ private struct LockedFolderGridView: View {
     let vm: LockedFolderViewModel
 
     @Environment(AuthViewModel.self) private var auth
-    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @PVReduceMotion private var reduceMotion
     @State private var viewerItem: PhotoViewerItem?
 
     private let columns = Array(repeating: GridItem(.flexible(), spacing: PVSpacing.s2), count: 3)
@@ -249,7 +249,7 @@ private struct LockedFolderGridView: View {
             Text(vm.itemCountText)
                 .font(.pvNumeric)
                 .foregroundStyle(Color.textSecondaryPV)
-                .contentTransition(.numericText())
+                .contentTransition(PVMotion.contentChange(.numericText(), reduceMotion: reduceMotion))
                 .accessibilityIdentifier("lockedFolderCountValue")
 
             Button("Lock now") {

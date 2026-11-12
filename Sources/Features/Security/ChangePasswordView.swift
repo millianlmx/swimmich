@@ -20,7 +20,7 @@ struct ChangePasswordView: View {
     /// `shouldChangePassword`, and this screen does not know about it.
     let onPasswordChanged: () -> Void
 
-    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @PVReduceMotion private var reduceMotion
 
     @State private var isCurrentRevealed = false
     @State private var isNewRevealed = false
@@ -132,7 +132,7 @@ struct ChangePasswordView: View {
                     Label("Your password has been changed.", systemImage: "checkmark.circle.fill")
                         .font(.pvSubhead)
                         .foregroundStyle(Color.immichSuccess)
-                        .transition(.opacity.combined(with: .move(edge: .top)))
+                        .transition(PVMotion.appearance(.opacityAndMove(.top), reduceMotion: reduceMotion).anyTransition)
                 }
             } footer: {
                 Text("If you forget this password, an administrator has to reset it from the Immich web interface.")
@@ -149,8 +149,8 @@ struct ChangePasswordView: View {
         .onChange(of: vm.currentPassword) { _, _ in vm.clearError() }
         .onChange(of: vm.newPassword) { _, _ in vm.clearError() }
         .onChange(of: vm.confirmPassword) { _, _ in vm.clearError() }
-        .animation(PVMotion.adaptive(PVMotion.standard, reduceMotion: reduceMotion), value: vm.errorMessage)
-        .animation(PVMotion.adaptive(PVMotion.standard, reduceMotion: reduceMotion), value: vm.didSucceed)
+        .animation(PVMotion.movement(PVMotion.standard, reduceMotion: reduceMotion), value: vm.errorMessage)
+        .animation(PVMotion.movement(PVMotion.standard, reduceMotion: reduceMotion), value: vm.didSucceed)
         .task { vm.resetForm() }
     }
 
@@ -194,6 +194,7 @@ struct ChangePasswordView: View {
 /// Its own element, not a decoration of the row: a password field is announced
 /// as secure text, so the reveal has to be reachable (and labelled) on its own.
 private struct RevealButton: View {
+    @PVReduceMotion private var reduceMotion
     @Binding var isRevealed: Bool
     let identifier: String
 
@@ -203,7 +204,7 @@ private struct RevealButton: View {
         } label: {
             Image(systemName: isRevealed ? "eye.slash" : "eye")
                 .foregroundStyle(Color.textSecondaryPV)
-                .contentTransition(.symbolEffect(.replace))
+                .contentTransition(PVMotion.contentChange(.symbolEffect(.replace), reduceMotion: reduceMotion))
         }
         .buttonStyle(.plain)
         // A 44 pt target, not a 17 pt glyph.

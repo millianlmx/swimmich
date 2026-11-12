@@ -8,6 +8,7 @@ import SwiftUI
 /// panel's action, and a button nested in a button is inert (the measured
 /// `AssetThumbnailCell` trap), so nothing inside is interactive.
 struct DownloadProgressPanel: View {
+    @PVReduceMotion private var reduceMotion
     let vm: DownloadQueueViewModel
     let onOpenInfo: () -> Void
 
@@ -18,7 +19,7 @@ struct DownloadProgressPanel: View {
                     .font(.pvHeadline)
                 Text("\(vm.completedCount) of \(vm.totalCount)")
                     .font(.pvSubhead)
-                    .contentTransition(.numericText())
+                    .contentTransition(PVMotion.contentChange(.numericText(), reduceMotion: reduceMotion))
                     .accessibilityIdentifier("downloadPanelSummary")
                 // No bar when no row knows its length: the count stays true,
                 // a frozen 0 % bar would not.

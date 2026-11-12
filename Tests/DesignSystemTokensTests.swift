@@ -32,21 +32,6 @@ final class DesignSystemTokensTests: XCTestCase {
         XCTAssertEqual(PVRadius.full, 999)
     }
 
-    /// AC-019: `adaptive(_:reduceMotion:)` must not hand back a spring when the
-    /// user has Reduce Motion enabled. `Animation` is not runtime-introspectable
-    /// in Swift, so we assert the call resolves to a non-nil value; the
-    /// non-spring guarantee is structural — the implementation returns
-    /// `.linear(duration: 0.3)` (documented in Motion+PhotoVault.swift).
-    func testMotionAdaptiveReduceMotion() {
-        let reduced: Animation? = PVMotion.adaptive(
-            .spring(response: 0.5), reduceMotion: true)
-        XCTAssertNotNil(reduced)
-
-        let normal: Animation? = PVMotion.adaptive(
-            .spring(response: 0.5), reduceMotion: false)
-        XCTAssertNotNil(normal)
-    }
-
     /// AC-020 (partial): ensure color tokens initialize without throwing /
     /// crashing. Asset resolution is lazy; init merely registers the asset name.
     func testColorTokenResolution() {

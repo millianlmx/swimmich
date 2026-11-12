@@ -160,7 +160,7 @@ struct PhotoViewerPresentation: ViewModifier {
 
     func body(content: Content) -> some View {
         content
-            .fullScreenCover(item: $item, onDismiss: onDismiss) { item in
+            .pvFullScreenCover(item: $item, onDismiss: onDismiss, selfAnimated: zoomSource != nil) { item in
                 PhotoViewer(
                     assets: item.assets,
                     index: item.index,
@@ -178,7 +178,6 @@ struct PhotoViewerPresentation: ViewModifier {
                     zoomSource: zoomSource,
                     closeInstantly: zoomSource == nil ? nil : closeInstantly
                 )
-                .modifier(ViewerTransparentCover(enabled: zoomSource != nil))
             }
     }
 
@@ -188,19 +187,6 @@ struct PhotoViewerPresentation: ViewModifier {
         var transaction = Transaction()
         transaction.disablesAnimations = true
         withTransaction(transaction) { item = nil }
-    }
-}
-
-/// Lets the grid show through a cover that draws its own backdrop.
-private struct ViewerTransparentCover: ViewModifier {
-    let enabled: Bool
-
-    func body(content: Content) -> some View {
-        if enabled {
-            content.presentationBackground(.clear)
-        } else {
-            content
-        }
     }
 }
 
@@ -370,7 +356,7 @@ struct PhotoViewer: View {
     static let bottomChromeHeight: CGFloat = 148
 
     @Environment(\.dismiss) private var dismissAction
-    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @PVReduceMotion private var reduceMotion
     /// App preferences (gap G22). "Tap to Navigate" is read **at tap time**,
     /// not when the page is built, so flipping it in Preferences applies to the
     /// viewer already on screen; the slideshow is handed the same store.
@@ -433,7 +419,7 @@ struct PhotoViewer: View {
         let flies = ViewerZoomPlan.openStyle(
             hasHeroImage: hero != nil,
             hasSourceFrame: sourceFrame != nil,
-            reduceMotion: ViewerZoomPlan.reduceMotion(system: UIAccessibility.isReduceMotionEnabled)
+            reduceMotion: PVMotion.isReduced(system: UIAccessibility.isReduceMotionEnabled)
         ) == .zoom
         let transitioning = zoomSource != nil
         _zoomPhase = State(initialValue: transitioning ? .opening : .open)
@@ -507,7 +493,7 @@ struct PhotoViewer: View {
                 guard editedCopyNotice != nil else { return }
                 try? await Task.sleep(for: .seconds(3))
                 guard !Task.isCancelled else { return }
-                withAnimation { editedCopyNotice = nil }
+                withAnimation(PVMotion.movement(.default, reduceMotion: reduceMotion)) { editedCopyNotice = nil }
             }
             .appSensoryFeedback(.success, trigger: editedCopyTick)
             // The chrome RESERVES layout space (not an overlay): the top bar and
@@ -550,7 +536,7 @@ struct PhotoViewer: View {
                 }
                 // Paging away stops any Live Photo pair — back to stills.
                 livePlayingIDs.removeAll()
-                withAnimation(PVMotion.adaptive(PVMotion.snappy, reduceMotion: reduceMotion)) {
+                withAnimation(PVMotion.movement(PVMotion.snappy, reduceMotion: reduceMotion)) {
                     dragOffset = .zero
                 }
                 // Info stays open while paging — refetch for the new photo.
@@ -940,9 +926,9 @@ struct PhotoViewer: View {
                 .foregroundStyle(action.tint)
                 .frame(width: 40, height: 40)
                 .pvFloating(.circle)
-                .contentTransition(.symbolEffect(.replace))
+                .contentTransition(PVMotion.contentChange(.symbolEffect(.replace), reduceMotion: reduceMotion))
                 .animation(
-                    PVMotion.adaptive(PVMotion.standard, reduceMotion: reduceMotion),
+                    PVMotion.fading(PVMotion.standard, reduceMotion: reduceMotion),
                     value: action.symbol
                 )
         }
@@ -995,7 +981,7 @@ struct PhotoViewer: View {
             LazyHStack(spacing: PVSpacing.s8) {
                 ForEach(Array(localAssets.enumerated()), id: \.element.id) { i, asset in
                     Button {
-                        withAnimation(PVMotion.snappy) { selectedIndex = i }
+                        withAnimation(PVMotion.movement(PVMotion.snappy, reduceMotion: reduceMotion)) { selectedIndex = i }
                     } label: {
                         AuthenticatedAsyncImage(
                             url: asset.thumbnailURL(base: baseURL, size: .thumbnail),
@@ -1029,8 +1015,8 @@ struct PhotoViewer: View {
                         }
                     }
                     .buttonStyle(.plain)
+                    .accessibilityIdentifier("viewerFilmstripCell_\(i)")
                     .accessibilityLabel(Self.filmstripAccessibilityLabel(isVideo: asset.isVideo, position: i + 1, count: localAssets.count))
-                    .accessibilityIdentifier("filmstripItem_\(asset.id)")
                     .id(i)
                 }
             }
@@ -1040,7 +1026,15 @@ struct PhotoViewer: View {
         .scrollPosition($filmstripPosition)
         .onAppear { filmstripPosition.scrollTo(id: selectedIndex) }
         .onChange(of: selectedIndex) { _, new in
-            filmstripPosition.scrollTo(id: new)
+            // The strip jumps to the new photo under Reduce Motion, even when the
+            // page change came from an animated swipe.
+            if reduceMotion {
+                var transaction = Transaction()
+                transaction.disablesAnimations = true
+                withTransaction(transaction) { filmstripPosition.scrollTo(id: new) }
+            } else {
+                filmstripPosition.scrollTo(id: new)
+            }
         }
     }
 
@@ -1231,7 +1225,7 @@ struct PhotoViewer: View {
     /// fetch for the photo on screen; switching it OFF keeps the cached boxes,
     /// so flipping back is instant.
     private func toggleOcr() {
-        withAnimation(PVMotion.adaptive(PVMotion.standard, reduceMotion: reduceMotion)) {
+        withAnimation(PVMotion.movement(PVMotion.standard, reduceMotion: reduceMotion)) {
             showOcr.toggle()
         }
         guard showOcr else { return }
@@ -1254,7 +1248,7 @@ struct PhotoViewer: View {
     // MARK: - Actions
 
     private func toggleChrome() {
-        withAnimation(PVMotion.adaptive(PVMotion.snappy, reduceMotion: reduceMotion)) {
+        withAnimation(PVMotion.movement(PVMotion.snappy, reduceMotion: reduceMotion)) {
             showChrome.toggle()
         }
     }
@@ -1278,7 +1272,7 @@ struct PhotoViewer: View {
     /// would jump the user back to the top of their library).
     private func advanceToNextAsset() {
         guard selectedIndex + 1 < localAssets.count else { return }
-        withAnimation(PVMotion.adaptive(PVMotion.snappy, reduceMotion: reduceMotion)) {
+        withAnimation(PVMotion.movement(PVMotion.snappy, reduceMotion: reduceMotion)) {
             selectedIndex += 1
         }
     }
@@ -1299,7 +1293,7 @@ struct PhotoViewer: View {
     /// pair, tap again swaps back to the still.
     private func livePhotoOverlay(_ asset: AssetReactItem) -> some View {
         Button {
-            withAnimation(PVMotion.adaptive(PVMotion.snappy, reduceMotion: reduceMotion)) {
+            withAnimation(PVMotion.movement(PVMotion.snappy, reduceMotion: reduceMotion)) {
                 if livePlayingIDs.contains(asset.id) {
                     livePlayingIDs.remove(asset.id)
                 } else {
@@ -1504,7 +1498,7 @@ struct PhotoViewer: View {
                     if PhotoViewerSwipeDecision.shouldClose(progress: dismissProgress, velocity: velocity) {
                         dismissAction()
                     } else {
-                        withAnimation(PVMotion.adaptive(PVMotion.snappy, reduceMotion: reduceMotion)) {
+                        withAnimation(PVMotion.movement(PVMotion.snappy, reduceMotion: reduceMotion)) {
                             dragOffset = .zero
                         }
                     }
@@ -1570,8 +1564,6 @@ private final class ViewerAnimationGate {
 
 extension PhotoViewer {
     private var windowRect: CGRect { UIScreen.main.bounds }
-
-    private var motionReduced: Bool { ViewerZoomPlan.reduceMotion(system: reduceMotion) }
 
     /// The back button, a closing drag and an emptied list all end here.
     private func closeViewer() {
@@ -1670,7 +1662,7 @@ extension PhotoViewer {
         let style = ViewerZoomPlan.openStyle(
             hasHeroImage: heroImage != nil,
             hasSourceFrame: source.frame(for: asset.id) != nil,
-            reduceMotion: motionReduced
+            reduceMotion: reduceMotion
         )
         let target = await openingTarget(for: asset)
         switch style {
@@ -1692,7 +1684,7 @@ extension PhotoViewer {
                     heroOpacity = 0
                 }
             }
-            await animate(PVMotion.adaptive(PVMotion.standard, reduceMotion: true)) {
+            await animate(PVMotion.fade) {
                 if flies { heroOpacity = 1 } else { pagerOpacity = 1 }
                 backdropOpacity = 1
                 chromeOpacity = 1
@@ -1762,7 +1754,7 @@ extension PhotoViewer {
             }
         }
         let hero = asset.flatMap { closingImage(for: $0) }
-        let style = ViewerZoomPlan.closeStyle(route: route, hasHeroImage: hero != nil, reduceMotion: motionReduced)
+        let style = ViewerZoomPlan.closeStyle(route: route, hasHeroImage: hero != nil, reduceMotion: reduceMotion)
 
         if style == .zoom, case .reduce(let tile) = route, let hero, let start {
             withoutAnimation {
@@ -1792,7 +1784,7 @@ extension PhotoViewer {
                     dragTransform = .identity
                 }
             }
-            await animate(PVMotion.adaptive(PVMotion.standard, reduceMotion: true)) {
+            await animate(PVMotion.fade) {
                 if flies { heroOpacity = 0 } else { pagerOpacity = 0 }
                 backdropOpacity = 0
                 chromeOpacity = 0
@@ -1846,7 +1838,7 @@ extension PhotoViewer {
             closeDragLock = !isZoomed && h > 0 && abs(h) > abs(w) * 1.2
         }
         guard closeDragLock == true else { return }
-        let transform = ViewerZoomPlan.dragTransform(translation: value.translation, reduceMotion: motionReduced)
+        let transform = ViewerZoomPlan.dragTransform(translation: value.translation, reduceMotion: reduceMotion)
         dragTransform = transform
         backdropOpacity = transform.backdropOpacity
         chromeOpacity = transform.backdropOpacity
@@ -1861,7 +1853,7 @@ extension PhotoViewer {
         }
         let velocity = value.predictedEndTranslation.height - value.translation.height
         if wasClosing {
-            let transform = ViewerZoomPlan.dragTransform(translation: value.translation, reduceMotion: motionReduced)
+            let transform = ViewerZoomPlan.dragTransform(translation: value.translation, reduceMotion: reduceMotion)
             if PhotoViewerSwipeDecision.shouldClose(progress: transform.progress, velocity: velocity) {
                 requestClose(from: transform)
             } else {
@@ -1887,8 +1879,8 @@ extension PhotoViewer {
             backdropOpacity = 1
             chromeOpacity = 1
         }
-        if animated && !motionReduced {
-            withAnimation(PVMotion.snappy, rest)
+        if animated && !reduceMotion {
+            withAnimation(PVMotion.movement(PVMotion.snappy, reduceMotion: reduceMotion), rest)
         } else {
             withoutAnimation(rest)
         }

@@ -42,6 +42,12 @@
 		0B1E36D253FF5663C799F7D9 /* PVButtonStyle.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0C579043BE4F6A7E408B4907 /* PVButtonStyle.swift */; };
 		F100A71C0000000000000001 /* PVFloatingControl.swift in Sources */ = {isa = PBXBuildFile; fileRef = F100A71C0000000000000002 /* PVFloatingControl.swift */; };
 		F100A71C0000000000000003 /* FloatingControlStyleTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = F100A71C0000000000000004 /* FloatingControlStyleTests.swift */; };
+		F100181800000001 /* PVMotionModifiers.swift in Sources */ = {isa = PBXBuildFile; fileRef = F100181800000002 /* PVMotionModifiers.swift */; };
+		F100181800000003 /* PVFullScreenCover.swift in Sources */ = {isa = PBXBuildFile; fileRef = F100181800000004 /* PVFullScreenCover.swift */; };
+		F100181800000005 /* MotionGateTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = F100181800000006 /* MotionGateTests.swift */; };
+		F100181800000007 /* MotionGuardTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = F100181800000008 /* MotionGuardTests.swift */; };
+		F100181800000009 /* ReduceMotionUITests.swift in Sources */ = {isa = PBXBuildFile; fileRef = F10018180000000A /* ReduceMotionUITests.swift */; };
+		F10018180000000B /* immich_stub_reduce_motion.py in Resources */ = {isa = PBXBuildFile; fileRef = F10018180000000C /* immich_stub_reduce_motion.py */; };
 		F100A71C0000000000000005 /* FloatingControlsUITests.swift in Sources */ = {isa = PBXBuildFile; fileRef = F100A71C0000000000000006 /* FloatingControlsUITests.swift */; };
 		F100A71D0000000000000001 /* ButtonAccessibilityInventoryTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = F100A71D0000000000000002 /* ButtonAccessibilityInventoryTests.swift */; };
 		F100A71D0000000000000003 /* AssetThumbnailAccessibilityTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = F100A71D0000000000000004 /* AssetThumbnailAccessibilityTests.swift */; };
@@ -797,6 +803,12 @@
 		0C579043BE4F6A7E408B4907 /* PVButtonStyle.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PVButtonStyle.swift; sourceTree = "<group>"; };
 		F100A71C0000000000000002 /* PVFloatingControl.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PVFloatingControl.swift; sourceTree = "<group>"; };
 		F100A71C0000000000000004 /* FloatingControlStyleTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FloatingControlStyleTests.swift; sourceTree = "<group>"; };
+		F100181800000002 /* PVMotionModifiers.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PVMotionModifiers.swift; sourceTree = "<group>"; };
+		F100181800000004 /* PVFullScreenCover.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PVFullScreenCover.swift; sourceTree = "<group>"; };
+		F100181800000006 /* MotionGateTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MotionGateTests.swift; sourceTree = "<group>"; };
+		F100181800000008 /* MotionGuardTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MotionGuardTests.swift; sourceTree = "<group>"; };
+		F10018180000000A /* ReduceMotionUITests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ReduceMotionUITests.swift; sourceTree = "<group>"; };
+		F10018180000000C /* immich_stub_reduce_motion.py */ = {isa = PBXFileReference; lastKnownFileType = text.script.python; path = immich_stub_reduce_motion.py; sourceTree = "<group>"; };
 		F100A71C0000000000000006 /* FloatingControlsUITests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FloatingControlsUITests.swift; sourceTree = "<group>"; };
 		F100A71D0000000000000002 /* ButtonAccessibilityInventoryTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ButtonAccessibilityInventoryTests.swift; sourceTree = "<group>"; };
 		F100A71D0000000000000004 /* AssetThumbnailAccessibilityTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AssetThumbnailAccessibilityTests.swift; sourceTree = "<group>"; };
@@ -1638,6 +1650,8 @@
 				94B3265764BD3709CAC94AD6 /* InlineErrorBadge.swift */,
 				0C579043BE4F6A7E408B4907 /* PVButtonStyle.swift */,
 				F100A71C0000000000000002 /* PVFloatingControl.swift */,
+				F100181800000002 /* PVMotionModifiers.swift */,
+				F100181800000004 /* PVFullScreenCover.swift */,
 				BE8B4D0F9245406D86D0C633 /* PVFieldSurface.swift */,
 				CABE70476A4B4CECA5E54C3F /* PVGridCell.swift */,
 				FDF9477BF83A0859F5128F11 /* PVHeaderBadge.swift */,
@@ -1841,6 +1855,8 @@
 				F100A71D0000000000000008 /* SlideshowChromeTests.swift */,
 				F100A71D000000000000000A /* FilmstripAccessibilityTests.swift */,
 				F100A71C0000000000000004 /* FloatingControlStyleTests.swift */,
+				F100181800000006 /* MotionGateTests.swift */,
+				F100181800000008 /* MotionGuardTests.swift */,
 				C74C745B1778711A5866A2A1 /* DeviceSessionsViewModelTests.swift */,
 				41964E7C0DF3D2F99BBDF72C /* DownloadQueueViewModelTests.swift */,
 				5894E2DA334D7213B1F4D76B /* DTOEncodingTests.swift */,
@@ -2283,6 +2299,7 @@
 				C6F04BAB31975E0BD9AD6054 /* immich_stub_video_player.py */,
 				D5388D2981456911E200D8CE /* immich_stub_viewer_top_bar.py */,
 				1414A0000000000000000005 /* immich_stub_viewer_zoom.py */,
+				F10018180000000C /* immich_stub_reduce_motion.py */,
 				D7CDFD9D40457278408F95D6 /* immich_stub_whats_new.py */,
 			);
 			path = stubs;
@@ -2404,6 +2421,7 @@
 				D6D13AA3CE7A3AE9BDB68B4D /* VideoPlayerLayoutUITests.swift */,
 				84531B07C3EA859178C90796 /* ViewerTopBarUITests.swift */,
 				1414A0000000000000000004 /* ViewerZoomUITests.swift */,
+				F10018180000000A /* ReduceMotionUITests.swift */,
 				F0811A00478B347A7005063B /* WhatsNewUITests.swift */,
 				C09E1CA1B2C3D4E5F6A7B8C9 /* CustomHeadersUITests.swift */,
 				C10E40A1B2C3D4E5F6A7B8C9 /* ClientCertificateUITests.swift */,
@@ -2834,6 +2852,7 @@
 				762854A1F2020DB8E412C300 /* immich_stub_video_player.py in Resources */,
 				D85F2ECD1CE2E3FFFF026361 /* immich_stub_viewer_top_bar.py in Resources */,
 				1414B0000000000000000005 /* immich_stub_viewer_zoom.py in Resources */,
+				F10018180000000B /* immich_stub_reduce_motion.py in Resources */,
 				387F37D344900C7D42BD74E4 /* immich_stub_whats_new.py in Resources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
@@ -2950,6 +2969,8 @@
 				F100A71D0000000000000007 /* SlideshowChromeTests.swift in Sources */,
 				F100A71D0000000000000009 /* FilmstripAccessibilityTests.swift in Sources */,
 				F100A71C0000000000000003 /* FloatingControlStyleTests.swift in Sources */,
+				F100181800000005 /* MotionGateTests.swift in Sources */,
+				F100181800000007 /* MotionGuardTests.swift in Sources */,
 				7AE99C569DA26A22B1E5994E /* DeviceSessionsViewModelTests.swift in Sources */,
 				541B0578BD2153E4ACC66B63 /* DownloadQueueViewModelTests.swift in Sources */,
 				253319A5F227F3EC76D62CB6 /* DuplicatesViewModelTests.swift in Sources */,
@@ -3117,6 +3138,7 @@
 				290377155419160F014EAC10 /* VideoPlayerLayoutUITests.swift in Sources */,
 				E8EAA4674BEC0F44188B0EE8 /* ViewerTopBarUITests.swift in Sources */,
 				1414B0000000000000000004 /* ViewerZoomUITests.swift in Sources */,
+				F100181800000009 /* ReduceMotionUITests.swift in Sources */,
 				E09ADD5088E5F330E8B782CA /* WhatsNewUITests.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
@@ -3335,6 +3357,8 @@
 				293808534AFF743E31D0610C /* OnboardingFlowView.swift in Sources */,
 				0B1E36D253FF5663C799F7D9 /* PVButtonStyle.swift in Sources */,
 				F100A71C0000000000000001 /* PVFloatingControl.swift in Sources */,
+				F100181800000001 /* PVMotionModifiers.swift in Sources */,
+				F100181800000003 /* PVFullScreenCover.swift in Sources */,
 				E223ADADD07A290B16E1A603 /* PVFieldSurface.swift in Sources */,
 				292430486336389B855407C7 /* PVGridCell.swift in Sources */,
 				A31CE425B83CA29591349184 /* PVHeaderBadge.swift in Sources */,
