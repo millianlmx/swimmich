@@ -8,13 +8,16 @@ Standard library only; no Xcode, no build.
 
 from __future__ import annotations
 
+import contextlib
 import importlib.util
+import io
 import json
 import subprocess
 import sys
 import tempfile
 import unittest
 from pathlib import Path
+from unittest import mock
 
 ROOT = Path(__file__).resolve().parent.parent
 SCRIPT = ROOT / "Scripts" / "i18n-audit.py"
@@ -171,6 +174,51 @@ class PluralAuditTests(unittest.TestCase):
                 text=True,
             )
         self.assertEqual(result.returncode, 2, result.stdout + result.stderr)
+
+
+class FullVerdictTests(unittest.TestCase):
+    """R1-R3 of `main()` without Xcode: `extract` and `collect` are replaced, so
+    the verdict code (dead, missing, untranslated keys) is exercised on a tiny
+    catalog. Before this class, only `--plurals-only` ran in the Python tests and
+    a broken verdict path (a deleted helper) only showed up on the macOS runner."""
+
+    def run_main(self, catalog: dict, claimed: set) -> tuple[int, str]:
+        audit = load_audit_module()
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / "Localizable.xcstrings"
+            path.write_text(json.dumps({"sourceLanguage": "en", "strings": catalog, "version": "1.0"}), encoding="utf-8")
+            claimed_by = {key: {"ImmichSwiftUI"} for key in claimed}
+            out = io.StringIO()
+            with mock.patch.object(sys, "argv", ["i18n-audit.py", "--catalog", str(path)]), \
+                 mock.patch.object(audit, "extract", return_value=Path(directory)), \
+                 mock.patch.object(audit, "collect", return_value=(claimed, claimed_by, [])), \
+                 contextlib.redirect_stdout(out):
+                code = audit.main()
+        return code, out.getvalue()
+
+    def translated(self, value: str = "x") -> dict:
+        return {"localizations": {language: unit(value) for language in ("fr", "de", "es", "it")}}
+
+    def test_AC_32_verdictPassesWhenEveryKeyIsClaimedAndTranslated(self) -> None:
+        code, output = self.run_main({"Hello": self.translated()}, {"Hello"})
+        self.assertEqual(code, 0, output)
+        self.assertIn("dead keys (in the catalog, claimed by no build target): 0", output)
+        self.assertIn("plural violations: 0", output)
+
+    def test_AC_32_verdictReportsDeadMissingAndUntranslatedKeys(self) -> None:
+        catalog = {
+            "Dead": self.translated(),
+            "Half": {"localizations": {"fr": unit("x")}},
+        }
+        code, output = self.run_main(catalog, {"Half", "Absent"})
+        self.assertEqual(code, 1, output)
+        self.assertIn("  - Dead", output)
+        self.assertIn("  - Absent  claimed by ImmichSwiftUI", output)
+        self.assertIn("  - Half  missing: de, es, it", output)
+
+    def test_AC_32_verdictIgnoresKeysWithoutWords(self) -> None:
+        code, output = self.run_main({}, {"%lld", "·"})
+        self.assertEqual(code, 0, output)
 
 
 if __name__ == "__main__":

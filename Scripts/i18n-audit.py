@@ -84,6 +84,11 @@ GENERATED_BASENAMES = frozenset(
 # specifiers and punctuation has nothing to translate.
 _FORMAT_SPECIFIER = re.compile(r"%(\d+\$)?[@dfslu]|%lld|%@")
 
+
+def has_words(key: str) -> bool:
+    return any(ch.isalpha() for ch in _FORMAT_SPECIFIER.sub("", key))
+
+
 # R4. A counter is an integer format specifier, optionally positional
 # (`%2$lld`). `%%` is a literal percent sign and is removed before matching.
 _COUNTER = re.compile(r"%(?:(\d+)\$)?(?:lld|ld|llu|lu|d|u|i)")
