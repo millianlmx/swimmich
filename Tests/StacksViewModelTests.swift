@@ -302,7 +302,7 @@ final class StacksViewModelTests: XCTestCase {
     }
 
     @MainActor
-    func test_AC_149_stacks_loadingUntilFirstAnswer() async {
+    func test_AC_142_stacks_loadingUntilFirstAnswer() async {
         let mock = MockImmichClient()
         mock.stacksResponse = [stack(id: "s1", primary: "a1", members: ["a1", "a2"])]
         let latch = TestLatch()
@@ -489,7 +489,7 @@ final class StacksViewModelTests: XCTestCase {
     // MARK: - Detail states (L-16)
 
     @MainActor
-    func test_AC_154_stackDetail_loadingUntilFirstAnswer() async {
+    func test_AC_142_stackDetail_loadingUntilFirstAnswer() async {
         let mock = MockImmichClient()
         mock.stackDetailResponses["s1"] = stack(id: "s1", primary: "a1", members: ["a1", "a2"])
         let latch = TestLatch()

@@ -270,7 +270,7 @@ final class RecentAssetsViewModelTests: XCTestCase {
     }
 
     @MainActor
-    func test_AC_149_recent_loadingUntilFirstAnswer() async {
+    func test_AC_142_recent_loadingUntilFirstAnswer() async {
         let mock = oneDayMock()
         let latch = TestLatch()
         let calls = TestBox(0)

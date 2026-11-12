@@ -329,7 +329,7 @@ final class DeviceSessionsViewModelTests: XCTestCase {
     }
 
     @MainActor
-    func test_AC_149_deviceSessions_loadingUntilFirstAnswer() async {
+    func test_AC_142_deviceSessions_loadingUntilFirstAnswer() async {
         let mock = MockImmichClient()
         mock.sessionsResponse = [session(id: "phone", current: true)]
         let latch = TestLatch()

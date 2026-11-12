@@ -510,6 +510,10 @@ final class PeopleViewModel {
         // A first read that failed is not "loaded": it is read again here.
         if selectedPersonID == person.id, assetsLoadedForID == person.id { return }
         selectedPersonID = person.id
+        // The grid now shown is this person's, not the one `assetsLoadedForID`
+        // remembers: without this, reopening a person whose neighbour failed or
+        // was cancelled would skip the read and stay on the indicator.
+        assetsLoadedForID = nil
         resetAssetsGrid()
         await loadAssets()
     }
