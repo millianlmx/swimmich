@@ -50,6 +50,13 @@
 		F100181800000009 /* ReduceMotionUITests.swift in Sources */ = {isa = PBXBuildFile; fileRef = F10018180000000A /* ReduceMotionUITests.swift */; };
 		F10018180000000B /* immich_stub_reduce_motion.py in Resources */ = {isa = PBXBuildFile; fileRef = F10018180000000C /* immich_stub_reduce_motion.py */; };
 		F100A71C0000000000000005 /* FloatingControlsUITests.swift in Sources */ = {isa = PBXBuildFile; fileRef = F100A71C0000000000000006 /* FloatingControlsUITests.swift */; };
+		F100A71D0000000000000001 /* ButtonAccessibilityInventoryTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = F100A71D0000000000000002 /* ButtonAccessibilityInventoryTests.swift */; };
+		F100A71D0000000000000003 /* AssetThumbnailAccessibilityTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = F100A71D0000000000000004 /* AssetThumbnailAccessibilityTests.swift */; };
+		F100A71D0000000000000005 /* RatingStarAccessibilityTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = F100A71D0000000000000006 /* RatingStarAccessibilityTests.swift */; };
+		F100A71D0000000000000007 /* SlideshowChromeTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = F100A71D0000000000000008 /* SlideshowChromeTests.swift */; };
+		F100A71D0000000000000009 /* FilmstripAccessibilityTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = F100A71D000000000000000A /* FilmstripAccessibilityTests.swift */; };
+		F100A71D000000000000000B /* VoiceOverLabelsUITests.swift in Sources */ = {isa = PBXBuildFile; fileRef = F100A71D000000000000000C /* VoiceOverLabelsUITests.swift */; };
+		F100A71D000000000000000D /* immich_stub_voiceover.py in Resources */ = {isa = PBXBuildFile; fileRef = F100A71D000000000000000E /* immich_stub_voiceover.py */; };
 		F100A71C0000000000000007 /* immich_stub_floating_controls.py in Resources */ = {isa = PBXBuildFile; fileRef = F100A71C0000000000000008 /* immich_stub_floating_controls.py */; };
 		0B40968A93265EC1DCDFE0DF /* ShareConfirmationView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0382F4AB250DCB3826D6C3D7 /* ShareConfirmationView.swift */; };
 		0BF60200AC1DDD96537ABB14 /* View+Shadow.swift in Sources */ = {isa = PBXBuildFile; fileRef = D4A67C215509CC4179DD4F57 /* View+Shadow.swift */; };
@@ -808,6 +815,13 @@
 		F10018180000000A /* ReduceMotionUITests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ReduceMotionUITests.swift; sourceTree = "<group>"; };
 		F10018180000000C /* immich_stub_reduce_motion.py */ = {isa = PBXFileReference; lastKnownFileType = text.script.python; path = immich_stub_reduce_motion.py; sourceTree = "<group>"; };
 		F100A71C0000000000000006 /* FloatingControlsUITests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FloatingControlsUITests.swift; sourceTree = "<group>"; };
+		F100A71D0000000000000002 /* ButtonAccessibilityInventoryTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ButtonAccessibilityInventoryTests.swift; sourceTree = "<group>"; };
+		F100A71D0000000000000004 /* AssetThumbnailAccessibilityTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AssetThumbnailAccessibilityTests.swift; sourceTree = "<group>"; };
+		F100A71D0000000000000006 /* RatingStarAccessibilityTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RatingStarAccessibilityTests.swift; sourceTree = "<group>"; };
+		F100A71D0000000000000008 /* SlideshowChromeTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SlideshowChromeTests.swift; sourceTree = "<group>"; };
+		F100A71D000000000000000A /* FilmstripAccessibilityTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FilmstripAccessibilityTests.swift; sourceTree = "<group>"; };
+		F100A71D000000000000000C /* VoiceOverLabelsUITests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VoiceOverLabelsUITests.swift; sourceTree = "<group>"; };
+		F100A71D000000000000000E /* immich_stub_voiceover.py */ = {isa = PBXFileReference; lastKnownFileType = text.script.python; path = immich_stub_voiceover.py; sourceTree = "<group>"; };
 		F100A71C0000000000000008 /* immich_stub_floating_controls.py */ = {isa = PBXFileReference; lastKnownFileType = text.script.python; path = immich_stub_floating_controls.py; sourceTree = "<group>"; };
 		0E1157A1B2E58119402D0017 /* SearchFiltersUITests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SearchFiltersUITests.swift; sourceTree = "<group>"; };
 		0E20A4FDA552E6EEA34A5570 /* immich_stub_settings.py */ = {isa = PBXFileReference; lastKnownFileType = text.script.python; path = immich_stub_settings.py; sourceTree = "<group>"; };
@@ -1846,6 +1860,11 @@
 				026D6636036A1A6072A04908 /* DateHeaderFormatterTests.swift */,
 				2C4437087CAD37EE42393F50 /* DesignSystemTokensTests.swift */,
 				DD1300000000000000000A04 /* DynamicTypeTests.swift */,
+				F100A71D0000000000000002 /* ButtonAccessibilityInventoryTests.swift */,
+				F100A71D0000000000000004 /* AssetThumbnailAccessibilityTests.swift */,
+				F100A71D0000000000000006 /* RatingStarAccessibilityTests.swift */,
+				F100A71D0000000000000008 /* SlideshowChromeTests.swift */,
+				F100A71D000000000000000A /* FilmstripAccessibilityTests.swift */,
 				F100A71C0000000000000004 /* FloatingControlStyleTests.swift */,
 				F100181800000006 /* MotionGateTests.swift */,
 				F100181800000008 /* MotionGuardTests.swift */,
@@ -2258,6 +2277,7 @@
 				8FD4678BF9AC2355AC59D544 /* immich_stub_local_library.py */,
 				B032F8E8A997D00D932B511E /* immich_stub_locked_folder.py */,
 				28BA3D71DA9D6130CE81A744 /* immich_stub_map_settings.py */,
+				F100A71D000000000000000E /* immich_stub_voiceover.py */,
 				F100A71C0000000000000008 /* immich_stub_floating_controls.py */,
 				CFAA656D3A00CC43F26BF6B2 /* immich_stub_memories.py */,
 				E1208877397F4626C85572F2 /* immich_stub_ocr_text.py */,
@@ -2385,6 +2405,7 @@
 				B2BE58A959176290845E8EF8 /* LocalLibraryUITests.swift */,
 				86533554A77DF5D2D61EA1FF /* LockedFolderUITests.swift */,
 				2FB9BAD82791075DF5D3C684 /* MapSettingsUITests.swift */,
+				F100A71D000000000000000C /* VoiceOverLabelsUITests.swift */,
 				F100A71C0000000000000006 /* FloatingControlsUITests.swift */,
 				A50A0311861667157DDF8D9F /* OcrTextUITests.swift */,
 				5CEC6044418C5C3C5698B524 /* PeopleSearchUITests.swift */,
@@ -2811,6 +2832,7 @@
 				79D68068E03737251E7BBB4B /* immich_stub_local_library.py in Resources */,
 				555B79A8AFFA156A3DE49FF8 /* immich_stub_locked_folder.py in Resources */,
 				8C0E8E68CED4E6CC313819C6 /* immich_stub_map_settings.py in Resources */,
+				F100A71D000000000000000D /* immich_stub_voiceover.py in Resources */,
 				F100A71C0000000000000007 /* immich_stub_floating_controls.py in Resources */,
 				BAB66B7B11651448F6CC4648 /* immich_stub_memories.py in Resources */,
 				59D319B0F93796330C3C8291 /* immich_stub_ocr_text.py in Resources */,
@@ -2957,6 +2979,11 @@
 				0E0FBF4810A1C25C257F8E56 /* DateHeaderFormatterTests.swift in Sources */,
 				06488109EBBCB8B19E53ED88 /* DesignSystemTokensTests.swift in Sources */,
 				DD1300000000000000000A05 /* DynamicTypeTests.swift in Sources */,
+				F100A71D0000000000000001 /* ButtonAccessibilityInventoryTests.swift in Sources */,
+				F100A71D0000000000000003 /* AssetThumbnailAccessibilityTests.swift in Sources */,
+				F100A71D0000000000000005 /* RatingStarAccessibilityTests.swift in Sources */,
+				F100A71D0000000000000007 /* SlideshowChromeTests.swift in Sources */,
+				F100A71D0000000000000009 /* FilmstripAccessibilityTests.swift in Sources */,
 				F100A71C0000000000000003 /* FloatingControlStyleTests.swift in Sources */,
 				F100181800000005 /* MotionGateTests.swift in Sources */,
 				F100181800000007 /* MotionGuardTests.swift in Sources */,
@@ -3099,6 +3126,7 @@
 				502DC18906500F6B062B2016 /* LocalLibraryUITests.swift in Sources */,
 				DF56AF55F4C25922114C4396 /* LockedFolderUITests.swift in Sources */,
 				9D9DBEB55D87F92C8EAE8184 /* MapSettingsUITests.swift in Sources */,
+				F100A71D000000000000000B /* VoiceOverLabelsUITests.swift in Sources */,
 				F100A71C0000000000000005 /* FloatingControlsUITests.swift in Sources */,
 				E540263F8E2067910F19C3FE /* OcrTextUITests.swift in Sources */,
 				4A844012602937002B949A35 /* PeopleSearchUITests.swift in Sources */,

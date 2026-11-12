@@ -153,7 +153,8 @@ struct SearchFilterSheet: View {
         }
         .buttonStyle(.plain)
         .accessibilityIdentifier(identifier)
-        .accessibilityLabel(rank == vm.filter.rating ? Text("Remove rating") : Text("Rate \(rank) stars"))
+        .accessibilityLabel(PVRatingBar.starLabel(value: rank, rating: vm.filter.rating))
+        .accessibilityAddTraits(PVRatingBar.isStarSelected(value: rank, rating: vm.filter.rating) ? .isSelected : [])
     }
 
     // MARK: - Bindings

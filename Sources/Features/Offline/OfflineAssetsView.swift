@@ -296,6 +296,9 @@ private struct OfflineAssetCell: View {
                     token: token,
                     localFileURL: localFileURL
                 )
+                .accessibilityElement(children: .ignore)
+                .accessibilityLabel(AssetThumbnailCell.accessibilityLabel(for: asset))
+                .accessibilityAddTraits(.isButton)
                 .accessibilityIdentifier("offlineAsset_\(asset.id)")
             }
             .overlay(alignment: .bottomLeading) { videoBadge }

@@ -208,6 +208,8 @@ struct MemoryMomentView: View {
         }
         .simultaneousGesture(TapGesture().onEnded { onOpenViewer(memory, index) })
         .accessibilityLabel(String(localized: "Open this memory's photos"))
+        .accessibilityAddTraits(.isButton)
+        .accessibilityIdentifier("memoryMomentHero")
     }
 
     /// The page after the last photo: a darkened preview of the next memory's
@@ -283,7 +285,7 @@ struct MemoryMomentView: View {
                 Spacer(minLength: PVSpacing.s8)
 
                 let badge = MemoryTitlePresentation.badge(for: memory)
-                MemoryTypeBadge(label: badge.label, symbol: badge.symbol)
+                MemoryTypeBadge(text: badge.label, symbol: badge.symbol)
 
                 Spacer(minLength: PVSpacing.s8)
 
@@ -303,7 +305,7 @@ struct MemoryMomentView: View {
                 .buttonStyle(.plain)
                 .disabled(heroAsset == nil)
                 .accessibilityLabel(String(localized: "View in timeline"))
-                .accessibilityIdentifier("memoryMomentTimeline")
+                .accessibilityIdentifier("memoryMomentViewInTimeline")
             }
         }
         .contentShape(Rectangle())
@@ -546,11 +548,11 @@ struct MemoryChip: View {
 /// Type badge of the playback top bar (« Birthday », « On this day »…). The
 /// label wraps; the badge carries its own full-screen cap.
 struct MemoryTypeBadge: View {
-    let label: String
+    let text: String
     let symbol: String
 
     var body: some View {
-        Label(label, systemImage: symbol)
+        Label(text, systemImage: symbol)
             .font(.pvCaption.weight(.semibold))
             .foregroundStyle(.white)
             .multilineTextAlignment(.center)

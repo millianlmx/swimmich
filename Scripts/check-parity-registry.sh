@@ -128,8 +128,8 @@ Souvenirs|Gestes et transitions|B-22
 Souvenirs|Haptique|B-34
 Souvenirs|Accessibilité|B-17 B-22
 Carte|Parcours|B-29
-Carte|Gestes et transitions|B-22 B-23
-Carte|Accessibilité|B-17 B-22 B-23
+Carte|Gestes et transitions|B-22
+Carte|Accessibilité|B-17 B-22
 Personnes|Gestes et transitions|B-22
 Personnes|Accessibilité|B-17 B-22
 Partage (liens et partenaires)|Gestes et transitions|B-22 B-36

@@ -15,8 +15,25 @@ struct MapPhoto: Identifiable, Equatable, Hashable, Sendable {
         CLLocationCoordinate2D(latitude: latitude, longitude: longitude)
     }
 
+    /// City, state and country that are not blank, joined; empty when none is.
     var placeName: String {
-        [city, state, country].compactMap { $0 }.joined(separator: ", ")
+        [city, state, country]
+            .compactMap { $0?.trimmingCharacters(in: .whitespacesAndNewlines) }
+            .filter { !$0.isEmpty }
+            .joined(separator: ", ")
+    }
+
+    /// What VoiceOver says on a marker or on a thumbnail of the photos sheet.
+    /// The map does not know the media type, so the label never says photo or video.
+    func accessibilityLabel(bundle: Bundle = .main, locale: Locale = .current) -> String {
+        let place = placeName
+        if place.isEmpty { return String(localized: "Item", bundle: bundle, locale: locale) }
+        return String(localized: "Item, \(place)", bundle: bundle, locale: locale)
+    }
+
+    /// VoiceOver label of a cluster or of a marker that stands for several photos.
+    static func groupAccessibilityLabel(count: Int, bundle: Bundle = .main, locale: Locale = .current) -> String {
+        String(localized: "\(count) items", bundle: bundle, locale: locale)
     }
 
     init(from dto: MapMarkerResponseDto) {

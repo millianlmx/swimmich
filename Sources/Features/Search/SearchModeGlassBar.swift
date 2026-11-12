@@ -79,6 +79,9 @@ struct SearchModeGlassBar: View {
                 .contentShape(Capsule())
         }
         .buttonStyle(.plain)
+        // The label view is built per text size (title only from xxLarge): the
+        // button says its mode whatever the layout.
+        .accessibilityLabel(segment.title)
         .accessibilityAddTraits(isSelected ? .isSelected : [])
         .accessibilityIdentifier(Self.identifier(for: segment.mode))
     }

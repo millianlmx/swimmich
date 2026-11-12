@@ -190,6 +190,7 @@ private struct ShareItemRow: View {
         // state is unreadable at sheet speed.
         .accessibilityElement(children: .combine)
         .accessibilityLabel("\(item.filename), \(item.byteCountText), \(statusText)")
+        .accessibilityAddTraits(item.isSelected ? .isSelected : [])
     }
 }
 

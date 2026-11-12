@@ -23,6 +23,10 @@ struct SlideshowView: View {
 
     @PVReduceMotion private var reduceMotion
     @Environment(\.accessibilityReduceTransparency) private var reduceTransparency
+    /// VoiceOver keeps the chrome on screen: Close, Play/Pause, Shuffle, Previous,
+    /// Next, speed and transition would otherwise leave the accessibility tree
+    /// 3 s after playback starts, with only an unlabelled tap to bring them back.
+    @Environment(\.accessibilityVoiceOverEnabled) private var voiceOverEnabled
     /// Offline cache mirror (issue #18): a slideshow over downloaded assets must
     /// keep running with no server, so every slide gets its local copy.
     @Environment(OfflineAssetIndex.self) private var offline: OfflineAssetIndex?
@@ -45,10 +49,10 @@ struct SlideshowView: View {
             }
         }
         .overlay(alignment: .top) {
-            if showControls { topBar }
+            if Self.controlsShown(requested: showControls, voiceOverEnabled: voiceOverEnabled) { topBar }
         }
         .overlay(alignment: .bottom) {
-            if showControls { chromeFooter }
+            if Self.controlsShown(requested: showControls, voiceOverEnabled: voiceOverEnabled) { chromeFooter }
         }
         .pvFullscreenChromeTextCap()
         .statusBarHidden(true)
@@ -141,18 +145,31 @@ struct SlideshowView: View {
 
     // MARK: - Auto-hide chrome
 
-    private var autoHideKey: String { "\(showControls)-\(vm.isPlaying)-\(vm.isVideoActive)" }
+    private var autoHideKey: String { "\(showControls)-\(vm.isPlaying)-\(vm.isVideoActive)-\(voiceOverEnabled)" }
+
+    /// The chrome is on screen when requested, and always under VoiceOver.
+    static func controlsShown(requested: Bool, voiceOverEnabled: Bool) -> Bool {
+        requested || voiceOverEnabled
+    }
+
+    /// The 3 s auto-hide only runs for a playing show with visible chrome and no VoiceOver.
+    static func shouldAutoHide(isPlaying: Bool, controlsShown: Bool, voiceOverEnabled: Bool) -> Bool {
+        isPlaying && controlsShown && !voiceOverEnabled
+    }
 
     private func autoHideControls() async {
-        guard vm.isPlaying, showControls else { return }
+        guard Self.shouldAutoHide(isPlaying: vm.isPlaying, controlsShown: showControls, voiceOverEnabled: voiceOverEnabled) else { return }
         try? await Task.sleep(for: .seconds(3))
-        guard !Task.isCancelled, vm.isPlaying else { return }
+        guard !Task.isCancelled,
+              Self.shouldAutoHide(isPlaying: vm.isPlaying, controlsShown: showControls, voiceOverEnabled: voiceOverEnabled)
+        else { return }
         withAnimation(PVMotion.movement(PVMotion.snappy, reduceMotion: reduceMotion)) {
             showControls = false
         }
     }
 
     private func toggleControls() {
+        guard !voiceOverEnabled else { return }
         withAnimation(PVMotion.movement(PVMotion.snappy, reduceMotion: reduceMotion)) {
             showControls.toggle()
         }
@@ -212,7 +229,7 @@ struct SlideshowView: View {
             }
             .buttonStyle(.plain)
             .accessibilityLabel("Close Slideshow")
-            .accessibilityIdentifier("slideshowClose")
+            .accessibilityIdentifier("slideshowCloseButton")
         }
         .padding(.horizontal, PVSpacing.s16)
         .padding(.top, PVSpacing.s8)
@@ -248,10 +265,10 @@ struct SlideshowView: View {
     private var bottomBar: some View {
         GlassEffectContainer {
             HStack(spacing: PVSpacing.s4) {
-                controlButton(systemName: "shuffle", label: "Shuffle", id: "slideshowShuffle") { vm.shuffle() }
+                controlButton(systemName: "shuffle", label: "Shuffle", identifier: "slideshowShuffleButton") { vm.shuffle() }
                     .disabled(vm.count < 2)
 
-                controlButton(systemName: "chevron.left", label: "Previous", id: "slideshowPrevious") { vm.previous() }
+                controlButton(systemName: "chevron.left", label: "Previous", identifier: "slideshowPreviousButton") { vm.previous() }
                     .disabled(vm.count < 2)
 
                 Spacer(minLength: PVSpacing.s8)
@@ -260,7 +277,7 @@ struct SlideshowView: View {
 
                 Spacer(minLength: PVSpacing.s8)
 
-                controlButton(systemName: "chevron.right", label: "Next", id: "slideshowNext") { vm.next() }
+                controlButton(systemName: "chevron.right", label: "Next", identifier: "slideshowNextButton") { vm.next() }
                     .disabled(vm.count < 2)
 
                 speedMenu
@@ -282,7 +299,7 @@ struct SlideshowView: View {
         }
         .buttonStyle(.plain)
         .accessibilityLabel(vm.isPlaying ? "Pause" : "Play")
-        .accessibilityIdentifier("slideshowPlayPause")
+        .accessibilityIdentifier("slideshowPlayPauseButton")
         .appSensoryFeedback(.selection, trigger: vm.isPlaying)
     }
 
@@ -297,7 +314,8 @@ struct SlideshowView: View {
             SlideshowSpeedLabel(text: vm.speed.label)
         }
         .accessibilityLabel("Slideshow Speed")
-        .accessibilityIdentifier("slideshowSpeed")
+        .accessibilityValue(Text(verbatim: vm.speed.label))
+        .accessibilityIdentifier("slideshowSpeedMenu")
     }
 
     private var transitionMenu: some View {
@@ -315,12 +333,10 @@ struct SlideshowView: View {
                 .pvFloating(.circle)
         }
         .accessibilityLabel("Transition")
-        .accessibilityIdentifier("slideshowTransition")
+        .accessibilityIdentifier("slideshowTransitionMenu")
     }
 
-    private func controlButton(
-        systemName: String, label: String, id: String, action: @escaping () -> Void
-    ) -> some View {
+    private func controlButton(systemName: String, label: LocalizedStringKey, identifier: String, action: @escaping () -> Void) -> some View {
         Button(action: action) {
             Image(systemName: systemName)
                 .font(.pvHeadline)
@@ -330,7 +346,7 @@ struct SlideshowView: View {
         }
         .buttonStyle(.plain)
         .accessibilityLabel(label)
-        .accessibilityIdentifier(id)
+        .accessibilityIdentifier(identifier)
     }
 }
 

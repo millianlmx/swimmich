@@ -1171,11 +1171,11 @@ final class DynamicTypeUITests: XCTestCase {
         let controls = ["viewerBackButton", "viewerShareButton", "viewerFavoriteButton", "viewerOverflowMenu"]
         let badgeID = element("viewerBadgeSingleLine").exists ? "viewerBadgeSingleLine" : "viewerBadgePlace"
         XCTAssertTrue(element(badgeID).waitForExistence(timeout: 10), "no viewer badge — \(screenText())")
-        XCTAssertTrue(element("viewerLivePill").waitForExistence(timeout: 10), "no LIVE pill — \(screenText())")
+        XCTAssertTrue(element("viewerLiveButton").waitForExistence(timeout: 10), "no LIVE pill — \(screenText())")
         assertDisjointAndHittable(controls)
         for control in controls {
             assertDisjoint(control, badgeID)
-            assertDisjoint(control, "viewerLivePill")
+            assertDisjoint(control, "viewerLiveButton")
         }
         let favorite = element("viewerFavoriteButton")
         let before = favorite.label
@@ -1202,13 +1202,13 @@ final class DynamicTypeUITests: XCTestCase {
             }
             XCTAssertTrue(element("slideshowCounter").waitForExistence(timeout: 20), "no slideshow — \(screenText())")
             // Launched with `-uiTestSlideshowAutoplayOff`: the show is paused, its chrome stays.
-            XCTAssertEqual(element("slideshowPlayPause").label, "Play", "the slideshow did not open paused")
+            XCTAssertEqual(element("slideshowPlayPauseButton").label, "Play", "the slideshow did not open paused")
             counter[size] = textElement("slideshowCounter").frame.height
-            speed[size] = textElement("slideshowSpeed").frame.height
+            speed[size] = textElement("slideshowSpeedMenu").frame.height
 
             let squares: [(String, CGFloat)] = [
-                ("slideshowClose", 40), ("slideshowShuffle", 40), ("slideshowPrevious", 40),
-                ("slideshowNext", 40), ("slideshowPlayPause", 48),
+                ("slideshowCloseButton", 40), ("slideshowShuffleButton", 40), ("slideshowPreviousButton", 40),
+                ("slideshowNextButton", 40), ("slideshowPlayPauseButton", 48),
             ]
             for (identifier, side) in squares {
                 let frame = element(identifier).frame
@@ -1216,7 +1216,7 @@ final class DynamicTypeUITests: XCTestCase {
                 XCTAssertEqual(frame.height, side, accuracy: 1, "\(identifier) is not \(side) pt tall at \(size)")
                 XCTAssertTrue(windowFrame.insetBy(dx: -1, dy: -1).contains(frame), "\(identifier) leaves the window")
             }
-            assertDisjointAndHittable(squares.map(\.0) + ["slideshowCounter", "slideshowSpeed"])
+            assertDisjointAndHittable(squares.map(\.0) + ["slideshowCounter", "slideshowSpeedMenu"])
         }
         if let large = counter[.l], let ax5 = counter[.ax5] {
             XCTAssertGreaterThan(ax5, large, "the slideshow counter did not grow (L \(large), AX5 \(ax5))")
@@ -1250,9 +1250,9 @@ final class DynamicTypeUITests: XCTestCase {
                 XCTAssertGreaterThanOrEqual(frame.minX, 0, "\(identifier) of \(memory) starts left of the window")
                 XCTAssertLessThanOrEqual(frame.maxX, windowFrame.width + 0.5, "\(identifier) of \(memory) runs past the window")
                 assertDisjoint(identifier, "memoryMomentClose")
-                assertDisjoint(identifier, "memoryMomentTimeline")
+                assertDisjoint(identifier, "memoryMomentViewInTimeline")
             }
-            for button in ["memoryMomentClose", "memoryMomentTimeline"] {
+            for button in ["memoryMomentClose", "memoryMomentViewInTimeline"] {
                 let frame = element(button).frame
                 XCTAssertEqual(frame.width, 44, accuracy: 1, "\(button) is not 44 pt wide")
                 XCTAssertEqual(frame.height, 44, accuracy: 1, "\(button) is not 44 pt tall")

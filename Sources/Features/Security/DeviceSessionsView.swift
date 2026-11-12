@@ -244,6 +244,7 @@ struct DeviceSessionsView: View {
             // The menu's label is a bare SF Symbol, so without an identifier the
             // only way to open it would be its position in the toolbar.
             .accessibilityIdentifier("deviceSessionsMenuButton")
+            .accessibilityLabel("Options")
         }
     }
 

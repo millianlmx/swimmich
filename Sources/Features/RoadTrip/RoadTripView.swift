@@ -269,6 +269,7 @@ struct RoadTripView: View {
             }
             .buttonStyle(.plain)
             .accessibilityLabel("Close")
+            .accessibilityIdentifier("roadTripCloseButton")
 
             Spacer()
 
@@ -294,6 +295,7 @@ struct RoadTripView: View {
             .buttonStyle(.plain)
             .disabled(vm.isExporting || vm.timeline == nil)
             .accessibilityLabel("Export video")
+            .accessibilityIdentifier("roadTripExportButton")
         }
         .padding(.horizontal, 16)
         .padding(.top, 8)

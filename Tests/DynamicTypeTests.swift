@@ -383,7 +383,7 @@ final class DynamicTypeTests: XCTestCase {
     func test_AC_26_9_fullscreenTextStopsGrowingAtAX2() {
         assertCappedAtAX2(SlideshowCounterLabel(index: 3, count: 12, isVideo: false), "SlideshowCounterLabel")
         assertCappedAtAX2(SlideshowSpeedLabel(text: "5 s"), "SlideshowSpeedLabel")
-        assertCappedAtAX2(MemoryTypeBadge(label: "Birthday", symbol: "gift"), "MemoryTypeBadge")
+        assertCappedAtAX2(MemoryTypeBadge(text: "Birthday", symbol: "gift"), "MemoryTypeBadge")
         assertCappedAtAX2(MemoryChip(symbol: "camera", text: "Stub"), "MemoryChip")
     }
 
