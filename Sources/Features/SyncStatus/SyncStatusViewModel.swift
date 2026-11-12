@@ -72,7 +72,7 @@ final class SyncStatusViewModel {
     // MARK: - Errors + empty state
 
     var runErrorMessage: String? { upload.engine.lastError }
-    var offlineErrorMessage: String? { offline.errorMessage }
+    var offlineErrorMessage: String? { offline.listingErrorMessage ?? offline.errorMessage }
     var hasPendingWork: Bool { isRunning || pendingCount > 0 || stagedCount > 0 }
     /// Nothing recorded anywhere yet: the screen shows its empty state instead
     /// of a grid of zeros that would suggest a finished, empty library.

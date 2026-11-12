@@ -57,9 +57,12 @@ final class OfflineAssetIndex {
     }
 
     /// Rebuilds the mirror from the store. Awaits the actor once, then the
-    /// per-cell lookups above stay synchronous.
+    /// per-cell lookups above stay synchronous. A failed read keeps the mirror
+    /// as it was: the badge index has no error surface, the screens that read
+    /// the cache report the failure themselves (L-16).
     func refresh(from store: OfflineAssetStore) async {
-        apply(await store.listing(), from: store)
+        guard let listing = try? await store.listing() else { return }
+        apply(listing, from: store)
     }
 
     /// Replaces the mirror with `listing` unless the active account changed
