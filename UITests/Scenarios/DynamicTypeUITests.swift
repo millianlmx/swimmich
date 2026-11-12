@@ -292,8 +292,9 @@ final class DynamicTypeUITests: XCTestCase {
     /// the content scroll clear of it (AC-26.3: "everything reachable by scrolling",
     /// proven by `scrollToHittable`). Overlaps inside the content, and inside the
     /// chrome, still fail. Only the app's main window is read (the keyboard lives
-    /// in its own windows), and the tab bar is skipped: both are the system's own
-    /// controls, laid out by UIKit (the tab items' frames overlap by design).
+    /// in its own windows), and the tab bar and a sheet's grabber are skipped: they
+    /// are the system's own controls, laid out by UIKit (the tab items' frames
+    /// overlap by design; the grabber's frame is far larger than its drawn pill).
     private func assertNoOverlap(file: StaticString = #filePath, line: UInt = #line) {
         let main = app.windows.firstMatch
         let window = main.frame
@@ -309,6 +310,7 @@ final class DynamicTypeUITests: XCTestCase {
                 guard !frame.isEmpty, frame.intersects(window), candidate.isHittable else { continue }
                 let id = key(candidate)
                 guard !skipped.contains(id) else { continue }
+                if type == .button && Self.sheetGrabberLabels.contains(candidate.label) { continue }
                 // A button that carries a text is measured by that text (swept as a
                 // static text): its own frame also spans an unclipped image, like
                 // the album cards' filled covers, wider than what the card shows.
@@ -331,6 +333,9 @@ final class DynamicTypeUITests: XCTestCase {
             }
         }
     }
+
+    /// The accessibility label of a sheet's system grabber, in the scenarios' languages.
+    private static let sheetGrabberLabels: Set<String> = ["Sheet Grabber", "Aufzeichnungsblatt"]
 
     /// Height of one line of a UIKit text style at a size, for the single-line checks.
     private func lineHeight(_ style: UIFont.TextStyle, _ category: UIContentSizeCategory) -> CGFloat {
@@ -959,6 +964,13 @@ final class DynamicTypeUITests: XCTestCase {
         openSearchTab()
         tapElement("searchModeSegment_map")
         tapElement("mapSettingsButton")
+        // At AX5 the sheet opens at half height with the favourites switch under its
+        // Done bar; the window-centre swipe of `scrollToHittable` would land on the
+        // mode bar above the sheet. A drag from inside the sheet raises it first.
+        XCTAssertTrue(element("mapSettingsDoneButton").waitForExistence(timeout: 15), "no map settings — \(screenText())")
+        app.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.6))
+            .press(forDuration: 0.1, thenDragTo: app.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.08)))
+        Thread.sleep(forTimeInterval: 1)
         flipSwitch("mapSettingsFavoritesToggle")
         tapElement("mapSettingsDoneButton")
         XCTAssertTrue(element("mapFilterActiveBadge").waitForExistence(timeout: 20), "no active-filter badge — \(screenText())")
