@@ -193,7 +193,8 @@ final class DependencyContainer {
             log: .shared,
             sessions: [client, serverSessions],
             reconnectRealtime: { [realtime] in realtime.reconnectIfConnected() },
-            reloadWidgets: { WidgetCenter.shared.reloadAllTimelines() }
+            reloadWidgets: { WidgetCenter.shared.reloadAllTimelines() },
+            appLog: appLog
         )
         self.backupScheduler = BGTaskBackupScheduler()
         self.backupLedger = BackupLedger.persistent()

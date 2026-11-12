@@ -92,7 +92,7 @@ final class LiveActivityBackupService: BackupLiveActivityServicing {
         } catch {
             // Swallowing this with `try?` is how a missing island stays
             // invisible for a whole debugging session.
-            Self.log.error("Activity.request failed: \(error.localizedDescription, privacy: .public)")
+            Self.log.error("Activity.request failed: \(PublicLogText.describe(error), privacy: .public)")
         }
     }
 
