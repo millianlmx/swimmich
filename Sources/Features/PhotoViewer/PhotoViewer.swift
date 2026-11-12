@@ -153,6 +153,10 @@ struct PhotoViewerPresentation: ViewModifier {
     var onDeletePermanent: ((AssetReactItem) -> Void)? = nil
     var onDataChanged: (() -> Void)? = nil
     var onDismiss: (() -> Void)? = nil
+    /// The grid's zoom source (L-14). Non-nil: the cover is transparent and shown
+    /// and removed without the system animation, and the viewer's own zoom is the
+    /// only motion. Nil: the presentation is the system one, as before.
+    var zoomSource: ViewerZoomSource? = nil
 
     func body(content: Content) -> some View {
         content
@@ -170,9 +174,33 @@ struct PhotoViewerPresentation: ViewModifier {
                     onArchive: onArchive,
                     onRestore: onRestore,
                     onDeletePermanent: onDeletePermanent,
-                    onDataChanged: onDataChanged
+                    onDataChanged: onDataChanged,
+                    zoomSource: zoomSource,
+                    closeInstantly: zoomSource == nil ? nil : closeInstantly
                 )
+                .modifier(ViewerTransparentCover(enabled: zoomSource != nil))
             }
+    }
+
+    /// Removes the cover with no system animation (the viewer has already
+    /// animated its own close).
+    private func closeInstantly() {
+        var transaction = Transaction()
+        transaction.disablesAnimations = true
+        withTransaction(transaction) { item = nil }
+    }
+}
+
+/// Lets the grid show through a cover that draws its own backdrop.
+private struct ViewerTransparentCover: ViewModifier {
+    let enabled: Bool
+
+    func body(content: Content) -> some View {
+        if enabled {
+            content.presentationBackground(.clear)
+        } else {
+            content
+        }
     }
 }
 
@@ -202,7 +230,8 @@ extension View {
         onRestore: ((AssetReactItem) -> Void)? = nil,
         onDeletePermanent: ((AssetReactItem) -> Void)? = nil,
         onDataChanged: (() -> Void)? = nil,
-        onDismiss: (() -> Void)? = nil
+        onDismiss: (() -> Void)? = nil,
+        zoomSource: ViewerZoomSource? = nil
     ) -> some View {
         modifier(
             PhotoViewerPresentation(
@@ -217,7 +246,8 @@ extension View {
                 onRestore: onRestore,
                 onDeletePermanent: onDeletePermanent,
                 onDataChanged: onDataChanged,
-                onDismiss: onDismiss
+                onDismiss: onDismiss,
+                zoomSource: zoomSource
             )
         )
     }
@@ -262,6 +292,13 @@ struct PhotoViewer: View {
     var onRestore: ((AssetReactItem) -> Void)? = nil
     var onDeletePermanent: ((AssetReactItem) -> Void)? = nil
     var onDataChanged: (() -> Void)? = nil
+    /// The grid's zoom source (L-14). Non-nil: the viewer opens by flying the
+    /// photo out of its thumbnail and closes by flying it back. Nil: the system
+    /// presentation and dismissal, exactly as before.
+    var zoomSource: ViewerZoomSource? = nil
+    /// Removes the cover with no system animation, once the viewer's own close
+    /// has finished. Given together with `zoomSource`.
+    var closeInstantly: (() -> Void)? = nil
 
     /// Local working copy so a delete can shrink the pager live.
     @State private var localAssets: [AssetReactItem]
@@ -304,6 +341,28 @@ struct PhotoViewer: View {
     /// photo that is on screen.
     @State private var slideshowVM: SlideshowViewModel?
 
+    // MARK: Zoom transition state (L-14) — all inert without a zoom source.
+    @State private var zoomPhase: ViewerZoomPhase
+    /// The flying image: a copy of the photo that leaves the thumbnail (or
+    /// lands on it), drawn above the pager and below the controls.
+    @State private var heroImage: UIImage?
+    @State private var heroFrame: CGRect
+    @State private var heroCornerRadius: CGFloat
+    @State private var heroOpacity: CGFloat
+    @State private var backdropOpacity: CGFloat
+    @State private var chromeOpacity: CGFloat
+    @State private var pagerOpacity: CGFloat
+    /// The pager's pose while a downward drag closes the viewer.
+    @State private var dragTransform = ViewerDragTransform.identity
+    /// Decided at the first 10 pt of a drag: is it a closing drag?
+    @State private var closeDragLock: Bool?
+    /// The image the opened page starts from — the flying image of the open.
+    @State private var openingImage: UIImage?
+    @State private var openingAssetID: String?
+    /// Frames reported by the pages, outside the view's observation: writing
+    /// one (every pinch step) never redraws the viewer.
+    @State private var frameBook = ViewerFrameBook()
+
     /// Height of the bottom chrome stack — filmstrip (56) + spacing (8) +
     /// bottom bar (68) + safe-area-inset spacing (16) — used to exclude
     /// bottom-chrome drags from the swipe-up reveal. Home indicator comes
@@ -338,7 +397,9 @@ struct PhotoViewer: View {
         onArchive: (@MainActor (AssetReactItem, Bool) async -> String?)? = nil,
         onRestore: ((AssetReactItem) -> Void)? = nil,
         onDeletePermanent: ((AssetReactItem) -> Void)? = nil,
-        onDataChanged: (() -> Void)? = nil
+        onDataChanged: (() -> Void)? = nil,
+        zoomSource: ViewerZoomSource? = nil,
+        closeInstantly: (() -> Void)? = nil
     ) {
         self.baseURL = baseURL
         self.token = token
@@ -357,15 +418,52 @@ struct PhotoViewer: View {
         _favoriteIDs = State(initialValue: Set(assets.filter(\.isFavorite).map(\.id)))
         _timeline = State(initialValue: TimelineViewModel(client: client))
         _trash = State(initialValue: TrashViewModel(client: client))
+        self.zoomSource = zoomSource
+        self.closeInstantly = closeInstantly
+        let opened = assets.isEmpty ? nil : assets[min(max(index, 0), assets.count - 1)]
+        let sourceFrame = opened.flatMap { zoomSource?.frame(for: $0.id) }
+        let hero: UIImage? = zoomSource == nil ? nil : opened.flatMap { asset in
+            ViewerZoomPlan.heroImage(
+                urls: [asset.thumbnailURL(base: baseURL)],
+                thumbhash: asset.thumbhash,
+                cached: { ImageCache.shared.cachedImage(for: $0) },
+                thumbhashImage: { ThumbHashDecoder.shared.cachedImage(for: $0) }
+            )
+        }
+        let flies = ViewerZoomPlan.openStyle(
+            hasHeroImage: hero != nil,
+            hasSourceFrame: sourceFrame != nil,
+            reduceMotion: ViewerZoomPlan.reduceMotion(system: UIAccessibility.isReduceMotionEnabled)
+        ) == .zoom
+        let transitioning = zoomSource != nil
+        _zoomPhase = State(initialValue: transitioning ? .opening : .open)
+        _heroImage = State(initialValue: hero)
+        _openingImage = State(initialValue: hero)
+        _openingAssetID = State(initialValue: transitioning ? opened?.id : nil)
+        // First frame of a flight: the image sits on its thumbnail.
+        _heroFrame = State(initialValue: flies ? (sourceFrame ?? .zero) : .zero)
+        _heroCornerRadius = State(initialValue: flies ? PVRadius.xs : 0)
+        _heroOpacity = State(initialValue: flies ? 1 : 0)
+        _backdropOpacity = State(initialValue: transitioning ? 0 : 1)
+        _chromeOpacity = State(initialValue: transitioning ? 0 : 1)
+        _pagerOpacity = State(initialValue: transitioning ? 0 : 1)
     }
 
     var body: some View {
         GeometryReader { proxy in
             ZStack {
-                Color.black.ignoresSafeArea()
+                Color.black.ignoresSafeArea().opacity(backdropOpacity)
 
                 if !localAssets.isEmpty {
                     pagerView
+                        .onGeometryChange(for: CGRect.self) { $0.frame(in: .global) } action: { frameBook.pagerFrame = $0 }
+                        .opacity(pagerOpacity)
+                        .scaleEffect(dragTransform.scale)
+                        .offset(dragTransform.offset)
+                }
+
+                if let heroImage, zoomSource != nil {
+                    heroLayer(heroImage)
                 }
 
                 // A refused write (read-only mode, a lost connection) used to
@@ -417,6 +515,7 @@ struct PhotoViewer: View {
             .safeAreaInset(edge: .top, spacing: PVSpacing.s8) {
                 if showChrome, let asset = currentAsset {
                     topBar(asset, availableWidth: proxy.size.width)
+                        .opacity(chromeOpacity)
                 }
             }
             .safeAreaInset(edge: .bottom, spacing: PVSpacing.s16) {
@@ -425,6 +524,7 @@ struct PhotoViewer: View {
                         filmstrip
                         bottomBar(asset)
                     }
+                    .opacity(chromeOpacity)
                 }
             }
             .statusBarHidden(true)
@@ -434,11 +534,17 @@ struct PhotoViewer: View {
                     safeAreaBottom: proxy.safeAreaInsets.bottom
                 )
             )
-            .offset(y: dragOffset.height)
-            .opacity(1 - dismissProgress)
+            // Without a zoom source the whole viewer follows the finger and fades;
+            // with one, only the pager, the backdrop and the controls do.
+            .offset(y: zoomSource == nil ? dragOffset.height : 0)
+            .opacity(zoomSource == nil ? 1 - dismissProgress : 1)
+            .allowsHitTesting(zoomPhase == .open)
             .onChange(of: selectedIndex) { _, _ in
                 isZoomed = false
                 showChrome = true
+                if zoomSource != nil, zoomPhase == .open {
+                    zoomSource?.hiddenID = currentAsset?.id
+                }
                 // Paging away stops any Live Photo pair — back to stills.
                 livePlayingIDs.removeAll()
                 withAnimation(PVMotion.adaptive(PVMotion.snappy, reduceMotion: reduceMotion)) {
@@ -564,6 +670,10 @@ struct PhotoViewer: View {
                 resolvedVisibility[asset.id] = v
             }
         }
+        .task { await runOpeningTransition() }
+        // Whatever removes the viewer (a close, a delete that emptied the list, the
+        // host), the thumbnail it hid comes back.
+        .onDisappear { zoomSource?.hiddenID = nil }
     }
 
     // MARK: - Pager
@@ -579,7 +689,9 @@ struct PhotoViewer: View {
                             token: token,
                             localFileURL: offlineIndex?.localURL(for: asset.id),
                             controlsVisible: showChrome,
-                            onSingleTap: dismissOrToggleChrome
+                            onSingleTap: dismissOrToggleChrome,
+                            posterURL: zoomSource == nil ? nil : asset.thumbnailURL(base: baseURL),
+                            posterPlaceholder: asset.id == openingAssetID ? openingImage : nil
                         )
                     } else if let pairID = asset.livePhotoVideoId, livePlayingIDs.contains(asset.id) {
                         // Live Photo playing its video pair (Photos-style).
@@ -603,7 +715,9 @@ struct PhotoViewer: View {
                                 localFileURL: offlineIndex?.localURL(for: asset.id),
                                 ocrBoxes: ocrVM?.boxes ?? [],
                                 showOcr: showOcr && asset.isImage,
-                                client: client
+                                client: client,
+                                placeholder: asset.id == openingAssetID ? openingImage : nil,
+                                onDisplayedFrameChange: displayedFrameReporter(for: asset.id)
                             )
                             if asset.livePhotoVideoId != nil {
                                 livePhotoOverlay(asset)
@@ -616,6 +730,8 @@ struct PhotoViewer: View {
             }
         }
         .tabViewStyle(.page(indexDisplayMode: .never))
+        // A closing drag moves the photo, not the page.
+        .scrollDisabled(closeDragLock == true)
     }
 
     /// Chrome visible → the pager fills the box reserved between the top bar
@@ -738,7 +854,7 @@ struct PhotoViewer: View {
         return GlassEffectContainer {
             HStack(spacing: PVSpacing.s16) {
                 Button {
-                    dismissAction()
+                    closeViewer()
                 } label: {
                     Image(systemName: "chevron.left")
                         .font(.pvHeadline)
@@ -1312,7 +1428,7 @@ struct PhotoViewer: View {
         favoriteIDs.remove(id)
         showInfo = false
         if localAssets.isEmpty {
-            dismissAction()
+            closeViewer()
         } else {
             selectedIndex = min(index, localAssets.count - 1)
             showChrome = true
@@ -1327,6 +1443,10 @@ struct PhotoViewer: View {
     ) -> some Gesture {
         DragGesture()
             .onChanged { value in
+                if zoomSource != nil {
+                    zoomDragChanged(value)
+                    return
+                }
                 guard slideshowVM == nil else { dragOffset = .zero; return }
                 let h = value.translation.height
                 let w = value.translation.width
@@ -1346,6 +1466,10 @@ struct PhotoViewer: View {
                 dragOffset = CGSize(width: 0, height: h)
             }
             .onEnded { value in
+                if zoomSource != nil {
+                    zoomDragEnded(value, screenHeight: screenHeight, safeAreaBottom: safeAreaBottom)
+                    return
+                }
                 guard slideshowVM == nil else { dragOffset = .zero; return }
                 let velocity = value.predictedEndTranslation.height - value.translation.height
                 let h = value.translation.height
@@ -1408,6 +1532,350 @@ struct PhotoViewer: View {
     /// Long-form localized date for the tapped photo ("July 29, 2024").
     private func headerDate(for asset: AssetReactItem) -> String {
         LongDateFormatter.format(isoPrefix: asset.fileCreatedAt)
+    }
+}
+
+// MARK: - Zoom transition (L-14)
+
+/// Frames the pages report, kept out of the viewer's observation: writing one
+/// (every pinch step) never redraws the viewer.
+final class ViewerFrameBook {
+    /// Displayed image frame per asset id, `.global`, zoom and pan included.
+    var pageFrames: [String: CGRect] = [:]
+    var pagerFrame: CGRect?
+}
+
+/// Makes an animation's end awaitable once, whichever of its completion and its
+/// safety timer comes first.
+private final class ViewerAnimationGate {
+    var finished = false
+}
+
+extension PhotoViewer {
+    private var windowRect: CGRect { UIScreen.main.bounds }
+
+    private var motionReduced: Bool { ViewerZoomPlan.reduceMotion(system: reduceMotion) }
+
+    /// The back button, a closing drag and an emptied list all end here.
+    private func closeViewer() {
+        guard zoomSource != nil else {
+            dismissAction()
+            return
+        }
+        requestClose()
+    }
+
+    /// What a page tells the frame book; nil (no recording) without a zoom source.
+    private func displayedFrameReporter(for id: String) -> ((CGRect) -> Void)? {
+        guard zoomSource != nil else { return nil }
+        let book = frameBook
+        return { frame in
+            // A drag moves the pager around the page: that frame is not the page's.
+            guard closeDragLock != true else { return }
+            book.pageFrames[id] = frame
+        }
+    }
+
+    private func heroLayer(_ image: UIImage) -> some View {
+        GeometryReader { proxy in
+            let origin = proxy.frame(in: .global).origin
+            Image(uiImage: image)
+                .resizable()
+                .scaledToFill()
+                .frame(width: max(heroFrame.width, 0), height: max(heroFrame.height, 0))
+                .clipShape(RoundedRectangle(cornerRadius: heroCornerRadius, style: .continuous))
+                .opacity(heroOpacity)
+                .position(x: heroFrame.midX - origin.x, y: heroFrame.midY - origin.y)
+        }
+        .ignoresSafeArea()
+        .allowsHitTesting(false)
+        .accessibilityHidden(true)
+    }
+
+    // MARK: Helpers
+
+    private func withoutAnimation(_ body: () -> Void) {
+        var transaction = Transaction()
+        transaction.disablesAnimations = true
+        withTransaction(transaction, body)
+    }
+
+    /// Runs `body` under `animation` and returns when the animation is entirely
+    /// done — or after `safetyTimeout`, should its completion never come.
+    @MainActor
+    private func animate(_ animation: Animation, _ body: @escaping () -> Void) async {
+        await withCheckedContinuation { (continuation: CheckedContinuation<Void, Never>) in
+            let gate = ViewerAnimationGate()
+            let finish: () -> Void = {
+                guard !gate.finished else { return }
+                gate.finished = true
+                continuation.resume()
+            }
+            withAnimation(animation, completionCriteria: .removed, body) { finish() }
+            Task {
+                try? await Task.sleep(for: .seconds(ViewerZoomPlan.safetyTimeout))
+                finish()
+            }
+        }
+    }
+
+    /// A video page draws its picture fitted in the whole window.
+    private func videoFrame(for asset: AssetReactItem) -> CGRect {
+        ZoomGeometry.fittedRect(aspect: CGFloat(asset.aspectRatio), in: windowRect.size)
+            .offsetBy(dx: windowRect.minX, dy: windowRect.minY)
+    }
+
+    /// Where a photo page draws its image when the page has not reported yet:
+    /// the EXIF (else announced) ratio fitted in the pager.
+    private func fallbackFrame(for asset: AssetReactItem) -> CGRect {
+        let pager = frameBook.pagerFrame ?? windowRect
+        let aspect = ZoomGeometry.displayAspect(decoded: nil, pixelSize: asset.pixelSize, fallback: CGFloat(asset.aspectRatio))
+        return ZoomGeometry.fittedRect(aspect: aspect, in: pager.size).offsetBy(dx: pager.minX, dy: pager.minY)
+    }
+
+    /// The frame the page shows `asset` in now — zoom and pan included.
+    private func displayedFrame(for asset: AssetReactItem) -> CGRect {
+        asset.isVideo ? videoFrame(for: asset) : (frameBook.pageFrames[asset.id] ?? fallbackFrame(for: asset))
+    }
+
+    // MARK: Opening
+
+    /// Flies the photo out of its thumbnail to the page's frame (or fades it in,
+    /// when there is nothing to fly or Reduce Motion is on), while the backdrop
+    /// and the controls fade in; then hands over to the page.
+    @MainActor
+    private func runOpeningTransition() async {
+        guard let source = zoomSource, zoomPhase == .opening else { return }
+        guard let asset = currentAsset else {
+            finishOpening()
+            return
+        }
+        let style = ViewerZoomPlan.openStyle(
+            hasHeroImage: heroImage != nil,
+            hasSourceFrame: source.frame(for: asset.id) != nil,
+            reduceMotion: motionReduced
+        )
+        let target = await openingTarget(for: asset)
+        switch style {
+        case .zoom:
+            withoutAnimation { source.hiddenID = asset.id }
+            await animate(PVMotion.standard) {
+                heroFrame = target
+                heroCornerRadius = 0
+                backdropOpacity = 1
+                chromeOpacity = 1
+            }
+        case .fade:
+            let flies = heroImage != nil
+            if flies {
+                // Already on its target: only opacities move.
+                withoutAnimation {
+                    heroFrame = target
+                    heroCornerRadius = 0
+                    heroOpacity = 0
+                }
+            }
+            await animate(PVMotion.adaptive(PVMotion.standard, reduceMotion: true)) {
+                if flies { heroOpacity = 1 } else { pagerOpacity = 1 }
+                backdropOpacity = 1
+                chromeOpacity = 1
+            }
+            withoutAnimation { source.hiddenID = asset.id }
+        }
+        finishOpening()
+    }
+
+    /// The page's reported frame; after 50 ms, the one computed from the ratio.
+    @MainActor
+    private func openingTarget(for asset: AssetReactItem) async -> CGRect {
+        if asset.isVideo { return videoFrame(for: asset) }
+        var polls = 0
+        while frameBook.pageFrames[asset.id] == nil, polls < 5 {
+            try? await Task.sleep(for: .milliseconds(10))
+            polls += 1
+        }
+        return frameBook.pageFrames[asset.id] ?? fallbackFrame(for: asset)
+    }
+
+    /// The page takes the place of the flying image, with no animation.
+    @MainActor
+    private func finishOpening() {
+        withoutAnimation {
+            pagerOpacity = 1
+            backdropOpacity = 1
+            chromeOpacity = 1
+            heroImage = nil
+            heroOpacity = 0
+            zoomPhase = .open
+            zoomSource?.hiddenID = currentAsset?.id
+        }
+    }
+
+    // MARK: Closing
+
+    private func requestClose(from drag: ViewerDragTransform? = nil) {
+        guard zoomPhase != .closing else { return }
+        zoomPhase = .closing
+        Task { await performClose(drag: drag) }
+    }
+
+    /// Shrinks the photo onto the thumbnail of the photo on screen — scrolling
+    /// the grid first when that thumbnail is out of screen — or fades out when
+    /// the photo is not in the grid's list any more. Then removes the cover.
+    @MainActor
+    private func performClose(drag: ViewerDragTransform?) async {
+        guard let source = zoomSource else { return }
+        let asset = currentAsset
+        let id = asset?.id
+        var route = ViewerZoomPlan.closeRoute(
+            currentID: id,
+            gridContains: id.map { source.contains($0) } ?? false,
+            tileFrame: id.flatMap { source.frame(for: $0) },
+            visibleRect: source.visibleRect
+        )
+        // Where the image is now, read before the grid scrolls underneath.
+        let start = asset.map { startFrame(for: $0, drag: drag) }
+        if case .reveal(let revealID) = route {
+            // The backdrop must hide the grid while it scrolls.
+            withAnimation(.linear(duration: 0.1)) { backdropOpacity = 1 }
+            if let frame = await source.reveal(revealID) {
+                route = .reduce(to: frame)
+            } else {
+                route = .fade
+            }
+        }
+        let hero = asset.flatMap { closingImage(for: $0) }
+        let style = ViewerZoomPlan.closeStyle(route: route, hasHeroImage: hero != nil, reduceMotion: motionReduced)
+
+        if style == .zoom, case .reduce(let tile) = route, let hero, let start {
+            withoutAnimation {
+                heroImage = hero
+                heroFrame = start
+                heroCornerRadius = 0
+                heroOpacity = 1
+                pagerOpacity = 0
+                dragTransform = .identity
+            }
+            await animate(PVMotion.standard) {
+                heroFrame = tile
+                heroCornerRadius = PVRadius.xs
+                backdropOpacity = 0
+                chromeOpacity = 0
+            }
+        } else {
+            let flies = hero != nil && start != nil
+            withoutAnimation {
+                source.hiddenID = nil
+                if flies, let hero, let start {
+                    heroImage = hero
+                    heroFrame = start
+                    heroCornerRadius = 0
+                    heroOpacity = 1
+                    pagerOpacity = 0
+                    dragTransform = .identity
+                }
+            }
+            await animate(PVMotion.adaptive(PVMotion.standard, reduceMotion: true)) {
+                if flies { heroOpacity = 0 } else { pagerOpacity = 0 }
+                backdropOpacity = 0
+                chromeOpacity = 0
+            }
+        }
+        withoutAnimation {
+            source.hiddenID = nil
+            if let closeInstantly {
+                closeInstantly()
+            } else {
+                dismissAction()
+            }
+        }
+    }
+
+    /// The image's frame at the start of the close: its displayed frame, as the
+    /// drag in progress has moved and shrunk it.
+    private func startFrame(for asset: AssetReactItem, drag: ViewerDragTransform?) -> CGRect {
+        let displayed = displayedFrame(for: asset)
+        guard let drag else { return displayed }
+        let pager = frameBook.pagerFrame ?? windowRect
+        return ViewerZoomPlan.draggedRect(displayed, transform: drag, anchor: CGPoint(x: pager.midX, y: pager.midY))
+    }
+
+    /// The image that flies back: what the page displays, else the thumbnail
+    /// (cache lookups, never a request).
+    private func closingImage(for asset: AssetReactItem) -> UIImage? {
+        var urls: [URL] = []
+        if !asset.isVideo {
+            urls.append(ZoomableImageView.pageURL(asset: asset, baseURL: baseURL, loadOriginal: appSettings.loadOriginal))
+        }
+        urls.append(asset.thumbnailURL(base: baseURL))
+        return ViewerZoomPlan.heroImage(
+            urls: urls,
+            thumbhash: asset.thumbhash,
+            cached: { ImageCache.shared.cachedImage(for: $0) },
+            thumbhashImage: { ThumbHashDecoder.shared.cachedImage(for: $0) }
+        )
+    }
+
+    // MARK: Drag
+
+    /// Locks at the first 10 pt: a downward, vertical-dominant drag on an
+    /// unzoomed photo closes the viewer; any other drag never does. A closing
+    /// drag moves and shrinks the photo, and fades the backdrop and controls.
+    private func zoomDragChanged(_ value: DragGesture.Value) {
+        guard slideshowVM == nil, zoomPhase == .open else { return }
+        let h = value.translation.height
+        let w = value.translation.width
+        if closeDragLock == nil {
+            guard hypot(w, h) >= 10 else { return }
+            closeDragLock = !isZoomed && h > 0 && abs(h) > abs(w) * 1.2
+        }
+        guard closeDragLock == true else { return }
+        let transform = ViewerZoomPlan.dragTransform(translation: value.translation, reduceMotion: motionReduced)
+        dragTransform = transform
+        backdropOpacity = transform.backdropOpacity
+        chromeOpacity = transform.backdropOpacity
+    }
+
+    private func zoomDragEnded(_ value: DragGesture.Value, screenHeight: CGFloat, safeAreaBottom: CGFloat) {
+        let wasClosing = closeDragLock == true
+        closeDragLock = nil
+        guard slideshowVM == nil, zoomPhase == .open else {
+            resetDrag(animated: false)
+            return
+        }
+        let velocity = value.predictedEndTranslation.height - value.translation.height
+        if wasClosing {
+            let transform = ViewerZoomPlan.dragTransform(translation: value.translation, reduceMotion: motionReduced)
+            if PhotoViewerSwipeDecision.shouldClose(progress: transform.progress, velocity: velocity) {
+                requestClose(from: transform)
+            } else {
+                resetDrag(animated: true)
+            }
+            return
+        }
+        // Upward swipe (1x) → the info sheet; the bottom chrome is excluded.
+        let h = value.translation.height
+        let w = value.translation.width
+        guard !isZoomed, abs(h) > abs(w) * 1.2, h < 0,
+              value.startLocation.y < maxSwipeUpStartY(screenHeight: screenHeight, safeAreaBottom: safeAreaBottom)
+        else { return }
+        if PhotoViewerSwipeDecision.shouldOpen(progress: h / 300, velocity: velocity) {
+            openInfo()
+        }
+    }
+
+    /// Back to rest: springs back, or jumps under Reduce Motion.
+    private func resetDrag(animated: Bool) {
+        let rest = {
+            dragTransform = .identity
+            backdropOpacity = 1
+            chromeOpacity = 1
+        }
+        if animated && !motionReduced {
+            withAnimation(PVMotion.snappy, rest)
+        } else {
+            withoutAnimation(rest)
+        }
     }
 }
 

@@ -110,7 +110,8 @@ struct AuthenticatedAsyncImage: View {
         thumbnailURL: URL? = nil,
         thumbhash: String? = nil,
         probeExtra: String? = nil,
-        onImageSize: ((CGSize) -> Void)? = nil
+        onImageSize: ((CGSize) -> Void)? = nil,
+        placeholder: UIImage? = nil
     ) {
         self.url = url
         self.token = token
@@ -121,7 +122,12 @@ struct AuthenticatedAsyncImage: View {
         self.thumbhash = thumbhash
         self.probeExtra = probeExtra
         self.onImageSize = onImageSize
-        if let thumbhash, let cached = ThumbHashDecoder.shared.cachedImage(for: thumbhash) {
+        // A caller-provided provisional image (the viewer's flying image) wins
+        // over the ThumbHash: `load()` never clears `placeholderImage`, so it
+        // stays under the real image until that one is ready.
+        if let placeholder {
+            _placeholderImage = State(initialValue: placeholder)
+        } else if let thumbhash, let cached = ThumbHashDecoder.shared.cachedImage(for: thumbhash) {
             _placeholderImage = State(initialValue: cached)
         }
     }

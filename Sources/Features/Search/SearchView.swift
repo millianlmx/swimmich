@@ -24,6 +24,9 @@ struct SearchView: View {
     @State private var showSaveSearch = false
     @State private var saveSearchName = ""
     @State private var showFilters = false
+    /// What the photo viewer needs to grow out of a thumbnail and shrink back
+    /// onto it (L-14): the thumbnails' frames and the scroll owed on close.
+    @State private var zoomSource = ViewerZoomSource()
 
     /// Result columns. Fixed at three: the density option the Filters sheet
     /// used to carry is gone (upstream has none), so the grid keeps the columns
@@ -95,13 +98,17 @@ struct SearchView: View {
                 // Full-screen photo viewer (tap any result photo → browse/zoom).
                 // Favorite/delete run self-sufficient; re-run the search so the
                 // results grid reflects mutations after the viewer closes.
+                .onAppear {
+                    zoomSource.orderedIDs = { [vm = self.vm] in vm.results.map(\.id) }
+                }
                 .photoViewer(
                     item: $viewerItem,
                     baseURL: auth.baseURL ?? URL(string: "https://example.com")!,
                     token: auth.accessToken,
                     onDataChanged: {
                         Task { await vm.search() }
-                    }
+                    },
+                    zoomSource: zoomSource
                 )
                 .alert("Save Search", isPresented: $showSaveSearch) {
                     TextField("Name", text: $saveSearchName)
@@ -151,7 +158,9 @@ struct SearchView: View {
     /// Opens the Photos-style viewer at `item`, paging through search results.
     private func openViewer(for item: AssetReactItem) {
         guard let idx = vm.results.firstIndex(where: { $0.id == item.id }) else { return }
-        viewerItem = PhotoViewerItem(assets: vm.results, index: idx)
+        zoomSource.presentInstantly {
+            viewerItem = PhotoViewerItem(assets: vm.results, index: idx)
+        }
     }
 
     // MARK: - Shared chrome
@@ -415,6 +424,7 @@ struct SearchView: View {
     }
 
     private var resultsGrid: some View {
+        ScrollViewReader { proxy in
         ScrollView {
             // Mirrors the Photos timeline grid: LazyVStack + LazyVGrid with 2pt
             // seams and a 4pt horizontal inset — no count header above the grid.
@@ -433,6 +443,8 @@ struct SearchView: View {
                             onTap: { openViewer(for: item) }
                         )
                         .buttonStyle(.plain)
+                        .viewerZoomTile(id: item.id, source: zoomSource)
+                        .id(item.id)
                         .onAppear {
                             // AC-406: trigger next page when the last cell appears.
                             if item.id == vm.results.last?.id {
@@ -448,6 +460,9 @@ struct SearchView: View {
                         .frame(maxWidth: .infinity)
                 }
             }
+        }
+        .viewerZoomViewport(zoomSource)
+        .viewerZoomReveal(zoomSource, proxy: proxy)
         }
     }
 
