@@ -1,4 +1,5 @@
 import SwiftUI
+import UIKit
 
 /// Photos-grade zoomable image page for the full-screen photo viewer.
 ///
@@ -52,6 +53,13 @@ struct ZoomableImageView: View {
     /// Reads the photo's pixel size when the item carries none. Nil (the shared
     /// link visitor) leaves the size to the item.
     var client: (any ImmichClient)? = nil
+    /// Provisional image under the real one (the viewer's flying image): the
+    /// page shows it from its first frame, so the hand-over from the flight to
+    /// the page has neither a shimmer nor a half-transparent image.
+    var placeholder: UIImage? = nil
+    /// Reports the frame the image is drawn in (`.global`, zoom and pan
+    /// included) each time it changes. The viewer closes onto it.
+    var onDisplayedFrameChange: ((CGRect) -> Void)? = nil
 
     @State private var scale: CGFloat = 1
     @State private var lastScale: CGFloat = 1
@@ -60,6 +68,7 @@ struct ZoomableImageView: View {
     @State private var isPinching = false
     @State private var dimensions: AssetPixelSizeViewModel?
     @State private var decodedSize: CGSize?
+    @State private var pageFrame: CGRect = .zero
 
     /// Image-quality preference (gap G22): original file or the server's
     /// `.fullsize` rendition. Read at render time, so a page already on screen
@@ -73,7 +82,18 @@ struct ZoomableImageView: View {
     /// copy (`localFileURL`) and the image cache cover both URLs unchanged —
     /// the cache key is the URL itself.
     private var imageURL: URL {
-        appSettings.loadOriginal
+        Self.pageURL(asset: asset, baseURL: baseURL, loadOriginal: appSettings.loadOriginal, sharedLink: sharedLink)
+    }
+
+    /// The URL a page displays — also what the viewer looks up in the image
+    /// cache for the flying image of a close.
+    static func pageURL(
+        asset: AssetReactItem,
+        baseURL: URL,
+        loadOriginal: Bool,
+        sharedLink: SharedLinkCredential? = nil
+    ) -> URL {
+        loadOriginal
             ? ImmichAssetURL.original(assetId: asset.id, baseURL: baseURL, sharedLink: sharedLink)
             : asset.thumbnailURL(base: baseURL, size: .preview, sharedLink: sharedLink)
     }
@@ -113,7 +133,8 @@ struct ZoomableImageView: View {
                     locale: Locale(identifier: "en_US_POSIX"),
                     scale, maxScale, offset.width, offset.height, fitted.width, fitted.height
                 ),
-                onImageSize: { decodedSize = $0 }
+                onImageSize: { decodedSize = $0 },
+                placeholder: placeholder
             )
             .accessibilityIdentifier("viewerImage_\(asset.id)")
             .frame(width: proxy.size.width, height: proxy.size.height)
@@ -169,6 +190,15 @@ struct ZoomableImageView: View {
             .onChange(of: fitted.size) {
                 settle(maxScale: maxScale, fitted: fitted.size, viewport: proxy.size)
             }
+            .onChange(
+                of: ViewerZoomPlan.displayedRect(fitted: fitted, scale: scale, offset: offset, in: pageFrame),
+                initial: true
+            ) { _, displayed in
+                // Not before the page has been measured: a frame around the
+                // origin would be taken for the real one.
+                guard pageFrame.width > 0, let onDisplayedFrameChange else { return }
+                onDisplayedFrameChange(displayed)
+            }
             // Detected text sits ON TOP of the image but OUTSIDE its
             // `.scaleEffect`, so labels keep a constant point size — while
             // still reading `scale`/`offset` to stay glued to the photo.
@@ -185,6 +215,7 @@ struct ZoomableImageView: View {
                 }
             }
         }
+        .onGeometryChange(for: CGRect.self) { $0.frame(in: .global) } action: { pageFrame = $0 }
         .clipped()
         .contentShape(Rectangle())
         // The image shows at once; the size only tightens or lifts the ceiling.
