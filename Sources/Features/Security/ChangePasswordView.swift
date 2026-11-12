@@ -52,7 +52,7 @@ struct ChangePasswordView: View {
                     .focused($focused, equals: .current)
                     .submitLabel(.next)
                     .onSubmit { focused = .new }
-                    RevealButton(isRevealed: $isCurrentRevealed)
+                    RevealButton(isRevealed: $isCurrentRevealed, identifier: "currentPasswordReveal")
                 }
             } header: {
                 Text("Current")
@@ -74,7 +74,7 @@ struct ChangePasswordView: View {
                     .focused($focused, equals: .new)
                     .submitLabel(.next)
                     .onSubmit { focused = .confirm }
-                    RevealButton(isRevealed: $isNewRevealed)
+                    RevealButton(isRevealed: $isNewRevealed, identifier: "newPasswordReveal")
                 }
 
                 HStack(spacing: PVSpacing.s8) {
@@ -92,7 +92,7 @@ struct ChangePasswordView: View {
                     .focused($focused, equals: .confirm)
                     .submitLabel(.done)
                     .onSubmit { send() }
-                    RevealButton(isRevealed: $isConfirmRevealed)
+                    RevealButton(isRevealed: $isConfirmRevealed, identifier: "confirmPasswordReveal")
                 }
 
                 requirementHints
@@ -195,6 +195,7 @@ struct ChangePasswordView: View {
 /// as secure text, so the reveal has to be reachable (and labelled) on its own.
 private struct RevealButton: View {
     @Binding var isRevealed: Bool
+    let identifier: String
 
     var body: some View {
         Button {
@@ -208,5 +209,6 @@ private struct RevealButton: View {
         // A 44 pt target, not a 17 pt glyph.
         .frame(minWidth: 44, minHeight: 44)
         .accessibilityLabel(isRevealed ? "Hide password" : "Show password")
+        .accessibilityIdentifier(identifier)
     }
 }

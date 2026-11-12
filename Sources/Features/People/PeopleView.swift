@@ -40,6 +40,7 @@ struct PeopleView: View {
                     Image(systemName: "arrow.clockwise")
                 }
                 .accessibilityLabel("Refresh people")
+                .accessibilityIdentifier("peopleRefreshButton")
             }
         }
         .task { await vm.appear(visit: visit) }
@@ -321,16 +322,19 @@ private struct PersonDetailView: View {
                     .animation(.default, value: person.birthDate)
 
                     HStack(spacing: PVSpacing.s8) {
-                        actionButton("star.fill", person.isFavorite == true ? Color.immichPrimary : Color.textSecondaryPV, "Favorite") {
+                        actionButton("star.fill", person.isFavorite == true ? Color.immichPrimary : Color.textSecondaryPV, person.isFavorite == true ? "Unfavorite" : "Favorite") {
                             Task { await vm.toggleFavorite(person) }
                         }
+                        .accessibilityIdentifier("personFavoriteAction")
                         actionButton("pencil", .textSecondaryPV, "Rename") {
                             renameText = person.name
                             renamePerson = person
                         }
+                        .accessibilityIdentifier("personRenameAction")
                         actionButton("eye.slash", .textSecondaryPV, person.isHidden ? "Unhide" : "Hide") {
                             Task { await vm.toggleHidden(person) }
                         }
+                        .accessibilityIdentifier("personHideAction")
                         actionButton("calendar", .textSecondaryPV, "Birthday") {
                             birthdayDraft = PersonBirthday.date(from: person.birthDate) ?? Date()
                             birthdayPerson = person
@@ -458,7 +462,7 @@ private struct PersonDetailView: View {
     @State private var birthdayPerson: PersonResponseDto?
     @State private var birthdayDraft = Date()
 
-    private func actionButton(_ systemName: String, _ color: Color, _ label: String, action: @escaping () -> Void) -> some View {
+    private func actionButton(_ systemName: String, _ color: Color, _ label: LocalizedStringKey, action: @escaping () -> Void) -> some View {
         Button(action: action) {
             Image(systemName: systemName)
                 .font(.pvHeadline)
@@ -492,5 +496,6 @@ private struct PersonDetailView: View {
         }
         .disabled(vm.people.filter { $0.id != person.id }.isEmpty)
         .accessibilityLabel("Merge person")
+        .accessibilityIdentifier("personMergeMenu")
     }
 }

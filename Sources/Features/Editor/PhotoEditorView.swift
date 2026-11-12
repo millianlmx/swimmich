@@ -212,6 +212,7 @@ struct RotationSliderView: View {
                 Button(action: onRotate90CCW) {
                     Image(systemName: "rotate.left")
                 }
+                .accessibilityLabel("Rotate left")
                 .accessibilityIdentifier("rotate90CCWButton")
                 Slider(value: $straightenDeg, in: -45...45, step: 1) {
                     Text("Straighten")
@@ -222,6 +223,7 @@ struct RotationSliderView: View {
                 Button(action: onRotate90CW) {
                     Image(systemName: "rotate.right")
                 }
+                .accessibilityLabel("Rotate right")
                 .accessibilityIdentifier("rotate90CWButton")
             }
         }

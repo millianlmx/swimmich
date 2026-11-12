@@ -131,6 +131,7 @@ struct ActivityFeedSheet: View {
             }
             .disabled(draft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || vm.isSending)
             .accessibilityLabel("Send comment")
+            .accessibilityIdentifier("activityFeedSendButton")
         }
         .padding(.horizontal, PVSpacing.s16)
         .padding(.vertical, PVSpacing.s8)

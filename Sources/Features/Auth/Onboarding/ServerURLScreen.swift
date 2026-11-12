@@ -59,6 +59,7 @@ struct ServerURLScreen: View {
                             }
                             .buttonStyle(.plain)
                             .accessibilityLabel("Scan server QR code")
+                            .accessibilityIdentifier("serverQRScanButton")
                         }
                     }
 

@@ -794,7 +794,7 @@ struct PhotoViewer: View {
         let title: LocalizedStringKey
         let symbol: String
         let tint: Color
-        let value: String?
+        let value: LocalizedStringKey?
         let disabled: Bool
         let perform: () -> Void
     }
@@ -1029,7 +1029,8 @@ struct PhotoViewer: View {
                         }
                     }
                     .buttonStyle(.plain)
-                    .accessibilityLabel("Photo \(i + 1) of \(localAssets.count)")
+                    .accessibilityLabel(Self.filmstripAccessibilityLabel(isVideo: asset.isVideo, position: i + 1, count: localAssets.count))
+                    .accessibilityIdentifier("filmstripItem_\(asset.id)")
                     .id(i)
                 }
             }
@@ -1046,6 +1047,12 @@ struct PhotoViewer: View {
     /// Keeps each filmstrip cell at the photo's own aspect ratio (height 56pt).
     private func filmstripWidth(for asset: AssetReactItem) -> CGFloat {
         min(max(56 * asset.aspectRatio, 28), 88)
+    }
+
+    /// Spoken position of a filmstrip cell: "Photo 1 of 2", "Video 2 of 2".
+    static func filmstripAccessibilityLabel(isVideo: Bool, position: Int, count: Int, bundle: Bundle = .main, locale: Locale = .current) -> String {
+        if isVideo { return String(localized: "Video \(position) of \(count)", bundle: bundle, locale: locale) }
+        return String(localized: "Photo \(position) of \(count)", bundle: bundle, locale: locale)
     }
 
     // MARK: - Bottom bar (share · favorite/edit glass · delete)
@@ -1086,6 +1093,7 @@ struct PhotoViewer: View {
                             }
                             .buttonStyle(.plain)
                             .accessibilityLabel("Restore")
+                            .accessibilityIdentifier("viewerRestoreButton")
                         }
 
                         if actions.showsFavorite {
@@ -1311,7 +1319,8 @@ struct PhotoViewer: View {
             .pvFloating(.pill)
         }
         .buttonStyle(.plain)
-        .accessibilityLabel("Play Live Photo")
+        .accessibilityLabel(livePlayingIDs.contains(asset.id) ? "Stop Live Photo" : "Play Live Photo")
+        .accessibilityIdentifier("viewerLiveButton")
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottom)
         .padding(.bottom, PVSpacing.s24)
     }
