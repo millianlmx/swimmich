@@ -185,11 +185,8 @@ final class AuthViewModelTests: XCTestCase {
         let keychain = MockKeychainStore()
         makeStoredSession(defaults: defaults, keychain: keychain)
         let mock = MockImmichClient()
-        mock.serverConfigResponse = ServerConfigDto(
-            oauthButtonText: "", loginPageMessage: "", trashDays: 30, userDeleteDelay: 7,
-            isInitialized: true, isOnboarded: true, externalDomain: "https://photos.public.example",
-            publicUsers: false, mapDarkStyleUrl: "", mapLightStyleUrl: "",
-            maintenanceMode: false, minFaces: 3
+        mock.sessionConfigResponse = ServerConfig(
+            oauthButtonText: "", externalDomain: "https://photos.public.example", isInitialized: nil
         )
         let auth = AuthViewModel(client: mock, keychain: keychain, defaults: defaults, realtime: RealtimeService(transport: MockRealtimeTransport()))
 
@@ -202,11 +199,11 @@ final class AuthViewModelTests: XCTestCase {
         XCTAssertEqual(mock.configuredBaseURL?.absoluteString, "https://photos.example.com")
         XCTAssertTrue(auth.isAuthenticated)
         XCTAssertFalse(auth.isRestoringSession)
-        // validateToken + serverConfig. The config is what carries
+        // validateToken + sessionConfig. The config is what carries
         // `externalDomain`, and it used to be fetched only while walking
         // onboarding — so a relaunched session could not build a public shared
         // link URL pointing at the server's public domain.
-        XCTAssertEqual(mock.requestCount, 2, "validateToken then serverConfig")
+        XCTAssertEqual(mock.requestCount, 2, "validateToken then sessionConfig")
         XCTAssertEqual(auth.serverConfig?.externalDomain, "https://photos.public.example",
                        "a relaunch must learn the public domain, not only the onboarding walk")
     }
@@ -492,22 +489,12 @@ final class AuthViewModelTests: XCTestCase {
 
     // MARK: - OAuth (P5)
 
-    private func makeOAuthConfig() -> ServerConfigDto {
-        ServerConfigDto(
-            oauthButtonText: "Continue with Immich SSO", loginPageMessage: "", trashDays: 30,
-            userDeleteDelay: 7, isInitialized: true, isOnboarded: true, externalDomain: "",
-            publicUsers: false, mapDarkStyleUrl: "", mapLightStyleUrl: "",
-            maintenanceMode: false, minFaces: 0
-        )
+    private func makeOAuthConfig() -> ServerConfig {
+        ServerConfig(oauthButtonText: "Continue with Immich SSO", externalDomain: "", isInitialized: true)
     }
 
-    private func makeOAuthConfigEmptyText() -> ServerConfigDto {
-        ServerConfigDto(
-            oauthButtonText: "", loginPageMessage: "", trashDays: 30,
-            userDeleteDelay: 7, isInitialized: true, isOnboarded: true, externalDomain: "",
-            publicUsers: false, mapDarkStyleUrl: "", mapLightStyleUrl: "",
-            maintenanceMode: false, minFaces: 0
-        )
+    private func makeOAuthConfigEmptyText() -> ServerConfig {
+        ServerConfig(oauthButtonText: "", externalDomain: "", isInitialized: true)
     }
 
     @MainActor

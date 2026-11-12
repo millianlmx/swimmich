@@ -482,6 +482,7 @@ private struct PersonDetailView: View {
                 } label: {
                     Label("Merge \(other.name)", systemImage: "person.crop.circle.badge.plus")
                 }
+                .accessibilityIdentifier("personMerge_\(other.id)")
             }
         } label: {
             Image(systemName: "arrow.triangle.merge")
@@ -493,5 +494,6 @@ private struct PersonDetailView: View {
         }
         .disabled(vm.people.filter { $0.id != person.id }.isEmpty)
         .accessibilityLabel("Merge person")
+        .accessibilityIdentifier("personMergeMenu")
     }
 }

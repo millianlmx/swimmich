@@ -20,7 +20,7 @@ import Foundation
 struct SharedLinkURL: Equatable, Sendable {
     /// Server URL the app is connected to. Used when `externalDomain` is empty.
     let serverURL: URL
-    /// `ServerConfigDto.externalDomain` — empty when the admin did not set one.
+    /// `ServerConfig.externalDomain` — empty when the admin did not set one.
     let externalDomain: String
 
     init(serverURL: URL, externalDomain: String = "") {

@@ -477,7 +477,8 @@ final class PeopleViewModel {
         }
     }
 
-    /// Merges the given persons INTO `person` (POST /people/{id}/merge), then
+    /// Merges the given persons INTO `person` (`POST /people/merge` from v3.2.1,
+    /// `POST /people/{id}/merge` before — the client picks), then
     /// reloads the list from page 1, the counts, and the target's grid.
     func merge(_ ids: [String], into person: PersonResponseDto) async {
         lastMergeIds = ids

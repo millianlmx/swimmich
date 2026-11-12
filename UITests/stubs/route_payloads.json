@@ -1,0 +1,37 @@
+{
+  "3.4.0": {
+    "publicConfig": {
+      "oauth": {"enabled": true, "autoLaunch": false, "buttonText": "Continue with Immich SSO"},
+      "passwordLogin": {"enabled": true},
+      "server": {"loginPageMessage": "Stub server for UI verification"}
+    },
+    "userConfig": {
+      "oauth": {"enabled": true, "autoLaunch": false, "buttonText": "Continue with Immich SSO", "accountManagementUrl": ""},
+      "server": {"externalDomain": "", "loginPageMessage": "Stub server for UI verification", "publicUsers": false}
+    },
+    "queues": [
+      {
+        "name": "thumbnailGeneration",
+        "isPaused": false,
+        "statistics": {"active": 0, "completed": 12, "delayed": 0, "failed": 0, "paused": 0, "waiting": 3}
+      }
+    ]
+  },
+  "2.0.0": {
+    "serverConfig": {
+      "oauthButtonText": "Continue with Immich SSO",
+      "loginPageMessage": "Stub server for UI verification",
+      "trashDays": 30, "userDeleteDelay": 7,
+      "isInitialized": true, "isOnboarded": true,
+      "externalDomain": "", "publicUsers": false,
+      "mapDarkStyleUrl": "", "mapLightStyleUrl": "",
+      "maintenanceMode": false, "minFaces": 0
+    },
+    "jobs": {
+      "thumbnailGeneration": {
+        "queueStatus": {"isActive": false, "isPaused": false},
+        "jobCounts": {"active": 0, "completed": 12, "delayed": 0, "failed": 0, "paused": 0, "waiting": 3}
+      }
+    }
+  }
+}

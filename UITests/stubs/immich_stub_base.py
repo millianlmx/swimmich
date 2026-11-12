@@ -86,6 +86,17 @@ WHAT IS LOGGED
     `assetIds`, a PUT's `isSaved`). A duplicated query parameter keeps its LAST
     value, and a blank one is kept as `""` so `orderBy=` is distinguishable from
     an absent `orderBy`.
+
+WHICH VERSION IT ANNOUNCES, AND WHAT IT SERVES (L-20)
+    `IMMICH_STUB_VERSION` (default 1.119.0) is the version `GET /api/server/version`
+    answers; a feature stub that overrides that route is followed by
+    `announced_version()`. `ROUTE_TABLE` lists the replacement routes with the
+    version that introduced them (upstream OpenAPI `x-immich-history`): a request
+    for one of them below that version answers 404 `Cannot <METHOD> <path>` —
+    and stays in `/__requests`, so a scenario can prove it never happened. The
+    shell serves both route families (`/api/jobs` and `/api/queues`,
+    `POST /api/people/{id}/merge` and `POST /api/people/merge`,
+    `GET /api/server/config` and `GET /api/public/config` + `GET /api/config`).
 """
 import json
 import os
@@ -419,11 +430,107 @@ def asset_statistics(req):
     the same exact path."""
     return Response(ASSET_STATS)
 
+
+# MARK: - Announced version and route table (L-20)
+
+SERVER_VERSION = os.environ.get("IMMICH_STUB_VERSION", "1.119.0")
+
+# (method, path pattern, first version that serves it). `{name}` is one segment.
+# Routes that exist in every supported version are not listed: they are served.
+ROUTE_TABLE = [
+    ("GET", "/api/queues", (2, 4, 0)),
+    ("GET", "/api/queues/{name}", (2, 4, 0)),
+    ("PUT", "/api/queues/{name}", (2, 4, 0)),
+    ("GET", "/api/queues/{name}/jobs", (2, 4, 0)),
+    ("DELETE", "/api/queues/{name}/jobs", (2, 4, 0)),
+    ("GET", "/api/public/config", (3, 2, 0)),
+    ("GET", "/api/config", (3, 2, 0)),
+    ("POST", "/api/people/merge", (3, 2, 1)),
+]
+
+
+def parse_version(text):
+    """`"3.4.0"` → `(3, 4, 0)`, None when it is not three integers."""
+    try:
+        major, minor, patch = (int(part) for part in text.split("."))
+    except (AttributeError, ValueError):
+        return None
+    return (major, minor, patch)
+
+
+def announced_version(request):
+    """The `(major, minor, patch)` this process announces to `request`, None when
+    its version route is broken (5xx, unreadable body).
+
+    Asks the router first, exactly as the app's own `GET /api/server/version`
+    would be answered (same headers, not journaled), so a feature stub that
+    overrides the route — per host, per control route — is obeyed. `router` and
+    `SERVER_VERSION` are read as module globals at every call.
+    """
+    probe = Request("GET", "/api/server/version", "", request.headers, {})
+    response = router.handle(probe)
+    if response is None:
+        return parse_version(SERVER_VERSION)
+    if response.status >= 400 or not isinstance(response.payload, dict):
+        return None
+    try:
+        return (int(response.payload["major"]), int(response.payload["minor"]),
+                int(response.payload["patch"]))
+    except (KeyError, TypeError, ValueError):
+        return None
+
+
+def version_payload():
+    """The body of `GET /api/server/version` for `SERVER_VERSION`."""
+    major, minor, patch = parse_version(SERVER_VERSION) or (1, 119, 0)
+    return {"major": major, "minor": minor, "patch": patch, "prerelease": None}
+
+
+def _matches(pattern, path):
+    want, got = pattern.split("/"), path.split("/")
+    return len(want) == len(got) and all(
+        w == g or (w.startswith("{") and g != "") for w, g in zip(want, got))
+
+
+def serves(method, path, version):
+    """Whether a server of `version` has this route. A route the table does not
+    list is served by every version; a listed one needs a known version that is
+    at least its threshold."""
+    for table_method, pattern, minimum in ROUTE_TABLE:
+        if table_method == method and _matches(pattern, path):
+            return version is not None and tuple(version) >= minimum
+    return True
+
+
+def public_config_payload(config):
+    """`GET /api/public/config` (v3.2.0+) from a `CONFIG`-shaped dict."""
+    return {
+        "oauth": {"enabled": True, "autoLaunch": False, "buttonText": config["oauthButtonText"]},
+        "passwordLogin": {"enabled": True},
+        "server": {"loginPageMessage": config.get("loginPageMessage", "")},
+    }
+
+
+def user_config_payload(config):
+    """`GET /api/config` (v3.2.0+, authenticated) from a `CONFIG`-shaped dict."""
+    return {
+        "oauth": {"enabled": True, "autoLaunch": False, "buttonText": config["oauthButtonText"],
+                  "accountManagementUrl": ""},
+        "server": {"externalDomain": config.get("externalDomain", ""),
+                   "loginPageMessage": config.get("loginPageMessage", ""),
+                   "publicUsers": config.get("publicUsers", False)},
+    }
+
+
 BASE_ENDPOINTS = [
     "POST /api/oauth/authorize", "POST /api/oauth/callback", "POST /api/auth/logout",
     "GET /api/server/ping", "GET /api/server/version", "GET /api/server/config",
+    "GET /api/public/config", "GET /api/config",
     "GET /api/server/statistics", "GET /api/assets/statistics",
     "GET /api/users/me", "GET /api/users",
+    "GET /api/jobs", "PUT /api/jobs/{name}", "GET /api/queues", "PUT /api/queues/{name}",
+    "DELETE /api/queues/{name}/jobs",
+    "POST /api/people/{id}/merge", "POST /api/people/merge",
     "GET /api/timeline/buckets", "GET /api/timeline/bucket",
     "GET /api/assets/{id}", "GET /api/assets/{id}/thumbnail", "GET /api/assets/{id}/original",
     "GET /__requests", "GET /__reset", "GET /__provider", "GET /__whoami",
@@ -435,6 +542,12 @@ def initial_state():
         "port": 8421,
         "provider": "manual",
         "requests": [],
+        # The job queues both route families read and write.
+        "queues": {"thumbnailGeneration": {
+            "isPaused": False,
+            "statistics": {"active": 0, "completed": 12, "delayed": 0,
+                           "failed": 0, "paused": 0, "waiting": 3},
+        }},
         # Rotated by every `/__reset`; `asset()` and `bucket_payload()` read it,
         # and the app's image caches key on it. See THE THUMBNAIL TRAP.
         "thumbhash": new_thumbhash(),
@@ -468,12 +581,96 @@ def _unrouted(method, path):
     return Response([] if method == "GET" else {"successful": True})
 
 
+def _queue_dto(name, queue):
+    return {"name": name, "isPaused": queue["isPaused"], "statistics": dict(queue["statistics"])}
+
+
+def _legacy_queue(queue):
+    """`mapQueueLegacy`: active when a job runs, the statistics as `jobCounts`."""
+    return {"queueStatus": {"isActive": queue["statistics"]["active"] > 0,
+                            "isPaused": queue["isPaused"]},
+            "jobCounts": dict(queue["statistics"])}
+
+
+def _bad_request(message):
+    return Response({"message": message, "statusCode": 400}, status=400)
+
+
+def _route_shell(method, request):
+    """The routes whose family changed across versions: jobs and queues, the two
+    person merges, the three configs. Both families are always served here;
+    `serves()` (in `_dispatch`) is what refuses a route to an older server."""
+    path = request.path
+    parts = path.split("/")
+    queues = STATE["queues"]
+
+    if method == "GET":
+        if path == "/api/jobs":
+            return Response({name: _legacy_queue(queue) for name, queue in queues.items()})
+        if path == "/api/queues":
+            return Response([_queue_dto(name, queue) for name, queue in queues.items()])
+        if path == "/api/public/config":
+            return Response(public_config_payload(CONFIG))
+        if path == "/api/config":
+            return Response(user_config_payload(CONFIG))
+
+    if method == "PUT" and len(parts) == 4 and parts[1:3] == ["api", "jobs"]:
+        queue, command = queues.get(parts[3]), request.body.get("command")
+        if queue is None:
+            return _bad_request("Unknown queue")
+        stats = queue["statistics"]
+        if command == "pause":
+            queue["isPaused"] = True
+        elif command == "resume":
+            queue["isPaused"] = False
+        elif command == "empty":
+            stats["waiting"] = stats["delayed"] = 0
+        elif command == "clear-failed":
+            stats["failed"] = 0
+        elif command != "start":
+            return _bad_request("Unknown command")
+        return Response(_legacy_queue(queue))
+
+    if method == "PUT" and len(parts) == 4 and parts[1:3] == ["api", "queues"]:
+        queue, paused = queues.get(parts[3]), request.body.get("isPaused")
+        if parts[3] == "backgroundTask" and paused is True:
+            return _bad_request("The BackgroundTask queue cannot be paused")
+        if queue is None:
+            return _bad_request("Unknown queue")
+        if isinstance(paused, bool):
+            queue["isPaused"] = paused
+        return Response(_queue_dto(parts[3], queue))
+
+    if (method == "DELETE" and len(parts) == 5 and parts[1:3] == ["api", "queues"]
+            and parts[4] == "jobs"):
+        queue = queues.get(parts[3])
+        if queue is None:
+            return _bad_request("Unknown queue")
+        stats = queue["statistics"]
+        stats["waiting"] = stats["delayed"] = 0
+        if request.body.get("failed") is True:
+            stats["failed"] = 0
+        return Response(b"", status=204)
+
+    if method == "POST" and parts[1:3] == ["api", "people"]:
+        ids = request.body.get("ids") or []
+        if len(parts) == 4 and parts[3] == "merge":
+            return Response([{"id": source, "success": True} for source in ids[1:]])
+        if len(parts) == 5 and parts[4] == "merge":
+            return Response([{"id": source, "success": True} for source in ids])
+    return None
+
+
 def _shell(method, request):
     """The shell's own routes: the authenticated boot, nothing feature-specific.
 
     `None` means "not mine" — the caller then answers `_unrouted`.
     """
     path = request.path
+
+    versioned = _route_shell(method, request)
+    if versioned is not None:
+        return versioned
 
     if method == "POST":
         if path == "/api/oauth/authorize":
@@ -487,7 +684,7 @@ def _shell(method, request):
         if path == "/api/server/ping":
             return Response({"res": "pong"})
         if path == "/api/server/version":
-            return Response({"major": 1, "minor": 119, "patch": 0, "prerelease": None})
+            return Response(version_payload())
         if path == "/api/server/config":
             return Response(CONFIG)
         if path == "/api/server/statistics":
@@ -551,6 +748,9 @@ class StubHandler(BaseHTTPRequestHandler):
         request = Request(method, path, query, self.headers, self._body())
         entry = {"method": method, "path": path, "params": request.params, "body": request.body}
         STATE["requests"].append(entry)
+        if not serves(method, path, announced_version(request)):
+            return self._send(Response(
+                {"message": f"Cannot {method} {path}", "statusCode": 404}, status=404))
         response = router.handle(request)
         if response is None:
             response = _shell(method, request)

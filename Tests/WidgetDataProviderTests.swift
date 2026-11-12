@@ -927,13 +927,8 @@ final class WidgetSessionPublishingTests: XCTestCase {
         }
     }
 
-    private func makeOAuthConfig() -> ServerConfigDto {
-        ServerConfigDto(
-            oauthButtonText: "Continue with Immich SSO", loginPageMessage: "", trashDays: 30,
-            userDeleteDelay: 7, isInitialized: true, isOnboarded: true, externalDomain: "",
-            publicUsers: false, mapDarkStyleUrl: "", mapLightStyleUrl: "",
-            maintenanceMode: false, minFaces: 0
-        )
+    private func makeOAuthConfig() -> ServerConfig {
+        ServerConfig(oauthButtonText: "Continue with Immich SSO", externalDomain: "", isInitialized: true)
     }
 
     private func seedSavedAccounts(_ accounts: [SavedAccount], defaults: UserDefaults) {

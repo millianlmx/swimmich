@@ -182,6 +182,7 @@ final class CustomHeadersUITests: XCTestCase {
         var isSocket: Bool { path.hasPrefix("/api/socket.io") }
         var isPublic: Bool {
             ["/api/server/ping", "/api/server/version", "/api/server/config", "/api/server/features",
+             "/api/public/config",
              "/api/oauth/authorize", "/api/oauth/callback", "/api/auth/login"].contains(path)
         }
     }

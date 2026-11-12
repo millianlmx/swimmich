@@ -281,6 +281,7 @@
 		7C1A0E5B2D4F6A8091B3C5D1 /* AlbumRolesAndOrderTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7C1A0E5B2D4F6A8091B3C5D2 /* AlbumRolesAndOrderTests.swift */; };
 		7C1A0E5B2D4F6A8091B3C5D3 /* AlbumRolesUITests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7C1A0E5B2D4F6A8091B3C5D4 /* AlbumRolesUITests.swift */; };
 		7C1A0E5B2D4F6A8091B3C5D5 /* immich_stub_album_roles.py in Resources */ = {isa = PBXBuildFile; fileRef = 7C1A0E5B2D4F6A8091B3C5D6 /* immich_stub_album_roles.py */; };
+		B20C0A71E4D84F10A5C3D006 /* immich_stub_route_compat.py in Resources */ = {isa = PBXBuildFile; fileRef = B20C0A71E4D84F10A5C3D005 /* immich_stub_route_compat.py */; };
 		6EE4B13C616AD03120A4C765 /* ImmichRenderScreenshots.swift in Sources */ = {isa = PBXBuildFile; fileRef = EAB20A19BE3CE84F21953F08 /* ImmichRenderScreenshots.swift */; };
 		6EF13C97719475355E74263C /* immich_stub_star_ratings.py in Resources */ = {isa = PBXBuildFile; fileRef = FB50BC7F53CA5A4D8CFBC05F /* immich_stub_star_ratings.py */; };
 		704BBB20259A55CF5A635683 /* ProfilePictureView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 83721676D7FCACD3EFECA14B /* ProfilePictureView.swift */; };
@@ -614,6 +615,8 @@
 		FE0B0699FF3B53918B64708F /* MediaStatsViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1B2F3944C65470CB4CCF570D /* MediaStatsViewModel.swift */; };
 		FE1DB9771F8B3F4EBF88890D /* LocationGeocodingService.swift in Sources */ = {isa = PBXBuildFile; fileRef = FDDC77DDD11CB5C7E3E91324 /* LocationGeocodingService.swift */; };
 		FE62C0E0A1F48A4F6B18DA05 /* AboutLinksTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = C2B18628F4D6A34775AFD449 /* AboutLinksTests.swift */; };
+		B20C0A71E4D84F10A5C3D002 /* ServerRouteCompatTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = B20C0A71E4D84F10A5C3D001 /* ServerRouteCompatTests.swift */; };
+		B20C0A71E4D84F10A5C3D004 /* RouteCompatUITests.swift in Sources */ = {isa = PBXBuildFile; fileRef = B20C0A71E4D84F10A5C3D003 /* RouteCompatUITests.swift */; };
 		FE878E244F2125507ECDCB36 /* PVStatusBadge.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5B50D4A922CF1A0C2F3FD209 /* PVStatusBadge.swift */; };
 		FF60B669921EB2F1A3B38BFD /* PhotoEditorViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1D54D90775F8E62B8FCDA9E4 /* PhotoEditorViewModel.swift */; };
 		FF78C43053848321ADA8A783 /* RoadTripSmoothPath.swift in Sources */ = {isa = PBXBuildFile; fileRef = EE1BCE57E2D0C2BD94AF459F /* RoadTripSmoothPath.swift */; };
@@ -818,6 +821,7 @@
 		7C1A0E5B2D4F6A8091B3C5D4 /* AlbumRolesUITests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AlbumRolesUITests.swift; sourceTree = "<group>"; };
 		7C1A0E5B2D4F6A8091B3C5D2 /* AlbumRolesAndOrderTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AlbumRolesAndOrderTests.swift; sourceTree = "<group>"; };
 		7C1A0E5B2D4F6A8091B3C5D6 /* immich_stub_album_roles.py */ = {isa = PBXFileReference; lastKnownFileType = text.script.python; path = immich_stub_album_roles.py; sourceTree = "<group>"; };
+		B20C0A71E4D84F10A5C3D005 /* immich_stub_route_compat.py */ = {isa = PBXFileReference; lastKnownFileType = text.script.python; path = immich_stub_route_compat.py; sourceTree = "<group>"; };
 		103F2A17DA5C174F4DCB0459 /* BackupLedgerReconciliationTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BackupLedgerReconciliationTests.swift; sourceTree = "<group>"; };
 		10E81E937ACB2709DE7A3DAB /* OnboardingFlowView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OnboardingFlowView.swift; sourceTree = "<group>"; };
 		125C8D15AD494746DDDC499A /* PhotoLibraryServiceImpl.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PhotoLibraryServiceImpl.swift; sourceTree = "<group>"; };
@@ -1214,6 +1218,8 @@
 		C201244125639A1389AA8C38 /* QRScannerView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = QRScannerView.swift; sourceTree = "<group>"; };
 		C2298E0389CE0826F8764FCE /* immich_stub_offline.py */ = {isa = PBXFileReference; lastKnownFileType = text.script.python; path = immich_stub_offline.py; sourceTree = "<group>"; };
 		C2B18628F4D6A34775AFD449 /* AboutLinksTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AboutLinksTests.swift; sourceTree = "<group>"; };
+		B20C0A71E4D84F10A5C3D001 /* ServerRouteCompatTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ServerRouteCompatTests.swift; sourceTree = "<group>"; };
+		B20C0A71E4D84F10A5C3D003 /* RouteCompatUITests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RouteCompatUITests.swift; sourceTree = "<group>"; };
 		C3CF1C4E1BC2FEA232D8D765 /* PartnerRow.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PartnerRow.swift; sourceTree = "<group>"; };
 		B08A11C0D3E4F5A6B7C8D901 /* PartnerLibraryView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PartnerLibraryView.swift; sourceTree = "<group>"; };
 		B08A11C0D3E4F5A6B7C8D902 /* PartnerLibraryViewModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PartnerLibraryViewModel.swift; sourceTree = "<group>"; };
@@ -1813,6 +1819,7 @@
 			isa = PBXGroup;
 			children = (
 				C2B18628F4D6A34775AFD449 /* AboutLinksTests.swift */,
+				B20C0A71E4D84F10A5C3D001 /* ServerRouteCompatTests.swift */,
 				3A58694C1512E94C9B889525 /* ActivityFeedViewModelTests.swift */,
 				4D1D0D3443CFFD1BCEE6F042 /* AlbumDetailViewModelTests.swift */,
 				7C1A0E5B2D4F6A8091B3C5D2 /* AlbumRolesAndOrderTests.swift */,
@@ -2228,6 +2235,7 @@
 				155A75580B734AE221CD3AF3 /* immich_stub_album_pagination_three_pages.py */,
 				D2AA2B31DD2DDAA7AC961CC4 /* immich_stub_album_pagination.py */,
 				7C1A0E5B2D4F6A8091B3C5D6 /* immich_stub_album_roles.py */,
+				B20C0A71E4D84F10A5C3D005 /* immich_stub_route_compat.py */,
 				4FF1B91E9C4417E215CF8D26 /* immich_stub_album_sync.py */,
 				7E3A91C4D2B5F60811A9C3E7 /* immich_stub_account_storage.py */,
 				12C01A0000000000000000A4 /* immich_stub_collections.py */,
@@ -2354,6 +2362,7 @@
 			children = (
 				0FEA7C783D9158AD24B26DAC /* AlbumPaginationUITests.swift */,
 				7C1A0E5B2D4F6A8091B3C5D4 /* AlbumRolesUITests.swift */,
+				B20C0A71E4D84F10A5C3D003 /* RouteCompatUITests.swift */,
 				B9CF0B790615363896DCC617 /* AlbumSyncUITests.swift */,
 				3FC0D63F249A1B765BDEFDE1 /* AppLockUITests.swift */,
 				9C17E5A3B8D40F2661E4A7C9 /* AccountStorageUITests.swift */,
@@ -2779,6 +2788,7 @@
 				502B0CD0B1EBD1416199E0DD /* immich_stub_album_pagination.py in Resources */,
 				8EE5B0DA7028F75A1265069C /* immich_stub_album_pagination_three_pages.py in Resources */,
 				7C1A0E5B2D4F6A8091B3C5D5 /* immich_stub_album_roles.py in Resources */,
+				B20C0A71E4D84F10A5C3D006 /* immich_stub_route_compat.py in Resources */,
 				D95AFA1D1289A6BD8EF5E2D7 /* immich_stub_album_sync.py in Resources */,
 				4B8D2F6A90C1E37354A8D1B2 /* immich_stub_account_storage.py in Resources */,
 				12C01A0000000000000000B4 /* immich_stub_collections.py in Resources */,
@@ -2918,6 +2928,7 @@
 				C09E14A1B2C3D4E5F6A7B8C9 /* ServerRedirectPolicyTests.swift in Sources */,
 				C09E11A1B2C3D4E5F6A7B8C9 /* CustomHeadersKitTests.swift in Sources */,
 				FE62C0E0A1F48A4F6B18DA05 /* AboutLinksTests.swift in Sources */,
+				B20C0A71E4D84F10A5C3D002 /* ServerRouteCompatTests.swift in Sources */,
 				FD76418DA93C59C24B69C915 /* ActivityFeedViewModelTests.swift in Sources */,
 				079B55DBDBAD0F58D94AFF9C /* AlbumDetailViewModelTests.swift in Sources */,
 				7C1A0E5B2D4F6A8091B3C5D1 /* AlbumRolesAndOrderTests.swift in Sources */,
@@ -3062,6 +3073,7 @@
 				C10E41A1B2C3D4E5F6A7B8C9 /* ClientCertificateUITests.swift in Sources */,
 				F15E5A4EE0F95A36206DE8DB /* AlbumPaginationUITests.swift in Sources */,
 				7C1A0E5B2D4F6A8091B3C5D3 /* AlbumRolesUITests.swift in Sources */,
+				B20C0A71E4D84F10A5C3D004 /* RouteCompatUITests.swift in Sources */,
 				8C135C7B90E587648F9339D1 /* AlbumSyncUITests.swift in Sources */,
 				68B39B89B2D5E1286E5757A0 /* AppLockUITests.swift in Sources */,
 				2D6F8B1E4A7C93500B3E5F81 /* AccountStorageUITests.swift in Sources */,
