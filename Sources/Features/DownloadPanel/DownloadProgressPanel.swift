@@ -24,16 +24,15 @@ struct DownloadProgressPanel: View {
                 // a frozen 0 % bar would not.
                 if let fraction = vm.aggregateProgress {
                     ProgressView(value: fraction)
+                        .tint(PVFloating.content)
                         .frame(width: 72)
                         .accessibilityIdentifier("downloadPanelProgress")
                 }
                 Image(systemName: "chevron.up")
                     .font(.pvCaption)
             }
-            .foregroundStyle(Color.textPrimaryPV)
             .padding(PVSpacing.s12)
-            .background(.ultraThinMaterial, in: Capsule())
-            .shadow(color: .black.opacity(0.18), radius: 12, y: 4)
+            .pvFloating(.pill)
         }
         .buttonStyle(.plain)
         .padding(.horizontal, PVSpacing.s16)

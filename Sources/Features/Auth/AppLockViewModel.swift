@@ -159,6 +159,9 @@ final class AppLockViewModel: AppLockService {
         onCoverChange?(current)
     }
 
+    /// Reason shown in the system Face ID / passcode prompt.
+    nonisolated static let unlockReason: LocalizedStringResource = "Unlock Swimmich"
+
     /// Production evaluator: Face ID / Touch ID with passcode fallback via
     /// `.deviceOwnerAuthentication` (AC-106). The policy includes the device
     /// passcode, so a device with a passcode but no enrolled biometry still
@@ -175,7 +178,7 @@ final class AppLockViewModel: AppLockService {
         return await withCheckedContinuation { (continuation: CheckedContinuation<Bool, Never>) in
             context.evaluatePolicy(
                 .deviceOwnerAuthentication,
-                localizedReason: String(localized: "Unlock PhotoVault")
+                localizedReason: String(localized: Self.unlockReason)
             ) { success, _ in
                 continuation.resume(returning: success)
             }

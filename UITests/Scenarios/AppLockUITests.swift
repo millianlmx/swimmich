@@ -705,4 +705,49 @@ final class AppLockUITests: XCTestCase {
         let toggle = openMe(scrollingTo: "appLockToggle")
         XCTAssertEqual(toggle.value as? String, "0", "the setting survived the kill")
     }
+
+    // MARK: - Identity (L-15)
+
+    /// AC-29 (B-19): the app is "Swimmich" on the welcome screen, on the lock
+    /// (English, then French) and in About; "PhotoVault" shows nowhere. Elements
+    /// are found by identifier: the labels read are the subject of the test.
+    func test_AC_29_swimmichOnLockWelcomeAndAbout() throws {
+        reset()
+        setProvider("manual")
+        app.launchArguments = ["-AppleLanguages", "(en)", "-AppleLocale", "en_US"]
+        app.launch()
+
+        let welcome = element("welcomeTitle")
+        if welcome.waitForExistence(timeout: 30) {
+            XCTAssertTrue(welcome.label.contains("Swimmich"), "the welcome title names the app: \(welcome.label)")
+            XCTAssertFalse(welcome.label.contains("PhotoVault"), "welcome title: \(welcome.label)")
+        }
+        reachShell()
+        enableAppLock()
+        closeMeSheet()
+
+        sendToBackgroundAndBack()
+        let title = element("appLockTitle")
+        XCTAssertTrue(title.waitForExistence(timeout: 10), "no lock title — \(screenText())")
+        XCTAssertEqual(title.label, "Swimmich Locked")
+        XCTAssertFalse(screenText().contains("PhotoVault"), "PhotoVault on the lock: \(screenText())")
+        failAndCancelPrompt()
+        unlockWithFaceID()
+
+        let about = openMe(scrollingTo: "aboutRow")
+        about.tap()
+        let deletion = element("aboutAccountDeletionText")
+        XCTAssertTrue(deletion.waitForExistence(timeout: 15), "About did not open — \(screenText())")
+        XCTAssertTrue(deletion.label.contains("Swimmich"), "About names the app: \(deletion.label)")
+        XCTAssertFalse(screenText().contains("PhotoVault"), "PhotoVault in About: \(screenText())")
+
+        relaunch(language: "fr")
+        if element("AppLockOverlay").waitForExistence(timeout: 10) {
+            sleep(2) // the automatic prompt is up
+            FaceID.match()
+            XCTAssertTrue(element("AppLockOverlay").waitForNonExistence(timeout: 20), "the lock did not lift")
+        }
+        sendToBackgroundAndBack()
+        XCTAssertEqual(element("appLockTitle").label, "Swimmich verrouillé")
+    }
 }

@@ -32,10 +32,7 @@ struct SearchModeGlassBar: View {
                 ZStack(alignment: .leading) {
                     // Highlight thumb — smooth slide between segments.
                     Capsule()
-                        .fill(Color.primary.opacity(0.12))
-                        .overlay(
-                            Capsule().stroke(Color.primary.opacity(0.08), lineWidth: 0.5)
-                        )
+                        .fill(PVFloating.selection)
                         .frame(
                             width: segmentWidth - PVSpacing.s8,
                             height: Self.height - PVSpacing.s8
@@ -53,8 +50,7 @@ struct SearchModeGlassBar: View {
                 }
             }
             .frame(height: Self.height)
-            .glassEffect(.regular, in: Capsule())
-            .overlay(Capsule().stroke(Color.primary.opacity(0.1), lineWidth: 0.5))
+            .pvFloating(.bar)
         }
         .appSensoryFeedback(.selection, trigger: modeChangeTick)
         .onChange(of: mode) { _, _ in
@@ -72,7 +68,7 @@ struct SearchModeGlassBar: View {
             Label(segment.title, systemImage: segment.icon)
                 .font(.pvSubhead)
                 .fontWeight(isSelected ? .semibold : .regular)
-                .foregroundStyle(isSelected ? Color.immichPrimary : Color.textSecondaryPV)
+                .foregroundStyle(isSelected ? PVFloating.content : PVFloating.secondaryContent)
                 .lineLimit(1)
                 .minimumScaleFactor(0.8)
         }

@@ -59,16 +59,18 @@ struct OnboardingFlowView: View {
 // MARK: - Shared onboarding chrome
 
 extension View {
-    /// Pins a primary CTA to the bottom of an onboarding screen over a material
-    /// bar that extends edge-to-edge (under the home indicator), the pattern
-    /// Apple's setup/sign-in flows use. `.safeAreaInset` keeps the CTA reachable
+    /// Pins a primary CTA to the bottom of an onboarding screen in a floating
+    /// glass bar, inset from the screen edges (the floating-control `.bar`
+    /// role, not a full-width strip). `.safeAreaInset` keeps the CTA reachable
     /// above the keyboard on iOS 17.
     func onboardingBottomBar<Content: View>(@ViewBuilder content: () -> Content) -> some View {
         safeAreaInset(edge: .bottom) {
             content()
                 .padding(PVSpacing.s16)
                 .frame(maxWidth: .infinity)
-                .background(.regularMaterial, ignoresSafeAreaEdges: .bottom)
+                .pvFloating(.bar)
+                .padding(.horizontal, PVSpacing.s16)
+                .padding(.bottom, PVSpacing.s8)
         }
     }
 }

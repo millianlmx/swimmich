@@ -144,13 +144,14 @@ struct MapSegmentView: View {
             if ((isLoadingPhotos || vm.isLoading) && vm.markers.isEmpty) || isRenderingMarkers {
                 HStack(spacing: PVSpacing.s8) {
                     ProgressView()
+                        .tint(PVFloating.content)
                     Text("Loading photos…")
                         .font(.pvSubhead)
-                        .foregroundStyle(Color.textSecondaryPV)
+                        .foregroundStyle(PVFloating.secondaryContent)
                 }
                 .padding(.horizontal, PVSpacing.s16)
                 .padding(.vertical, PVSpacing.s8)
-                .background(.regularMaterial, in: Capsule())
+                .pvFloating(.pill)
                 .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .center)
             }
 
@@ -185,12 +186,11 @@ struct MapSegmentView: View {
             Label(vm.activeFilterSummary, systemImage: "line.3.horizontal.decrease.circle.fill")
                 .font(.pvCaption)
                 .lineLimit(1)
-                .foregroundStyle(Color.immichPrimary)
                 .padding(.horizontal, PVSpacing.s12)
                 .padding(.vertical, PVSpacing.s8)
         }
         .buttonStyle(.plain)
-        .background(.regularMaterial, in: Capsule())
+        .pvFloating(.pill)
         .accessibilityElement(children: .combine)
         .accessibilityIdentifier("mapFilterActiveBadge")
         .transition(.opacity.combined(with: .scale(scale: 0.92)))
@@ -200,11 +200,10 @@ struct MapSegmentView: View {
         Button { openSettings() } label: {
             Image(systemName: "slider.horizontal.3")
                 .font(.pvBody.weight(.semibold))
-                .foregroundStyle(Color.immichPrimary)
                 .padding(PVSpacing.s12)
         }
         .buttonStyle(.plain)
-        .background(.regularMaterial, in: Circle())
+        .pvFloating(.circle)
         .accessibilityLabel("Map settings")
         .accessibilityIdentifier("mapSettingsButton")
     }
@@ -215,7 +214,6 @@ struct MapSegmentView: View {
         VStack(spacing: PVSpacing.s8) {
             Text("No photos match this filter")
                 .font(.pvSubhead)
-                .foregroundStyle(Color.textPrimaryPV)
                 .multilineTextAlignment(.center)
             Button("Clear filter") {
                 Task { await vm.applyFilter(.all) }
@@ -223,7 +221,7 @@ struct MapSegmentView: View {
             .buttonStyle(PVSubtleButtonStyle())
         }
         .padding(PVSpacing.s16)
-        .background(.regularMaterial, in: RoundedRectangle(cornerRadius: PVRadius.md, style: .continuous))
+        .pvFloating(.bar)
     }
 
     private func errorView(_ msg: String) -> some View {

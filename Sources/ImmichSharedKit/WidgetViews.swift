@@ -296,7 +296,7 @@ enum WidgetEmptyCopy {
             (
                 "wifi.exclamationmark",
                 "Server unreachable",
-                "Immich could not reach your server. Check the app can open it."
+                "Swimmich could not reach your server. Check the app can open it."
             )
         }
     }

@@ -456,7 +456,12 @@ struct PhotoViewer: View {
 
                 if !localAssets.isEmpty {
                     pagerView
-                        .onGeometryChange(for: CGRect.self) { $0.frame(in: .global) } action: { frameBook.pagerFrame = $0 }
+                        .onGeometryChange(for: CGRect.self) { $0.frame(in: .global) } action: { frame in
+                            // Under a closing drag the pager is scaled and moved by the
+                            // modifiers below, which also move its `.global` frame: that
+                            // frame is not the pager's rest frame, the pivot of the close.
+                            frameBook.reportPager(frame, frozen: closeDragLock == true)
+                        }
                         .opacity(pagerOpacity)
                         .scaleEffect(dragTransform.scale)
                         .offset(dragTransform.offset)
@@ -486,13 +491,11 @@ struct PhotoViewer: View {
                             Text(editedCopyNotice)
                         } icon: {
                             Image(systemName: "checkmark.circle.fill")
-                                .foregroundStyle(Color.immichSuccess)
                         }
                         .font(.pvCaption)
-                        .foregroundStyle(.primary)
                         .padding(.horizontal, PVSpacing.s16)
                         .padding(.vertical, PVSpacing.s8)
-                        .background(.regularMaterial, in: Capsule())
+                        .pvFloating(.bar)
                         .padding(.top, PVSpacing.s8)
                         .accessibilityIdentifier("editedCopySavedBanner")
                         Spacer()
@@ -761,14 +764,12 @@ struct PhotoViewer: View {
                 }
                 Text(ocrStatusText(vm))
                     .font(.pvSubhead)
-                    .foregroundStyle(Color.textPrimaryPV)
                     .lineLimit(2)
                     .accessibilityIdentifier("viewerOcrStatusText")
             }
             .padding(.horizontal, PVSpacing.s12)
             .padding(.vertical, PVSpacing.s4)
-            .background(Color.bgPrimary, in: Capsule())
-            .overlay(Capsule().stroke(Color.separatorPV, lineWidth: 0.5))
+            .pvFloating(.pill)
             .padding(.top, PVSpacing.s8)
             .transition(.opacity)
         }
@@ -812,7 +813,7 @@ struct PhotoViewer: View {
             TopBarAction(
                 id: "viewerOcrToggle", menuID: "viewerMenuOcr",
                 title: "Detected text", symbol: "text.viewfinder",
-                tint: showOcr ? .immichPrimary : .white,
+                tint: showOcr ? PVFloating.accent : .white,
                 value: showOcr ? "on" : "off",
                 disabled: !asset.isImage,
                 perform: { toggleOcr() }
@@ -825,7 +826,7 @@ struct PhotoViewer: View {
                 id: "viewerCastButton", menuID: "viewerMenuCast",
                 title: castService.isConnected ? "Casting" : "Cast",
                 symbol: castService.isConnected ? "airplayvideo.circle.fill" : "airplayvideo",
-                tint: castService.isConnected ? .immichPrimary : .white,
+                tint: castService.isConnected ? PVFloating.accent : .white,
                 value: nil,
                 disabled: !castService.isAvailable,
                 perform: { showCastSheet = true }
@@ -860,7 +861,7 @@ struct PhotoViewer: View {
                         .font(.pvHeadline)
                         .foregroundStyle(Color.white)
                         .frame(width: 40, height: 40)
-                        .glassEffect(.regular.tint(.black.opacity(0.6)), in: Circle())
+                        .pvFloating(.circle)
                 }
                 .buttonStyle(.plain)
                 .accessibilityLabel("Back")
@@ -916,7 +917,7 @@ struct PhotoViewer: View {
             .fixedSize(horizontal: true, vertical: false)
             .padding(.horizontal, PVSpacing.s16)
             .padding(.vertical, PVSpacing.s4)
-            .glassEffect(.regular.tint(.black.opacity(0.6)), in: Capsule())
+            .pvFloating(.pill)
         case .singleLineTruncated:
             Text([place, date].compactMap { $0 }.joined(separator: " · "))
                 .font(.pvCaption)
@@ -925,7 +926,7 @@ struct PhotoViewer: View {
                 .truncationMode(.tail)
                 .padding(.horizontal, PVSpacing.s16)
                 .padding(.vertical, PVSpacing.s4)
-                .glassEffect(.regular.tint(.black.opacity(0.6)), in: Capsule())
+                .pvFloating(.pill)
                 .accessibilityIdentifier("viewerBadgeSingleLine")
         }
     }
@@ -938,7 +939,7 @@ struct PhotoViewer: View {
                 .font(.pvHeadline)
                 .foregroundStyle(action.tint)
                 .frame(width: 40, height: 40)
-                .glassEffect(.regular.tint(.black.opacity(0.6)), in: Circle())
+                .pvFloating(.circle)
                 .contentTransition(.symbolEffect(.replace))
                 .animation(
                     PVMotion.adaptive(PVMotion.standard, reduceMotion: reduceMotion),
@@ -974,7 +975,7 @@ struct PhotoViewer: View {
                 .font(.pvHeadline)
                 .foregroundStyle(Color.white)
                 .frame(width: 40, height: 40)
-                .glassEffect(.regular.tint(.black.opacity(0.6)), in: Circle())
+                .pvFloating(.circle)
         }
         .accessibilityLabel("Options")
         .accessibilityIdentifier("viewerOverflowMenu")
@@ -1061,7 +1062,7 @@ struct PhotoViewer: View {
                             .font(.pvHeadline)
                             .foregroundStyle(Color.white)
                             .frame(width: 40, height: 40)
-                            .glassEffect(.regular.tint(.black.opacity(0.6)), in: Circle())
+                            .pvFloating(.circle)
                     }
                     .buttonStyle(.plain)
                     .accessibilityLabel("Share")
@@ -1093,7 +1094,7 @@ struct PhotoViewer: View {
                             } label: {
                                 Image(systemName: favoriteIDs.contains(asset.id) ? "heart.fill" : "heart")
                                     .font(.pvTitle)
-                                    .foregroundStyle(favoriteIDs.contains(asset.id) ? Color.immichError : Color.white)
+                                    .foregroundStyle(PVFloating.content)
                                     .frame(width: 44, height: 44)
                             }
                             .buttonStyle(.plain)
@@ -1121,7 +1122,7 @@ struct PhotoViewer: View {
                     }
                     .padding(.horizontal, PVSpacing.s8)
                     .padding(.vertical, PVSpacing.s4)
-                    .glassEffect(.regular.tint(.black.opacity(0.6)), in: Capsule())
+                    .pvFloating(.pill)
                 }
 
                 Spacer()
@@ -1135,7 +1136,7 @@ struct PhotoViewer: View {
                             .font(.pvHeadline)
                             .foregroundStyle(Color.white)
                             .frame(width: 40, height: 40)
-                            .glassEffect(.regular.tint(.black.opacity(0.6)), in: Circle())
+                            .pvFloating(.circle)
                     }
                     .buttonStyle(.plain)
                     .accessibilityLabel(archived ? "Unarchive" : "Archive")
@@ -1155,7 +1156,7 @@ struct PhotoViewer: View {
                             .font(.pvHeadline)
                             .foregroundStyle(Color.white)
                             .frame(width: 40, height: 40)
-                            .glassEffect(.regular.tint(.black.opacity(0.6)), in: Circle())
+                            .pvFloating(.circle)
                     }
                     .buttonStyle(.plain)
                     .accessibilityLabel(isTrash ? "Delete Permanently" : "Delete")
@@ -1307,8 +1308,7 @@ struct PhotoViewer: View {
             .foregroundStyle(Color.white) // DS-exempt: badge contrast on material
             .padding(.horizontal, PVSpacing.s12)
             .padding(.vertical, PVSpacing.s4)
-            .background(.ultraThinMaterial, in: Capsule())
-            .overlay(Capsule().stroke(.white.opacity(0.3), lineWidth: 0.5))
+            .pvFloating(.pill)
         }
         .buttonStyle(.plain)
         .accessibilityLabel("Play Live Photo")
@@ -1542,7 +1542,15 @@ struct PhotoViewer: View {
 final class ViewerFrameBook {
     /// Displayed image frame per asset id, `.global`, zoom and pan included.
     var pageFrames: [String: CGRect] = [:]
-    var pagerFrame: CGRect?
+    private(set) var pagerFrame: CGRect?
+
+    /// Records the pager's `.global` frame, unless `frozen`: while a closing drag
+    /// scales and moves the pager that frame is the transformed one, and the
+    /// close pivots on the rest frame recorded before the drag.
+    func reportPager(_ frame: CGRect, frozen: Bool) {
+        guard !frozen else { return }
+        pagerFrame = frame
+    }
 }
 
 /// Makes an animation's end awaitable once, whichever of its completion and its
@@ -1796,8 +1804,7 @@ extension PhotoViewer {
     private func startFrame(for asset: AssetReactItem, drag: ViewerDragTransform?) -> CGRect {
         let displayed = displayedFrame(for: asset)
         guard let drag else { return displayed }
-        let pager = frameBook.pagerFrame ?? windowRect
-        return ViewerZoomPlan.draggedRect(displayed, transform: drag, anchor: CGPoint(x: pager.midX, y: pager.midY))
+        return ViewerZoomPlan.dragStartFrame(displayed: displayed, pager: frameBook.pagerFrame ?? windowRect, drag: drag)
     }
 
     /// The image that flies back: what the page displays, else the thumbnail
@@ -1943,9 +1950,8 @@ private struct PhotoShareSheet: View {
                 } label: {
                     Image(systemName: "square.and.arrow.up")
                         .font(.pvHeadline)
-                        .foregroundStyle(Color.immichPrimary)
                         .frame(width: 40, height: 40)
-                        .glassEffect(.regular.tint(.black.opacity(0.6)), in: Circle())
+                        .pvFloating(.circle)
                 }
                 .buttonStyle(.plain)
                 .accessibilityLabel("Share")
@@ -1962,9 +1968,8 @@ private struct PhotoShareSheet: View {
                 } label: {
                     Image(systemName: "xmark")
                         .font(.pvHeadline)
-                        .foregroundStyle(Color.immichPrimary)
                         .frame(width: 40, height: 40)
-                        .glassEffect(.regular.tint(.black.opacity(0.6)), in: Circle())
+                        .pvFloating(.circle)
                 }
                 .buttonStyle(.plain)
                 .accessibilityLabel("Close")
