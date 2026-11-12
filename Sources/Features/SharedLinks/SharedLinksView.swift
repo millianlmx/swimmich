@@ -280,7 +280,7 @@ struct SharedLinkRow: View {
     var body: some View {
         cardContent
             .frame(maxHeight: isPendingRevoke ? 0 : nil)
-            .animation(PVMotion.snappy, value: isPendingRevoke)
+            .animation(PVMotion.movement(PVMotion.snappy, reduceMotion: reduceMotion), value: isPendingRevoke)
             .frame(maxWidth: .infinity)
             .background {
                 GeometryReader { geo in

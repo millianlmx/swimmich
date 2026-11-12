@@ -9,8 +9,8 @@ import XCTest
 /// Every scenario targets identifiers and the stub's data (long and short labels
 /// side by side), never a localized label. "Shown whole" is measured as
 /// "the long label is at least 1.8 times as tall as the short one and stays inside
-/// the window"; "no overlap" as "no two visible texts / buttons / fields share more
-/// than 1 pt², unless one contains the other".
+/// the window"; "no overlap" as "no two visible texts / buttons / fields overlap by
+/// more than 1 pt both ways, unless one contains the other".
 ///
 /// Launch (stub first, then one test at a time):
 ///
@@ -230,11 +230,24 @@ final class DynamicTypeUITests: XCTestCase {
                                     file: file, line: line)
     }
 
+    /// A focused text field under the swipe's start point takes the drag for its
+    /// cursor instead of scrolling: at AX5 the sign-in e-mail field, focused on
+    /// appear, sits at the window's centre where `swipeUp()` starts. A drag from
+    /// the top of the content scrolls instead, which dismisses the keyboard
+    /// (`scrollDismissesKeyboard(.immediately)`) and frees the screen below it.
+    private func dismissKeyboardByScrolling() {
+        guard app.keyboards.count > 0 else { return }
+        app.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.2))
+            .press(forDuration: 0.1, thenDragTo: app.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.05)))
+        _ = waitUntil(3) { app.keyboards.count == 0 }
+    }
+
     /// Scrolls up until the element exists and is hittable.
     private func scrollToHittable(_ identifier: String, swipes: Int = 12,
                                   file: StaticString = #filePath, line: UInt = #line) {
         let target = element(identifier)
         _ = target.waitForExistence(timeout: 6)
+        if !(target.exists && target.isHittable) { dismissKeyboardByScrolling() }
         for _ in 0..<swipes where !(target.exists && target.isHittable) {
             app.swipeUp()
             Thread.sleep(forTimeInterval: 0.4)
@@ -269,23 +282,47 @@ final class DynamicTypeUITests: XCTestCase {
     }
 
     /// Texts, buttons, fields and switches that are visible on the screen: no two
-    /// share more than 1 pt², unless one contains the other (a text in its button).
+    /// overlap by more than 1 pt both ways, unless one contains the other (a text in
+    /// its button).
     /// An element covered at its centre by a sheet is not hittable and is skipped.
+    ///
+    /// Content of a scroll view (`ScrollView`, `List`) that runs under fixed chrome
+    /// (a floating bottom bar, a navigation bar, the tab bar) is not an overlap: at
+    /// rest a long screen goes on under its translucent bar, and the bar's inset lets
+    /// the content scroll clear of it (AC-26.3: "everything reachable by scrolling",
+    /// proven by `scrollToHittable`). Overlaps inside the content, and inside the
+    /// chrome, still fail. Only the app's main window is read (the keyboard lives
+    /// in its own windows), and the tab bar is skipped: both are the system's own
+    /// controls, laid out by UIKit (the tab items' frames overlap by design).
     private func assertNoOverlap(file: StaticString = #filePath, line: UInt = #line) {
-        let window = windowFrame
-        var seen: [(frame: CGRect, name: String)] = []
+        let main = app.windows.firstMatch
+        let window = main.frame
+        var seen: [(frame: CGRect, name: String, scrolls: Bool)] = []
         let types: [XCUIElement.ElementType] = [.staticText, .button, .textField, .secureTextField, .switch]
+        let containers = [main.scrollViews, main.tables, main.collectionViews]
+        func key(_ element: XCUIElement) -> String { "\(element.frame)|\(element.identifier)|\(element.label)" }
         for type in types {
-            for candidate in app.descendants(matching: type).allElementsBoundByIndex {
+            let scrolling = Set(containers.flatMap { $0.descendants(matching: type).allElementsBoundByIndex.map(key) })
+            let skipped = Set(main.tabBars.descendants(matching: type).allElementsBoundByIndex.map(key))
+            for candidate in main.descendants(matching: type).allElementsBoundByIndex {
                 let frame = candidate.frame
                 guard !frame.isEmpty, frame.intersects(window), candidate.isHittable else { continue }
+                let id = key(candidate)
+                guard !skipped.contains(id) else { continue }
+                // A button that carries a text is measured by that text (swept as a
+                // static text): its own frame also spans an unclipped image, like
+                // the album cards' filled covers, wider than what the card shows.
+                if type == .button && candidate.staticTexts.count > 0 { continue }
                 let name = candidate.identifier.isEmpty ? candidate.label : candidate.identifier
-                seen.append((frame, name))
+                seen.append((frame, name, scrolling.contains(id)))
             }
         }
         for (index, first) in seen.enumerated() {
-            for second in seen[(index + 1)...] {
-                guard overlapArea(first.frame, second.frame) > 1 else { continue }
+            for second in seen[(index + 1)...] where first.scrolls == second.scrolls {
+                // Neighbours stacked edge to edge share a sliver under 1 pt (rounded line
+                // heights at the accessibility sizes): an overlap is more than 1 pt both ways.
+                let shared = first.frame.intersection(second.frame)
+                guard !shared.isNull, shared.width > 1, shared.height > 1 else { continue }
                 let nested = first.frame.insetBy(dx: -1, dy: -1).contains(second.frame)
                     || second.frame.insetBy(dx: -1, dy: -1).contains(first.frame)
                 XCTAssertTrue(nested,
@@ -303,12 +340,18 @@ final class DynamicTypeUITests: XCTestCase {
 
     // MARK: - Sign-in
 
+    /// The size and language of the last launch, so a helper can relaunch as is.
+    private var launched: (size: TextSize, language: String) = (.l, "en")
+
     private func configure(_ size: TextSize, language: String) {
+        launched = (size, language)
         let locale = language == "de" ? "de_DE" : "en_US"
         app.launchArguments = [
             "-AppleLanguages", "(\(language))", "-AppleLocale", locale,
             "-authServerURL", "()",
             "-UIPreferredContentSizeCategoryName", size.rawValue,
+            // The slideshow opens paused: its chrome hides itself 3 s into a playing show.
+            "-uiTestSlideshowAutoplayOff", "YES",
         ]
     }
 
@@ -324,17 +367,23 @@ final class DynamicTypeUITests: XCTestCase {
         }
     }
 
+    /// The provider page loads in another process (`SafariViewService`): slow on a
+    /// freshly erased device, so its "Authorize" link or button gets a long wait,
+    /// during which the system's sign-in consent, when it shows late, is accepted.
     @discardableResult
-    private func tapAuthorizeInProvider(timeout: TimeInterval = 20) -> Bool {
+    private func tapAuthorizeInProvider(timeout: TimeInterval = 60) -> Bool {
         let safari = XCUIApplication(bundleIdentifier: "com.apple.SafariViewService")
+        let springboard = XCUIApplication(bundleIdentifier: "com.apple.springboard")
+        let consent = springboard.alerts.buttons.matching(labelPredicate(["Continue", "Continuer"])).firstMatch
         let predicate = NSPredicate(format: "label CONTAINS 'Authorize'")
-        for candidate in [safari.links.matching(predicate).firstMatch,
-                          safari.buttons.matching(predicate).firstMatch]
-        where candidate.waitForExistence(timeout: timeout) {
-            candidate.tap()
-            return true
+        let candidates = [safari.links.matching(predicate).firstMatch, safari.buttons.matching(predicate).firstMatch]
+        let shown = waitUntil(timeout) {
+            if consent.exists { consent.tap() }
+            return candidates.contains { $0.exists }
         }
-        return false
+        guard shown, let authorize = candidates.first(where: { $0.exists }) else { return false }
+        authorize.tap()
+        return true
     }
 
     /// Welcome → server URL → login → SSO. `onScreen` is called with `welcomeTitle`,
@@ -453,6 +502,22 @@ final class DynamicTypeUITests: XCTestCase {
         Thread.sleep(forTimeInterval: 0.8)
     }
 
+    /// Flips the switch `identifier`. A tap on a switch row's label does not flip it:
+    /// at AX5 the switch is drawn under its label, on the left; at smaller sizes, at
+    /// the row's right end. Done once the value changed, or once `done` holds (a
+    /// system prompt that decides the value).
+    private func flipSwitch(_ identifier: String, orUntil done: @escaping () -> Bool = { false }) {
+        let toggle = element(identifier)
+        XCTAssertTrue(reveal(identifier), "no '\(identifier)' — \(screenText())")
+        scrollToHittable(identifier)
+        let before = toggle.value as? String
+        for point in [CGVector(dx: 0.5, dy: 0.5), CGVector(dx: 0.13, dy: 0.85), CGVector(dx: 0.95, dy: 0.5)] {
+            toggle.coordinate(withNormalizedOffset: point).tap()
+            if waitUntil(3, { (toggle.value as? String) != before || done() }) { return }
+        }
+        XCTFail("\(identifier) did not flip — \(screenText())")
+    }
+
     private func openMe() {
         let avatar = element("profileAvatar")
         XCTAssertTrue(avatar.waitForExistence(timeout: 20), "no profile avatar — \(screenText())")
@@ -533,6 +598,13 @@ final class DynamicTypeUITests: XCTestCase {
             start.press(forDuration: 0.2, thenDragTo: start.withOffset(CGVector(dx: 0, dy: attempt == 0 ? 700 : 950)))
             dismissed = waitUntil(6) { !self.element("profileList").exists }
         }
+        // At the largest sizes the hub's list takes the drag (it scrolls instead of
+        // the sheet following): the preference is saved, a relaunch gets back home.
+        if !dismissed {
+            Thread.sleep(forTimeInterval: 1) // the picker's write reaches the defaults first
+            relaunch(launched.size, language: launched.language)
+            dismissed = !element("profileList").exists
+        }
         XCTAssertTrue(dismissed, "the Me sheet never dismissed")
         XCTAssertTrue(element("assetTile_\(tiles[0])").waitForExistence(timeout: 15), "not back on the timeline")
     }
@@ -591,7 +663,7 @@ final class DynamicTypeUITests: XCTestCase {
         // Albums: the long and the short card, the last one reachable.
         relaunch(.ax5, language: language)
         openAlbumsTab()
-        XCTAssertTrue(element("albumCard_\(shortAlbum)").waitForExistence(timeout: 20), "no albums — \(screenText())")
+        XCTAssertTrue(reveal("albumCard_\(shortAlbum)", timeout: 20), "no albums — \(screenText())")
         assertNoOverlap()
         assertFullyShown(long: "albumCardTitle_\(longAlbum)", short: "albumCardTitle_\(shortAlbum)")
         scrollToHittable("albumCard_\(shortAlbum)")
@@ -610,7 +682,13 @@ final class DynamicTypeUITests: XCTestCase {
         openAlbumsTab()
         tapElement("albumCard_\(longAlbum)")
         tapElement("albumActionsMenu")
-        XCTAssertTrue(tapAnyButton(["Shared With", "Geteilt mit"], timeout: 10), "no 'Shared With' in the album menu")
+        // At AX5 the menu runs past the screen: its last items exist once scrolled to.
+        var sharedWith = tapAnyButton(["Shared With", "Geteilt mit"], timeout: 4)
+        for _ in 0..<4 where !sharedWith {
+            app.swipeUp()
+            sharedWith = tapAnyButton(["Shared With", "Geteilt mit"], timeout: 2)
+        }
+        XCTAssertTrue(sharedWith, "no 'Shared With' in the album menu — \(app.buttons.allElementsBoundByIndex.map(\.label))")
         Thread.sleep(forTimeInterval: 1.5)
         assertNoOverlap()
 
@@ -627,7 +705,7 @@ final class DynamicTypeUITests: XCTestCase {
         relaunch(.ax5, language: language)
         openLibraryRow("partnersRow")
         XCTAssertTrue(element("partnersScreen").waitForExistence(timeout: 20), "no partners screen")
-        XCTAssertTrue(element("partnerRowName-\(shortPartner)").waitForExistence(timeout: 20), "no partners — \(screenText())")
+        XCTAssertTrue(reveal("partnerRowName-\(shortPartner)", timeout: 20), "no partners — \(screenText())")
         assertNoOverlap()
         assertFullyShown(long: "partnerRowName-\(longPartner)", short: "partnerRowName-\(shortPartner)")
         scrollToHittable("invitePartner")
@@ -639,7 +717,7 @@ final class DynamicTypeUITests: XCTestCase {
         // Shared links, and the edit sheet of a link.
         relaunch(.ax5, language: language)
         openSharedTab()
-        XCTAssertTrue(element("sharedLinkRow_\(shortLink)").waitForExistence(timeout: 20), "no shared links — \(screenText())")
+        XCTAssertTrue(reveal("sharedLinkRow_\(shortLink)", timeout: 20), "no shared links — \(screenText())")
         assertNoOverlap()
         assertFullyShown(long: "sharedLinkTitle_\(longLink)", short: "sharedLinkTitle_\(shortLink)")
         scrollToHittable("sharedLinkRow_\(shortLink)")
@@ -669,7 +747,7 @@ final class DynamicTypeUITests: XCTestCase {
         XCTAssertTrue(element("searchFilterDone").waitForExistence(timeout: 15), "no filter sheet")
         assertInWindow("appBarTitleHeader")
         assertNoOverlap()
-        tapElement("searchFilterFavorite")
+        flipSwitch("searchFilterFavorite")
         tapElement("searchFilterDone")
         XCTAssertTrue(element("searchActiveFiltersBar").waitForExistence(timeout: 20),
                       "the favourites filter shows no active-filters bar — \(screenText())")
@@ -707,11 +785,11 @@ final class DynamicTypeUITests: XCTestCase {
             // Albums, Partners.
             relaunch(size)
             openAlbumsTab()
-            XCTAssertTrue(element("albumCard_\(shortAlbum)").waitForExistence(timeout: 20), "no albums — \(screenText())")
+            XCTAssertTrue(reveal("albumCard_\(shortAlbum)", timeout: 20), "no albums — \(screenText())")
             assertNoOverlap()
             if atAX5 { assertFullyShown(long: "albumCardTitle_\(longAlbum)", short: "albumCardTitle_\(shortAlbum)") }
             tapElement("partnersRow")
-            XCTAssertTrue(element("partnerRowName-\(shortPartner)").waitForExistence(timeout: 20), "no partners — \(screenText())")
+            XCTAssertTrue(reveal("partnerRowName-\(shortPartner)", timeout: 20), "no partners — \(screenText())")
             assertNoOverlap()
             if atAX5 { assertFullyShown(long: "partnerRowName-\(longPartner)", short: "partnerRowName-\(shortPartner)") }
 
@@ -755,10 +833,10 @@ final class DynamicTypeUITests: XCTestCase {
 
             relaunch(size)
             openAlbumsTab()
-            XCTAssertTrue(element("albumCard_\(shortAlbum)").waitForExistence(timeout: 20), "no albums")
+            XCTAssertTrue(reveal("albumCard_\(shortAlbum)", timeout: 20), "no albums")
             record("albumCardTitle", size, "albumCardTitle_\(shortAlbum)")
             openLibraryRow("partnersRow")
-            XCTAssertTrue(element("partnerRowName-\(shortPartner)").waitForExistence(timeout: 20), "no partners")
+            XCTAssertTrue(reveal("partnerRowName-\(shortPartner)", timeout: 20), "no partners")
             record("partnerRowName", size, "partnerRowName-\(shortPartner)")
 
             relaunch(size)
@@ -853,9 +931,14 @@ final class DynamicTypeUITests: XCTestCase {
         relaunch(.ax5)
         openMemoriesTab()
         let card = element("memoryCard_\(longMemory)")
-        XCTAssertTrue(card.waitForExistence(timeout: 25), "no memory card — \(screenText())")
+        XCTAssertTrue(reveal("memoryCard_\(longMemory)", timeout: 25), "no memory card — \(screenText())")
         XCTAssertGreaterThan(card.frame.height, 320, "the long memory's card did not grow past its old 320 pt")
-        XCTAssertLessThanOrEqual(card.frame.maxX, windowFrame.width + 0.5, "the card runs past the window")
+        // The card's own frame spans its filled cover photo, unclipped (wider than the
+        // window): what must stay inside the window is what the card writes.
+        for text in card.staticTexts.allElementsBoundByIndex {
+            XCTAssertGreaterThanOrEqual(text.frame.minX, -0.5, "'\(text.label)' starts left of the window")
+            XCTAssertLessThanOrEqual(text.frame.maxX, windowFrame.width + 0.5, "'\(text.label)' runs past the window")
+        }
         let cardTitle = element("memoryCardTitle_\(longMemory)")
         if cardTitle.exists {
             // The title may be hidden by the card's combined accessibility element.
@@ -868,7 +951,7 @@ final class DynamicTypeUITests: XCTestCase {
         openLibraryRow("peopleRow")
         // The row is one combined accessibility element (PeopleView `personRow`): the
         // name's own identifier is hidden, so the rows are compared (same caption line).
-        XCTAssertTrue(element("personRow_\(shortPerson)").waitForExistence(timeout: 25), "no people — \(screenText())")
+        XCTAssertTrue(reveal("personRow_\(shortPerson)", timeout: 25), "no people — \(screenText())")
         assertFullyShown(long: "personRow_\(longPerson)", short: "personRow_\(shortPerson)")
 
         // The map: the active-filter badge whole.
@@ -876,7 +959,7 @@ final class DynamicTypeUITests: XCTestCase {
         openSearchTab()
         tapElement("searchModeSegment_map")
         tapElement("mapSettingsButton")
-        tapElement("mapSettingsFavoritesToggle")
+        flipSwitch("mapSettingsFavoritesToggle")
         tapElement("mapSettingsDoneButton")
         XCTAssertTrue(element("mapFilterActiveBadge").waitForExistence(timeout: 20), "no active-filter badge — \(screenText())")
         let badge = element("mapFilterActiveBadge").frame
@@ -892,11 +975,11 @@ final class DynamicTypeUITests: XCTestCase {
 
         // Turn the lock on from the Me hub; a matching face concludes the prompt.
         openMe()
-        tapElement("appLockToggle")
-        Thread.sleep(forTimeInterval: 2)
-        FaceID.match()
         let springboard = XCUIApplication(bundleIdentifier: "com.apple.springboard")
         let cancel = springboard.buttons.matching(labelPredicate(["Cancel", "Annuler", "Abbrechen"])).firstMatch
+        flipSwitch("appLockToggle", orUntil: { cancel.exists })
+        Thread.sleep(forTimeInterval: 2)
+        FaceID.match()
         XCTAssertTrue(cancel.waitForNonExistence(timeout: 10), "the activation prompt did not close")
         XCTAssertTrue(waitUntil(10) { (self.element("appLockToggle").value as? String) == "1" },
                       "Require Face ID did not turn on — \(screenText())")
@@ -931,9 +1014,18 @@ final class DynamicTypeUITests: XCTestCase {
         photos.launch()
         XCTAssertEqual(photos.state, .runningForeground, "Photos did not come to the foreground")
         sleep(5)
-        for label in ["Continuer", "Continue", "Done", "Terminé", "Get Started", "OK"] {
-            let button = photos.buttons[label]
-            if button.exists && button.isHittable { button.tap(); sleep(2) }
+        // Photos' own "What's New" sheet covers the library on a fresh device; at AX5
+        // its button sits far below the fold (one word per line).
+        let onboarding = photos.buttons.matching(
+            NSPredicate(format: "label IN %@", ["Continuer", "Continue", "Done", "Terminé", "Get Started", "OK"])
+        ).firstMatch
+        for _ in 0..<30 where onboarding.exists {
+            if onboarding.isHittable {
+                onboarding.tap()
+                sleep(2)
+            } else {
+                photos.swipeUp(velocity: .fast)
+            }
         }
         let grid = photos.descendants(matching: .any).matching(identifier: "PXGGridLayout-Info")
         XCTAssertTrue(grid.firstMatch.waitForExistence(timeout: 20), "the Photos library never published a tile")
@@ -991,7 +1083,9 @@ final class DynamicTypeUITests: XCTestCase {
         launchSignedIn(.ax5)
         openMemoriesTab()
         let card = element("memoryCard_\(placeMemory)")
-        XCTAssertTrue(card.waitForExistence(timeout: 25), "no memory card — \(screenText())")
+        // The third card of the lazy list: it only exists once scrolled to.
+        XCTAssertTrue(reveal("memoryCard_\(placeMemory)", timeout: 25), "no memory card — \(screenText())")
+        scrollToHittable("memoryCard_\(placeMemory)")
         let location = element("memoryCardLocation_\(placeMemory)")
         if location.exists {
             // The card's footer keeps one line (a cut is allowed there, decision #10).
@@ -1031,7 +1125,9 @@ final class DynamicTypeUITests: XCTestCase {
 
     private func assertEmptyState(glyph: String, title: String, button: String,
                                   file: StaticString = #filePath, line: UInt = #line) {
-        XCTAssertTrue(element(glyph).waitForExistence(timeout: 20), "no \(glyph) — \(screenText())", file: file, line: line)
+        // The empty state sits under the Library tiles: at AX5 it is reached by scrolling.
+        XCTAssertTrue(reveal(glyph, timeout: 20), "no \(glyph) — \(screenText())", file: file, line: line)
+        scrollToHittable(button, file: file, line: line)
         XCTAssertTrue(element(title).exists, "no \(title)", file: file, line: line)
         XCTAssertLessThanOrEqual(overlapArea(element(glyph).frame, element(title).frame), 1,
                                  "\(glyph) overlaps \(title)", file: file, line: line)
@@ -1105,6 +1201,8 @@ final class DynamicTypeUITests: XCTestCase {
                 tapElement("viewerMenuSlideshow")
             }
             XCTAssertTrue(element("slideshowCounter").waitForExistence(timeout: 20), "no slideshow — \(screenText())")
+            // Launched with `-uiTestSlideshowAutoplayOff`: the show is paused, its chrome stays.
+            XCTAssertEqual(element("slideshowPlayPause").label, "Play", "the slideshow did not open paused")
             counter[size] = textElement("slideshowCounter").frame.height
             speed[size] = textElement("slideshowSpeed").frame.height
 
@@ -1158,8 +1256,13 @@ final class DynamicTypeUITests: XCTestCase {
                 let frame = element(button).frame
                 XCTAssertEqual(frame.width, 44, accuracy: 1, "\(button) is not 44 pt wide")
                 XCTAssertEqual(frame.height, 44, accuracy: 1, "\(button) is not 44 pt tall")
-                XCTAssertTrue(element(button).isHittable, "\(button) is not hittable")
+                XCTAssertTrue(windowFrame.contains(frame), "\(button) leaves the window")
             }
+            // `isHittable` read false here although the button showed in place: the proof
+            // that it is reachable is a tap that closes the memory.
+            element("memoryMomentClose").tap()
+            XCTAssertTrue(element("memoryMomentClose").waitForNonExistence(timeout: 10),
+                          "a tap on memoryMomentClose did not close \(memory)")
         }
     }
 

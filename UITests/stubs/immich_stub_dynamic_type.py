@@ -292,7 +292,7 @@ def timeline_bucket(req):
     payload = bucket_payload(TIMELINE_ASSETS)
     payload["isFavorite"][1] = True
     payload["isImage"][2] = False
-    payload["duration"][2] = "0:01:05.000"
+    payload["duration"][2] = 65_000  # milliseconds: the app decodes `[Int?]`, a string fails the whole day
     payload["livePhotoVideoId"][3] = LIVE_VIDEO
     return Response(payload)
 
@@ -308,7 +308,7 @@ def detailed_asset(aid):
         dto["isFavorite"] = True
     if aid == TIMELINE_ASSETS[2]:
         dto["type"] = "VIDEO"
-        dto["duration"] = "0:01:05.000"
+        dto["duration"] = 65_000
     if aid == TIMELINE_ASSETS[3]:
         dto["livePhotoVideoId"] = LIVE_VIDEO
     return dto

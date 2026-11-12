@@ -56,7 +56,7 @@ struct SlideshowView: View {
         .task(id: autoHideKey) { await autoHideControls() }
         .onAppear {
             vm.slideChanged()
-            vm.start()
+            if !Self.autoplayOff { vm.start() }
         }
         .onChange(of: vm.currentIndex) { old, new in
             directionForward = SlideshowDirection.isForward(from: old, to: new, count: vm.count)
@@ -332,6 +332,14 @@ struct SlideshowView: View {
         .accessibilityLabel(label)
         .accessibilityIdentifier(id)
     }
+}
+
+extension SlideshowView {
+    /// UI-test switch, off in production (same model as `MemoryPlaybackProbe`):
+    /// `-uiTestSlideshowAutoplayOff YES` opens the show paused, so its chrome stays
+    /// up (it only hides itself while playing) and a scenario can measure it.
+    static let autoplayOffKey = "uiTestSlideshowAutoplayOff"
+    static let autoplayOff = UserDefaults.standard.bool(forKey: autoplayOffKey)
 }
 
 /// "n of N" pill of the slideshow. `index` is zero-based. Carries its own
