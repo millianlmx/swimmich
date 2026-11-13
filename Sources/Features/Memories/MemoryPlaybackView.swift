@@ -88,7 +88,6 @@ struct MemoryPlaybackView: View {
         self.vm = vm
         self.baseURL = baseURL
         self.token = token
-        _visiblePage = State(initialValue: playback.page)
     }
 
     private var isPresenting: Bool {
@@ -244,6 +243,9 @@ struct MemoryPlaybackView: View {
     }
 
     private func appear() {
+        // An initial `scrollPosition` value is ignored by the lazy pager (it lays
+        // out from the top): the memory that was opened is jumped to once on screen.
+        withTransaction(\.disablesAnimations, true) { visiblePage = playback.page }
         withAnimation(PVMotion.movement(.easeOut(duration: 0.4), reduceMotion: reduceMotion)) {
             appeared = true
         }
