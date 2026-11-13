@@ -103,6 +103,7 @@ struct AdjustLocationSheet: View {
 
     @FocusState private var focus: CoordinateAxis?
     @PVReduceMotion private var reduceMotion
+    @Environment(\.openURL) private var openURL
 
     var body: some View {
         ScrollView {
@@ -113,6 +114,7 @@ struct AdjustLocationSheet: View {
                     .foregroundStyle(Color.textSecondaryPV)
                     .frame(maxWidth: .infinity, alignment: .leading)
                 fields
+                myLocationButton
                 DraggablePinMapView(pin: vm.pin, reduceMotion: reduceMotion, onPinDragged: vm.pinDragged)
                     .frame(minHeight: 240)
                     .clipShape(RoundedRectangle(cornerRadius: PVRadius.md, style: .continuous))
@@ -128,6 +130,50 @@ struct AdjustLocationSheet: View {
         }
         .scrollBounceBehavior(.basedOnSize)
         .scrollDismissesKeyboard(.interactively)
+        .alert(
+            vm.locationNotice?.title ?? "",
+            isPresented: Binding(
+                get: { vm.locationNotice != nil },
+                set: { if !$0 { vm.locationNotice = nil } }
+            ),
+            presenting: vm.locationNotice
+        ) { notice in
+            if notice.offersSettings {
+                Button("Open Settings") { openAppSettings() }
+                Button("Cancel", role: .cancel) {}
+            } else {
+                Button("OK", role: .cancel) {}
+            }
+        } message: { notice in
+            Text(notice.message)
+        }
+    }
+
+    /// Puts the pin and the two fields on the device's position. Nothing is
+    /// written until Save, like for a dragged pin.
+    private var myLocationButton: some View {
+        Button {
+            focus = nil
+            Task { await vm.useMyLocation() }
+        } label: {
+            HStack(spacing: PVSpacing.s8) {
+                if vm.isLocating {
+                    ProgressView()
+                } else {
+                    Image(systemName: "location")
+                }
+                Text("My Location")
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+        }
+        .buttonStyle(PVSubtleButtonStyle())
+        .disabled(vm.isLocating || vm.isSaving)
+        .accessibilityIdentifier("adjustLocationMyLocationButton")
+    }
+
+    private func openAppSettings() {
+        guard let url = URL(string: UIApplication.openSettingsURLString) else { return }
+        openURL(url)
     }
 
     private var header: some View {

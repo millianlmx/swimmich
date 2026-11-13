@@ -51,11 +51,18 @@ final class AdjustLocationViewModel: Identifiable {
     private(set) var latitudeError: CoordinateFieldError?
     private(set) var longitudeError: CoordinateFieldError?
     private(set) var isSaving = false
+    private(set) var isLocating = false
+    /// Why "My Location" left the pin and the fields alone; the sheet shows it as an alert.
+    var locationNotice: MyLocationNotice?
+
+    /// The device position behind "My Location" (L-25, B-29.3).
+    let location: any DeviceLocationProviding
 
     @ObservationIgnored private var isApplyingPin = false
 
-    init(detail: AssetDetailViewModel) {
+    init(detail: AssetDetailViewModel, location: (any DeviceLocationProviding)? = nil) {
         self.detail = detail
+        self.location = location ?? SystemDeviceLocationService()
         let exif = detail.detail?.exifInfo
         let start: PhotoCoordinate?
         if let lat = exif?.latitude, let lon = exif?.longitude {
@@ -69,6 +76,25 @@ final class AdjustLocationViewModel: Identifiable {
         startedWithoutLocation = start == nil
         latitudeText = start.map { Self.format($0.latitude) } ?? ""
         longitudeText = start.map { Self.format($0.longitude) } ?? ""
+    }
+
+    // MARK: - My Location
+
+    /// "My Location": the pin and both fields take the device's position, and
+    /// nothing is sent until Save. This position is written to the server, so
+    /// the precise one is required: an approximate fix (kilometres off) is
+    /// refused with a message and leaves pin and fields as they were.
+    func useMyLocation() async {
+        guard !isLocating, !isSaving else { return }
+        isLocating = true
+        defer { isLocating = false }
+        let outcome = await location.locate(requiringPreciseAccuracy: true)
+        guard case .located(let coordinate) = outcome else {
+            locationNotice = outcome.notice
+            return
+        }
+        locationNotice = nil
+        pinDragged(to: PhotoCoordinate(latitude: coordinate.latitude, longitude: coordinate.longitude))
     }
 
     // MARK: - Pure helpers

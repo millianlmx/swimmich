@@ -291,6 +291,7 @@ final class AdjustLocationUITests: XCTestCase {
     private func signIn() {
         reset()
         setProvider("manual")
+        app.launchArguments += locationArguments
         app.launch()
         if waitForStaticText(["Your photo library", "Votre photothèque"], timeout: 30) {
             walkOnboardingToLogin()
@@ -377,6 +378,64 @@ final class AdjustLocationUITests: XCTestCase {
         openInfoPanel(id)
         reveal(entry).tap()
         XCTAssertTrue(latitudeField.waitForExistence(timeout: 15), "the adjust-location sheet did not open")
+    }
+
+    // MARK: - My Location helpers (B-29.2, B-29.3)
+
+    /// Launch arguments of the scripted device position
+    /// (`ScriptedDeviceLocationService`): the permission, the answers to the two
+    /// system prompts and the fix. The system prompts themselves cannot be
+    /// driven reliably from here, and the map's position dot is drawn by MapKit
+    /// from the real sensor, so the app exposes what it was asked to do as the
+    /// `mapMyLocationProbe` element.
+    private var locationArguments: [String] = []
+
+    private func script(_ status: String, fix: String = "48.8584,2.2945", prompt: String = "allow", precise: String = "grant") {
+        locationArguments = [
+            "-uiTestLocationStatus", status, "-uiTestLocationFix", fix,
+            "-uiTestLocationPrompt", prompt, "-uiTestLocationPrecise", precise,
+        ]
+    }
+
+    private func openMap() {
+        let searchTab = app.tabBars.buttons.matching(labelPredicate(["Search", "Recherche", "Suche"])).firstMatch
+        XCTAssertTrue(searchTab.waitForExistence(timeout: 20), "Search tab missing")
+        searchTab.tap()
+        let segment = app.buttons.matching(NSPredicate(format: "label IN %@", ["Map", "Carte", "Karte"])).firstMatch
+        XCTAssertTrue(segment.waitForExistence(timeout: 20), "the Map segment of the search bar is missing")
+        segment.tap()
+        XCTAssertTrue(element("mapMyLocationButton").waitForExistence(timeout: 25), "the map never drew My Location")
+    }
+
+    private func probe() -> String { (element("mapMyLocationProbe").value as? String) ?? "<no probe>" }
+
+    private func waitForProbe(containing part: String, timeout: TimeInterval = 15) -> Bool {
+        let predicate = NSPredicate(format: "value CONTAINS %@", part)
+        return XCTWaiter().wait(for: [XCTNSPredicateExpectation(predicate: predicate, object: element("mapMyLocationProbe"))],
+                                timeout: timeout) == .completed
+    }
+
+    /// The alert "My Location" raises when it cannot move anything.
+    private var locationAlert: XCUIElement { app.alerts.firstMatch }
+
+    /// Taps one of the alert's buttons by its label (never by position: the
+    /// system orders the two buttons of an alert as it pleases).
+    private func tapLocationAlertButton(_ labels: [String]) {
+        XCTAssertTrue(locationAlert.waitForExistence(timeout: 15), "no alert explained the refusal")
+        let button = locationAlert.buttons.matching(NSPredicate(format: "label IN %@", labels)).firstMatch
+        XCTAssertTrue(button.exists, "the alert has no button among \(labels)")
+        button.tap()
+    }
+
+    private let cancelLabels = ["Cancel", "Annuler", "Abbrechen", "Cancelar", "Annulla", "OK"]
+    private let openSettingsLabels = [
+        "Open Settings", "Ouvrir les réglages", "Einstellungen öffnen", "Abrir ajustes", "Apri impostazioni",
+    ]
+
+    /// Taps Cancel (or OK when the alert has no other button) and waits for the alert to go.
+    private func dismissLocationAlert() {
+        tapLocationAlertButton(cancelLabels)
+        XCTAssertTrue(waitForGone(locationAlert), "the alert did not close")
     }
 
     // MARK: - Scenarios
@@ -506,5 +565,139 @@ final class AdjustLocationUITests: XCTestCase {
                       "the panel did not show the map after the location was added")
         reveal("adjustLocationButton")
         XCTAssertFalse(element("addLocationButton").exists)
+    }
+
+    // MARK: - My Location scenarios
+
+    func test_AC_48() throws {
+        script("authorizedFull")
+        signIn()
+        openMap()
+        XCTAssertTrue(waitForProbe(containing: "center=none"))
+        element("mapMyLocationButton").tap()
+        XCTAssertTrue(waitForProbe(containing: "center=48.8584,2.2945"), "the map was not centered: \(probe())")
+    }
+
+    func test_AC_48_refusedExplainsAndTheMapStays() throws {
+        script("denied")
+        signIn()
+        openMap()
+        element("mapMyLocationButton").tap()
+        XCTAssertTrue(locationAlert.waitForExistence(timeout: 15), "a refusal must be explained")
+        XCTAssertTrue(probe().contains("center=none"), "the map moved: \(probe())")
+    }
+
+    func test_AC_230() throws {
+        script("notDetermined")
+        signIn()
+        openMap()
+        XCTAssertTrue(waitForProbe(containing: "dot=hidden"))
+        XCTAssertTrue(probe().contains("prompts=0"), "opening the map must not ask: \(probe())")
+        element("mapMyLocationButton").tap()
+        XCTAssertTrue(waitForProbe(containing: "center=48.8584,2.2945"), probe())
+        XCTAssertTrue(probe().contains("dot=shown"), probe())
+        XCTAssertTrue(probe().contains("prompts=1"), probe())
+    }
+
+    func test_AC_230_alreadyAllowedShowsTheDotWithoutAsking() throws {
+        script("authorizedFull")
+        signIn()
+        openMap()
+        XCTAssertTrue(waitForProbe(containing: "dot=shown"), probe())
+        XCTAssertTrue(probe().contains("prompts=0"), probe())
+    }
+
+    func test_AC_230_servicesOffExplainsAndTheMapStays() throws {
+        script("servicesDisabled")
+        signIn()
+        openMap()
+        element("mapMyLocationButton").tap()
+        dismissLocationAlert()
+        XCTAssertTrue(probe().contains("center=none"), probe())
+    }
+
+    func test_AC_230_noFixExplainsAndTheMapStays() throws {
+        script("authorizedFull", fix: "none")
+        signIn()
+        openMap()
+        element("mapMyLocationButton").tap()
+        dismissLocationAlert()
+        XCTAssertTrue(probe().contains("center=none"), probe())
+    }
+
+    func test_AC_231() throws {
+        script("denied")
+        signIn()
+        openMap()
+        element("mapMyLocationButton").tap()
+        XCTAssertTrue(locationAlert.waitForExistence(timeout: 15))
+        XCTAssertEqual(locationAlert.buttons.count, 2, "Open Settings and Cancel")
+        // Cancel closes it and changes nothing.
+        dismissLocationAlert()
+        XCTAssertTrue(probe().contains("center=none"), probe())
+        XCTAssertTrue(probe().contains("prompts=0"), probe())
+
+        // Open Settings goes to the Settings app.
+        element("mapMyLocationButton").tap()
+        XCTAssertTrue(locationAlert.waitForExistence(timeout: 15))
+        tapLocationAlertButton(openSettingsLabels)
+        let settings = XCUIApplication(bundleIdentifier: "com.apple.Preferences")
+        XCTAssertTrue(settings.wait(for: .runningForeground, timeout: 20), "the Settings app did not open")
+    }
+
+    func test_AC_232() throws {
+        script("authorizedFull")
+        signIn()
+        openAdjustSheet(of: located, entry: "adjustLocationButton")
+        element("adjustLocationMyLocationButton").tap()
+        XCTAssertTrue(waitForValue(latitudeField, "48.8584"), "the latitude field did not take the position")
+        XCTAssertTrue(waitForValue(longitudeField, "2.2945"))
+        XCTAssertTrue(waitForValue(element("adjustLocationPin"), "48.8584, 2.2945"))
+        XCTAssertEqual(locationWrites(located).count, 0, "My Location alone must not write")
+        saveButton.tap()
+        let writes = waitForLocationWrites(located, count: 1)
+        XCTAssertEqual(writes.count, 1)
+        XCTAssertEqual(writes.first?.latitudeSent ?? 0, 48.8584, accuracy: 1e-9)
+        XCTAssertEqual(writes.first?.longitudeSent ?? 0, 2.2945, accuracy: 1e-9)
+    }
+
+    func test_AC_232_refusedKeepsThePinAndExplains() throws {
+        script("denied")
+        signIn()
+        openAdjustSheet(of: located, entry: "adjustLocationButton")
+        element("adjustLocationMyLocationButton").tap()
+        dismissLocationAlert()
+        XCTAssertEqual(latitudeField.value as? String, "45.5")
+        XCTAssertEqual(longitudeField.value as? String, "6.8")
+        XCTAssertEqual(locationWrites(located).count, 0)
+    }
+
+    func test_AC_234() throws {
+        script("authorizedReduced", precise: "refuse")
+        signIn()
+        openAdjustSheet(of: located, entry: "adjustLocationButton")
+        element("adjustLocationMyLocationButton").tap()
+        dismissLocationAlert()
+        XCTAssertEqual(latitudeField.value as? String, "45.5", "an approximate position must not move the pin")
+        XCTAssertEqual(longitudeField.value as? String, "6.8")
+        XCTAssertEqual(locationWrites(located).count, 0)
+    }
+
+    func test_AC_234_preciseGrantedMovesThePin() throws {
+        script("authorizedReduced", precise: "grant")
+        signIn()
+        openAdjustSheet(of: located, entry: "adjustLocationButton")
+        element("adjustLocationMyLocationButton").tap()
+        XCTAssertTrue(waitForValue(latitudeField, "48.8584"), "the precise position was not used")
+        XCTAssertTrue(waitForValue(longitudeField, "2.2945"))
+    }
+
+    func test_AC_234_theMapCentersOnReducedAccuracyWithoutAskingForMore() throws {
+        script("authorizedReduced", precise: "refuse")
+        signIn()
+        openMap()
+        element("mapMyLocationButton").tap()
+        XCTAssertTrue(waitForProbe(containing: "center=48.8584,2.2945"), probe())
+        XCTAssertTrue(probe().contains("precise=0"), "the map must not ask for the precise position: \(probe())")
     }
 }

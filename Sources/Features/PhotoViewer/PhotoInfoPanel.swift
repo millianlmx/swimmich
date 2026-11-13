@@ -144,7 +144,12 @@ struct PhotoInfoPanel: View {
                     onOpenInMaps: onOpenInMaps,
                     onOpenLocationMap: onOpenLocationMap,
                     onAdjustLocation: allowsOwnerEdits ? {
-                        if let vm { adjustLocation = AdjustLocationViewModel(detail: vm) }
+                        if let vm {
+                            adjustLocation = AdjustLocationViewModel(
+                                detail: vm,
+                                location: DependencyContainer.shared.deviceLocation
+                            )
+                        }
                     } : nil,
                     onAdjustDate: allowsOwnerEdits ? { presentAdjustDate = true } : nil
                 )
