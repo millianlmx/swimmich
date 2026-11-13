@@ -576,6 +576,7 @@ final class AlbumSyncServiceTests: XCTestCase {
         let vm = UploadViewModel(
             client: mock, photos: MockPhotoLibraryService(), engine: engine, settings: settings,
             scheduler: MockBackupScheduler(), activityService: MockBackupLiveActivityService(),
+            notifications: MockNotificationService(),
             readOnly: .ephemeral()
         )
         mock.bulkUploadCheckResponse = AssetBulkUploadCheckResponse(results: [
