@@ -26,6 +26,10 @@ struct BackupCandidate: Identifiable, Equatable, Sendable {
     /// which the UI renders as "Unknown size" rather than 0 B. Defaulted, so
     /// every existing construction keeps compiling.
     var fileSize: Int64? = nil
+    /// True when the Photos asset carries adjustment data (`PHAsset.hasAdjustments`):
+    /// it was edited in place, in Photos or by an app that edits through PhotoKit.
+    /// Only read when the "Also back up edits" setting is on.
+    var hasAdjustments: Bool = false
 }
 
 /// An album the user can scope backups to — user album or smart album.
@@ -66,6 +70,17 @@ struct BackupPairedVideo: Sendable {
     let fileName: String
     /// Seconds; the server needs it to classify the video asset.
     let duration: Int
+}
+
+/// The edited rendering of an asset, exported next to its original (the
+/// "Also back up edits" setting). `fileName` is what the server stores: the
+/// original's base name with the rendering's extension. The caller owns the
+/// files and MUST delete them.
+struct BackupEditedRendering: Sendable {
+    let url: URL
+    let fileName: String
+    /// A Live Photo's current video component, when Photos has one.
+    let pairedVideo: BackupPairedVideo?
 }
 
 /// A non-failure export outcome: the iCloud original isn't on device yet, so
@@ -144,6 +159,16 @@ protocol BackupAssetSource: Sendable {
     /// carrying a name per asset meant an extra Photos round-trip per asset.
     /// Albums the library doesn't have are simply absent from the map.
     func albumMembership(deviceAlbumIDs: Set<String>) -> [String: [String]]
+
+    /// Streams the asset's *current* edited rendering (`.fullSizePhoto`,
+    /// `.fullSizeVideo`, and a Live Photo's `.fullSizePairedVideo`) to temp
+    /// files in `BackupExportDirectory.backup`. Nil when the asset has no
+    /// edited resource (never edited, or reverted to its original). Throws like
+    /// `exportOriginal`, `BackupExportError.cloudDownloadPending` included.
+    func exportEditedRendering(
+        for candidate: BackupCandidate,
+        onState: @escaping @Sendable (BackupExportState) -> Void
+    ) async throws -> BackupEditedRendering?
 }
 
 extension BackupAssetSource {

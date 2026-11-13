@@ -377,6 +377,89 @@ extension PhotoLibraryServiceImpl: BackupAssetSource {
         )
     }
 
+    /// Which resource of an edited asset to upload as its edited version, and
+    /// under what name: indexes into the asset's resource list.
+    struct EditedResourceChoice: Equatable {
+        let mainIndex: Int
+        let fileName: String
+        let pairedIndex: Int?
+        let pairedFileName: String?
+    }
+
+    /// Picks the edited rendering among an asset's resources — pure, so the
+    /// rule is testable without a photo library. A photo takes its first
+    /// `.fullSizePhoto`, a video its first `.fullSizeVideo`; no such resource
+    /// (never edited, or reverted to the original) gives nil. A Live Photo adds
+    /// its first `.fullSizePairedVideo`; without one the still goes alone. The
+    /// uploaded name is the original's base name with the rendering's extension
+    /// (`IMG_0001.HEIC` + `FullSizeRender.jpg` → `IMG_0001.jpg`), falling back
+    /// to the original's extension when the rendering has none.
+    static func editedResourceChoice(
+        kind: BackupAssetKind,
+        isLivePhoto: Bool,
+        resources: [(type: PHAssetResourceType, originalFilename: String)],
+        candidateFileName: String
+    ) -> EditedResourceChoice? {
+        let wanted: PHAssetResourceType = kind == .video ? .fullSizeVideo : .fullSizePhoto
+        guard let main = resources.firstIndex(where: { $0.type == wanted }) else { return nil }
+        let paired = isLivePhoto ? resources.firstIndex(where: { $0.type == .fullSizePairedVideo }) : nil
+        return EditedResourceChoice(
+            mainIndex: main,
+            fileName: editedFileName(candidateFileName: candidateFileName, resourceFilename: resources[main].originalFilename),
+            pairedIndex: paired,
+            pairedFileName: paired.map {
+                editedFileName(candidateFileName: candidateFileName, resourceFilename: resources[$0].originalFilename)
+            }
+        )
+    }
+
+    private static func editedFileName(candidateFileName: String, resourceFilename: String) -> String {
+        let candidate = candidateFileName as NSString
+        let base = candidate.deletingPathExtension
+        var ext = (resourceFilename as NSString).pathExtension
+        if ext.isEmpty { ext = candidate.pathExtension }
+        return ext.isEmpty ? base : "\(base).\(ext)"
+    }
+
+    /// The asset's current edited rendering, streamed to temp files like the
+    /// original (same retry, watchdog, cancellation and iCloud deferral).
+    /// Never a whole `Data` in memory. A failed paired video removes the
+    /// photo's file before rethrowing.
+    func exportEditedRendering(
+        for candidate: BackupCandidate,
+        onState: @escaping @Sendable (BackupExportState) -> Void
+    ) async throws -> BackupEditedRendering? {
+        let asset = try asset(for: candidate)
+        let resources = PHAssetResource.assetResources(for: asset)
+        guard let choice = Self.editedResourceChoice(
+            kind: candidate.kind,
+            isLivePhoto: candidate.isLivePhoto,
+            resources: resources.map { (type: $0.type, originalFilename: $0.originalFilename) },
+            candidateFileName: candidate.fileName
+        ) else { return nil }
+        let mainURL = try await writeResource(
+            resources[choice.mainIndex], filenameHint: choice.fileName,
+            into: BackupExportDirectory.backup, onState: onState
+        )
+        guard let pairedIndex = choice.pairedIndex, let pairedName = choice.pairedFileName else {
+            return BackupEditedRendering(url: mainURL, fileName: choice.fileName, pairedVideo: nil)
+        }
+        do {
+            let pairedURL = try await writeResource(
+                resources[pairedIndex], filenameHint: pairedName,
+                into: BackupExportDirectory.backup, onState: onState
+            )
+            return BackupEditedRendering(
+                url: mainURL,
+                fileName: choice.fileName,
+                pairedVideo: BackupPairedVideo(url: pairedURL, fileName: pairedName, duration: Int(max(0, asset.duration)))
+            )
+        } catch {
+            try? FileManager.default.removeItem(at: mainURL)
+            throw error
+        }
+    }
+
     /// Fetches the PHAsset behind a candidate, properties prefetched so the
     /// "missing prefetched properties" fetch never lands on the main queue.
     private func asset(for candidate: BackupCandidate) throws -> PHAsset {
@@ -533,7 +616,8 @@ extension PhotoLibraryServiceImpl: BackupAssetSource {
             duration: kind == .video ? Int(max(0, asset.duration)) : nil,
             isFavorite: asset.isFavorite,
             isLivePhoto: asset.mediaSubtypes.contains(.photoLive),
-            fileSize: Self.originalSize(of: asset)
+            fileSize: Self.originalSize(of: asset),
+            hasAdjustments: asset.hasAdjustments
         )
     }
 
@@ -587,6 +671,21 @@ extension PhotoLibraryServiceImpl: LocalCleanupSource {
     /// result for no benefit.
     private static let identifierFetchChunkSize = 500
 
+    /// Whether an edited asset must stay on the device because its edited
+    /// version is not confirmed on the server for its current modification
+    /// date. The single place of this rule — pure, and shared with the test
+    /// double. `confirmedEdits == nil` (setting off) never keeps; an asset
+    /// without adjustments is judged by its original alone.
+    static func keepsForUnconfirmedEdit(
+        id: String,
+        hasAdjustments: Bool,
+        signature: String,
+        confirmedEdits: [String: String]?
+    ) -> Bool {
+        guard let confirmedEdits, hasAdjustments else { return false }
+        return confirmedEdits[id] != signature
+    }
+
     /// The assets that are on this device *and* provably on the server, with
     /// everything the user asked to keep filtered out.
     ///
@@ -598,7 +697,8 @@ extension PhotoLibraryServiceImpl: LocalCleanupSource {
         keepFavorites: Bool,
         keepMediaType: CleanupKeepMediaType,
         keepAlbumIDs: Set<String>,
-        backedUpIDs: Set<String>
+        backedUpIDs: Set<String>,
+        confirmedEdits: [String: String]?
     ) -> CleanupScanResult {
         guard !backedUpIDs.isEmpty else {
             return CleanupScanResult(
@@ -623,6 +723,7 @@ extension PhotoLibraryServiceImpl: LocalCleanupSource {
         var candidates: [CleanupCandidate] = []
         var skippedInSharedAlbum = 0
         var scannedCount = 0
+        var skippedEditNotBackedUp = 0
 
         for chunk in Self.chunks(of: Array(backedUpIDs), size: Self.identifierFetchChunkSize) {
             PHAsset.fetchAssets(withLocalIdentifiers: chunk, options: options)
@@ -647,6 +748,15 @@ extension PhotoLibraryServiceImpl: LocalCleanupSource {
                         // candidate — and the other way round.
                         if keepMediaType == .photos, backup.kind == .video { return }
                         if keepMediaType == .videos, backup.kind == .image { return }
+                        if Self.keepsForUnconfirmedEdit(
+                            id: id,
+                            hasAdjustments: backup.hasAdjustments,
+                            signature: backup.fileModifiedAt,
+                            confirmedEdits: confirmedEdits
+                        ) {
+                            skippedEditNotBackedUp += 1
+                            return
+                        }
                         candidates.append(CleanupCandidate(
                             id: id,
                             kind: backup.kind,
@@ -663,7 +773,8 @@ extension PhotoLibraryServiceImpl: LocalCleanupSource {
             candidates: candidates,
             skippedNotOnServer: 0,
             skippedInSharedAlbum: skippedInSharedAlbum,
-            scannedCount: scannedCount
+            scannedCount: scannedCount,
+            skippedEditNotBackedUp: skippedEditNotBackedUp
         )
     }
 

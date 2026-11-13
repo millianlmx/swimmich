@@ -30,10 +30,15 @@ final class CloudBackupStatusIndex {
 
     func setEnabled(_ enabled: Bool) { isEnabled = enabled }
 
-    /// Rebuilds both sets from the ledger. Called once at composition, then on
-    /// every persisted ledger write.
-    func refresh(ledger: any BackupLedgerStoring) {
+    /// Rebuilds both sets from the ledgers. Called once at composition, then on
+    /// every persisted ledger write. The edited versions count on the server
+    /// side — stacked or still waiting for their stack, the edit is on the
+    /// server either way — so the stack's head carries the badge (its original
+    /// is hidden behind it). The local side is the original ledger's alone: an
+    /// edited asset whose edit is missing keeps the badge of its original.
+    func refresh(ledger: any BackupLedgerStoring, editLedger: any BackupEditLedgerStoring) {
         uploadedServerIDs = ledger.uploadedServerAssetIDs()
+            .union(editLedger.allRecords().values.map(\.serverAssetId))
         uploadedLocalIDs = ledger.uploadedLocalAssetIDs()
     }
 

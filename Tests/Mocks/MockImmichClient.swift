@@ -429,6 +429,9 @@ final class MockImmichClient: ImmichClient, @unchecked Sendable {
     /// Every upload in order — the Live Photo paths are about *order* (hidden
     /// video first, then the still) as much as about content.
     var uploads: [(filename: String, visibility: AssetVisibility, livePhotoVideoId: String?, deviceAssetId: String?)] = []
+    /// Checksum of every upload, in order — the edit tests tell an original from
+    /// its edited version by it.
+    var uploadChecksums: [String] = []
     var uploadResponse: AssetMediaResponseDto?
     var uploadError: Error?
     /// Per-filename answers, so a batch can mix a successful video upload with
@@ -443,6 +446,9 @@ final class MockImmichClient: ImmichClient, @unchecked Sendable {
 
     var bulkUploadCheckResponse: AssetBulkUploadCheckResponse?
 
+    /// Per-request answer for `bulkUploadCheck`, e.g. `accept` by checksum.
+    /// Wins over `bulkUploadCheckResponse`.
+    var bulkUploadCheckResponder: (([AssetBulkUploadCheckRequest.Item]) -> AssetBulkUploadCheckResponse)?
     // Mutable global error that, if set, is thrown from any call.
     var globalError: Error?
     /// Fails `updateAsset` once `updateAssetErrorAfterSuccesses` writes have
@@ -1368,6 +1374,7 @@ final class MockImmichClient: ImmichClient, @unchecked Sendable {
         lastUploadDeviceId = deviceId
         uploads.append((filename: filename, visibility: visibility,
                         livePhotoVideoId: livePhotoVideoId, deviceAssetId: deviceAssetId))
+        uploadChecksums.append(checksum)
         if let gate = uploadGate { try await gate() }
         if let e = globalError ?? uploadError { throw e }
         if let e = uploadErrorsByFilename[filename] { throw e }
@@ -1379,6 +1386,7 @@ final class MockImmichClient: ImmichClient, @unchecked Sendable {
         bump()
         bulkUploadCheckChunks.append(request.assets)
         if let e = globalError { throw e }
+        if let responder = bulkUploadCheckResponder { return responder(request.assets) }
         return bulkUploadCheckResponse ?? AssetBulkUploadCheckResponse(results: [])
     }
 
@@ -1496,6 +1504,13 @@ final class MockImmichClient: ImmichClient, @unchecked Sendable {
     var createStackResponse: StackResponseDto?
     var updateStackResponse: StackResponseDto?
     var lastCreateStackIds: [String]?
+    /// Every `createStack` call in order, whether or not it succeeded.
+    var createStackCalls: [[String]] = []
+    /// Thrown by `createStack` only (after `globalError`, before `stacksError`).
+    var createStackError: Error?
+    /// A call whose `assetIds` contain one of these throws a server 400, as the
+    /// server does for an id it does not know.
+    var createStackRejectedIDs: Set<String> = []
     var lastUpdateStackId: String?
     var lastUpdateStackPrimaryId: String?
     var lastDeleteStackId: String?
@@ -1517,7 +1532,10 @@ final class MockImmichClient: ImmichClient, @unchecked Sendable {
     func createStack(assetIds: [String]) async throws -> StackResponseDto {
         bump()
         lastCreateStackIds = assetIds
-        if let e = globalError ?? stacksError { throw e }
+        createStackCalls.append(assetIds)
+        if let e = globalError ?? createStackError { throw e }
+        if !createStackRejectedIDs.isDisjoint(with: assetIds) { throw APIError.serverError(400, nil) }
+        if let e = stacksError { throw e }
         return createStackResponse ?? StackResponseDto(id: "stack-new", primaryAssetId: assetIds.first ?? "", assets: [])
     }
 
