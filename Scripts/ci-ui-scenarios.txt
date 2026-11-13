@@ -1,26 +1,40 @@
-# UI scenarios run by Scripts/ci.sh after the unit tests, one xcodebuild run per
-# line, each on a freshly erased simulator of the pool and against its own stub
-# (UITests/stubs/<stub.py>, on the worker's port):
+# UI scenarios run by Scripts/ci.sh beside the unit tests, one xcodebuild run per
+# line, each on a simulator of the pool reset for it (`--erase`: freshly erased)
+# and against its own stub (UITests/stubs/<stub.py>, on the worker's port):
 #
 #   <stub.py> <Class>[/<test>] [--content-size <simctl category>]
-#             [--media <file name>]... [--skip <test>]...
+#             [--media <file name>]... [--skip <test>]... [--erase]
 #
 # A test that fails or skips itself fails the CI. Scenarios not listed here are
 # compiled by the CI, not run. The lines run several at a time and a free
-# simulator takes the next one: one test per line, the longest first.
+# simulator takes the next one: one test per line, the longest first. The run
+# lasts at least as long as its longest line: a test over 3 minutes gets a CI
+# warning and is cut in several (a feature brings one or two end-to-end
+# scenarios; its detailed criteria belong to the unit tests).
 
-# L-13 Dynamic Type (AC-26 to AC-26.9). The share extension follows the SYSTEM
-# text size (AX5) and needs a long-named photo in Photos.
-immich_stub_dynamic_type.py DynamicTypeUITests/test_AC_26_8
+# L-13 Dynamic Type (AC-26 to AC-26.9). The long walks are cut in several tests
+# (one line each) so the pool spreads them. The share extension follows the
+# SYSTEM text size (AX5) and needs a long-named photo in Photos.
+immich_stub_dynamic_type.py DynamicTypeUITests/test_AC_26_8_albums
+immich_stub_dynamic_type.py DynamicTypeUITests/test_AC_26_3_albums
 immich_stub_dynamic_type.py DynamicTypeUITests/test_AC_26_3
-immich_stub_dynamic_type.py DynamicTypeUITests/test_AC_26_4
-immich_stub_dynamic_type.py DynamicTypeUITests/test_AC_26_1
-immich_stub_dynamic_type.py DynamicTypeUITests/test_AC_26
+immich_stub_dynamic_type.py DynamicTypeUITests/test_AC_26_8
 immich_stub_dynamic_type.py DynamicTypeUITests/test_AC_26_9
-immich_stub_dynamic_type.py DynamicTypeUITests/test_AC_26_6
-immich_stub_dynamic_type.py DynamicTypeUITests/test_AC_26_7
+immich_stub_dynamic_type.py DynamicTypeUITests/test_AC_26_1_signedIn
+immich_stub_dynamic_type.py DynamicTypeUITests/test_AC_26_1_albums
+immich_stub_dynamic_type.py DynamicTypeUITests/test_AC_26_3_links
+immich_stub_dynamic_type.py DynamicTypeUITests/test_AC_26_8_links
+immich_stub_dynamic_type.py DynamicTypeUITests/test_AC_26_4_panels
+immich_stub_dynamic_type.py DynamicTypeUITests/test_AC_26_4
+immich_stub_dynamic_type.py DynamicTypeUITests/test_AC_26_4_ax5
+immich_stub_dynamic_type.py DynamicTypeUITests/test_AC_26_ax5
+immich_stub_dynamic_type.py DynamicTypeUITests/test_AC_26_1
 immich_stub_dynamic_type.py DynamicTypeUITests/test_AC_26_4_appLock
+immich_stub_dynamic_type.py DynamicTypeUITests/test_AC_26_4_lists
+immich_stub_dynamic_type.py DynamicTypeUITests/test_AC_26_6
+immich_stub_dynamic_type.py DynamicTypeUITests/test_AC_26
 immich_stub_dynamic_type.py DynamicTypeUITests/test_AC_26_4_shareExtension --content-size accessibility-extra-extra-extra-large --media Summer-holidays-in-the-Gorges-du-Verdon-with-the-whole-family.png
+immich_stub_dynamic_type.py DynamicTypeUITests/test_AC_26_7
 immich_stub_dynamic_type.py DynamicTypeUITests/test_AC_26_5
 immich_stub_edit_stacks.py EditStacksUITests/test_AC_41_editStackedOnOriginal --media L22-edit-on.png
 immich_stub_edit_stacks.py EditStacksUITests/test_AC_41_settingOffSendsNothing --media L22-edit-off.png

@@ -338,6 +338,34 @@ final class AppStringsTests: XCTestCase {
         }
     }
 
+    func test_AC_221_ageAndOwnerKeysAreTranslatedWithBothPluralForms() throws {
+        let catalog = try Self.loadCatalog()
+        let strings = try XCTUnwrap(catalog["strings"] as? [String: Any])
+        for key in ["%lld months old", "1 year and %lld months old"] {
+            let entry = try XCTUnwrap(strings[key] as? [String: Any], "Missing key \(key)")
+            let localizations = try XCTUnwrap(entry["localizations"] as? [String: Any])
+            for language in ["en", "fr", "de", "es", "it"] {
+                let localization = try XCTUnwrap(localizations[language] as? [String: Any], "\(language): \(key)")
+                let plural = try XCTUnwrap(
+                    (localization["variations"] as? [String: Any])?["plural"] as? [String: Any], "\(language): \(key)")
+                for form in ["one", "other"] {
+                    let unit = (plural[form] as? [String: Any])?["stringUnit"] as? [String: Any]
+                    XCTAssertEqual(unit?["state"] as? String, "translated", "\(language) \(form): \(key)")
+                    XCTAssertFalse((unit?["value"] as? String ?? "").isEmpty, "\(language) \(form): \(key)")
+                }
+            }
+        }
+        let shared = try XCTUnwrap(strings["Shared by %@"] as? [String: Any])
+        let sharedLocalizations = try XCTUnwrap(shared["localizations"] as? [String: Any])
+        let expected = ["en": "Shared by %@", "fr": "Partagé par %@", "de": "Von %@ geteilt",
+                        "es": "Compartido por %@", "it": "Condiviso da %@"]
+        for (language, text) in expected {
+            let unit = (sharedLocalizations[language] as? [String: Any])?["stringUnit"] as? [String: Any]
+            XCTAssertEqual(unit?["value"] as? String, text, language)
+            XCTAssertEqual(unit?["state"] as? String, "translated", language)
+        }
+    }
+
     func test_AC_60_6_epilogueKeysAreTranslatedInEveryShippedLanguage() throws {
         let catalog = try Self.loadCatalog()
         let strings = try XCTUnwrap(catalog["strings"] as? [String: Any])
