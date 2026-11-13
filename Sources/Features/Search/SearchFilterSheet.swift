@@ -18,6 +18,26 @@ struct SearchFilterSheet: View {
     var body: some View {
         NavigationStack {
             Form {
+                Section("People & Tags") {
+                    NavigationLink {
+                        SearchPeoplePicker(vm: vm)
+                    } label: {
+                        LabeledContent("People") {
+                            selectionSummary(vm.filter.people.map { $0.name.isEmpty ? String(localized: "Unnamed") : $0.name })
+                        }
+                    }
+                    .accessibilityIdentifier("searchFilterPeople")
+
+                    NavigationLink {
+                        SearchTagPicker(vm: vm)
+                    } label: {
+                        LabeledContent("Tags") {
+                            selectionSummary(vm.filter.tags.map(\.path))
+                        }
+                    }
+                    .accessibilityIdentifier("searchFilterTags")
+                }
+
                 Section("Rating") {
                     ratingRow
                     if vm.filter.rating != nil {
@@ -61,16 +81,27 @@ struct SearchFilterSheet: View {
                         .accessibilityIdentifier("searchFilterLens")
                 }
 
-                Section("Type & Favourites") {
+                Section("Type") {
                     Picker("Type", selection: $vm.filter.type) {
                         Text("Any").tag(String?.none)
                         Text("Photos").tag(String?.some(SearchFilter.photoType))
                         Text("Videos").tag(String?.some(SearchFilter.videoType))
                     }
                     .accessibilityIdentifier("searchFilterType")
+                }
+
+                // The three display options of the official client. Off is
+                // not "no constraint" for Archive: the request then says
+                // `visibility = timeline`.
+                Section("Display") {
+                    Toggle("Not in album", isOn: $vm.filter.isNotInAlbum)
+                        .accessibilityIdentifier("searchFilterNotInAlbum")
 
                     Toggle("Favourites", isOn: favorite)
                         .accessibilityIdentifier("searchFilterFavorite")
+
+                    Toggle("Archive", isOn: $vm.filter.isArchived)
+                        .accessibilityIdentifier("searchFilterArchive")
                 }
 
                 Section("Dates") {
@@ -108,8 +139,8 @@ struct SearchFilterSheet: View {
                         .accessibilityIdentifier("searchFilterReset")
                 }
                 ToolbarItem(placement: .confirmationAction) {
-                    // Closes either way: a search already in flight is simply
-                    // not re-dispatched (`search()` guards on `isLoading`).
+                    // Closes at once; the search carries on in its own task.
+                    // One already in flight is superseded, never skipped.
                     Button("Done") {
                         Task { await vm.applyFilters() }
                         dismiss()
@@ -120,6 +151,13 @@ struct SearchFilterSheet: View {
             }
             .immichAppBarTitleHeader("Filters")
         }
+    }
+
+    // MARK: - People & Tags
+
+    /// "Any" with no selection, else the chosen names or paths, joined.
+    private func selectionSummary(_ values: [String]) -> Text {
+        values.isEmpty ? Text("Any") : Text(verbatim: values.joined(separator: ", "))
     }
 
     // MARK: - Rating

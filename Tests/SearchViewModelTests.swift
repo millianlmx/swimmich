@@ -51,6 +51,7 @@ final class SearchViewModelTests: XCTestCase {
 
     private func makeMock(items: [AssetResponseDto] = [], nextPage: String? = nil) -> MockImmichClient {
         let mock = MockImmichClient()
+        mock.versionProbeCountsAsRequest = false // the suites count search requests
         let resp = SearchResponseDto(
             assets: SearchAssetResponseDto(count: items.count, items: items, nextPage: nextPage)
         )
@@ -463,6 +464,7 @@ final class SearchViewModelTests: XCTestCase {
 
     func test_AC_406c_loadMore_persists_city_filter() async {
         let mock = MockImmichClient()
+        mock.versionProbeCountsAsRequest = false
         mock.searchMetadataResponse = SearchResponseDto(
             assets: SearchAssetResponseDto(
                 count: 1, items: [makeAsset(id: "p1", city: "Paris")], nextPage: "2"
@@ -491,6 +493,7 @@ final class SearchViewModelTests: XCTestCase {
     /// P0 regression: loadMore must persist a NON-city field filter too.
     func test_AC_406c_loadMore_persists_make_filter() async {
         let mock = MockImmichClient()
+        mock.versionProbeCountsAsRequest = false
         mock.searchMetadataResponse = SearchResponseDto(
             assets: SearchAssetResponseDto(
                 count: 1, items: [makeAsset(id: "c1")], nextPage: "2"

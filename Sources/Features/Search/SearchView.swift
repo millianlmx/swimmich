@@ -5,14 +5,16 @@ import SwiftUI
 /// - **Results**: native `.searchable` field with debounced live search.
 ///   LazyVGrid of `AssetThumbnailCell` (corner radius 0 — project convention).
 ///   Tap → `AssetDetailView` (NavigationLink pattern from TimelineView.swift:253).
-///   Smart/Metadata mode toggle lives in a toolbar `Menu` (default Smart/CLIP).
+///   The text-mode menu (Smart, Metadata, file name, description) lives in a
+///   toolbar `Menu` (default Smart/CLIP).
 /// - **Explore**: a vertical list of every place you've photographed, powered by
 ///   `GET /api/search/cities` (one representative asset per city) + per-place
 ///   counts from `POST /api/search/statistics`. Tap a card →
 ///   `searchByExplore(field: .city, value:)` filters results by that city.
 /// - **Map**: clustered MapKit view of all geolocated photos (AC-710).
 ///
-/// People / faces deferred to a future iteration (cahier L136).
+/// People, tags and the display options live in the Filters sheet; the file
+/// name and description are modes of the search field.
 struct SearchView: View {
     @PVReduceMotion private var reduceMotion
     @Bindable var vm: SearchViewModel
@@ -29,10 +31,14 @@ struct SearchView: View {
     /// onto it (L-14): the thumbnails' frames and the scroll owed on close.
     @State private var zoomSource = ViewerZoomSource()
 
-    /// Result columns. Fixed at three: the density option the Filters sheet
-    /// used to carry is gone (upstream has none), so the grid keeps the columns
-    /// it shipped with.
-    private let columns = Array(repeating: GridItem(.flexible(), spacing: PVSpacing.s2), count: 3)
+    @Environment(AppSettingsStore.self) private var appSettings
+
+    /// Result columns: the density set in Preferences (`tilesPerRow`, 2…7),
+    /// the same setting as the Photos grid. Reading it here is the whole
+    /// feature: changing it sends no request.
+    private var columns: [GridItem] {
+        Array(repeating: GridItem(.flexible(), spacing: PVSpacing.s2), count: appSettings.tilesPerRow)
+    }
 
     var body: some View {
         NavigationStack {
@@ -135,7 +141,7 @@ struct SearchView: View {
                 .searchable(
                     text: $vm.query,
                     placement: .navigationBarDrawer(displayMode: .always),
-                    prompt: "Search photos and places"
+                    prompt: searchPrompt
                 )
                 .onChange(of: vm.query) { _, _ in vm.queryDidChange() }
                 .searchSuggestions { searchSuggestions }
@@ -202,7 +208,8 @@ struct SearchView: View {
             : Text("No active filters"))
     }
 
-    /// Chip row of the active constraints (search-filters), shown only while
+    /// Chip row of the active criteria (search-filters) — the sheet's
+    /// constraints and the file name / description text mode — shown only while
     /// `vm.isFilterActive`. It is the first thing inside the results
     /// `ScrollView`: it scrolls away with the thumbnails and, being content
     /// rather than floating chrome, borrows no glass surface.
@@ -226,7 +233,7 @@ struct SearchView: View {
             }
             ScrollView(.horizontal, showsIndicators: false) {
                 HStack(spacing: PVSpacing.s8) {
-                    ForEach(vm.filter.constraints) { constraint in
+                    ForEach(vm.activeConstraints) { constraint in
                         filterChip(constraint)
                     }
                 }
@@ -272,35 +279,73 @@ struct SearchView: View {
     }
 
     /// Drops exactly one constraint and re-runs the search: the chip's whole
-    /// gesture, and the only removal that does not go through the sheet.
+    /// gesture, and the only removal that does not go through the sheet. The
+    /// file name / description chips go back to Smart and keep the text.
     private func removeFilter(_ field: SearchFilter.Field) {
-        vm.filter.clear(field)
-        Task { await vm.applyFilters() }
+        Task { await vm.removeConstraint(field) }
     }
 
-    /// Smart (CLIP semantic) vs Metadata (EXIF fields) search — folded into a
-    /// compact menu so the Results area stays uncluttered.
+    /// How the typed text is read — Smart (CLIP), Metadata, file name or
+    /// description — folded into a compact menu so the Results area stays
+    /// uncluttered. Each mode is its own button (identifier
+    /// `searchTextMode_<mode>`), the current one checked; a pick with a text
+    /// re-runs the search.
     @ViewBuilder
     private var searchModeMenu: some View {
-        let modeTitle = vm.searchMode == .smart ? String(localized: "Smart") : String(localized: "Metadata")
         Menu {
-            Picker("Search Mode", selection: $vm.searchMode) {
-                Label("Smart", systemImage: "sparkles").tag(SearchViewModel.SearchMode.smart)
-                Label("Metadata", systemImage: "character.magnify").tag(SearchViewModel.SearchMode.metadata)
+            ForEach(SearchViewModel.SearchMode.allCases, id: \.self) { mode in
+                Button {
+                    Task { await vm.selectSearchMode(mode) }
+                } label: {
+                    if mode == vm.searchMode {
+                        Label(modeTitle(mode), systemImage: "checkmark")
+                    } else {
+                        Text(modeTitle(mode))
+                    }
+                }
+                .accessibilityIdentifier("searchTextMode_\(mode.rawValue)")
             }
         } label: {
-            Image(systemName: vm.searchMode == .smart ? "sparkles" : "character.magnify")
+            Image(systemName: modeIcon(vm.searchMode))
                 .font(.pvBody.weight(.semibold))
                 .foregroundStyle(Color.immichPrimary)
                 .frame(minWidth: 44, minHeight: 44)
         }
-        .accessibilityLabel(Text("Search mode: \(modeTitle)"))
+        .accessibilityLabel(Text("Search mode: \(modeTitle(vm.searchMode))"))
         .accessibilityIdentifier("searchModeMenu")
     }
 
+    private func modeTitle(_ mode: SearchViewModel.SearchMode) -> String {
+        switch mode {
+        case .smart: String(localized: "Smart")
+        case .metadata: String(localized: "Metadata")
+        case .filename: String(localized: "File name")
+        case .description: String(localized: "Description")
+        }
+    }
+
+    private func modeIcon(_ mode: SearchViewModel.SearchMode) -> String {
+        switch mode {
+        case .smart: "sparkles"
+        case .metadata: "character.magnify"
+        case .filename: "doc.text"
+        case .description: "text.alignleft"
+        }
+    }
+
+    /// The search field's invite follows the mode.
+    private var searchPrompt: Text {
+        switch vm.searchMode {
+        case .smart, .metadata: Text("Search photos and places")
+        case .filename: Text("Search by file name")
+        case .description: Text("Search descriptions")
+        }
+    }
+
     /// Star-rating filter (star-ratings): mono-valued — "Any rating" or 1…5 —
-    /// and only in the results branch, where there is a grid to filter (`Smart`
-    /// search has no filter field, so the selection forces Metadata). The tinted
+    /// and only in the results branch, where there is a grid to filter (Smart
+    /// carries the rating too; with no text the view model moves to Metadata).
+    /// The tinted
     /// glyph keeps an active filter visible with the menu closed.
     private var ratingFilterMenu: some View {
         Menu {
@@ -482,6 +527,7 @@ struct SearchView: View {
                         asset: item,
                         baseURL: auth.baseURL ?? URL(string: "https://example.com")!,
                         token: auth.accessToken,
+                        isCompact: appSettings.tilesPerRow >= 6,
                         onTap: { openViewer(for: item) }
                     )
                     .buttonStyle(.plain)

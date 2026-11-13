@@ -12692,34 +12692,6 @@
         }
       }
     },
-    "Type & Favourites" : {
-      "localizations" : {
-        "fr" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Type et favoris"
-          }
-        },
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Typ & Favoriten"
-          }
-        },
-        "es" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Tipo y favoritos"
-          }
-        },
-        "it" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Tipo e preferiti"
-          }
-        }
-      }
-    },
     "Type, %@" : {
       "localizations" : {
         "fr" : {
@@ -17955,7 +17927,6 @@
       }
     },
     "Archive" : {
-      "extractionState" : "stale",
       "localizations" : {
         "de" : {
           "stringUnit" : {
@@ -28924,35 +28895,6 @@
         }
       }
     },
-    "Search Mode" : {
-      "extractionState" : "stale",
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Suchmodus"
-          }
-        },
-        "es" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Modo de búsqueda"
-          }
-        },
-        "fr" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Mode de recherche"
-          }
-        },
-        "it" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Modalità di ricerca"
-          }
-        }
-      }
-    },
     "Search mode: %@" : {
       "extractionState" : "stale",
       "localizations" : {
@@ -37508,6 +37450,94 @@
             "value" : "Foto, %@"
           }
         }
+      }
+    },
+    "Display" : {
+      "localizations" : {
+        "de" : { "stringUnit" : { "state" : "translated", "value" : "Anzeige" } },
+        "es" : { "stringUnit" : { "state" : "translated", "value" : "Visualización" } },
+        "fr" : { "stringUnit" : { "state" : "translated", "value" : "Affichage" } },
+        "it" : { "stringUnit" : { "state" : "translated", "value" : "Visualizzazione" } }
+      }
+    },
+    "Not in album" : {
+      "localizations" : {
+        "de" : { "stringUnit" : { "state" : "translated", "value" : "Nicht in einem Album" } },
+        "es" : { "stringUnit" : { "state" : "translated", "value" : "Sin álbum" } },
+        "fr" : { "stringUnit" : { "state" : "translated", "value" : "Hors album" } },
+        "it" : { "stringUnit" : { "state" : "translated", "value" : "Non in un album" } }
+      }
+    },
+    "People & Tags" : {
+      "localizations" : {
+        "de" : { "stringUnit" : { "state" : "translated", "value" : "Personen & Tags" } },
+        "es" : { "stringUnit" : { "state" : "translated", "value" : "Personas y etiquetas" } },
+        "fr" : { "stringUnit" : { "state" : "translated", "value" : "Personnes et étiquettes" } },
+        "it" : { "stringUnit" : { "state" : "translated", "value" : "Persone ed etichette" } }
+      }
+    },
+    "Filter people" : {
+      "localizations" : {
+        "de" : { "stringUnit" : { "state" : "translated", "value" : "Personen filtern" } },
+        "es" : { "stringUnit" : { "state" : "translated", "value" : "Filtrar personas" } },
+        "fr" : { "stringUnit" : { "state" : "translated", "value" : "Filtrer les personnes" } },
+        "it" : { "stringUnit" : { "state" : "translated", "value" : "Filtra persone" } }
+      }
+    },
+    "No people" : {
+      "localizations" : {
+        "de" : { "stringUnit" : { "state" : "translated", "value" : "Keine Personen" } },
+        "es" : { "stringUnit" : { "state" : "translated", "value" : "Sin personas" } },
+        "fr" : { "stringUnit" : { "state" : "translated", "value" : "Aucune personne" } },
+        "it" : { "stringUnit" : { "state" : "translated", "value" : "Nessuna persona" } }
+      }
+    },
+    "Search by file name" : {
+      "localizations" : {
+        "de" : { "stringUnit" : { "state" : "translated", "value" : "Nach Dateiname suchen" } },
+        "es" : { "stringUnit" : { "state" : "translated", "value" : "Buscar por nombre de archivo" } },
+        "fr" : { "stringUnit" : { "state" : "translated", "value" : "Rechercher par nom de fichier" } },
+        "it" : { "stringUnit" : { "state" : "translated", "value" : "Cerca per nome file" } }
+      }
+    },
+    "Search descriptions" : {
+      "localizations" : {
+        "de" : { "stringUnit" : { "state" : "translated", "value" : "Beschreibungen durchsuchen" } },
+        "es" : { "stringUnit" : { "state" : "translated", "value" : "Buscar en descripciones" } },
+        "fr" : { "stringUnit" : { "state" : "translated", "value" : "Rechercher dans les descriptions" } },
+        "it" : { "stringUnit" : { "state" : "translated", "value" : "Cerca nelle descrizioni" } }
+      }
+    },
+    "People, %@" : {
+      "localizations" : {
+        "de" : { "stringUnit" : { "state" : "translated", "value" : "Personen, %@" } },
+        "es" : { "stringUnit" : { "state" : "translated", "value" : "Personas, %@" } },
+        "fr" : { "stringUnit" : { "state" : "translated", "value" : "Personnes, %@" } },
+        "it" : { "stringUnit" : { "state" : "translated", "value" : "Persone, %@" } }
+      }
+    },
+    "Tags, %@" : {
+      "localizations" : {
+        "de" : { "stringUnit" : { "state" : "translated", "value" : "Tags, %@" } },
+        "es" : { "stringUnit" : { "state" : "translated", "value" : "Etiquetas, %@" } },
+        "fr" : { "stringUnit" : { "state" : "translated", "value" : "Étiquettes, %@" } },
+        "it" : { "stringUnit" : { "state" : "translated", "value" : "Etichette, %@" } }
+      }
+    },
+    "File name, %@" : {
+      "localizations" : {
+        "de" : { "stringUnit" : { "state" : "translated", "value" : "Dateiname, %@" } },
+        "es" : { "stringUnit" : { "state" : "translated", "value" : "Nombre del archivo, %@" } },
+        "fr" : { "stringUnit" : { "state" : "translated", "value" : "Nom du fichier, %@" } },
+        "it" : { "stringUnit" : { "state" : "translated", "value" : "Nome file, %@" } }
+      }
+    },
+    "Description, %@" : {
+      "localizations" : {
+        "de" : { "stringUnit" : { "state" : "translated", "value" : "Beschreibung, %@" } },
+        "es" : { "stringUnit" : { "state" : "translated", "value" : "Descripción, %@" } },
+        "fr" : { "stringUnit" : { "state" : "translated", "value" : "Description, %@" } },
+        "it" : { "stringUnit" : { "state" : "translated", "value" : "Descrizione, %@" } }
       }
     }
   },
