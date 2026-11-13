@@ -320,11 +320,23 @@ final class AdjustLocationViewModelTests: XCTestCase {
         XCTAssertEqual(mock.lastUpdateAssetBody?.longitude, 2.2945)
     }
 
-    func test_AC_228_miniMapFollowsSavedCoordinates() throws {
+    func test_AC_228_miniMapFollowsSavedCoordinates() async throws {
         let (controller, window) = host(MiniMapView(latitude: 45.5, longitude: 6.8).frame(width: 300, height: 180))
         defer { window.isHidden = true }
         controller.rootView = MiniMapView(latitude: -33.8688, longitude: 151.2093).frame(width: 300, height: 180)
         controller.view.layoutIfNeeded()
+
+        // SwiftUI applies the new rootView (and calls `updateUIView`) on a later
+        // run-loop turn, not inside `layoutIfNeeded()`: give it turns, then assert.
+        func currentPins() -> [MKAnnotation] {
+            guard let map = descendants(of: controller.view, as: MKMapView.self).first else { return [] }
+            return map.annotations.filter { !($0 is MKUserLocation) }
+        }
+        for _ in 0..<40 {
+            if let pin = currentPins().first, abs(pin.coordinate.latitude - -33.8688) < 1e-9 { break }
+            await spin()
+            controller.view.layoutIfNeeded()
+        }
 
         let map = try XCTUnwrap(descendants(of: controller.view, as: MKMapView.self).first)
         let pins = map.annotations.filter { !($0 is MKUserLocation) }
