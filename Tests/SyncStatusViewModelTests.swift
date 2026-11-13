@@ -61,6 +61,7 @@ final class SyncStatusViewModelTests: XCTestCase {
             settings: settings,
             scheduler: MockBackupScheduler(),
             activityService: MockBackupLiveActivityService(),
+            notifications: MockNotificationService(),
             readOnly: .ephemeral()
         )
         let store = OfflineAssetStore(rootURL: folder, transport: transport, defaults: defaults)

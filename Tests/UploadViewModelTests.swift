@@ -79,6 +79,7 @@ private func makeVM(
     let vm = UploadViewModel(
         client: client, photos: photos, engine: engine, settings: settings,
         scheduler: MockBackupScheduler(), activityService: MockBackupLiveActivityService(),
+        notifications: MockNotificationService(),
         readOnly: .ephemeral()
     )
     return (vm, engine)
@@ -442,6 +443,7 @@ final class BackupAutoChainTests: XCTestCase {
         let vm = UploadViewModel(
             client: client, photos: MockPhotoLibraryService(), engine: engine, settings: settings,
             scheduler: MockBackupScheduler(), activityService: MockBackupLiveActivityService(),
+            notifications: MockNotificationService(),
             readOnly: .ephemeral()
         )
 
@@ -464,6 +466,7 @@ final class BackupAutoChainTests: XCTestCase {
         let vm = UploadViewModel(
             client: client, photos: MockPhotoLibraryService(), engine: engine, settings: settings,
             scheduler: MockBackupScheduler(), activityService: MockBackupLiveActivityService(),
+            notifications: MockNotificationService(),
             readOnly: .ephemeral()
         )
 
@@ -490,6 +493,7 @@ final class BackupAutoChainTests: XCTestCase {
         let vm = UploadViewModel(
             client: client, photos: MockPhotoLibraryService(), engine: engine, settings: settings,
             scheduler: scheduler, activityService: MockBackupLiveActivityService(),
+            notifications: MockNotificationService(),
             readOnly: .ephemeral()
         )
 
@@ -515,6 +519,7 @@ final class BackupAutoChainTests: XCTestCase {
         let vm = UploadViewModel(
             client: client, photos: MockPhotoLibraryService(), engine: engine, settings: settings,
             scheduler: scheduler, activityService: MockBackupLiveActivityService(),
+            notifications: MockNotificationService(),
             readOnly: .ephemeral()
         )
 

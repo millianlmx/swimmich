@@ -4,18 +4,18 @@
 #   Scripts/ci.sh
 #
 # 0. Runs the Python tests of the i18n audit (Scripts/test_*.py), then, after
-#    XcodeGen, the audit itself (R1-R4); its verdict is applied at the end, so
-#    one pass judges the audit and the tests.
+#    XcodeGen, the audit itself (R1-R4) in the background, at the lowest priority;
+#    its verdict is applied at the end, so one pass judges the audit and the tests.
 # 1. Regenerates the project from project.yml: the committed .xcodeproj drifts,
 #    and a Tests/*.swift file missing from it would pass "green" by omission.
 # 2. Builds the app, its extensions and BOTH test bundles.
-# 3. Runs the unit tests (ImmichSwiftUITests) on a dedicated simulator,
-#    `swimmich-ci`, created on first use so the CI never boots the developer's.
-# 4. Runs the UI scenarios listed in Scripts/ci-ui-scenarios.txt, each against
-#    its own Python stub from UITests/stubs/ (the scenarios not listed there are
-#    compiled, not run), several at a time on a pool of simulators of their own
-#    (`SWIMMICH_CI_UI_WORKERS`, 3 by default). A scenario that skips itself fails
-#    the CI: a skip only means its stub was unreachable, which proves nothing.
+# 3. Runs the unit tests (ImmichSwiftUITests) and the UI scenarios listed in
+#    Scripts/ci-ui-scenarios.txt side by side, on a pool of simulators of their
+#    own (`SWIMMICH_CI_UI_WORKERS`, 3 by default), created on first use so the CI
+#    never boots the developer's. Each scenario runs against its own Python stub
+#    from UITests/stubs/ (the scenarios not listed there are compiled, not run).
+#    A scenario that skips itself fails the CI: a skip only means its stub was
+#    unreachable, which proves nothing.
 #
 # DerivedData and SwiftPM checkouts live in a persistent cache: on the
 # self-hosted runner, a run only rebuilds what the commit changed.
@@ -41,27 +41,38 @@ CACHE="${SWIMMICH_CI_CACHE:-$HOME/Library/Caches/swimmich-ci}"
 SIM_NAME="${SWIMMICH_CI_SIM:-swimmich-ci}"
 DEVICE_TYPE="com.apple.CoreSimulator.SimDeviceType.iPhone-17"
 RESULT="${SWIMMICH_CI_RESULT:-build/ci/unit-tests.xcresult}"
+# The app's PRODUCT_BUNDLE_IDENTIFIER (project.yml): what a simulator reset uninstalls.
+APP_BUNDLE_ID="fr.millianlmx.immich-ios"
 
 xcodegen generate --quiet
 
 # The i18n audit (R1-R4, a virgin extraction build of about 40 s) reads the
-# .xcodeproj regenerated above. Its status is remembered, not acted on: the
-# build and the tests still run, and the verdict is applied at the very end.
+# .xcodeproj regenerated above. It runs in the background for the whole run, at
+# the lowest priority: its build takes the CPU the app's build and the simulators
+# leave idle, instead of 40 s of its own. Its verdict is applied at the very end
+# (`apply_audit_verdict`), so the build and the tests still run when it fails.
 # The offending lines become public `::error` annotations, because the job log
 # is only readable by repository admins.
 audit_log="$(mktemp)"
-audit_status=0
-python3 Scripts/i18n-audit.py --derived-data "$CACHE/i18n-audit-DerivedData" >"$audit_log" 2>&1 || audit_status=$?
-cat "$audit_log"
-if (( audit_status != 0 )); then
+nice -n 20 python3 Scripts/i18n-audit.py --derived-data "$CACHE/i18n-audit-DerivedData" >"$audit_log" 2>&1 &
+audit_pid=$!
+
+apply_audit_verdict() {
+  local status=0
+  wait "$audit_pid" || status=$?
+  audit_pid=""
+  cat "$audit_log"
+  (( status != 0 )) || return 0
   if [[ -n "${GITHUB_ACTIONS:-}" ]]; then
     grep -E '^  - ' "$audit_log" | while IFS= read -r line; do
       line="${line#  - }"
       echo "::error title=i18n-audit::${line//%/%25}"
     done || true
-    echo "::error::i18n-audit exited $audit_status"
+    echo "::error::i18n-audit exited $status"
   fi
-fi
+  echo "ci.sh: i18n audit failed (exit $status)" >&2
+  return 1
+}
 
 # The udid of the simulator named "$1", created on first use with the newest
 # installed iOS runtime that Xcode can drive.
@@ -89,24 +100,94 @@ print(ios[-1]["identifier"] if ios else "")
   printf '%s\n' "$found"
 }
 
-udid=$(simulator_udid "$SIM_NAME")
-echo "ci.sh: simulator $SIM_NAME ($udid)"
-# Erased, then booted (and waited for) up front. Erased: the simulator outlives
-# a run, and a device another run left locked by Face ID fails the app lock's
-# unit tests. Booted: a cold device handed to xcodebuild can fail with "Invalid
-# device state" before the first test.
-xcrun simctl shutdown "$udid" 2>/dev/null || true
-xcrun simctl erase "$udid"
-xcrun simctl bootstatus "$udid" -b >/dev/null
+# The scenario lines of Scripts/ci-ui-scenarios.txt (see "UI scenarios" below).
+UI_LIST="Scripts/ci-ui-scenarios.txt"
+ui_lines=()
+while IFS= read -r line <&3; do
+  line="${line%%#*}"
+  read -ra words <<<"$line"
+  (( ${#words[@]} )) || continue
+  ui_lines+=("${words[*]}")
+done 3<"$UI_LIST"
 
-# Everything but the destination: each UI scenario picks its own simulator.
-project=(
+# Which lines run (`SWIMMICH_CI_UI_SCOPE`): `all`, or `changed`, the lines this
+# branch can have broken: a line new or edited against `main`, or whose test
+# class (UITests/**/<Class>.swift) or stub changed. A change anywhere else in
+# UITests/ or UITests/stubs/ (shared helpers, `immich_stub_base.py`), or in this
+# script, selects every line. The default is `changed` for a branch run on GitHub
+# Actions and `all` on `main`, on a tag and on a developer's Mac: every line
+# still runs on `main` once the branch is merged. A branch whose code changes
+# break another feature's scenario is caught there, not on the branch: the price
+# of a branch CI that does not grow with every feature's scenarios.
+UI_SCOPE="${SWIMMICH_CI_UI_SCOPE:-}"
+if [[ -z "$UI_SCOPE" ]]; then
+  if [[ -n "${GITHUB_ACTIONS:-}" && "${GITHUB_REF:-}" == refs/heads/* && "${GITHUB_REF:-}" != refs/heads/main ]]; then
+    UI_SCOPE=changed
+  else
+    UI_SCOPE=all
+  fi
+fi
+case "$UI_SCOPE" in
+  all) ;;
+  changed)
+    # A tree diff against main's tip: a branch behind main also selects what main
+    # changed since, never less than its own changes. Main's tip alone is enough
+    # (no merge base), so the shallow checkout of the runner only fetches it; a
+    # developer's clone uses its own `origin/main`.
+    if [[ -n "${GITHUB_ACTIONS:-}" ]]; then
+      git fetch --quiet --no-tags --depth=1 origin main:refs/remotes/origin/main
+    fi
+    git rev-parse --quiet --verify refs/remotes/origin/main >/dev/null ||
+      { echo "ci.sh: no origin/main to compare with: SWIMMICH_CI_UI_SCOPE=changed needs it" >&2; exit 2; }
+    selected=$(git diff --name-only refs/remotes/origin/main HEAD | python3 -c '
+import subprocess, sys
+changed = [path for path in sys.stdin.read().split("\n") if path]
+base = subprocess.run(["git", "show", "refs/remotes/origin/main:" + sys.argv[1]],
+                      capture_output=True, text=True).stdout.split("\n")
+base_lines = {" ".join(line.split("#", 1)[0].split()) for line in base}
+everything = any(
+    path == "Scripts/ci.sh"
+    or (path.startswith("UITests/") and not path.startswith("UITests/Scenarios/")
+        and not (path.startswith("UITests/stubs/immich_stub_") and path != "UITests/stubs/immich_stub_base.py"))
+    for path in changed
+)
+classes = {path.rsplit("/", 1)[1][:-len(".swift")] for path in changed
+           if path.startswith("UITests/Scenarios/") and path.endswith(".swift")}
+stubs = {path.rsplit("/", 1)[1] for path in changed if path.startswith("UITests/stubs/immich_stub_")}
+for index, line in enumerate(sys.argv[2:]):
+    words = line.split()
+    if everything or line not in base_lines or words[0] in stubs or words[1].split("/")[0] in classes:
+        print(index)
+' "$UI_LIST" ${ui_lines[@]+"${ui_lines[@]}"})
+    kept=()
+    for index in $selected; do kept+=("${ui_lines[index]}"); done
+    echo "ci.sh: UI scope 'changed': ${#kept[@]} of ${#ui_lines[@]} line(s) can be affected by this branch"
+    ui_lines=(${kept[@]+"${kept[@]}"})
+    ;;
+  *) echo "ci.sh: SWIMMICH_CI_UI_SCOPE must be 'all' or 'changed'" >&2; exit 2 ;;
+esac
+
+# The pool: `SWIMMICH_CI_UI_WORKERS` simulators (3 by default), worker k being
+# `$SIM_NAME-ui-k`, created on first use. A worker runs one job at a time: the
+# unit tests, or one line of the list. The unit tests are a job like the others,
+# so they run beside the UI scenarios and a runner never holds more simulators
+# than its workers. The app is built for the first worker: a destination of this
+# exact kind keeps the build to the Mac's own architecture.
+UI_WORKERS="${SWIMMICH_CI_UI_WORKERS:-3}"
+(( UI_WORKERS >= 1 )) || { echo "ci.sh: SWIMMICH_CI_UI_WORKERS must be at least 1" >&2; exit 2; }
+(( UI_WORKERS <= ${#ui_lines[@]} + 1 )) || UI_WORKERS=$(( ${#ui_lines[@]} + 1 ))
+worker_udids=()
+for (( worker = 1; worker <= UI_WORKERS; worker++ )); do
+  worker_udids+=("$(simulator_udid "$SIM_NAME-ui-$worker")")
+done
+
+common=(
   -project ImmichSwiftUI.xcodeproj
   -scheme ImmichSwiftUI
   -derivedDataPath "$CACHE/DerivedData"
   -clonedSourcePackagesDirPath "$CACHE/SourcePackages"
+  -destination "platform=iOS Simulator,id=${worker_udids[0]}"
 )
-common=("${project[@]}" -destination "platform=iOS Simulator,id=$udid")
 
 # Signed for the simulator on purpose: CODE_SIGNING_ALLOWED=NO drops the
 # keychain-sharing entitlements, and the session-store tests then read nil.
@@ -142,14 +223,20 @@ cleanup() {
   rm -f "$build_log" "$python_log" "$audit_log"
   rm -rf "$media_dir"
   local pid sim
+  [[ -z "${audit_pid:-}" ]] || kill "$audit_pid" 2>/dev/null || true
   for pid in ${worker_pids[@]+"${worker_pids[@]}"}; do kill "$pid" 2>/dev/null || true; done
-  # The simulators are kept (created once, erased before use: their disk stays
+  # The simulators are kept (created once, reset between jobs: their disk stays
   # bounded) but not left running: a booted pool holds memory and CPU between runs.
-  for sim in "$udid" ${worker_udids[@]+"${worker_udids[@]}"}; do
+  for sim in ${worker_udids[@]+"${worker_udids[@]}"}; do
     xcrun simctl shutdown "$sim" 2>/dev/null || true
   done
 }
 trap cleanup EXIT
+
+# The pool boots while the app builds: its simulators booting at once took up to
+# two minutes before the first test, now spent beside the build (each job still
+# waits for its own simulator, `prepare_simulator`).
+for sim in "${worker_udids[@]}"; do xcrun simctl boot "$sim" >/dev/null 2>&1 & done
 if ! xcodebuild build-for-testing "${common[@]}" -quiet 2>&1 | tee "$build_log"; then
   echo "ci.sh: build failed; compiler errors of the first attempt:" >&2
   report_errors "$build_log"
@@ -161,6 +248,12 @@ if ! xcodebuild build-for-testing "${common[@]}" -quiet 2>&1 | tee "$build_log";
     exit 65
   fi
 fi
+
+# The jobs run the tests from the .xctestrun the build wrote, each on its worker's
+# simulator: unlike `-project`/`-scheme`, it spares every job loading the project
+# and resolving its packages again.
+xctestrun=$(ls -t "$CACHE"/DerivedData/Build/Products/*.xctestrun 2>/dev/null | head -1)
+[[ -n "$xctestrun" ]] || { echo "ci.sh: the build wrote no .xctestrun" >&2; exit 65; }
 
 # A test failure leaves nothing readable in the public log either (the log is
 # admin-only), so the failed tests are read back from the result bundle and
@@ -188,39 +281,76 @@ for failure in failures[:10]:
 '
 }
 
-rm -rf "$RESULT"
-mkdir -p "$(dirname "$RESULT")"
-if ! xcodebuild test-without-building "${common[@]}" -quiet \
-  -only-testing:ImmichSwiftUITests \
-  -resultBundlePath "$RESULT"; then
-  report_failed_tests "$RESULT"
-  exit 65
-fi
+# Readies a worker's simulator for a job: prepare_simulator <udid> <erase 0|1>.
+#
+# A line that asks for it (`--erase`) gets the simulator ERASED, then booted.
+# Every other job gets it booted and RESET: the app terminated, its privacy
+# grants revoked and the app uninstalled (its container, its app group and its
+# defaults go with it), the keychain emptied (a device left locked by Face ID
+# fails the app lock's tests) and the system text size put back to L. A reset
+# does not put back Photos (a `--media` line seeds its photo as the newest one)
+# nor the Face ID enrolment, from this run or an earlier one: a line that needs a
+# pristine device asks for `--erase`. Erasing is the exception on purpose: an
+# erased device spends its first minutes rebuilding its wallpapers, widgets,
+# Photos and caches in the background, and one erase per line took the CPU of
+# the whole Mac.
+prepare_simulator() {
+  local sim="$1" erase="$2"
+  if (( erase )); then
+    xcrun simctl shutdown "$sim" 2>/dev/null || true
+    xcrun simctl erase "$sim" && xcrun simctl bootstatus "$sim" -b >/dev/null
+    return
+  fi
+  xcrun simctl bootstatus "$sim" -b >/dev/null || return
+  xcrun simctl terminate "$sim" "$APP_BUNDLE_ID" 2>/dev/null || true
+  xcrun simctl privacy "$sim" reset all "$APP_BUNDLE_ID" 2>/dev/null || true
+  xcrun simctl uninstall "$sim" "$APP_BUNDLE_ID" || return
+  xcrun simctl keychain "$sim" reset || return
+  xcrun simctl ui "$sim" content_size large
+}
+
+# The unit tests, as a job of the pool: run_unit_tests <udid>.
+run_unit_tests() {
+  local sim="$1"
+  echo "ci.sh: unit tests (simulator $sim)"
+  if ! prepare_simulator "$sim" 0; then
+    echo "::error::unit tests: could not ready the simulator"
+    return 1
+  fi
+  rm -rf "$RESULT"
+  mkdir -p "$(dirname "$RESULT")"
+  if ! xcodebuild test-without-building -xctestrun "$xctestrun" -destination "platform=iOS Simulator,id=$sim" -quiet \
+    -only-testing:ImmichSwiftUITests -resultBundlePath "$RESULT" </dev/null; then
+    report_failed_tests "$RESULT"
+    return 1
+  fi
+}
 
 # UI scenarios. One line of Scripts/ci-ui-scenarios.txt per xcodebuild run:
 #
 #   <stub.py> <Class>[/<test>] [--content-size <simctl category>]
-#             [--media <file name>]... [--skip <test>]...
+#             [--media <file name>]... [--skip <test>]... [--erase]
 #
-# The lines run several at a time, one per worker of a pool of
-# `SWIMMICH_CI_UI_WORKERS` simulators (3 by default): worker k is
-# `$SIM_NAME-ui-k`, created on first use, none of them the unit tests'
-# simulator (a UI line can leave a device locked by Face ID). Each line gets a worker's
-# simulator freshly ERASED (no line inherits another's keychain, defaults,
-# Photos or lock: the order of the list does not matter), and its own stub on
-# the worker's port, `SWIMMICH_CI_STUB_PORT` (8421 by default) + k - 1, which
-# must answer `/__whoami` with its own pid (an orphan stub squatting the port
-# would serve another feature's data). A second runner on the same Mac sets its
-# own `SWIMMICH_CI_STUB_PORT`, `SWIMMICH_CI_SIM` and `SWIMMICH_CI_CACHE`. The
+# A line runs on a worker's simulator, reset by `prepare_simulator` (`--erase`
+# for a freshly erased device), and against its own stub on the
+# worker's port, `SWIMMICH_CI_STUB_PORT` (8421 by default) + k - 1, which must
+# answer `/__whoami` with its own pid (an orphan stub squatting the port would
+# serve another feature's data). A second runner on the same Mac sets its own
+# `SWIMMICH_CI_STUB_PORT`, `SWIMMICH_CI_SIM` and `SWIMMICH_CI_CACHE`. The
 # scenario reaches it through `IMMICH_STUB_URL` (`TEST_RUNNER_IMMICH_STUB_URL`).
 # `--content-size` sets the SYSTEM text size, which an app extension follows
 # (the app itself takes it as a launch argument); `--media` seeds a generated
 # PNG under that file name into Photos. A test that fails, or skips, fails the
 # CI; every line still runs, so one run reports every broken scenario. A free
-# worker takes the next line: put the longest lines first.
-UI_LIST="Scripts/ci-ui-scenarios.txt"
-UI_WORKERS="${SWIMMICH_CI_UI_WORKERS:-3}"
+# worker takes the next job: put the longest lines first.
+#
+# Budget: a UI test over `SWIMMICH_CI_UI_TEST_BUDGET` seconds (180 by default)
+# gets a `::warning`. The run lasts at least as long as its longest line, however
+# many workers there are: a longer test is cut in several (see
+# Scripts/ci-ui-scenarios.txt). A warning, not a failure: a loaded Mac doubles a
+# test's time, and a CI that fails on the clock fails at random.
 STUB_PORT_BASE="${SWIMMICH_CI_STUB_PORT:-8421}"
+UI_TEST_BUDGET="${SWIMMICH_CI_UI_TEST_BUDGET:-180}"
 
 check_ui_summary() {
   local result="$1" label="$2" summary
@@ -241,12 +371,33 @@ if skipped or not passed:
 ' "$label"
 }
 
+report_slow_tests() {
+  xcrun xcresulttool get test-results tests --path "$1" 2>/dev/null | python3 -c '
+import json, sys
+budget = float(sys.argv[1])
+def walk(node):
+    if node.get("nodeType") == "Test Case":
+        seconds = node.get("durationInSeconds") or 0
+        if seconds > budget:
+            name = node.get("nodeIdentifier") or node.get("name") or "?"
+            print("::warning::%s took %d s, over the %d s budget of a UI test: cut it in several"
+                  % (name, seconds, budget))
+    for child in node.get("children") or []:
+        walk(child)
+try:
+    for node in json.load(sys.stdin).get("testNodes") or []:
+        walk(node)
+except Exception:
+    pass
+' "$UI_TEST_BUDGET" || true
+}
+
 # One line on one worker: run_scenario <index> <udid> <port> <stub.py> <selector> [options…].
 # Runs in its own subshell (see the pool below), so its stub dies with it.
 run_scenario() {
   local index="$1" sim="$2" port="$3" stub="$4" selector="$5"
   shift 5
-  local content_size="" media=() skips=() status=0 name file
+  local content_size="" media=() skips=() erase=0 status=0 name file
   # Not local: the EXIT trap of the line's subshell reads it after the return.
   stub_pid=""
   trap '[[ -z "$stub_pid" ]] || kill "$stub_pid" 2>/dev/null || true' EXIT
@@ -255,6 +406,7 @@ run_scenario() {
       --content-size) content_size="$2"; shift ;;
       --media) media+=("$2"); shift ;;
       --skip) skips+=("-skip-testing:ImmichSwiftUIUITests/${selector%%/*}/$2"); shift ;;
+      --erase) erase=1 ;;
       *) echo "::error::$UI_LIST: unknown option $1"; return 2 ;;
     esac
     shift
@@ -265,9 +417,8 @@ run_scenario() {
 
   # Started as `run_scenario … || exit`, so `set -e` does not apply in here:
   # every preparation step checks its own status.
-  xcrun simctl shutdown "$sim" 2>/dev/null || true
-  if ! xcrun simctl erase "$sim" || ! xcrun simctl bootstatus "$sim" -b >/dev/null; then
-    echo "::error::$label: could not erase and boot the simulator"
+  if ! prepare_simulator "$sim" "$erase"; then
+    echo "::error::$label: could not ready the simulator"
     return 1
   fi
   mkdir -p "$media_here"
@@ -319,13 +470,14 @@ raise SystemExit(0 if json.load(sys.stdin).get("pid") == int(sys.argv[1]) else 1
   else
     rm -rf "$result"
     if ! TEST_RUNNER_IMMICH_STUB_URL="http://127.0.0.1:$port" xcodebuild test-without-building \
-      "${project[@]}" -destination "platform=iOS Simulator,id=$sim" -quiet \
+      -xctestrun "$xctestrun" -destination "platform=iOS Simulator,id=$sim" -quiet \
       -only-testing:"ImmichSwiftUIUITests/$selector" ${skips[@]+"${skips[@]}"} \
       -resultBundlePath "$result" </dev/null; then
       report_failed_tests "$result"
       status=1
     fi
     check_ui_summary "$result" "$label" || status=1
+    report_slow_tests "$result"
   fi
 
   kill "$stub_pid" 2>/dev/null || true
@@ -334,66 +486,57 @@ raise SystemExit(0 if json.load(sys.stdin).get("pid") == int(sys.argv[1]) else 1
   return "$status"
 }
 
-ui_lines=()
-while IFS= read -r line <&3; do
-  line="${line%%#*}"
-  read -ra words <<<"$line"
-  (( ${#words[@]} )) || continue
-  ui_lines+=("${words[*]}")
-done 3<"$UI_LIST"
-
-(( UI_WORKERS >= 1 )) || { echo "ci.sh: SWIMMICH_CI_UI_WORKERS must be at least 1" >&2; exit 2; }
-(( UI_WORKERS <= ${#ui_lines[@]} )) || UI_WORKERS=${#ui_lines[@]}
-worker_udids=()
-for (( worker = 1; worker <= UI_WORKERS; worker++ )); do
-  worker_udids+=("$(simulator_udid "$SIM_NAME-ui-$worker")")
-done
-echo "ci.sh: ${#ui_lines[@]} UI scenario line(s) on $UI_WORKERS simulator(s): ${worker_udids[*]-}"
-
-# The pool. bash 3.2 (macOS) has no `wait -n`: each worker slot holds the pid
-# of its running line (empty when free), polled every 2 s. A line's output goes
-# to its own log, printed whole once the line ends, so the CI log never
-# interleaves two scenarios.
+# The pool. Job 0 is the unit tests, job k the k-th line of the list. bash 3.2
+# (macOS) has no `wait -n`: each worker slot holds the pid of its running job
+# (empty when free), polled every 2 s. A job's output goes to its own log,
+# printed whole once the job ends, so the CI log never interleaves two jobs.
+echo "ci.sh: unit tests and ${#ui_lines[@]} UI scenario line(s) on $UI_WORKERS simulator(s): ${worker_udids[*]}"
 mkdir -p build/ci
 worker_pids=()
-worker_lines=()
-for (( worker = 0; worker < UI_WORKERS; worker++ )); do worker_pids+=(""); worker_lines+=(""); done
+worker_jobs=()
+for (( worker = 0; worker < UI_WORKERS; worker++ )); do worker_pids+=(""); worker_jobs+=(""); done
+job_log() { if (( $1 == 0 )); then echo "build/ci/unit-tests.log"; else echo "build/ci/ui-$1.log"; fi; }
+unit_failed=0
 ui_failures=0
+jobs_total=$(( ${#ui_lines[@]} + 1 ))
 next=0
 running=0
-while (( next < ${#ui_lines[@]} || running > 0 )); do
+while (( next < jobs_total || running > 0 )); do
   for (( worker = 0; worker < UI_WORKERS; worker++ )); do
     pid="${worker_pids[worker]}"
     if [[ -n "$pid" ]] && ! kill -0 "$pid" 2>/dev/null; then
-      if wait "$pid"; then line_status=0; else line_status=$?; fi
-      index="${worker_lines[worker]}"
-      cat "build/ci/ui-$index.log"
-      (( line_status == 0 )) || ui_failures=$((ui_failures + 1))
+      if wait "$pid"; then job_status=0; else job_status=$?; fi
+      job="${worker_jobs[worker]}"
+      cat "$(job_log "$job")"
+      if (( job_status != 0 )); then
+        if (( job == 0 )); then unit_failed=1; else ui_failures=$((ui_failures + 1)); fi
+      fi
       worker_pids[worker]=""
       running=$((running - 1))
       pid=""
     fi
-    if [[ -z "$pid" ]] && (( next < ${#ui_lines[@]} )); then
-      index=$((next + 1))
-      read -ra words <<<"${ui_lines[next]}"
-      ( run_scenario "$index" "${worker_udids[worker]}" "$((STUB_PORT_BASE + worker))" "${words[@]}" || exit "$?" ) \
-        >"build/ci/ui-$index.log" 2>&1 &
+    if [[ -z "$pid" ]] && (( next < jobs_total )); then
+      if (( next == 0 )); then
+        ( run_unit_tests "${worker_udids[worker]}" || exit "$?" ) >"$(job_log 0)" 2>&1 &
+      else
+        read -ra words <<<"${ui_lines[next - 1]}"
+        ( run_scenario "$next" "${worker_udids[worker]}" "$((STUB_PORT_BASE + worker))" "${words[@]}" || exit "$?" ) \
+          >"$(job_log "$next")" 2>&1 &
+      fi
       worker_pids[worker]=$!
-      worker_lines[worker]="$index"
+      worker_jobs[worker]="$next"
       next=$((next + 1))
       running=$((running + 1))
     fi
   done
   (( running == 0 )) || sleep 2
 done
-if (( ui_failures )); then
-  echo "ci.sh: $ui_failures UI scenario line(s) failed" >&2
-  exit 65
-fi
 
-# The i18n audit ran first (it only reads the catalog and the sources); its
-# verdict is applied last so one pass judges the audit AND the tests.
-if (( audit_status != 0 )); then
-  echo "ci.sh: i18n audit failed (exit $audit_status)" >&2
-  exit 1
-fi
+# The i18n audit ran beside the build and the tests (it only reads the catalog and
+# the sources); its verdict is applied last so one pass judges the audit AND the tests.
+audit_ok=1
+apply_audit_verdict || audit_ok=0
+if (( unit_failed )); then echo "ci.sh: the unit tests failed" >&2; fi
+if (( ui_failures )); then echo "ci.sh: $ui_failures UI scenario line(s) failed" >&2; fi
+(( ! unit_failed && ! ui_failures )) || exit 65
+(( audit_ok )) || exit 1

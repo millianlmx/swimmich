@@ -25,11 +25,12 @@ import XCTest
 /// The text size is an argument of the app's launch
 /// (`-UIPreferredContentSizeCategoryName`), so it only reaches the app:
 ///
-/// * `test_AC_26_4_appLock` runs on an ERASED device, like `AppLockUITests` (the Face ID
-///   enrolment is a Darwin notification of the simulator, and a device that already
-///   has a lock state would change the walk):
+/// * `test_AC_26_4_appLock` needs a device without the app's lock state (a device that
+///   already has one would change the walk; the Face ID enrolment itself is a Darwin
+///   notification the test posts): the app uninstalled and the keychain emptied, or
+///   the device erased:
 ///
-///       xcrun simctl erase <device>      # then boot it and run the test
+///       xcrun simctl uninstall <device> fr.millianlmx.immich-ios && xcrun simctl keychain <device> reset
 ///
 /// * `test_AC_26_4_shareExtension` drives the share sheet of Photos, whose extension runs
 ///   in another process and follows the SIMULATOR's setting. Set it first, and seed a
@@ -41,9 +42,12 @@ import XCTest
 ///   and put it back afterwards with `xcrun simctl ui booted content_size large`. Like
 ///   `ShareExtensionUITests`, the photo must be the newest one of the Photos library.
 ///
-/// The CI runs every test of this class on its own freshly erased simulator, the
-/// share extension with the prerequisites above (`Scripts/ci.sh`, one line per test
-/// in `Scripts/ci-ui-scenarios.txt`); a test that skips itself fails it.
+/// The CI runs every test of this class as a line of its own (`Scripts/ci.sh`, one
+/// line per test in `Scripts/ci-ui-scenarios.txt`), on a reset simulator of its pool
+/// (app uninstalled, keychain emptied), the share extension with the prerequisites
+/// above; a test that skips itself fails it. The long walks are cut
+/// in several tests so the pool spreads them, and every test that does not measure
+/// the onboarding starts signed in from its launch arguments (`sessionArguments`).
 ///
 /// Helpers are copied from the other scenarios on purpose: one file per feature.
 final class DynamicTypeUITests: XCTestCase {
@@ -199,7 +203,6 @@ final class DynamicTypeUITests: XCTestCase {
         for goingDown in [true, false] {
             for _ in 0..<12 where !target.exists {
                 if goingDown { app.swipeUp() } else { app.swipeDown() }
-                Thread.sleep(forTimeInterval: 0.4)
             }
             if target.exists { return true }
         }
@@ -259,16 +262,14 @@ final class DynamicTypeUITests: XCTestCase {
         _ = waitUntil(3) { app.keyboards.count == 0 }
     }
 
-    /// Scrolls up until the element exists and is hittable.
+    /// Scrolls up until the element exists and is hittable. The first look is short:
+    /// an element below the fold of a lazy list only appears once scrolled to.
     private func scrollToHittable(_ identifier: String, swipes: Int = 12,
                                   file: StaticString = #filePath, line: UInt = #line) {
         let target = element(identifier)
-        _ = target.waitForExistence(timeout: 6)
+        _ = target.waitForExistence(timeout: 2)
         if !(target.exists && target.isHittable) { dismissKeyboardByScrolling() }
-        for _ in 0..<swipes where !(target.exists && target.isHittable) {
-            app.swipeUp()
-            Thread.sleep(forTimeInterval: 0.4)
-        }
+        for _ in 0..<swipes where !(target.exists && target.isHittable) { app.swipeUp() }
         XCTAssertTrue(target.exists && target.isHittable, "'\(identifier)' cannot be reached — \(screenText())",
                       file: file, line: line)
     }
@@ -312,29 +313,49 @@ final class DynamicTypeUITests: XCTestCase {
     /// in its own windows), and the tab bar and a sheet's grabber are skipped: they
     /// are the system's own controls, laid out by UIKit (the tab items' frames
     /// overlap by design; the grabber's frame is far larger than its drawn pill).
+    ///
+    /// The window is read ONCE, as a snapshot: a query per element (frame, label,
+    /// hittability) costs about 57 ms and ran into the thousands per scenario. A
+    /// snapshot carries no hittability, so it is only asked of the two elements of
+    /// an overlapping pair, which a passing screen does not have.
     private func assertNoOverlap(file: StaticString = #filePath, line: UInt = #line) {
         let main = app.windows.firstMatch
-        let window = main.frame
-        var seen: [(frame: CGRect, name: String, scrolls: Bool)] = []
-        let types: [XCUIElement.ElementType] = [.staticText, .button, .textField, .secureTextField, .switch]
-        let containers = [main.scrollViews, main.tables, main.collectionViews]
-        func key(_ element: XCUIElement) -> String { "\(element.frame)|\(element.identifier)|\(element.label)" }
-        for type in types {
-            let scrolling = Set(containers.flatMap { $0.descendants(matching: type).allElementsBoundByIndex.map(key) })
-            let skipped = Set(main.tabBars.descendants(matching: type).allElementsBoundByIndex.map(key))
-            for candidate in main.descendants(matching: type).allElementsBoundByIndex {
-                let frame = candidate.frame
-                guard !frame.isEmpty, frame.intersects(window), candidate.isHittable else { continue }
-                let id = key(candidate)
-                guard !skipped.contains(id) else { continue }
-                if type == .button && Self.sheetGrabberLabels.contains(candidate.label) { continue }
-                // A button that carries a text is measured by that text (swept as a
-                // static text): its own frame also spans an unclipped image, like
-                // the album cards' filled covers, wider than what the card shows.
-                if type == .button && candidate.staticTexts.count > 0 { continue }
-                let name = candidate.identifier.isEmpty ? candidate.label : candidate.identifier
-                seen.append((frame, name, scrolling.contains(id)))
+        let root: XCUIElementSnapshot
+        do { root = try main.snapshot() } catch {
+            return XCTFail("no snapshot of the main window: \(error)", file: file, line: line)
+        }
+        let window = root.frame
+        let types: Set<XCUIElement.ElementType> = [.staticText, .button, .textField, .secureTextField, .switch]
+        let containers: Set<XCUIElement.ElementType> = [.scrollView, .table, .collectionView]
+        var seen: [OverlapCandidate] = []
+        func carriesText(_ node: XCUIElementSnapshot) -> Bool {
+            node.children.contains { $0.elementType == .staticText || carriesText($0) }
+        }
+        func walk(_ node: XCUIElementSnapshot, scrolls: Bool) {
+            let type = node.elementType
+            if type == .tabBar { return }
+            // A button that carries a text is measured by that text (swept as a
+            // static text): its own frame also spans an unclipped image, like
+            // the album cards' filled covers, wider than what the card shows.
+            if types.contains(type), !node.frame.isEmpty, node.frame.intersects(window),
+               !(type == .button && (Self.sheetGrabberLabels.contains(node.label) || carriesText(node))) {
+                seen.append(OverlapCandidate(frame: node.frame, type: type, identifier: node.identifier,
+                                             label: node.label, scrolls: scrolls))
             }
+            for child in node.children { walk(child, scrolls: scrolls || containers.contains(type)) }
+        }
+        walk(root, scrolls: false)
+
+        var hittable: [String: Bool] = [:]
+        func isHittable(_ candidate: OverlapCandidate) -> Bool {
+            let key = "\(candidate.type.rawValue)|\(candidate.frame)|\(candidate.identifier)|\(candidate.label)"
+            if let known = hittable[key] { return known }
+            let matches = main.descendants(matching: candidate.type)
+                .matching(NSPredicate(format: "identifier == %@ AND label == %@", candidate.identifier, candidate.label))
+                .allElementsBoundByIndex
+            let result = (matches.first { $0.frame == candidate.frame } ?? matches.first)?.isHittable ?? false
+            hittable[key] = result
+            return result
         }
         for (index, first) in seen.enumerated() {
             for second in seen[(index + 1)...] where first.scrolls == second.scrolls {
@@ -344,11 +365,21 @@ final class DynamicTypeUITests: XCTestCase {
                 guard !shared.isNull, shared.width > 1, shared.height > 1 else { continue }
                 let nested = first.frame.insetBy(dx: -1, dy: -1).contains(second.frame)
                     || second.frame.insetBy(dx: -1, dy: -1).contains(first.frame)
-                XCTAssertTrue(nested,
-                              "'\(first.name)' \(first.frame) overlaps '\(second.name)' \(second.frame)",
-                              file: file, line: line)
+                // An element covered at its centre (by a sheet) is not hittable: skipped.
+                guard !nested, isHittable(first), isHittable(second) else { continue }
+                XCTFail("'\(first.name)' \(first.frame) overlaps '\(second.name)' \(second.frame)",
+                        file: file, line: line)
             }
         }
+    }
+
+    private struct OverlapCandidate {
+        let frame: CGRect
+        let type: XCUIElement.ElementType
+        let identifier: String
+        let label: String
+        let scrolls: Bool
+        var name: String { identifier.isEmpty ? label : identifier }
     }
 
     /// The accessibility label of a sheet's system grabber, in the scenarios' languages.
@@ -366,8 +397,9 @@ final class DynamicTypeUITests: XCTestCase {
     private var launched: (size: TextSize, language: String) = (.l, "en")
 
     /// `signedOut` passes `-authServerURL ()`: the restore finds no server and wipes
-    /// the session, so the app opens on the onboarding. Without it the session is
-    /// kept, and a relaunch lands on the timeline in a few seconds.
+    /// the session, so the app opens on the onboarding. Without it the launch carries
+    /// the stub's session (`sessionArguments`), and lands on the timeline in a few
+    /// seconds.
     private func configure(_ size: TextSize, language: String, signedOut: Bool) {
         launched = (size, language)
         let locale = language == "de" ? "de_DE" : "en_US"
@@ -379,7 +411,41 @@ final class DynamicTypeUITests: XCTestCase {
             // A memory stays on its moment: a slow measurement of its buttons would
             // otherwise read them after auto-play moved on.
             "-uiTestMemoryAutoplayOff", "YES",
-        ] + (signedOut ? ["-authServerURL", "()"] : [])
+        ] + (signedOut ? ["-authServerURL", "()"] : sessionArguments())
+    }
+
+    private var session: [String]?
+
+    /// The session the stub's SSO sign-in hands out (`POST /api/oauth/callback`), as
+    /// the launch arguments of `AuthViewModel`'s keys: the app starts signed in, the
+    /// way the onboarding leaves it, without the onboarding (a minute or two, through
+    /// `SafariViewService`) that only `test_AC_26_1` and the AC-26.3 walks measure.
+    private func sessionArguments() -> [String] {
+        if let session { return session }
+        var request = URLRequest(url: URL(string: "\(stub)/api/oauth/callback")!)
+        request.httpMethod = "POST"
+        request.timeoutInterval = 5
+        let done = DispatchSemaphore(value: 0)
+        var login: [String: Any] = [:]
+        URLSession.shared.dataTask(with: request) { data, _, _ in
+            login = data.flatMap { try? JSONSerialization.jsonObject(with: $0) as? [String: Any] } ?? [:]
+            done.signal()
+        }.resume()
+        _ = done.wait(timeout: .now() + 6)
+        guard let token = login["accessToken"] as? String else {
+            XCTFail("the stub's /api/oauth/callback gave no session: \(login)")
+            return []
+        }
+        let arguments = [
+            "-uiTestSessionToken", token,
+            "-authServerURL", stub,
+            "-authUserId", login["userId"] as? String ?? "",
+            "-authUserName", login["name"] as? String ?? "",
+            "-authUserEmail", login["userEmail"] as? String ?? "",
+            "-authIsAdmin", (login["isAdmin"] as? Bool ?? false) ? "YES" : "NO",
+        ]
+        session = arguments
+        return arguments
     }
 
     /// The system's sign-in consent, or the app's own alert, when either is up.
@@ -410,8 +476,9 @@ final class DynamicTypeUITests: XCTestCase {
     }
 
     /// Welcome → server URL → login → SSO. `onScreen` is called with `welcomeTitle`,
-    /// `serverURLTitle` and `loginTitle` once each screen is up.
-    private func completeOnboarding(_ onScreen: ((String) -> Void)?) {
+    /// `serverURLTitle` and `loginTitle` once each screen is up; without `signIn` the
+    /// walk stops on the login screen.
+    private func completeOnboarding(_ onScreen: ((String) -> Void)?, signIn: Bool = true) {
         XCTAssertTrue(element("welcomeTitle").waitForExistence(timeout: 30), "no welcome screen — \(screenText())")
         onScreen?("welcomeTitle")
         XCTAssertTrue(tapAnyButton(["Get Started", "Loslegen"], timeout: 30), "Welcome CTA missing")
@@ -437,6 +504,7 @@ final class DynamicTypeUITests: XCTestCase {
         }
         XCTAssertTrue(onLogin, "Login screen did not appear — \(screenText())")
         onScreen?("loginTitle")
+        guard signIn else { return }
 
         scrollToHittable("loginSSOButton")
         element("loginSSOButton").tap()
@@ -460,8 +528,8 @@ final class DynamicTypeUITests: XCTestCase {
     }
 
     /// Launches the app at `size`. Signed out (`signedOut`, or `onScreen` set) it
-    /// walks the onboarding (`onScreen`, see `completeOnboarding`); otherwise the
-    /// stored session is kept, and the onboarding is only walked if the stub
+    /// walks the onboarding (`onScreen`, see `completeOnboarding`); otherwise it
+    /// starts with the stub's session, and the onboarding is only walked if the stub
     /// rejected it.
     private func launchApp(_ size: TextSize, language: String = "en", signedOut: Bool = false,
                            onScreen: ((String) -> Void)? = nil) {
@@ -477,10 +545,12 @@ final class DynamicTypeUITests: XCTestCase {
         finishLaunch()
     }
 
+    /// First launch of a scenario that does not measure the onboarding: the stub's
+    /// data put back, then the app signed in from its launch arguments.
     private func launchSignedIn(_ size: TextSize, language: String = "en") {
         reset()
         setProvider("manual")
-        launchApp(size, language: language, signedOut: true)
+        launchApp(size, language: language)
     }
 
     /// Cold relaunch at `size` (the session is kept).
@@ -489,12 +559,15 @@ final class DynamicTypeUITests: XCTestCase {
     }
 
     // MARK: - Navigation
+    //
+    // No settle pause after a tap or a swipe: XCUITest waits for the app to idle
+    // (animations and scrolling over) before its next query, and a pause after each
+    // gesture added up to a tenth of a scenario.
 
     private func selectTab(_ index: Int) {
         let tab = app.tabBars.firstMatch.buttons.element(boundBy: index)
         XCTAssertTrue(tab.waitForExistence(timeout: 20), "no tab \(index) — \(screenText())")
         tab.tap()
-        Thread.sleep(forTimeInterval: 0.8)
     }
 
     private func openPhotosTab() { selectTab(0) }
@@ -506,12 +579,8 @@ final class DynamicTypeUITests: XCTestCase {
     private func tapElement(_ identifier: String, timeout: TimeInterval = 20) {
         let target = element(identifier)
         XCTAssertTrue(reveal(identifier, timeout: timeout), "no '\(identifier)' — \(screenText())")
-        for _ in 0..<6 where !target.isHittable {
-            app.swipeUp()
-            Thread.sleep(forTimeInterval: 0.4)
-        }
+        for _ in 0..<6 where !target.isHittable { app.swipeUp() }
         target.tap()
-        Thread.sleep(forTimeInterval: 0.8)
     }
 
     /// Flips the switch `identifier`. A tap on a switch row's label does not flip it:
@@ -535,7 +604,6 @@ final class DynamicTypeUITests: XCTestCase {
         XCTAssertTrue(avatar.waitForExistence(timeout: 20), "no profile avatar — \(screenText())")
         avatar.tap()
         XCTAssertTrue(element("profileList").waitForExistence(timeout: 20), "the Me hub never appeared")
-        Thread.sleep(forTimeInterval: 1.5)
     }
 
     private func openPreferences() {
@@ -549,7 +617,6 @@ final class DynamicTypeUITests: XCTestCase {
         let back = app.navigationBars.firstMatch.buttons.firstMatch
         XCTAssertTrue(back.waitForExistence(timeout: 15), "no way back")
         back.tap()
-        Thread.sleep(forTimeInterval: 0.8)
     }
 
     /// Opens the Albums tab, then the Library tile `row` (`partnersRow`, `peopleRow`…).
@@ -644,8 +711,12 @@ final class DynamicTypeUITests: XCTestCase {
     }
 
     // MARK: - Test bodies shared by AC-26.3 and AC-26.8
+    //
+    // The AX5 walk is cut in three, each a test (and a CI line) of its own, so the
+    // pool spreads it over its simulators: the onboarding and the Me hub, then the
+    // albums and partners, then the shared links, the search and the viewer.
 
-    private func runAC26_3(language: String) {
+    private func walkOnboardingAndMe(language: String) {
         reset()
         setProvider("manual")
 
@@ -671,9 +742,11 @@ final class DynamicTypeUITests: XCTestCase {
         XCTAssertTrue(element("languageRow.it").waitForExistence(timeout: 15), "no language list — \(screenText())")
         assertNoOverlap()
         scrollToHittable("languageRow.it")
+    }
 
+    private func walkAlbumsAndPartners(language: String) {
         // Albums: the long and the short card, the last one reachable.
-        relaunch(.ax5, language: language)
+        launchSignedIn(.ax5, language: language)
         openAlbumsTab()
         XCTAssertTrue(reveal("albumCard_\(shortAlbum)", timeout: 20), "no albums — \(screenText())")
         assertNoOverlap()
@@ -725,9 +798,11 @@ final class DynamicTypeUITests: XCTestCase {
         XCTAssertTrue(element("inviteCandidateEmail-\(shortUser)").waitForExistence(timeout: 20), "no invite sheet — \(screenText())")
         assertNoOverlap()
         assertFullyShown(long: "inviteCandidateEmail-\(longUser)", short: "inviteCandidateEmail-\(shortUser)")
+    }
 
+    private func walkLinksSearchAndViewer(language: String) {
         // Shared links, and the edit sheet of a link.
-        relaunch(.ax5, language: language)
+        launchSignedIn(.ax5, language: language)
         openSharedTab()
         XCTAssertTrue(reveal("sharedLinkRow_\(shortLink)", timeout: 20), "no shared links — \(screenText())")
         assertNoOverlap()
@@ -781,61 +856,82 @@ final class DynamicTypeUITests: XCTestCase {
 
     // MARK: - Tests
 
-    /// AC-26: the whole walk at the smallest and at the largest size.
+    /// AC-26: the whole walk at the smallest size.
     func test_AC_26() throws {
-        for size in [TextSize.xs, .ax5] {
-            if size == .xs { launchSignedIn(size) } else { relaunch(size) }
-            let atAX5 = size == .ax5
-
-            // Me hub, Preferences.
-            openMe()
-            assertNoOverlap()
-            tapElement("preferencesRow")
-            XCTAssertTrue(element("preferencesGroupPicker").waitForExistence(timeout: 20), "no Preferences — \(screenText())")
-            assertNoOverlap()
-
-            // Albums, Partners.
-            relaunch(size)
-            openAlbumsTab()
-            XCTAssertTrue(reveal("albumCard_\(shortAlbum)", timeout: 20), "no albums — \(screenText())")
-            assertNoOverlap()
-            if atAX5 { assertFullyShown(long: "albumCardTitle_\(longAlbum)", short: "albumCardTitle_\(shortAlbum)") }
-            tapElement("partnersRow")
-            XCTAssertTrue(reveal("partnerRowName-\(shortPartner)", timeout: 20), "no partners — \(screenText())")
-            assertNoOverlap()
-            if atAX5 { assertFullyShown(long: "partnerRowName-\(longPartner)", short: "partnerRowName-\(shortPartner)") }
-
-            // Search.
-            relaunch(size)
-            openSearchTab()
-            XCTAssertTrue(element("searchPromptTitle").waitForExistence(timeout: 20), "no search prompt — \(screenText())")
-            assertNoOverlap()
-
-            // The create-album sheet, from the empty state.
-            setEmptyCollections(true)
-            relaunch(size)
-            openAlbumsTab()
-            tapElement("albumsCreateButton")
-            XCTAssertTrue(element("createAlbumNameHeader").waitForExistence(timeout: 15), "no create-album sheet — \(screenText())")
-            assertNoOverlap()
-            assertInWindow("createAlbumNameHeader")
-            setEmptyCollections(false)
-        }
+        walkAC26(.xs)
     }
 
-    /// AC-26.1: the same landmarks at three sizes are strictly ordered XS < L < AX5.
+    /// AC-26: the same walk at the largest size.
+    func test_AC_26_ax5() throws {
+        walkAC26(.ax5)
+    }
+
+    /// A relaunch gets back home after the Me sheet and after a pushed screen: a tap
+    /// on the search tab from the Partners screen does not reach the search prompt.
+    private func walkAC26(_ size: TextSize) {
+        launchSignedIn(size)
+        let atAX5 = size == .ax5
+
+        // Me hub, Preferences.
+        openMe()
+        assertNoOverlap()
+        tapElement("preferencesRow")
+        XCTAssertTrue(element("preferencesGroupPicker").waitForExistence(timeout: 20), "no Preferences — \(screenText())")
+        assertNoOverlap()
+
+        // Albums, Partners.
+        relaunch(size)
+        openAlbumsTab()
+        XCTAssertTrue(reveal("albumCard_\(shortAlbum)", timeout: 20), "no albums — \(screenText())")
+        assertNoOverlap()
+        if atAX5 { assertFullyShown(long: "albumCardTitle_\(longAlbum)", short: "albumCardTitle_\(shortAlbum)") }
+        tapElement("partnersRow")
+        XCTAssertTrue(reveal("partnerRowName-\(shortPartner)", timeout: 20), "no partners — \(screenText())")
+        assertNoOverlap()
+        if atAX5 { assertFullyShown(long: "partnerRowName-\(longPartner)", short: "partnerRowName-\(shortPartner)") }
+
+        // Search.
+        relaunch(size)
+        openSearchTab()
+        XCTAssertTrue(element("searchPromptTitle").waitForExistence(timeout: 20), "no search prompt — \(screenText())")
+        assertNoOverlap()
+
+        // The create-album sheet, from the empty state.
+        setEmptyCollections(true)
+        relaunch(size)
+        openAlbumsTab()
+        tapElement("albumsCreateButton")
+        XCTAssertTrue(element("createAlbumNameHeader").waitForExistence(timeout: 15), "no create-album sheet — \(screenText())")
+        assertNoOverlap()
+        assertInWindow("createAlbumNameHeader")
+        setEmptyCollections(false)
+    }
+
+    /// AC-26.1: the onboarding's titles at three sizes are strictly ordered XS < L < AX5.
+    /// Measured on the way in; the sign-in itself (SSO) is not walked.
     func test_AC_26_1() throws {
         reset()
         setProvider("manual")
+        var heights: [String: [TextSize: CGFloat]] = [:]
+        for size in [TextSize.xs, .l, .ax5] {
+            app.terminate()
+            configure(size, language: "en", signedOut: true)
+            app.launch()
+            completeOnboarding({ screen in heights[screen, default: [:]][size] = self.textHeight(screen) },
+                               signIn: false)
+        }
+        assertOrdered(heights, landmarks: 3)
+    }
+
+    /// AC-26.1: landmarks of the Me hub and the search at three sizes, XS < L < AX5.
+    func test_AC_26_1_signedIn() throws {
         var heights: [String: [TextSize: CGFloat]] = [:]
         func record(_ marker: String, _ size: TextSize, _ identifier: String) {
             heights[marker, default: [:]][size] = textHeight(identifier)
         }
 
         for size in [TextSize.xs, .l, .ax5] {
-            launchApp(size) { screen in
-                record(screen, size, screen)
-            }
+            launchSignedIn(size)
             // Preferences: the row of the hub and the group picker.
             openMe()
             record("preferencesRow", size, "preferencesRow")
@@ -844,17 +940,28 @@ final class DynamicTypeUITests: XCTestCase {
             record("preferencesGroupPicker", size, "preferencesGroupPicker")
 
             relaunch(size)
+            openSearchTab()
+            XCTAssertTrue(element("searchPromptTitle").waitForExistence(timeout: 20), "no search prompt")
+            record("searchPromptTitle", size, "searchPromptTitle")
+        }
+        assertOrdered(heights, landmarks: 3)
+    }
+
+    /// AC-26.1: landmarks of the albums and partners at three sizes, XS < L < AX5.
+    func test_AC_26_1_albums() throws {
+        var heights: [String: [TextSize: CGFloat]] = [:]
+        func record(_ marker: String, _ size: TextSize, _ identifier: String) {
+            heights[marker, default: [:]][size] = textHeight(identifier)
+        }
+
+        for size in [TextSize.xs, .l, .ax5] {
+            launchSignedIn(size)
             openAlbumsTab()
             XCTAssertTrue(reveal("albumCard_\(shortAlbum)", timeout: 20), "no albums")
             record("albumCardTitle", size, "albumCardTitle_\(shortAlbum)")
             openLibraryRow("partnersRow")
             XCTAssertTrue(reveal("partnerRowName-\(shortPartner)", timeout: 20), "no partners")
             record("partnerRowName", size, "partnerRowName-\(shortPartner)")
-
-            relaunch(size)
-            openSearchTab()
-            XCTAssertTrue(element("searchPromptTitle").waitForExistence(timeout: 20), "no search prompt")
-            record("searchPromptTitle", size, "searchPromptTitle")
 
             setEmptyCollections(true)
             relaunch(size)
@@ -864,54 +971,85 @@ final class DynamicTypeUITests: XCTestCase {
             record("createAlbumNameHeader", size, "createAlbumNameHeader")
             setEmptyCollections(false)
         }
+        assertOrdered(heights, landmarks: 3)
+    }
 
-        XCTAssertEqual(heights.count, 9, "landmarks measured: \(heights.keys.sorted())")
+    private func assertOrdered(_ heights: [String: [TextSize: CGFloat]], landmarks: Int,
+                               file: StaticString = #filePath, line: UInt = #line) {
+        XCTAssertEqual(heights.count, landmarks, "landmarks measured: \(heights.keys.sorted())", file: file, line: line)
         for (marker, bySize) in heights {
             guard let xs = bySize[.xs], let l = bySize[.l], let ax5 = bySize[.ax5] else {
-                XCTFail("\(marker) was not measured at the three sizes: \(bySize)")
+                XCTFail("\(marker) was not measured at the three sizes: \(bySize)", file: file, line: line)
                 continue
             }
-            XCTAssertLessThan(xs, l, "\(marker): XS (\(xs)) must be smaller than L (\(l))")
-            XCTAssertLessThan(l, ax5, "\(marker): L (\(l)) must be smaller than AX5 (\(ax5))")
+            XCTAssertLessThan(xs, l, "\(marker): XS (\(xs)) must be smaller than L (\(l))", file: file, line: line)
+            XCTAssertLessThan(l, ax5, "\(marker): L (\(l)) must be smaller than AX5 (\(ax5))", file: file, line: line)
         }
     }
 
-    /// AC-26.3: labels are shown whole and the screens stay free of overlaps at AX5.
+    /// AC-26.3: labels are shown whole and the screens stay free of overlaps at AX5:
+    /// the onboarding and the Me hub.
     func test_AC_26_3() throws {
-        runAC26_3(language: "en")
+        walkOnboardingAndMe(language: "en")
+    }
+
+    /// AC-26.3: albums and partners.
+    func test_AC_26_3_albums() throws {
+        walkAlbumsAndPartners(language: "en")
+    }
+
+    /// AC-26.3: shared links, search and the viewer's info panel.
+    func test_AC_26_3_links() throws {
+        walkLinksSearchAndViewer(language: "en")
     }
 
     /// AC-26.8: the same walk in German, whose words are longer.
     func test_AC_26_8() throws {
-        runAC26_3(language: "de")
+        walkOnboardingAndMe(language: "de")
     }
 
-    /// AC-26.4: bars and panels reorganise instead of overlapping.
-    func test_AC_26_4() throws {
-        launchSignedIn(.xxxl)
-        for size in [TextSize.xxxl, .ax5] {
-            if size == .ax5 { relaunch(size) }
-            for grouping in ["Day", "Month"] {
-                setGrouping(grouping)
-                XCTAssertTrue(element("selectButton").waitForExistence(timeout: 20), "no Select button — \(screenText())")
-                let headers = grouping == "Day"
-                    ? ["timelinePinnedYearHeader", "timelinePinnedDayHeader"]
-                    : ["timelinePinnedMonthHeader"]
-                let group = ["selectButton", "filterMenu", "syncStatusButton", "profileAvatar"]
-                for header in headers {
-                    XCTAssertTrue(element(header).waitForExistence(timeout: 20), "no \(header) at \(size) — \(screenText())")
-                    for member in group where element(member).exists {
-                        assertDisjoint(header, member)
-                    }
-                }
-                XCTAssertGreaterThanOrEqual(element("selectButton").frame.minX, 0, "Select starts left of the window")
-                XCTAssertLessThanOrEqual(element("selectButton").frame.maxX, windowFrame.width + 0.5, "Select runs past the window")
-            }
-        }
+    func test_AC_26_8_albums() throws {
+        walkAlbumsAndPartners(language: "de")
+    }
 
-        // From here on, AX5 only.
+    func test_AC_26_8_links() throws {
+        walkLinksSearchAndViewer(language: "de")
+    }
+
+    /// AC-26.4: the timeline's bars reorganise instead of overlapping, at XXXL.
+    func test_AC_26_4() throws {
+        walkTimelineHeaders(.xxxl)
+    }
+
+    /// AC-26.4: the same at AX5.
+    func test_AC_26_4_ax5() throws {
+        walkTimelineHeaders(.ax5)
+    }
+
+    private func walkTimelineHeaders(_ size: TextSize) {
+        launchSignedIn(size)
+        for grouping in ["Day", "Month"] {
+            setGrouping(grouping)
+            XCTAssertTrue(element("selectButton").waitForExistence(timeout: 20), "no Select button — \(screenText())")
+            let headers = grouping == "Day"
+                ? ["timelinePinnedYearHeader", "timelinePinnedDayHeader"]
+                : ["timelinePinnedMonthHeader"]
+            let group = ["selectButton", "filterMenu", "syncStatusButton", "profileAvatar"]
+            for header in headers {
+                XCTAssertTrue(element(header).waitForExistence(timeout: 20), "no \(header) at \(size) — \(screenText())")
+                for member in group where element(member).exists {
+                    assertDisjoint(header, member)
+                }
+            }
+            XCTAssertGreaterThanOrEqual(element("selectButton").frame.minX, 0, "Select starts left of the window")
+            XCTAssertLessThanOrEqual(element("selectButton").frame.maxX, windowFrame.width + 0.5, "Select runs past the window")
+        }
+    }
+
+    /// AC-26.4 at AX5: the viewer's info panel, Backup and the locked folder.
+    func test_AC_26_4_panels() throws {
         // Info panel: the place and every value of the grid whole.
-        relaunch(.ax5)
+        launchSignedIn(.ax5)
         openViewer()
         openViewerInfo()
         assertInWindow("viewerInfoPlace")
@@ -938,9 +1076,12 @@ final class DynamicTypeUITests: XCTestCase {
         XCTAssertTrue(element("lockedFolderSetupTitle").waitForExistence(timeout: 25), "no locked-folder setup — \(screenText())")
         assertInWindow("lockedFolderSetupTitle")
         scrollToHittable("lockedFolderCreatePINButton")
+    }
 
+    /// AC-26.4 at AX5: the memories list, People and the map.
+    func test_AC_26_4_lists() throws {
         // The memories list: a long title whole, the card not cropped.
-        relaunch(.ax5)
+        launchSignedIn(.ax5)
         openMemoriesTab()
         let card = element("memoryCard_\(longMemory)")
         XCTAssertTrue(reveal("memoryCard_\(longMemory)", timeout: 25), "no memory card — \(screenText())")
