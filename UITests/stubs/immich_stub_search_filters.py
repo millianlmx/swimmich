@@ -24,6 +24,13 @@ exclusive: one body carries one of the two groups, never a mix (v3.2.0's
   tiles appear, not only what was sent;
 * serves `POST /api/search/smart` (flat criteria, `page`, a 400 on `filter` /
   `orderBy` / `cursor`), `GET /api/people` and `GET /api/tags`.
+* serves the writes of the selection bar (`SearchCriteriaUITests` L-23b) and applies
+  them to the library, so the next search shows them: `PUT /api/assets` (bulk
+  visibility), `DELETE /api/assets` (the bin), `PUT /api/assets/{id}` (favourite),
+  `POST /api/stacks`, `POST /api/download/info`, `GET /api/albums` and
+  `PUT /api/albums/{id}/assets`;
+* pages the results on demand: `GET /__paging?size=2&delay=6` serves `size`
+  results per page, every page after the first `delay` seconds late.
 
     python3 UITests/stubs/immich_stub_search_filters.py 8421
 
@@ -42,10 +49,11 @@ WHY `/__version` IS GRAFTED RATHER THAN REGISTERED
     scenario sets the generation with `GET /__version?major=3&minor=2`, and
     `/__reset` puts it back to the generation the shell serves (`1.119.0`).
 """
+import time
 from urllib.parse import parse_qsl
 
 import immich_stub_base as base
-from immich_stub_base import STATE, TIMELINE_ASSETS, Response, asset, main, png, router
+from immich_stub_base import ME_USER, STATE, TIMELINE_ASSETS, Response, asset, main, png, router
 
 # What the shell answers for `/api/server/version` — the generation a scenario
 # gets unless it asks for another one. Pre-v3.2.0 on purpose: a stub that
@@ -135,10 +143,16 @@ FIXTURES = [
 ]
 
 
+def _edited(fixture):
+    """The fixture as the batch actions left it (favourite, visibility, bin)."""
+    edit = STATE.get("edits", {}).get(fixture["id"])
+    return {**fixture, **edit} if edit else fixture
+
+
 def _library():
     """The six photos of the shell's timeline, then the fixtures above."""
     base = [_fixture(aid, f"{aid[:4]}-{aid[-2:]}.jpg") for aid in TIMELINE_ASSETS]
-    return base + FIXTURES
+    return [_edited(fixture) for fixture in base + FIXTURES]
 
 
 def _asset(fixture):
@@ -146,6 +160,7 @@ def _asset(fixture):
     item["originalFileName"] = fixture["name"]
     item["visibility"] = fixture["visibility"]
     item["isArchived"] = fixture["visibility"] == "archive"
+    item["isFavorite"] = bool(fixture.get("favorite"))
     if fixture["description"]:
         item["exifInfo"]["description"] = fixture["description"]
     return item
@@ -185,6 +200,8 @@ def _matches(fixture, crit):
     """The server's semantics: people and tags are "all of them" (tags
     descendants included), visibility absent means timeline and archive, text
     is "contains" without regard to case."""
+    if fixture.get("trashed"):
+        return False
     if not set(crit["people"]) <= set(fixture["people"]):
         return False
     if not set(crit["tags"]) <= _with_ancestors(fixture["tags"]):
@@ -205,6 +222,103 @@ def _matches(fixture, crit):
 def _results(body):
     crit = _criteria(body)
     return [_asset(fixture) for fixture in _library() if _matches(fixture, crit)]
+
+
+# MARK: - Selection and batch actions (L-23b)
+#
+# The writes of the selection bar, applied to the library so the next search
+# shows them: a favourite, a visibility (`archive`, `timeline`, `locked`) and
+# the bin. Every write is in `/__requests` (method, path, body), which is what a
+# scenario asserts on.
+
+ALBUM = "a1b2c3d4-0000-4000-8000-000000000001"
+
+
+def _edit(ids, **changes):
+    for aid in ids:
+        STATE.setdefault("edits", {}).setdefault(aid, {}).update(changes)
+
+
+def _find(aid):
+    return next((fixture for fixture in _library() if fixture["id"] == aid), None)
+
+
+@router.put("/api/assets")
+def bulk_update(req):
+    """`PUT /api/assets`: the bulk visibility the archive, unarchive and locked
+    folder actions send."""
+    visibility = req.body.get("visibility")
+    if visibility:
+        _edit(req.body.get("ids", []), visibility=visibility)
+    return Response(b"", status=204)
+
+
+@router.delete("/api/assets")
+def bulk_delete(req):
+    """`DELETE /api/assets`: `force: false` is the bin."""
+    _edit(req.body.get("ids", []), trashed=True)
+    return Response(b"", status=204)
+
+
+@router.prefix("PUT", "/api/assets/")
+def update_asset(req):
+    """`PUT /api/assets/{id}`: the favourite of one photo."""
+    if "/" in req.rest or _find(req.rest) is None:
+        return None
+    if "isFavorite" in req.body:
+        _edit([req.rest], favorite=bool(req.body["isFavorite"]))
+    return Response(_asset(_find(req.rest)))
+
+
+@router.post("/api/stacks")
+def create_stack(req):
+    ids = req.body.get("assetIds", [])
+    return Response({"id": "stack-new", "primaryAssetId": ids[0] if ids else "",
+                     "assets": [_asset(_find(aid)) for aid in ids if _find(aid)]}, status=201)
+
+
+@router.post("/api/download/info")
+def download_info(req):
+    ids = req.body.get("assetIds", [])
+    return Response({"totalSize": 2048 * len(ids), "archives": [{"assetIds": ids, "size": 2048 * len(ids)}]})
+
+
+@router.get("/api/albums")
+def albums(req):
+    """The one album a selection can be added to (none shared with the user)."""
+    if req.params.get("shared") == "true":
+        return Response([])
+    return Response([{
+        "id": ALBUM, "albumName": "Stub Album", "description": "",
+        "createdAt": "2026-01-01T00:00:00.000Z", "updatedAt": "2026-01-01T00:00:00.000Z",
+        "albumThumbnailAssetId": None, "shared": False, "hasSharedLink": False,
+        "assetCount": 0, "isActivityEnabled": True, "order": "desc",
+        "ownerId": ME_USER["id"], "albumUsers": [],
+        "owner": {k: ME_USER[k] for k in ("id", "name", "email", "profileImagePath",
+                                          "avatarColor", "profileChangedAt")},
+    }])
+
+
+@router.prefix("PUT", "/api/albums/")
+def add_to_album(req):
+    """`PUT /api/albums/{id}/assets`: one answer per id, as the server's."""
+    if not req.rest.endswith("/assets"):
+        return None
+    return Response([{"id": aid, "success": True} for aid in req.body.get("ids", [])])
+
+
+def _paged_answer(items, body):
+    """One page of `items` when a scenario asked for a page size (`/__paging`):
+    the slice and the token of the next page, `None` on the last. A delay slows
+    every page after the first, so the grid is usable while it loads."""
+    page = body.get("page") or 1
+    if page > 1 and STATE.get("page_delay"):
+        time.sleep(STATE["page_delay"])
+    size = STATE["page_size"]
+    start = (page - 1) * size
+    chunk = items[start:start + size]
+    token = str(page + 1) if start + size < len(items) else None
+    return Response({"assets": {"count": len(chunk), "items": chunk, "nextPage": token, "nextCursor": None}})
 
 
 # MARK: - People and tags
@@ -252,6 +366,9 @@ def fresh_version():
     """`/__reset` puts the generation back to what the shell serves, so no run
     inherits the previous one's server."""
     STATE["version"] = DEFAULT_VERSION
+    STATE["edits"] = {}
+    STATE["page_size"] = 0
+    STATE["page_delay"] = 0
 
 
 # MARK: - The two shapes of `POST /api/search/metadata`
@@ -284,6 +401,8 @@ def metadata_search(req):
         }, status=400)
 
     structured = any(key in body for key in NEW_FIELDS)
+    if not structured and STATE.get("page_size"):
+        return _paged_answer(_results(body), body)
     if body.get("cursor") is not None or (body.get("page") or 1) > 1:
         # Second page of either language: the fixture has no more rows, so the
         # pagination stops here (no token of either kind).
@@ -312,15 +431,17 @@ def smart_search(req):
             "statusCode": 400,
         }, status=400)
 
-    if (body.get("page") or 1) > 1:
+    if (body.get("page") or 1) > 1 and not STATE.get("page_size"):
         return Response({"assets": {"count": 0, "items": [], "nextPage": None, "nextCursor": None}})
 
     query = (body.get("query") or "").strip().lower()
     crit = _criteria(body)
-    items = [_asset(fixture) for fixture in _library()
+    found = [_asset(fixture) for fixture in _library()
              if _matches(fixture, crit)
              and (not query or any(query in word for word in fixture["keywords"]))]
-    return Response({"assets": {"count": len(items), "items": items, "nextPage": "2", "nextCursor": None}})
+    if STATE.get("page_size"):
+        return _paged_answer(found, body)
+    return Response({"assets": {"count": len(found), "items": found, "nextPage": "2", "nextCursor": None}})
 
 
 # MARK: - `/__version`, grafted onto the shell's control routes
@@ -338,6 +459,11 @@ def _control(self, path, query):
             return Response({"error": "major and minor are required"}, status=400)
         major, minor, patch = STATE["version"]
         return Response({"version": f"{major}.{minor}.{patch}"})
+    if path == "/__paging":
+        params = dict(parse_qsl(query, keep_blank_values=True))
+        STATE["page_size"] = int(params.get("size", 0))
+        STATE["page_delay"] = float(params.get("delay", 0))
+        return Response({"size": STATE["page_size"], "delay": STATE["page_delay"]})
     return _shell_control(self, path, query)
 
 

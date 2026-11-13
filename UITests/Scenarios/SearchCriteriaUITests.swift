@@ -803,4 +803,193 @@ final class SearchCriteriaUITests: XCTestCase {
             XCTAssertTrue(refused.isEmpty, "\(pass): a Smart body was structured — \(describe(Array(refused)))")
         }
     }
+
+    // MARK: - L-23b: selection and batch actions
+
+    private let album = "a1b2c3d4-0000-4000-8000-000000000001"
+    private var p1: String { fixturePrefix + "0000-4000-8000-000000000001" }
+
+    private func searchAlice() {
+        openFilters()
+        choosePeople([alice])
+        tapDone()
+        assertTiles([p1, p2, p3], "Alice")
+    }
+
+    private func enterSelection() {
+        let select = element("searchSelectButton")
+        XCTAssertTrue(select.waitForExistence(timeout: 30), "no Select entry above the results — \(screenText())")
+        select.tap()
+    }
+
+    private func pick(_ ids: [String]) {
+        for id in ids {
+            let tile = element("assetTile_\(id)")
+            XCTAssertTrue(tile.waitForExistence(timeout: 20), "no tile \(id) — \(screenText())")
+            tile.tap()
+        }
+    }
+
+    /// The title of the selection carries the count. Digits only: the words
+    /// around them depend on the language.
+    private func titleShows(_ count: Int) -> Bool {
+        let title = app.navigationBars.staticTexts.matching(NSPredicate(format: "label CONTAINS %@", String(count))).firstMatch
+        return waitUntil(15) { title.exists }
+    }
+
+    private func writes(_ method: String, _ path: String) -> [StubRequest] {
+        Array(stubRequests().dropFirst(sessionMark)).filter { $0.method == method && $0.path == path }
+    }
+
+    @discardableResult
+    private func waitForWrite(_ method: String, _ path: String, _ what: String,
+                              _ condition: (StubRequest) -> Bool = { _ in true }) -> StubRequest {
+        _ = waitUntil(40) { writes(method, path).contains(where: condition) }
+        guard let found = writes(method, path).last(where: condition) else {
+            XCTFail("\(what): no \(method) \(path) was sent — log:\n\(describe(Array(stubRequests().dropFirst(sessionMark))))")
+            return StubRequest(method: "", path: "", params: [:], body: [:])
+        }
+        return found
+    }
+
+    private func bodyIds(_ request: StubRequest) -> Set<String> {
+        Set(request.body["ids"] as? [String] ?? [])
+    }
+
+    private func tapSelectionAction(_ identifier: String) {
+        let button = app.buttons.matching(identifier: identifier).firstMatch
+        XCTAssertTrue(button.waitForExistence(timeout: 15), "no `\(identifier)` in the selection bar — \(screenText())")
+        button.tap()
+    }
+
+    func test_AC_216() {
+        startSession(major: 1, minor: 119)
+        // Two results a page, the second one eight seconds late: the grid is
+        // usable while it loads.
+        XCTAssertNotNil(stubGET("/__paging?size=2&delay=8"), "the stub did not take the paging")
+        openFilters()
+        choosePeople([alice])
+        tapDone()
+        XCTAssertTrue(element("assetTile_\(p1)").waitForExistence(timeout: 40), "page 1 never showed — \(screenText())")
+
+        enterSelection()
+        XCTAssertTrue(titleShows(0), "the title with nothing chosen carries no 0 — \(screenText())")
+        pick([p1])
+        XCTAssertTrue(titleShows(1), "the title for one carries no 1 — \(screenText())")
+        XCTAssertTrue(element("searchSelectionCancelButton").exists,
+                      "a touch on a thumbnail in selection opened the viewer")
+
+        // The next page lands; the first photo stays selected.
+        XCTAssertTrue(element("assetTile_\(p3)").waitForExistence(timeout: 60), "page 2 never loaded — \(screenText())")
+        XCTAssertTrue(titleShows(1), "the selection did not survive the next page — \(screenText())")
+        pick([p3])
+        XCTAssertTrue(titleShows(2), "the title for two carries no 2 — \(screenText())")
+        pick([p3])
+        XCTAssertTrue(titleShows(1), "a second touch must uncheck — \(screenText())")
+        pick([p3])
+        XCTAssertTrue(titleShows(2), "the photo is not checked again — \(screenText())")
+
+        tapSelectionAction("searchSelectionCancelButton")
+        XCTAssertTrue(element("searchSelectButton").waitForExistence(timeout: 15), "Cancel did not leave the selection")
+
+        // A long press enters the selection and checks the photo.
+        element("assetTile_\(p2)").press(forDuration: 1.0)
+        XCTAssertTrue(titleShows(1), "a long press did not start a selection — \(screenText())")
+    }
+
+    func test_AC_44() {
+        startSession(major: 1, minor: 119)
+        searchAlice()
+        enterSelection()
+        pick([p1, p2, p3])
+        XCTAssertTrue(titleShows(3), "the title does not say 3 — \(screenText())")
+
+        tapSelectionAction("favoriteSelectedButton")
+        for id in [p1, p2, p3] {
+            let request = waitForWrite("PUT", "/api/assets/\(id)", "favourite of \(id)") { ($0.body["isFavorite"] as? Bool) == true }
+            XCTAssertEqual(request.body["isFavorite"] as? Bool, true, "\(id): \(request.bodyJSON)")
+        }
+        XCTAssertEqual(Set(stubRequests().dropFirst(sessionMark)
+            .filter { $0.method == "PUT" && $0.path.hasPrefix("/api/assets/") }.map(\.path)).count, 3,
+            "one favourite request per photo")
+
+        // The favourite closes the selection, as on the timeline: choose the three again.
+        enterSelection()
+        pick([p1, p2, p3])
+        XCTAssertTrue(titleShows(3), "the title does not say 3 after the heart — \(screenText())")
+        tapSelectionAction("addToAlbumButton")
+        let row = element("addToAlbumRow_\(album)")
+        XCTAssertTrue(row.waitForExistence(timeout: 20), "the album sheet lists no album — \(screenText())")
+        row.tap()
+        let add = waitForWrite("PUT", "/api/albums/\(album)/assets", "the album step")
+        XCTAssertEqual(bodyIds(add), [p1, p2, p3], "one add carrying the three photos — \(add.bodyJSON)")
+        XCTAssertEqual(writes("PUT", "/api/albums/\(album)/assets").count, 1, "a single request for the album")
+    }
+
+    func test_AC_217() {
+        startSession(major: 1, minor: 119)
+        searchAlice()
+
+        // Archive off: the selection archives.
+        enterSelection()
+        pick([p1, p2])
+        XCTAssertFalse(element("unarchiveButton").exists, "Unarchive offered on live photos")
+        tapSelectionAction("archiveButton")
+        let archive = waitForWrite("PUT", "/api/assets", "archive") { $0.string("visibility") == "archive" }
+        XCTAssertEqual(bodyIds(archive), [p1, p2], archive.bodyJSON)
+        assertTiles([p3], "after archiving")
+
+        // Archive on: the grid lists archived photos and offers Unarchive.
+        openFilters()
+        tapSwitch("searchFilterArchive")
+        tapDone()
+        assertTiles([p1, p2, z1], "Archive on")
+        enterSelection()
+        pick([p1, p2])
+        XCTAssertTrue(element("unarchiveButton").waitForExistence(timeout: 15), "no Unarchive on archived results")
+        XCTAssertFalse(element("archiveButton").exists, "Archive offered on archived results")
+        tapSelectionAction("unarchiveButton")
+        let unarchive = waitForWrite("PUT", "/api/assets", "unarchive") { $0.string("visibility") == "timeline" }
+        XCTAssertEqual(bodyIds(unarchive), [p1, p2], unarchive.bodyJSON)
+        assertTiles([z1], "after unarchiving")
+
+        // Back to live photos: the locked folder, the stack, the download, the bin.
+        openFilters()
+        tapSwitch("searchFilterArchive")
+        tapDone()
+        assertTiles([p1, p2, p3], "Archive off again")
+        enterSelection()
+        pick([p1])
+        tapSelectionAction("moveToLockedFolderButton")
+        let locked = waitForWrite("PUT", "/api/assets", "locked folder") { $0.string("visibility") == "locked" }
+        XCTAssertEqual(bodyIds(locked), [p1], locked.bodyJSON)
+        assertTiles([p2, p3], "after the locked folder")
+
+        enterSelection()
+        pick([p2, p3])
+        tapSelectionAction("stackButton")
+        let stack = waitForWrite("POST", "/api/stacks", "stack")
+        XCTAssertEqual(stack.body["assetIds"] as? [String], [p2, p3], "the cover is the first of the grid — \(stack.bodyJSON)")
+        assertTiles([p2, p3], "after stacking")
+
+        enterSelection()
+        pick([p3])
+        tapSelectionAction("deleteSelectedButton")
+        let alert = app.alerts.firstMatch
+        XCTAssertTrue(alert.waitForExistence(timeout: 10), "the delete confirmation never came up")
+        let confirm = alert.buttons.matching(labelPredicate(["Delete", "Supprimer", "Löschen", "Eliminar", "Elimina"])).firstMatch
+        XCTAssertTrue(confirm.waitForExistence(timeout: 5), "no destructive button — \(alert.buttons.allElementsBoundByIndex.map(\.label))")
+        confirm.tap()
+        let bin = waitForWrite("DELETE", "/api/assets", "the bin")
+        XCTAssertEqual(bodyIds(bin), [p3], bin.bodyJSON)
+        XCTAssertEqual(bin.body["force"] as? Bool, false, "the bin, not a permanent delete — \(bin.bodyJSON)")
+        assertTiles([p2], "after the bin")
+
+        // Last: the download leaves a progress panel behind.
+        enterSelection()
+        pick([p2])
+        tapSelectionAction("downloadSelectionButton")
+        let info = waitForWrite("POST", "/api/download/info", "download")
+        XCTAssertEqual(info.body["assetIds"] as? [String], [p2], info.bodyJSON)
+    }
 }

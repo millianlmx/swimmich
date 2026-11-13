@@ -70,6 +70,11 @@ final class SearchViewModel {
     }
 
     let client: any ImmichClient
+    /// The timeline's selection and batch actions, reused as the engine of the
+    /// result grid (L-23b). Private to this view model — never shared; its
+    /// `items` mirror `results` (`results.didSet`) and every action copies them
+    /// back (`runBatch`).
+    private let batch: TimelineViewModel
     private let recentsStore: RecentSearchesStore
     private let savedStore: SavedSearchesStore
 
@@ -139,7 +144,11 @@ final class SearchViewModel {
     }
 
     // Results
-    private(set) var results: [AssetReactItem] = []
+    private(set) var results: [AssetReactItem] = [] {
+        // The batch engine acts on the rows the grid shows (selection, owner
+        // split, favourite targets): keep its copy in step with every change.
+        didSet { batch.items = results }
+    }
     private(set) var loadedIds: Set<String> = []
     private(set) var currentPage: Int = 1
     /// Flat pagination token: the page number the flat route must send next
@@ -351,6 +360,7 @@ final class SearchViewModel {
         saved: SavedSearchesStore = SavedSearchesStore()
     ) {
         self.client = client
+        self.batch = TimelineViewModel(client: client)
         self.recentsStore = recents
         self.savedStore = saved
         self.recentSearches = recents.load()
@@ -390,6 +400,7 @@ final class SearchViewModel {
     /// Reset + dispatch a fresh search (page=1).
     func search() async {
         guard !isLoading else { return }
+        batch.exitSelectionMode()
         searchTask?.cancel()
         let gen = searchGeneration + 1
         searchGeneration = gen
@@ -465,6 +476,7 @@ final class SearchViewModel {
     /// Never touches `isRefreshing`, never swallowed by an in-flight read.
     func replaySearch() async {
         guard hasSearched else { return }
+        batch.exitSelectionMode()
         let gen = searchGeneration + 1
         searchGeneration = gen
         beginRead()
@@ -651,6 +663,7 @@ final class SearchViewModel {
     }
 
     private func resetToIdle() {
+        batch.exitSelectionMode()
         results = []
         loadedIds = []
         currentPage = 1
@@ -932,5 +945,83 @@ final class SearchViewModel {
         pendingExploreFilter = (field, value)
         query = ""
         await search()
+    }
+}
+
+// MARK: - Selection and batch actions (L-23b)
+
+/// The result grid's multi-selection. The state and the requests are the
+/// timeline's (`TimelineViewModel`, kept private as `batch`): the same owner
+/// split, the same try-then-mutate discipline, the same routes. This extension
+/// only adapts what the grid shows afterwards.
+extension SearchViewModel {
+    var selectionMode: Bool { batch.selectionMode }
+    var selectedIds: Set<String> { batch.selectedIds }
+
+    /// The selected rows in grid order (what a download enqueues).
+    var selectedItems: [AssetReactItem] { results.filter { batch.selectedIds.contains($0.id) } }
+
+    /// A refusal of a batch action (server or read-only mode), shown by the view.
+    var actionErrorMessage: String? {
+        get { batch.actionErrorMessage }
+        set { batch.actionErrorMessage = newValue }
+    }
+
+    /// Photos of a partner left out of the last batch action.
+    var skippedPartnerCount: Int? {
+        get { batch.skippedPartnerCount }
+        set { batch.skippedPartnerCount = newValue }
+    }
+
+    func enterSelectionMode() { batch.enterSelectionMode() }
+    func exitSelectionMode() { batch.exitSelectionMode() }
+    func toggleSelection(id: String) { batch.toggleSelection(id: id) }
+
+    func ownerScopedSelection(currentUserId: String?) -> (ids: [String], skipped: Int) {
+        batch.ownerScopedSelection(currentUserId: currentUserId)
+    }
+
+    /// "Unarchive" replaces "Archive" when the grid lists archived photos
+    /// (the Archive option is on) or the selection holds only archived rows.
+    var selectionOffersUnarchive: Bool { filter.isArchived || batch.selectionOffersUnarchive }
+
+    func favoriteSelected(currentUserId: String?) async {
+        await batch.favoriteSelected(currentUserId: currentUserId)
+        results = batch.items
+        // A grid filtered on favourites (or non-favourites) no longer holds a
+        // row whose state just changed.
+        if let wanted = filter.isFavorite { results.removeAll { $0.isFavorite != wanted } }
+    }
+
+    func deleteSelected(currentUserId: String?) async {
+        await batch.deleteSelected(currentUserId: currentUserId)
+        results = batch.items
+    }
+
+    func archiveSelected(currentUserId: String?) async {
+        await batch.archiveSelected(currentUserId: currentUserId)
+        results = batch.items
+    }
+
+    /// Moves the selection back to the timeline. The grid lists archived
+    /// photos only when the Archive option is on: then they leave it.
+    func unarchiveSelected() async {
+        let ids = batch.selectedIds
+        await batch.unarchiveSelected()
+        let accepted = !ids.isEmpty && !batch.selectionMode
+        results = batch.items
+        if accepted && filter.isArchived { results.removeAll { ids.contains($0.id) } }
+    }
+
+    func moveSelectedToLockedFolder(currentUserId: String?) async {
+        await batch.moveSelectedToLockedFolder(currentUserId: currentUserId)
+        results = batch.items
+    }
+
+    /// Stacks the selection, then re-reads the results so the new stack shows.
+    func stackSelected(currentUserId: String?) async {
+        let wasSelecting = batch.selectionMode
+        await batch.stackSelected(currentUserId: currentUserId, refreshing: false)
+        if wasSelecting && !batch.selectionMode { await replaySearch() }
     }
 }

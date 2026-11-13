@@ -33,7 +33,7 @@ Feature parity with the Flutter client is tracked in [`docs/mobile-features-vs-f
 |---|---|---|
 | **Timeline** | daily buckets, grid zoom, thumbnails | `Sources/Features/Timeline/` |
 | **Viewer** | full-screen pager, zoom, filmstrip, video, slideshow, EXIF panel, stacks, faces | `Sources/Features/PhotoViewer/` |
-| **Search** | semantic (CLIP), locations (map), filters by people, tags, "not in album", favourites and archive, file-name and description text search, grid density from Preferences | `Sources/Features/Search/` |
+| **Search** | semantic (CLIP), locations (map), filters by people, tags, "not in album", favourites and archive, file-name and description text search, grid density from Preferences, multi-selection of results with the timeline's batch actions | `Sources/Features/Search/` |
 | **Albums** | CRUD, sharing, activity feed | `Sources/Features/Albums/` |
 | **People, Tags, Duplicates, Trash** | face management, tags, duplicate detection, restore | `Sources/Features/People/`, `Tags/`, `Duplicates/`, `Trash/` |
 | **Shared Links** | CRUD, password, expiration, **public viewer** (open a received link, unlock it, browse it, guest upload) | `Sources/Features/SharedLinks/` |

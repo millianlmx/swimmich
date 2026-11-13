@@ -19,6 +19,9 @@ struct SearchView: View {
     @PVReduceMotion private var reduceMotion
     @Bindable var vm: SearchViewModel
     @Bindable var mapVM: MapViewModel
+    /// The process-wide download queue: a batch download from the selection
+    /// goes through it, as from the timeline.
+    let downloads: DownloadQueueViewModel
     @Environment(AuthViewModel.self) private var auth
     @Environment(\.openProfile) private var openProfile
     @Environment(\.openSyncStatus) private var openSyncStatus
@@ -27,6 +30,8 @@ struct SearchView: View {
     @State private var showSaveSearch = false
     @State private var saveSearchName = ""
     @State private var showFilters = false
+    @State private var pendingDeleteSelected = false
+    @State private var presentAlbumPicker = false
     /// What the photo viewer needs to grow out of a thumbnail and shrink back
     /// onto it (L-14): the thumbnails' frames and the scroll owed on close.
     @State private var zoomSource = ViewerZoomSource()
@@ -48,6 +53,7 @@ struct SearchView: View {
                     // (and clears any marker filter) — the sheet is owned by
                     // RootView and would otherwise stay open over the other
                     // segments.
+                    if newMode != .results { vm.exitSelectionMode() }
                     if newMode != .map {
                         mapVM.isPhotoSheetPresented = false
                         mapVM.deselectMarker()
@@ -75,7 +81,7 @@ struct SearchView: View {
                 }
                 // `verbatim`: the bar intentionally carries no title, and an
                 // empty `LocalizedStringKey` would be extracted as a `""` key.
-                .navigationTitle(Text(verbatim: ""))
+                .navigationTitle(vm.selectionMode ? Text("\(vm.selectedIds.count) selected") : Text(verbatim: ""))
                 .navigationBarTitleDisplayMode(.inline)
                 // Search-mode menu + sync status + avatar as a nav-bar row
                 // (topBarTrailing): iOS 26 renders its own Liquid-Glass chrome,
@@ -83,26 +89,48 @@ struct SearchView: View {
                 // double-glass and clip. Menu only in results mode; the two
                 // pinned buttons are always visible.
                 .toolbar {
-                    ToolbarItemGroup(placement: .topBarTrailing) {
-                        if vm.viewMode == .results {
-                            ratingFilterMenu
-                            filtersButton
-                            searchModeMenu
-                            ocrFilterToggle
-                            Button {
-                                saveSearchName = vm.query.trimmingCharacters(in: .whitespacesAndNewlines)
-                                showSaveSearch = true
-                            } label: {
-                                Image(systemName: "bookmark")
+                    if vm.selectionMode && vm.viewMode == .results {
+                        SearchSelectionToolbar(
+                            vm: vm,
+                            userId: auth.userId,
+                            onConfirmDelete: { pendingDeleteSelected = true },
+                            onAddToAlbum: { presentAlbumPicker = true },
+                            onDownload: {
+                                Task {
+                                    await downloads.enqueue(assets: vm.selectedItems)
+                                    vm.exitSelectionMode()
+                                }
                             }
-                            .disabled(vm.query.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
-                            .accessibilityLabel("Save search")
-                            .accessibilityIdentifier("searchSaveButton")
+                        )
+                    }
+                    if !(vm.selectionMode && vm.viewMode == .results) {
+                        ToolbarItemGroup(placement: .topBarTrailing) {
+                            if vm.viewMode == .results {
+                                ratingFilterMenu
+                                filtersButton
+                                searchModeMenu
+                                ocrFilterToggle
+                                Button {
+                                    saveSearchName = vm.query.trimmingCharacters(in: .whitespacesAndNewlines)
+                                    showSaveSearch = true
+                                } label: {
+                                    Image(systemName: "bookmark")
+                                }
+                                .disabled(vm.query.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+                                .accessibilityLabel("Save search")
+                                .accessibilityIdentifier("searchSaveButton")
+                            }
+                            SyncStatusButton { openSyncStatus() }
+                            ProfileAvatarButton { openProfile() }
                         }
-                        SyncStatusButton { openSyncStatus() }
-                        ProfileAvatarButton { openProfile() }
                     }
                 }
+                .modifier(SearchSelectionPresentations(
+                    vm: vm,
+                    userId: auth.userId,
+                    pendingDelete: $pendingDeleteSelected,
+                    presentAlbumPicker: $presentAlbumPicker
+                ))
                 // Full-screen photo viewer (tap any result photo → browse/zoom).
                 // Favorite/delete run self-sufficient; re-run the search so the
                 // results grid reflects mutations after the viewer closes.
@@ -516,6 +544,17 @@ struct SearchView: View {
                     .padding(.horizontal, PVSpacing.s4)
                     .accessibilityIdentifier("searchRefreshError")
             }
+            if !vm.selectionMode && !vm.results.isEmpty {
+                // Explicit entry point of the multi-selection; a long press on a
+                // thumbnail enters it too.
+                HStack {
+                    Spacer()
+                    Button("Select") { vm.enterSelectionMode() }
+                        .font(.pvSubhead.weight(.semibold))
+                        .accessibilityIdentifier("searchSelectButton")
+                }
+                .padding(.horizontal, PVSpacing.s8)
+            }
             if vm.isFilterActive {
                 activeFiltersBar
                     .padding(.horizontal, PVSpacing.s4)
@@ -523,24 +562,17 @@ struct SearchView: View {
             }
             LazyVGrid(columns: columns, spacing: PVSpacing.s2) {
                 ForEach(vm.results) { item in
-                    AssetThumbnailCell(
-                        asset: item,
-                        baseURL: auth.baseURL ?? URL(string: "https://example.com")!,
-                        token: auth.accessToken,
-                        isCompact: appSettings.tilesPerRow >= 6,
-                        onTap: { openViewer(for: item) }
-                    )
-                    .buttonStyle(.plain)
-                    .viewerZoomTile(id: item.id, source: zoomSource)
-                    .id(item.id)
-                    .onAppear {
-                        // AC-406: trigger next page when the last cell appears.
-                        // A failed page waits for its "Try Again" instead of
-                        // looping on the cell that is still on screen.
-                        if item.id == vm.results.last?.id, vm.errorMessage == nil {
-                            Task { await vm.loadMore() }
+                    resultCell(item)
+                        .viewerZoomTile(id: item.id, source: zoomSource)
+                        .id(item.id)
+                        .onAppear {
+                            // AC-406: trigger next page when the last cell appears.
+                            // A failed page waits for its "Try Again" instead of
+                            // looping on the cell that is still on screen.
+                            if item.id == vm.results.last?.id, vm.errorMessage == nil {
+                                Task { await vm.loadMore() }
+                            }
                         }
-                    }
                 }
             }
             .padding(.horizontal, PVSpacing.s4)
@@ -550,6 +582,32 @@ struct SearchView: View {
                     .padding(.vertical, PVSpacing.s12)
                     .frame(maxWidth: .infinity)
             }
+        }
+    }
+
+    /// One result: a tap opens the viewer — or, while selecting, checks and
+    /// unchecks the photo. A long press enters the selection (and checks) or,
+    /// while selecting, toggles, as on the timeline.
+    private func resultCell(_ item: AssetReactItem) -> some View {
+        AssetThumbnailCell(
+            asset: item,
+            baseURL: auth.baseURL ?? URL(string: "https://example.com")!,
+            token: auth.accessToken,
+            isCompact: appSettings.tilesPerRow >= 6,
+            selectionMode: vm.selectionMode,
+            isSelected: vm.selectedIds.contains(item.id),
+            onTap: {
+                if vm.selectionMode {
+                    vm.toggleSelection(id: item.id)
+                } else {
+                    openViewer(for: item)
+                }
+            }
+        )
+        .buttonStyle(.plain)
+        .onLongPressGesture(minimumDuration: 0.4) {
+            if !vm.selectionMode { vm.enterSelectionMode() }
+            vm.toggleSelection(id: item.id)
         }
     }
 
