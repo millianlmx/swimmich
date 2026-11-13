@@ -484,7 +484,7 @@ Chaque écran principal a une ligne par aspect. « États » regroupe le chargem
 | L-21 | Retouches non destructives sur le serveur | B-25 | planifié | — | — |
 | L-22 | Sauvegarde des retouches faites sur le téléphone, empilées sur l'original | B-26 | planifié | — | — |
 | L-23 | Recherche : personnes, filtres complets et sélection multiple | B-27 | planifié | — | — |
-| L-24 | Détails de la photo : âge des personnes et propriétaire | B-28 | livré | abb80dc959d3 | AC-45, AC-46, AC-220, AC-221, AC-222, AC-223, AC-224, AC-225, AC-226, AC-227 |
+| L-24 | Détails de la photo : âge des personnes et propriétaire | B-28 | livré | 0e0266d8dd1a | AC-45, AC-46, AC-220, AC-221, AC-222, AC-223, AC-224, AC-225, AC-226, AC-227 |
 | L-25 | Lieux : saisie des coordonnées et carte centrée sur ma position | B-29 | planifié | — | — |
 | L-26 | Adresse locale et adresse externe du serveur | B-30 | planifié | — | — |
 | L-27 | Réglages : qualité de partage, niveau du journal et caches | B-31 | planifié | — | — |
