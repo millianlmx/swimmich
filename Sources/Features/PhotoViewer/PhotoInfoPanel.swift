@@ -14,6 +14,8 @@ struct PhotoInfoPanel: View {
     /// False on a partner's photo: rating, date, location and tag edits are
     /// owner-only on the server.
     let allowsOwnerEdits: Bool
+    /// The signed-in user: the "Shared by" row shows for any other owner.
+    let currentUserId: String?
     var onClose: () -> Void = {}
     /// Open the photo's place on a full-screen, interactive map (the mini-map
     /// in the info card is a snapshot).
@@ -123,6 +125,11 @@ struct PhotoInfoPanel: View {
     private var content: some View {
         if let detail = vm?.detail, let exif = detail.exifInfo {
             ScrollView {
+                if let owner = vm?.sharedByOwner(currentUserId: currentUserId) {
+                    AssetOwnerRow(owner: owner, baseURL: baseURL, token: token)
+                        .padding(.horizontal, PVSpacing.s16)
+                        .padding(.top, PVSpacing.s8)
+                }
                 ratingCard
                     .padding(.horizontal, PVSpacing.s16)
                     .padding(.top, PVSpacing.s8)
@@ -219,16 +226,18 @@ struct PhotoInfoPanel: View {
                                             .frame(width: 56, height: 56)
                                             .clipShape(Circle())
                                             .overlay(Circle().strokeBorder(Color.separatorPV, lineWidth: 0.5))
-                                        Text(face.person?.name ?? String(localized: "Unnamed"))
-                                            .font(.pvCaption)
-                                            .foregroundStyle(Color.textPrimaryPV)
-                                            .multilineTextAlignment(.center)
-                                            .accessibilityIdentifier("viewerInfoFaceName_\(face.id)")
+                                        FaceTileLabel(
+                                            name: face.person?.name ?? String(localized: "Unnamed"),
+                                            age: age(for: face)
+                                        )
+                                        .accessibilityIdentifier("viewerInfoFaceName_\(face.id)")
                                     }
                                     .frame(minWidth: 68)
                                 }
                                 .buttonStyle(.plain)
                                 .accessibilityLabel(face.person?.name ?? String(localized: "Unnamed face"))
+                                .accessibilityValue(age(for: face) ?? "")
+                                .accessibilityIdentifier("viewerInfoFace_\(face.id)")
                             }
                         }
                     }
@@ -343,6 +352,12 @@ struct PhotoInfoPanel: View {
         if let city = exif.city ?? asset.city, !city.isEmpty { return city }
         if let country = exif.country ?? asset.country, !country.isEmpty { return country }
         return nil
+    }
+
+    /// Localized age of the person on `face` on the photo's day, `nil` when
+    /// there is nothing to show (no birthday, unreadable, born after).
+    private func age(for face: AssetFaceResponseDto) -> String? {
+        vm?.age(for: face)?.label()
     }
 
     /// Long-form localized date for the current photo ("July 29, 2024").
@@ -537,6 +552,54 @@ struct ExifInfoPanel: View {
                 .padding(PVSpacing.s16)
             }
         }
+    }
+}
+
+/// A face tile's text: the person's name with, when known, their age on the
+/// photo stacked under it. Neither line truncates or shrinks, so both stay
+/// whole at the largest accessibility sizes.
+struct FaceTileLabel: View {
+    let name: String
+    let age: String?
+
+    var body: some View {
+        VStack(spacing: PVSpacing.s2) {
+            Text(name)
+                .font(.pvCaption)
+                .foregroundStyle(Color.textPrimaryPV)
+                .multilineTextAlignment(.center)
+                .fixedSize(horizontal: false, vertical: true)
+            if let age {
+                Text(age)
+                    .font(.pvCaption)
+                    .foregroundStyle(Color.textSecondaryPV)
+                    .multilineTextAlignment(.center)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+        }
+    }
+}
+
+/// "Shared by <name>" with the owner's avatar, for a photo that belongs to
+/// another account. One VoiceOver element: the avatar's initials are not read.
+struct AssetOwnerRow: View {
+    let owner: UserResponseDto
+    let baseURL: URL?
+    let token: String?
+
+    var body: some View {
+        HStack(alignment: .center, spacing: PVSpacing.s12) {
+            UserAvatarCircle(user: owner, size: 24, baseURL: baseURL, token: token)
+            Text("Shared by \(owner.name)")
+                .font(.pvSubhead)
+                .foregroundStyle(Color.textSecondaryPV)
+                .fixedSize(horizontal: false, vertical: true)
+                .multilineTextAlignment(.leading)
+            Spacer(minLength: 0)
+        }
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel(Text("Shared by \(owner.name)"))
+        .accessibilityIdentifier("viewerInfoOwner")
     }
 }
 

@@ -631,6 +631,7 @@ struct PhotoViewer: View {
                         baseURL: baseURL,
                         token: token,
                         allowsOwnerEdits: viewerActions(for: asset).allowsInfoEdits,
+                        currentUserId: auth.userId,
                         onClose: { showInfo = false },
                         onOpenLocationMap: { latitude, longitude, placeName in
                             locationMap = AssetLocationMapRequest(

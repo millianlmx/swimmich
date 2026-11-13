@@ -65,6 +65,7 @@ final class PhotoLibraryChangeMonitorTests: XCTestCase {
         let vm = UploadViewModel(
             client: client, photos: MockPhotoLibraryService(), engine: engine, settings: settings,
             scheduler: MockBackupScheduler(), activityService: MockBackupLiveActivityService(),
+            notifications: MockNotificationService(),
             readOnly: .ephemeral()
         )
         let monitor = MockLibraryMonitor()
@@ -112,6 +113,7 @@ final class PhotoLibraryChangeMonitorTests: XCTestCase {
         let vm = UploadViewModel(
             client: client, photos: MockPhotoLibraryService(), engine: engine, settings: settings,
             scheduler: MockBackupScheduler(), activityService: MockBackupLiveActivityService(),
+            notifications: MockNotificationService(),
             readOnly: .ephemeral()
         )
         // Fire the insertion wake-up from inside the running run: the engine is
@@ -139,6 +141,7 @@ final class PhotoLibraryChangeMonitorTests: XCTestCase {
         let vm = UploadViewModel(
             client: client, photos: MockPhotoLibraryService(), engine: engine, settings: settings,
             scheduler: MockBackupScheduler(), activityService: MockBackupLiveActivityService(),
+            notifications: MockNotificationService(),
             readOnly: .ephemeral()
         )
 
