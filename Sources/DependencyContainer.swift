@@ -157,6 +157,12 @@ final class DependencyContainer {
         if UserDefaults.standard.bool(forKey: "uiTestResetClientCertificates") {
             try? identities.removeAll()
         }
+        // Test only (`-uiTestResetWhatsNewSeen YES`): "What's New" has not been
+        // seen at this launch. Written to the persistent domain, which the
+        // argument domain does not do, so a later launch finds it unseen too.
+        if UserDefaults.standard.bool(forKey: "uiTestResetWhatsNewSeen") {
+            UserDefaults.standard.removeObject(forKey: WhatsNewStore.seenReleaseKey)
+        }
         let responder = ClientCertificateResponder(store: identities, log: .shared)
         self.clientCertificateResponder = responder
         let trustStore = TrustedServerStoreImpl()
@@ -399,6 +405,12 @@ final class DependencyContainer {
     /// nothing is running (foreground "upload at launch / on return").
     func kickOffAutoBackup() {
         Task { await upload.kickOffAutoBackupIfConfigured() }
+    }
+
+    /// Starts a manual backup pass (the "Back up now" widget link): see
+    /// `UploadViewModel.startManualBackup()`.
+    func startManualBackup() {
+        upload.startManualBackup()
     }
 
     /// Aligns the Photos observer with the current settings: observing only

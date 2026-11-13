@@ -154,12 +154,33 @@ final class ImmichAPIClient: ImmichClient, SessionRenewing, @unchecked Sendable 
         try await sendNoAuth(.GET, path: ImmichAPI.server.path("/ping"))
     }
 
+    func ping(timeout: TimeInterval) async throws -> ServerPingResponse {
+        // A session of its own: the probe measures the server, not the queue of
+        // the shared session. Without a recipe (injected session) it shares it.
+        let probeSession = sessionRecipe?.makeSession()
+        defer { probeSession?.finishTasksAndInvalidate() }
+        let data = try await sendRaw(
+            .GET, path: ImmichAPI.server.path("/ping"), auth: false, body: nil,
+            timeout: timeout, session: probeSession
+        )
+        return try Self.decode(ServerPingResponse.self, from: data)
+    }
+
     func serverVersion() async throws -> ServerVersionResponseDto {
         try await sendNoAuth(.GET, path: ImmichAPI.server.path("/version"))
     }
 
     func serverConfig() async throws -> ServerConfigDto {
         try await sendNoAuth(.GET, path: ImmichAPI.server.path("/config"))
+    }
+
+    func loginOptions(serverVersion: ServerVersionResponseDto?) async throws -> ServerLoginOptions {
+        if ServerLoginOptions.servesPublicConfig(serverVersion) {
+            let dto: PublicLoginConfigDto = try await sendNoAuth(.GET, path: ImmichAPI.publicConfig.path(""))
+            return dto.options
+        }
+        let dto: ServerFeaturesLoginDto = try await sendNoAuth(.GET, path: ImmichAPI.server.path("/features"))
+        return dto.options
     }
 
     // MARK: - Auth
@@ -1067,13 +1088,17 @@ final class ImmichAPIClient: ImmichClient, SessionRenewing, @unchecked Sendable 
         return try await sendRaw(method, path: path, query: query, auth: true, token: token, body: body)
     }
 
-    private func sendRaw(_ method: HTTPMethod, path: String, query: [URLQueryItem] = [], auth: Bool, token: String? = nil, body: AnyEncodable?) async throws -> Data {
+    private func sendRaw(
+        _ method: HTTPMethod, path: String, query: [URLQueryItem] = [], auth: Bool, token: String? = nil,
+        body: AnyEncodable?, timeout: TimeInterval? = nil, session: URLSession? = nil
+    ) async throws -> Data {
         var request = try baseRequest(method, path: path, query: query, auth: auth, token: token)
+        if let timeout { request.timeoutInterval = timeout }
         if let body {
             request.setValue("application/json", forHTTPHeaderField: ImmichHeader.contentType)
             request.httpBody = try JSONEncoder.immich.encode(body)
         }
-        let (responseData, response) = try await dispatch(request)
+        let (responseData, response) = try await dispatch(request, on: session)
         try validate(response: response, data: responseData)
         return responseData
     }
@@ -1187,12 +1212,12 @@ final class ImmichAPIClient: ImmichClient, SessionRenewing, @unchecked Sendable 
         log.learnRequest(request, customHeaderNames: customHeaders.headers(for: request.url).map(\.name))
     }
 
-    private func dispatch(_ request: URLRequest) async throws -> (Data, URLResponse) {
+    private func dispatch(_ request: URLRequest, on session: URLSession? = nil) async throws -> (Data, URLResponse) {
         let start = Date()
         bumpRequestCount()
         learnForLog(request)
         do {
-            let result = try await ServerRedirectTaskDelegate.data(for: request, on: currentSession)
+            let result = try await ServerRedirectTaskDelegate.data(for: request, on: session ?? currentSession)
             noteAnswer(of: request, response: result.1)
             log.record(entry(for: request, category: "HTTP", status: (result.1 as? HTTPURLResponse)?.statusCode, since: start))
             return result

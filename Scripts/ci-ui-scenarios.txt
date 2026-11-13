@@ -36,3 +36,32 @@ immich_stub_dynamic_type.py DynamicTypeUITests/test_AC_26
 immich_stub_dynamic_type.py DynamicTypeUITests/test_AC_26_4_shareExtension --content-size accessibility-extra-extra-extra-large --media Summer-holidays-in-the-Gorges-du-Verdon-with-the-whole-family.png
 immich_stub_dynamic_type.py DynamicTypeUITests/test_AC_26_7
 immich_stub_dynamic_type.py DynamicTypeUITests/test_AC_26_5
+
+# L-28 Connexion et démarrage (AC-53 to AC-56, AC-330 to AC-346), against
+# immich_stub_login.py. The widget backup pass needs a photo in the library.
+immich_stub_login.py LoginStartupUITests/test_AC_53
+immich_stub_login.py LoginStartupUITests/test_AC_339
+immich_stub_login.py LoginStartupUITests/test_AC_336
+immich_stub_login.py LoginStartupUITests/test_AC_345
+immich_stub_login.py LoginStartupUITests/test_AC_346
+immich_stub_login.py LoginStartupUITests/test_AC_344
+immich_stub_login.py LoginStartupUITests/test_AC_344_widgetBackup --media Widget-backup-photo.png
+immich_stub_login.py LoginStartupUITests/test_AC_344_whatsNewCold
+immich_stub_login.py LoginStartupUITests/test_AC_344_coverOpenWarm
+immich_stub_login.py LoginStartupUITests/test_AC_343
+immich_stub_login.py LoginStartupUITests/test_AC_337
+immich_stub_login.py LoginStartupUITests/test_AC_341
+immich_stub_login.py LoginStartupUITests/test_AC_341_slowServerKeepsSkeleton
+immich_stub_login.py LoginStartupUITests/test_AC_341_lateFirstPageReplacesError
+immich_stub_login.py LoginStartupUITests/test_AC_342
+immich_stub_login.py LoginStartupUITests/test_AC_333
+immich_stub_login.py LoginStartupUITests/test_AC_334
+immich_stub_login.py LoginStartupUITests/test_AC_338
+immich_stub_login.py LoginStartupUITests/test_AC_340
+immich_stub_login.py LoginStartupUITests/test_AC_56
+immich_stub_login.py LoginStartupUITests/test_AC_55
+immich_stub_login.py LoginStartupUITests/test_AC_54
+immich_stub_login.py LoginStartupUITests/test_AC_330
+immich_stub_login.py LoginStartupUITests/test_AC_331
+immich_stub_login.py LoginStartupUITests/test_AC_332
+immich_stub_login.py LoginStartupUITests/test_AC_335

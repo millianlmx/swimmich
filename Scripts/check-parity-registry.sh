@@ -43,7 +43,7 @@ F-21.2|écart|B-41
 F-21.4|écart|B-29
 F-22.3|écart|B-28
 F-24.2|écart|B-27
-R-LoginRoute|écart|B-13 B-14 B-32
+R-LoginRoute|écart|B-13 B-14 B-32 B-42
 R-TabShellRoute|écart|B-16
 R-MainTimelineRoute|écart|B-8
 R-LibraryRoute|écart|B-16
@@ -108,7 +108,7 @@ P-advanced.prefer_remote_image|exclu|
 EOF
 )
 EXPECT_B=$(cat <<'EOF'
-Connexion|Parcours|B-13 B-14 B-32
+Connexion|Parcours|B-13 B-14 B-32 B-42
 Connexion|Gestes et transitions|B-22
 Connexion|Haptique|B-32
 Connexion|Accessibilité|B-17 B-22 B-32

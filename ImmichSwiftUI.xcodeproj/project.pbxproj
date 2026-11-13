@@ -679,6 +679,17 @@
 		C10E3EA1B2C3D4E5F6A7B8C9 /* ClientCertificateTestSupport.swift in Sources */ = {isa = PBXBuildFile; fileRef = C10E3DA1B2C3D4E5F6A7B8C9 /* ClientCertificateTestSupport.swift */; };
 		C10E41A1B2C3D4E5F6A7B8C9 /* ClientCertificateUITests.swift in Sources */ = {isa = PBXBuildFile; fileRef = C10E40A1B2C3D4E5F6A7B8C9 /* ClientCertificateUITests.swift */; };
 		C10E43A1B2C3D4E5F6A7B8C9 /* immich_stub_client_cert.py in Resources */ = {isa = PBXBuildFile; fileRef = C10E42A1B2C3D4E5F6A7B8C9 /* immich_stub_client_cert.py */; };
+		B28F00000000A1B2C3D40001 /* ServerLoginOptions.swift in Sources */ = {isa = PBXBuildFile; fileRef = A28F00000000A1B2C3D40001 /* ServerLoginOptions.swift */; };
+		B28F00000000A1B2C3D40002 /* ServerCompatibility.swift in Sources */ = {isa = PBXBuildFile; fileRef = A28F00000000A1B2C3D40002 /* ServerCompatibility.swift */; };
+		B28F00000000A1B2C3D40003 /* InlineWarningBadge.swift in Sources */ = {isa = PBXBuildFile; fileRef = A28F00000000A1B2C3D40003 /* InlineWarningBadge.swift */; };
+		B28F00000000A1B2C3D40004 /* LoginOptionsTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A28F00000000A1B2C3D40004 /* LoginOptionsTests.swift */; };
+		B28F00000000A1B2C3D40005 /* ServerCompatibilityTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A28F00000000A1B2C3D40005 /* ServerCompatibilityTests.swift */; };
+		B28F00000000A1B2C3D40006 /* ServerCheckFeedbackTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A28F00000000A1B2C3D40006 /* ServerCheckFeedbackTests.swift */; };
+		B28F00000000A1B2C3D40007 /* StartupRestoreTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A28F00000000A1B2C3D40007 /* StartupRestoreTests.swift */; };
+		B28F00000000A1B2C3D40008 /* TimelineReachabilityTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A28F00000000A1B2C3D40008 /* TimelineReachabilityTests.swift */; };
+		B28F00000000A1B2C3D40009 /* WidgetLinkTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A28F00000000A1B2C3D40009 /* WidgetLinkTests.swift */; };
+		B28F00000000A1B2C3D4000A /* LoginStartupUITests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A28F00000000A1B2C3D4000A /* LoginStartupUITests.swift */; };
+		B28F00000000A1B2C3D4000B /* immich_stub_login.py in Resources */ = {isa = PBXBuildFile; fileRef = A28F00000000A1B2C3D4000B /* immich_stub_login.py */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -1422,6 +1433,17 @@
 		C10E3DA1B2C3D4E5F6A7B8C9 /* ClientCertificateTestSupport.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ClientCertificateTestSupport.swift; sourceTree = "<group>"; };
 		C10E40A1B2C3D4E5F6A7B8C9 /* ClientCertificateUITests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ClientCertificateUITests.swift; sourceTree = "<group>"; };
 		C10E42A1B2C3D4E5F6A7B8C9 /* immich_stub_client_cert.py */ = {isa = PBXFileReference; lastKnownFileType = text.script.python; path = immich_stub_client_cert.py; sourceTree = "<group>"; };
+		A28F00000000A1B2C3D40001 /* ServerLoginOptions.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ServerLoginOptions.swift; sourceTree = "<group>"; };
+		A28F00000000A1B2C3D40002 /* ServerCompatibility.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ServerCompatibility.swift; sourceTree = "<group>"; };
+		A28F00000000A1B2C3D40003 /* InlineWarningBadge.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = InlineWarningBadge.swift; sourceTree = "<group>"; };
+		A28F00000000A1B2C3D40004 /* LoginOptionsTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LoginOptionsTests.swift; sourceTree = "<group>"; };
+		A28F00000000A1B2C3D40005 /* ServerCompatibilityTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ServerCompatibilityTests.swift; sourceTree = "<group>"; };
+		A28F00000000A1B2C3D40006 /* ServerCheckFeedbackTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ServerCheckFeedbackTests.swift; sourceTree = "<group>"; };
+		A28F00000000A1B2C3D40007 /* StartupRestoreTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StartupRestoreTests.swift; sourceTree = "<group>"; };
+		A28F00000000A1B2C3D40008 /* TimelineReachabilityTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TimelineReachabilityTests.swift; sourceTree = "<group>"; };
+		A28F00000000A1B2C3D40009 /* WidgetLinkTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WidgetLinkTests.swift; sourceTree = "<group>"; };
+		A28F00000000A1B2C3D4000A /* LoginStartupUITests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LoginStartupUITests.swift; sourceTree = "<group>"; };
+		A28F00000000A1B2C3D4000B /* immich_stub_login.py */ = {isa = PBXFileReference; lastKnownFileType = text.script.python; path = immich_stub_login.py; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -1601,6 +1623,7 @@
 				CB6D635F0CFE068BCCC41652 /* CountryFlag.swift */,
 				D5B88FA63626BEB67A5EB033 /* EditPipeline.swift */,
 				8203F1AF23108DC7982903E9 /* ExifDisplayFormatter.swift */,
+				A28F00000000A1B2C3D40002 /* ServerCompatibility.swift */,
 				40EBF7B9926844ECBD81918C /* LongDateFormatter.swift */,
 				962C7C0E8EBEEDBEE164B5D0 /* OAuthPKCE.swift */,
 				0155F5972CD6CFDDAFBA90DA /* PersonBirthday.swift */,
@@ -1662,6 +1685,7 @@
 				57093EE39B7150E508AA7B9C /* ImmichAppBar.swift */,
 				B6A5DD4030705D4121BD6F6D /* ImmichMark.swift */,
 				94B3265764BD3709CAC94AD6 /* InlineErrorBadge.swift */,
+				A28F00000000A1B2C3D40003 /* InlineWarningBadge.swift */,
 				0C579043BE4F6A7E408B4907 /* PVButtonStyle.swift */,
 				F100A71C0000000000000002 /* PVFloatingControl.swift */,
 				F100181800000002 /* PVMotionModifiers.swift */,
@@ -1969,6 +1993,12 @@
 				9645F94787F9E793A2BB799D /* Mocks */,
 				C09E10A1B2C3D4E5F6A7B8C9 /* CustomHeadersKitTests.swift */,
 				C09E13A1B2C3D4E5F6A7B8C9 /* ServerRedirectPolicyTests.swift */,
+				A28F00000000A1B2C3D40004 /* LoginOptionsTests.swift */,
+				A28F00000000A1B2C3D40005 /* ServerCompatibilityTests.swift */,
+				A28F00000000A1B2C3D40006 /* ServerCheckFeedbackTests.swift */,
+				A28F00000000A1B2C3D40007 /* StartupRestoreTests.swift */,
+				A28F00000000A1B2C3D40008 /* TimelineReachabilityTests.swift */,
+				A28F00000000A1B2C3D40009 /* WidgetLinkTests.swift */,
 				C09E16A1B2C3D4E5F6A7B8C9 /* CustomHeadersRegistryTests.swift */,
 				C10E21A1B2C3D4E5F6A7B8C9 /* ServerKeyTests.swift */,
 				C10E23A1B2C3D4E5F6A7B8C9 /* PKCS12ImporterTests.swift */,
@@ -2291,6 +2321,7 @@
 				C16A00000000000000000005 /* immich_stub_list_states.py */,
 				C09E1FA1B2C3D4E5F6A7B8C9 /* immich_stub_proxy_headers.py */,
 				C10E42A1B2C3D4E5F6A7B8C9 /* immich_stub_client_cert.py */,
+				A28F00000000A1B2C3D4000B /* immich_stub_login.py */,
 				72BE3F287C311D808DB86E5B /* immich_stub_people_search.py */,
 				1BBFFBCA7F1A04CEFC4D00A9 /* immich_stub_person_birthday.py */,
 				17A7602FF3060BF40F59B02F /* immich_stub_profile_picture.py */,
@@ -2398,6 +2429,7 @@
 				17A0170000000000000000A3 /* PluralsUITests.swift */,
 				F12E4D5D4AEA776F68BF61B6 /* AppUtilitiesUITests.swift */,
 				09D345762E990EFD50346F30 /* AppLogRedactionUITests.swift */,
+				A28F00000000A1B2C3D4000A /* LoginStartupUITests.swift */,
 				2A1531C60F36C47F188E6197 /* ArchiveUITests.swift */,
 				A66EE0FA03EC9D631FC0795C /* ChangePasswordUITests.swift */,
 				B454873E88BC71CB37D9B99C /* ChromecastUITests.swift */,
@@ -2473,6 +2505,7 @@
 				BB2F9B77F887B87AD8C7E147 /* DTOs+Auth.swift */,
 				B86EB1582D824259861FF777 /* DTOs+People.swift */,
 				E9442A6C9975F283DCCE5DF4 /* DTOs+Server.swift */,
+				A28F00000000A1B2C3D40001 /* ServerLoginOptions.swift */,
 				13F5EB05778FEB21523D4A53 /* DTOs+Session.swift */,
 				BF474550BC30A605D2B1615F /* DTOs+SharedLink.swift */,
 				0823A48357EB2A5CBEFDBBC8 /* DTOs+Social.swift */,
@@ -2848,6 +2881,7 @@
 				C16A00000000000000000006 /* immich_stub_list_states.py in Resources */,
 				C09E20A1B2C3D4E5F6A7B8C9 /* immich_stub_proxy_headers.py in Resources */,
 				C10E43A1B2C3D4E5F6A7B8C9 /* immich_stub_client_cert.py in Resources */,
+				B28F00000000A1B2C3D4000B /* immich_stub_login.py in Resources */,
 				20407BC713213C9E60637B05 /* immich_stub_people_search.py in Resources */,
 				77C911D66481ADAC278B8B2F /* immich_stub_person_birthday.py in Resources */,
 				1187E9FCD768EF8A04CCAABE /* immich_stub_profile_picture.py in Resources */,
@@ -2960,6 +2994,12 @@
 				C10E3CA1B2C3D4E5F6A7B8C9 /* ClientCertificateFixtures.swift in Sources */,
 				C10E3EA1B2C3D4E5F6A7B8C9 /* ClientCertificateTestSupport.swift in Sources */,
 				C09E14A1B2C3D4E5F6A7B8C9 /* ServerRedirectPolicyTests.swift in Sources */,
+				B28F00000000A1B2C3D40004 /* LoginOptionsTests.swift in Sources */,
+				B28F00000000A1B2C3D40005 /* ServerCompatibilityTests.swift in Sources */,
+				B28F00000000A1B2C3D40006 /* ServerCheckFeedbackTests.swift in Sources */,
+				B28F00000000A1B2C3D40007 /* StartupRestoreTests.swift in Sources */,
+				B28F00000000A1B2C3D40008 /* TimelineReachabilityTests.swift in Sources */,
+				B28F00000000A1B2C3D40009 /* WidgetLinkTests.swift in Sources */,
 				C09E11A1B2C3D4E5F6A7B8C9 /* CustomHeadersKitTests.swift in Sources */,
 				FE62C0E0A1F48A4F6B18DA05 /* AboutLinksTests.swift in Sources */,
 				FD76418DA93C59C24B69C915 /* ActivityFeedViewModelTests.swift in Sources */,
@@ -3119,6 +3159,7 @@
 				17A0170000000000000000B3 /* PluralsUITests.swift in Sources */,
 				0AFE2D96811EBD78DCBE78CC /* AppUtilitiesUITests.swift in Sources */,
 				B09924C7D03B1491D90D0076 /* AppLogRedactionUITests.swift in Sources */,
+				B28F00000000A1B2C3D4000A /* LoginStartupUITests.swift in Sources */,
 				B7F3BF2B6D9A909739FCD271 /* ArchiveUITests.swift in Sources */,
 				D54B53807EAA96C47323C18F /* ChangePasswordUITests.swift in Sources */,
 				ED454E2E4BDCEEF14626802C /* ChromecastUITests.swift in Sources */,
@@ -3278,6 +3319,7 @@
 				7FEA978F3995A91AC8F98F66 /* DTOs+Auth.swift in Sources */,
 				B8F78C22B7C03ECEB11539D3 /* DTOs+People.swift in Sources */,
 				1B3BC0995A88F2E3C060ED52 /* DTOs+Server.swift in Sources */,
+				B28F00000000A1B2C3D40001 /* ServerLoginOptions.swift in Sources */,
 				2CB8BA7C7852B39C59516663 /* DTOs+Session.swift in Sources */,
 				8168EB414366FD5BA3D10DDA /* DTOs+SharedLink.swift in Sources */,
 				667A78866E71C7134EE8B201 /* DTOs+Social.swift in Sources */,
@@ -3302,6 +3344,7 @@
 				B0E4A61C038B75804DBB6090 /* EditStateStore.swift in Sources */,
 				11D75A19741C9F920603533E /* EditedImageRenderer.swift in Sources */,
 				BDE4ABBCEBB4D02970CF6606 /* ExifDisplayFormatter.swift in Sources */,
+				B28F00000000A1B2C3D40002 /* ServerCompatibility.swift in Sources */,
 				7880133165E0F59E5D5B7A21 /* FaceAssignSheet.swift in Sources */,
 				08F089F8E61E0B7D6C72DEF0 /* FaceThumbnailView.swift in Sources */,
 				A432EA0181226570EFBA6C6E /* FeatureHighlight.swift in Sources */,
@@ -3323,6 +3366,7 @@
 				1B40FAC17BD936C0CE072A5B /* ImmichMark.swift in Sources */,
 				D0CAC7A169395CDEC4458056 /* ImmichSwiftUIApp.swift in Sources */,
 				8F648CF9D1E4AFBBB547AB0D /* InlineErrorBadge.swift in Sources */,
+				B28F00000000A1B2C3D40003 /* InlineWarningBadge.swift in Sources */,
 				0E188CA49E1D5BE0CBAC782B /* InvitePartnerSheet.swift in Sources */,
 				741FC097DE7A647EDDD0E766 /* JSONCoding.swift in Sources */,
 				28AF9ED329518116C124247D /* KenBurnsImageView.swift in Sources */,

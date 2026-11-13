@@ -93,8 +93,8 @@ flowchart TD
 ### Authentication
 
 1. **Onboarding:** server URL (typed or QR code scan) → ping `/api/server/ping` + server configuration.
-2. **Login:** email/password (`/api/auth/login`) or OAuth2/OIDC (`ASWebAuthenticationSession`, callback `app.immich:///oauth-callback`).
-3. **Token storage:** stored in Keychain; on every launch, `restoreSession()` re-validates the token and rebuilds the session.
+2. **Login:** the sign-in step shows only the modes the server accepts: `GET /api/public/config` on a server that serves it (v3.2+), the deprecated `GET /api/server/features` otherwise (never both for one read). Password (`/api/auth/login`), SSO — OAuth2/OIDC (`ASWebAuthenticationSession`, callback `app.immich:///oauth-callback`) — or both; a server that accepts neither says so. When the modes cannot be read the password form shows and SSO follows the configuration's `oauthButtonText`. An inline, non-blocking notice on the server step warns when the server's version is below 2.0.0 or from 4.0.0; the application log (`Journal`) opens from the server and sign-in steps, with no session.
+3. **Token storage and launch:** the token is stored in Keychain. A launch with a stored session opens the Photos tab at once; `restoreSession()` validates the token behind it (a 401 returns to the sign-in step, "session expired"). With nothing to show yet, the Photos tab probes `GET /api/server/ping` for 2 s on its own connection and shows its error state with "Try Again" if the server stays silent, while the first page keeps loading and replaces the error if it arrives.
 4. **App Lock (Face ID):** locks when the app goes to background, overlay `LockView`.
 
 ### Data and Images
@@ -122,7 +122,7 @@ System surfaces:
 
 - **Live Activity** (`BackupLiveActivityService`) — progress in the Dynamic Island and lock screen.
 - **BGTaskScheduler** — self-sustaining chain of background backups (`app.immich.background-backup`).
-- **App Intent** — "Back up now" from Siri/Shortcuts; the home screen widget triggers it via deep link `app.immich://backup`.
+- **App Intent** — "Back up now" from Siri/Shortcuts; the home screen widget triggers it via deep link `app.immich://backup`, which starts a manual backup pass (the one of "Run now") on the Photos tab. The photo widgets open `app.immich://asset/<id>` in the viewer and the Memories widget opens the Memories tab, cold or warm; a link is dropped without a session, and a photo the server refuses opens nothing.
 
 ### Navigation
 

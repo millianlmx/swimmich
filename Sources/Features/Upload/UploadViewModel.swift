@@ -514,6 +514,16 @@ final class UploadViewModel {
         currentBackupTask = Task { _ = await runBackup(manual: true) }
     }
 
+    /// The "Back up now" widget's pass (L-28): the one of "Run now" — manual, so
+    /// it ignores "Back up new photos automatically", the automatic backup
+    /// switch, Wi-Fi only and charging only; it asks for photo access when
+    /// missing and is refused in read-only mode like "Run now". A pass that
+    /// already holds the engine is the backup that was asked for: no second one.
+    func startManualBackup() {
+        guard !running else { return }
+        currentBackupTask = Task { _ = await runBackup(manual: true) }
+    }
+
     /// Awaits the in-flight backup task, if any (test/coordination helper).
     func awaitCurrentBackup() async {
         await currentBackupTask?.value

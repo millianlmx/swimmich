@@ -84,6 +84,113 @@ final class ImmichAPIClientTests: XCTestCase {
         CapturingURLProtocol.reset()
     }
 
+    // MARK: - Sign-in modes and the startup probe (L-28)
+
+    private func makeLoginClient() -> ImmichAPIClient {
+        let client = ImmichAPIClient(session: makeMockedSession())
+        client.configure(baseURL: URL(string: "https://example.com")!, token: nil)
+        return client
+    }
+
+    private static let publicConfigJSON = #"""
+    {"ffmpeg":{},"map":{},"passkey":{"enabled":false},"server":{"loginPageMessage":""},
+     "oauth":{"autoLaunch":false,"buttonText":"Sign in with Authentik","enabled":true},
+     "passwordLogin":{"enabled":false}}
+    """#
+
+    private static let featuresJSON = #"{"trash":true,"passwordLogin":true,"oauth":false,"search":true}"#
+
+    private func version(_ major: Int, _ minor: Int, _ patch: Int) -> ServerVersionResponseDto {
+        ServerVersionResponseDto(major: major, minor: minor, patch: patch, prerelease: nil)
+    }
+
+    // AC-330: a server that serves the public configuration is read there, and only there.
+    func test_AC_330_v340ReadsPublicConfigOnly() async throws {
+        let client = makeLoginClient()
+        CapturingURLProtocol.nextData = Data(Self.publicConfigJSON.utf8)
+
+        let options = try await client.loginOptions(serverVersion: version(3, 4, 0))
+
+        XCTAssertEqual(options, ServerLoginOptions(passwordLogin: false, oauth: true, oauthButtonText: "Sign in with Authentik"))
+        XCTAssertEqual(client.requestCount, 1, "one route per read, never both")
+        XCTAssertEqual(CapturingURLProtocol.lastRequest?.url?.path, "/api/public/config")
+        XCTAssertNil(CapturingURLProtocol.lastRequest?.value(forHTTPHeaderField: "Authorization"), "read without a token")
+    }
+
+    // AC-331: below v3.2.0, and when the version is unknown, the features route is the one read.
+    func test_AC_331_v2ReadsServerFeaturesOnly() async throws {
+        for served in [version(2, 0, 0), version(3, 1, 9), nil] {
+            CapturingURLProtocol.reset()
+            let client = makeLoginClient()
+            CapturingURLProtocol.nextData = Data(Self.featuresJSON.utf8)
+
+            let options = try await client.loginOptions(serverVersion: served)
+
+            XCTAssertEqual(options, ServerLoginOptions(passwordLogin: true, oauth: false, oauthButtonText: nil))
+            XCTAssertEqual(client.requestCount, 1, "one route per read for \(String(describing: served))")
+            XCTAssertEqual(CapturingURLProtocol.lastRequest?.url?.path, "/api/server/features")
+        }
+    }
+
+    // AC-53: a route that does not serve (the stub's `[]`), an error status and
+    // an undecodable body are all thrown as they are: the caller owns the fallback.
+    func test_AC_53_unreadableAnswersAreThrown() async {
+        let client = makeLoginClient()
+
+        CapturingURLProtocol.nextData = Data("[]".utf8)
+        do {
+            _ = try await client.loginOptions(serverVersion: version(2, 0, 0))
+            XCTFail("an array is not the features object")
+        } catch {
+            XCTAssertTrue(error is APIError, "got \(error)")
+        }
+
+        CapturingURLProtocol.nextStatus = 404
+        CapturingURLProtocol.nextData = Data(#"{"message":"Not Found"}"#.utf8)
+        do {
+            _ = try await client.loginOptions(serverVersion: version(3, 4, 0))
+            XCTFail("a 404 must be thrown")
+        } catch {
+            XCTAssertTrue(error is APIError, "got \(error)")
+        }
+    }
+
+    // AC-341: the probe is the ping route with its own delay, and no token.
+    func test_AC_341_pingTimeoutIsOnTheRequest() async throws {
+        let client = makeLoginClient()
+        CapturingURLProtocol.nextData = Data(#"{"res":"pong"}"#.utf8)
+
+        let answer = try await client.ping(timeout: 2)
+
+        XCTAssertEqual(answer.res, "pong")
+        XCTAssertEqual(CapturingURLProtocol.lastRequest?.url?.path, "/api/server/ping")
+        XCTAssertEqual(CapturingURLProtocol.lastRequest?.timeoutInterval, 2)
+        XCTAssertNil(CapturingURLProtocol.lastRequest?.value(forHTTPHeaderField: "Authorization"))
+    }
+
+    // AC-341: a client that can make sessions probes on a session of its own: the shared
+    // one is neither used nor replaced, so the probe never waits behind the launch's requests.
+    func test_AC_341_probeUsesItsOwnSession() async throws {
+        let suite = "ImmichAPIClientProbe-\(UUID().uuidString)"
+        let trustDefaults = UserDefaults(suiteName: suite)!
+        defer { trustDefaults.removePersistentDomain(forName: suite) }
+        let configuration = URLSessionConfiguration.ephemeral
+        configuration.protocolClasses = [CapturingURLProtocol.self]
+        let client = ImmichAPIClient(
+            trustStore: TrustedServerStoreImpl(defaults: trustDefaults), sessionConfiguration: configuration
+        )
+        client.configure(baseURL: URL(string: "https://example.com")!, token: "tok")
+        let shared = client.currentSession
+        CapturingURLProtocol.nextData = Data(#"{"res":"pong"}"#.utf8)
+
+        let answer = try await client.ping(timeout: 2)
+
+        XCTAssertEqual(answer.res, "pong")
+        XCTAssertEqual(CapturingURLProtocol.lastRequest?.timeoutInterval, 2)
+        XCTAssertTrue(client.currentSession === shared, "the shared session is untouched")
+        XCTAssertNil(CapturingURLProtocol.lastRequest?.value(forHTTPHeaderField: "Authorization"), "the probe carries no token")
+    }
+
     // AC-008: multipart upload shape + checksum header.
     func test_AC_008_multipartUploadShape() async throws {
         let session = makeMockedSession()

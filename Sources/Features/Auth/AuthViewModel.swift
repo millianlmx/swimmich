@@ -52,6 +52,9 @@ final class AuthViewModel: AuthSessionDelegate {
     var serverURLString: String = "" {
         didSet {
             _cachedBaseURL = nil
+            // Nothing read from the previous server may describe the new one.
+            loginOptionsState = .unknown
+            loginOptionsURL = nil
             refreshClientCertificateState()
         }
     }
@@ -100,6 +103,41 @@ final class AuthViewModel: AuthSessionDelegate {
     var errorMessage: String?
     /// True after a 401 on an authenticated session; cleared by a new sign-in.
     private(set) var sessionExpired = false
+
+    // MARK: - Server check feedback (L-28)
+
+    /// How many validations of the typed server address ended, and how each
+    /// ended. The server screen's haptic triggers read the two outcome counters.
+    private(set) var serverCheckCount = 0
+    private(set) var serverCheckSuccessCount = 0
+    private(set) var serverCheckFailureCount = 0
+
+    // MARK: - Sign-in modes (L-28)
+
+    /// What is known about the sign-in modes of the server typed above.
+    enum LoginOptionsState: Equatable {
+        case unknown
+        case loading
+        case loaded(ServerLoginOptions)
+        /// The server's features could not be read (route missing, error,
+        /// undecodable answer): the form falls back to the pre-L-28 behavior.
+        case unreadable
+    }
+
+    /// What the sign-in step shows.
+    struct LoginPresentation: Equatable {
+        let showsPassword: Bool
+        let showsSSO: Bool
+        let ssoLabel: String
+        /// The server accepts neither the password nor SSO.
+        let isLoginDisabled: Bool
+    }
+
+    private(set) var loginOptionsState: LoginOptionsState = .unknown
+    /// The address `loginOptionsState` describes.
+    private var loginOptionsURL: URL?
+    /// The first call of `restoreSession()` is the only one: the launch.
+    private var restoreStarted = false
 
     private let client: any ImmichClient
     private let keychain: KeychainStore
@@ -157,6 +195,9 @@ final class AuthViewModel: AuthSessionDelegate {
         self.accessToken = keychain.getToken()
         self.savedAccounts = Self.loadSavedAccounts(from: defaults)
         self.client.authDelegate = self
+        // A stored session shows the splash only until `RootView`'s `.task`
+        // starts the restore, which lifts it before any request.
+        self.isRestoringSession = accessToken != nil && baseURL != nil
         refreshClientCertificateState()
     }
 
@@ -170,20 +211,31 @@ final class AuthViewModel: AuthSessionDelegate {
     /// - Network failure → keeps the session (offline-safe; a real 401 later
     ///   still resets via FM-4).
     func restoreSession() async {
-        guard !isRestoringSession else { return }
-        isRestoringSession = true
-        defer { isRestoringSession = false }
+        guard !restoreStarted else { return }
+        restoreStarted = true
 
         guard let token = accessToken, let url = baseURL else {
+            isRestoringSession = false
             resetSession()
             return
         }
         scopeLocalData()
         client.configure(baseURL: url, token: token)
+        // The home screen does not wait for the server: the token is validated
+        // in the background of what is already on screen.
+        isRestoringSession = false
         do {
             _ = try await client.validateToken()
         } catch APIError.unauthorized {
+            // Another session took over while the request was in flight: it is
+            // not this one that was refused.
+            guard baseURL == url, accessToken == nil || accessToken == token else { return }
             resetSession()
+            // Both in the same turn, so the root builds the sign-in step in its
+            // "session expired" state whichever of this and the 401 delegate
+            // (`handleSessionExpired`) ran first.
+            errorMessage = UserFacingError.sessionExpiredMessage
+            sessionExpired = true
         } catch {
             // Network / decode: keep the session; don't wipe on transient offline.
         }
@@ -279,16 +331,18 @@ final class AuthViewModel: AuthSessionDelegate {
         guard let url = baseURL else {
             serverStatus = .unreachable
             errorMessage = String(localized: "Enter a valid server URL.")
+            recordServerCheck()
             return
         }
         serverStatus = .checking
         errorMessage = nil
         pendingUntrustedHost = nil
         client.configure(baseURL: url, token: keychain.getToken())
+        var version: ServerVersionResponseDto?
         do {
             let ping = try await client.ping()
             if ping.res == "pong" {
-                let version = try? await client.serverVersion()
+                version = try? await client.serverVersion()
                 serverStatus = .reachable(version: version)
                 serverConfig = try? await client.serverConfig()
                 defaults.set(url.absoluteString, forKey: Self.serverURLDefaultsKey)
@@ -317,7 +371,93 @@ final class AuthViewModel: AuthSessionDelegate {
                 serverStatus = .unreachable
             }
         }
+        // The outcome is counted as soon as it is known, not after the modes
+        // below: the haptic follows "Server connected", not the extra reads.
+        recordServerCheck()
         refreshClientCertificateState()
+        if case .reachable = serverStatus, baseURL == url {
+            await loadLoginOptions(for: url, version: version)
+        }
+    }
+
+    /// One validation of the server address ended (once per `connectServer()`).
+    private func recordServerCheck() {
+        serverCheckCount += 1
+        if case .reachable = serverStatus {
+            serverCheckSuccessCount += 1
+        } else {
+            serverCheckFailureCount += 1
+        }
+    }
+
+    // MARK: - Sign-in modes (L-28)
+
+    /// The sign-in step reads the modes itself when nobody did for the server
+    /// typed: the sign-in step can be the first screen of the launch (expired
+    /// session), without a pass through the server step.
+    func loadLoginOptionsIfNeeded() async {
+        guard let url = baseURL else { return }
+        if loginOptionsURL == url {
+            switch loginOptionsState {
+            case .loading, .loaded, .unreadable: return
+            case .unknown: break
+            }
+        }
+        let version = try? await client.serverVersion()
+        if serverConfig == nil { serverConfig = try? await client.serverConfig() }
+        guard baseURL == url else { return }
+        await loadLoginOptions(for: url, version: version)
+    }
+
+    private func loadLoginOptions(for url: URL, version: ServerVersionResponseDto?) async {
+        loginOptionsURL = url
+        loginOptionsState = .loading
+        let result: LoginOptionsState
+        do {
+            result = .loaded(try await client.loginOptions(serverVersion: version))
+        } catch {
+            // A cancelled read says nothing about the server: ask again at the
+            // next appearance. Any other failure is the documented fallback.
+            result = UserFacingError.isCancellation(error) ? .unknown : .unreadable
+        }
+        guard baseURL == url else { return }
+        loginOptionsState = result
+    }
+
+    /// What the sign-in step shows for the current state of the modes.
+    var loginPresentation: LoginPresentation {
+        let fallbackLabel = Self.nonBlank(serverConfig?.oauthButtonText)
+        if case .loaded(let options) = loginOptionsState {
+            return LoginPresentation(
+                showsPassword: options.passwordLogin,
+                showsSSO: options.oauth,
+                ssoLabel: Self.nonBlank(options.oauthButtonText) ?? fallbackLabel ?? String(localized: "Sign in with SSO"),
+                isLoginDisabled: !options.passwordLogin && !options.oauth
+            )
+        }
+        // Not loaded or unreadable: the behavior before L-28 — the password
+        // form, and SSO when the configuration carries a button text.
+        return LoginPresentation(
+            showsPassword: true,
+            showsSSO: fallbackLabel != nil,
+            ssoLabel: fallbackLabel ?? "",
+            isLoginDisabled: false
+        )
+    }
+
+    /// True while the modes of the typed server are not known yet: the sign-in
+    /// step shows a spinner rather than a form that may be about to change.
+    var loginOptionsPending: Bool {
+        if loginOptionsURL != baseURL { return true }
+        switch loginOptionsState {
+        case .unknown, .loading: return true
+        case .loaded, .unreadable: return false
+        }
+    }
+
+    private static func nonBlank(_ text: String?) -> String? {
+        guard let text, !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return nil }
+        return text
     }
 
     private static func urlError(in error: Error) -> URLError? {
@@ -375,6 +515,8 @@ final class AuthViewModel: AuthSessionDelegate {
             errorMessage = String(localized: "Connect to a server first.")
             return
         }
+        // A server that refuses the password never receives one.
+        if case .loaded(let options) = loginOptionsState, !options.passwordLogin { return }
         isLoading = true
         errorMessage = nil
         do {
@@ -396,10 +538,7 @@ final class AuthViewModel: AuthSessionDelegate {
     // MARK: - OAuth (P5)
 
     /// True when the server exposes OAuth (non-empty `oauthButtonText`).
-    var canOAuthLogin: Bool {
-        guard let text = serverConfig?.oauthButtonText else { return false }
-        return !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
-    }
+    var canOAuthLogin: Bool { loginPresentation.showsSSO }
 
     /// Mobile OAuth flow (P5): POST /oauth/authorize for the provider URL →
     /// browser session → POST /oauth/callback with the PKCE verifier → apply
