@@ -16,7 +16,7 @@ enum CoordinateAxis: Hashable {
 }
 
 /// Why a typed coordinate cannot be used.
-enum CoordinateFieldError: Equatable {
+enum CoordinateFieldError: Error, Equatable {
     case empty
     case notNumeric
     case outOfRange
