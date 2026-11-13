@@ -487,7 +487,7 @@ Chaque écran principal a une ligne par aspect. « États » regroupe le chargem
 | L-24 | Détails de la photo : âge des personnes et propriétaire | B-28 | livré | 0e0266d8dd1a | AC-45, AC-46, AC-220, AC-221, AC-222, AC-223, AC-224, AC-225, AC-226, AC-227 |
 | L-25 | Lieux : saisie des coordonnées et carte centrée sur ma position | B-29 | planifié | — | — |
 | L-26 | Adresse locale et adresse externe du serveur | B-30 | planifié | — | — |
-| L-27 | Réglages : qualité de partage, niveau du journal et caches | B-31 | livré | 8b31aee968a6 | AC-50 (non vérifié à l'exécution), AC-51, AC-52, AC-270, AC-271, AC-272 (non vérifié à l'exécution), AC-273, AC-274, AC-275 (non vérifié à l'exécution), AC-276, AC-277, AC-278, AC-279, AC-280 |
+| L-27 | Réglages : qualité de partage, niveau du journal et caches | B-31 | livré | 9eb658442fce | AC-50, AC-51, AC-52 (volet interface non vérifié à l'exécution), AC-270, AC-271, AC-272, AC-273, AC-274 (volet interface non vérifié à l'exécution), AC-275, AC-276, AC-277, AC-278, AC-279, AC-280 (volet interface non vérifié à l'exécution) |
 | L-28 | Connexion et démarrage comme le client officiel | B-32 | planifié | — | — |
 | L-29 | Visionneuse : relance des erreurs, haptique, diaporama éveillé et repli vidéo | B-33 | planifié | — | — |
 | L-30 | Widgets photo nets à leur taille réelle | B-35 | planifié | — | — |
