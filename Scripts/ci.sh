@@ -134,8 +134,12 @@ case "$UI_SCOPE" in
     # changed since, never less than its own changes. Main's tip alone is enough
     # (no merge base), so the shallow checkout of the runner only fetches it; a
     # developer's clone uses its own `origin/main`.
+    # Forced (`+`): the runner's work directory outlives a run, and the
+    # `origin/main` an earlier run left there is not an ancestor that a shallow
+    # clone can prove, so a plain fetch is rejected as non-fast-forward (and
+    # `--quiet` hides why).
     if [[ -n "${GITHUB_ACTIONS:-}" ]]; then
-      git fetch --quiet --no-tags --depth=1 origin main:refs/remotes/origin/main
+      git fetch --quiet --no-tags --depth=1 origin +main:refs/remotes/origin/main
     fi
     git rev-parse --quiet --verify refs/remotes/origin/main >/dev/null ||
       { echo "ci.sh: no origin/main to compare with: SWIMMICH_CI_UI_SCOPE=changed needs it" >&2; exit 2; }
