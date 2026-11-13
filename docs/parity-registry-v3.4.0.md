@@ -271,7 +271,7 @@ Vocabulaire. Statut d'une fonction : `présent`, `partiel`, `absent` ou `hors p�
 
 | ID | Fonction amont | Statut | Preuve amont | Preuve locale | Lot / justification |
 |---|---|---|---|---|---|
-| V-#31082 | feat(mobile) : empiler les photos retouchées sur l'original à l'upload (« Auto-stacked mobile edits ») | absent | PR #31082 (v3.3.0) | Sources/Features/LocalLibrary/LocalLibraryViewModel.swift:232-233 (l'original seul est sauvegardé), Recherche locale : `stackEdited\|autoStack\|createStack\|createStacks` sur Sources/Services/BackupEngine.swift Sources/Features/Upload → 0 | B-26 |
+| V-#31082 | feat(mobile) : empiler les photos retouchées sur l'original à l'upload (« Auto-stacked mobile edits ») | présent | PR #31082 (v3.3.0) | Sources/Services/BackupEngine.swift:1327 (`POST /api/stacks` : retouche en tête, original dessous), Sources/Services/PhotoLibraryServiceImpl.swift:428 (`exportEditedRendering`) ; réglage « Sauvegarder aussi les retouches » désactivé par défaut (décision #16) | — |
 | V-#30831 | feat : souvenirs d'anniversaire (serveur v3.3+) | présent | PR #30831 (v3.3.0) | Sources/Core/Types/DTOs+Social.swift:31-53 (`MemoryType.birthday`, `MemoryDataDto` avec `personId` et `personName`) | — |
 | V-#31798 | feat : souvenirs d'anniversaire, interface | présent | PR #31798 (v3.3.0) | Sources/Features/Memories/MemoryTitlePresentation.swift:15-22 (intitulé et âge à la photo affichée), Sources/Features/Memories/MemoryMomentView.swift:381-402 (titre du plein écran), Sources/Features/Memories/MemoriesView.swift:282-299 (titre de la carte) | — |
 | V-#31620 | feat : gestion des personnes (partage de personnes) — « modal not available on mobile, yet » | hors périmètre | PR #31620 (v3.3.0), voir A.4 U-1 | — | Exclu : absent du mobile v3.4.0 (voir U-1) |
@@ -339,7 +339,7 @@ Vocabulaire. Statut d'une fonction : `présent`, `partiel`, `absent` ou `hors p�
 |---|---|---|---|---|---|
 | U-1 | Partage de personnes ou de groupes de visages entre utilisateurs | hors périmètre | Recherche négative : `(?i)shar\|cluster\|otherPeople` sur data/server/person.dart, presentation/pages/person.page.dart, presentation/pages/people_collection.page.dart, people_details.widget.dart, domain/models/person.model.dart, data/db/main/dao/person.dart, infrastructure/repositories/user_api.repository.dart (mobile/lib@v3.4.0) → 0 ; release v3.3.0 : « modal not available on mobile, yet » ; `PersonApiRepository` n'a que `update(id, name, birthday)` | — | Exclu : absent du mobile v3.4.0 |
 | U-2 | Retouches serveur `/assets/{id}/edits` et téléchargement de la version retouchée | absent | `mobile/lib/domain/services/asset.service.dart:170-177@v3.4.0` (`applyEdits`) ; `mobile/lib/presentation/actions/edit_asset.action.dart:22-80@v3.4.0` (garde `syncAssetEditsV1`) ; `mobile/lib/presentation/widgets/images/image_provider.dart:161-229@v3.4.0` | Sources/Features/DownloadPanel/DownloadQueueViewModel.swift:348-350 (originaux seuls), Sources/Features/Editor/PhotoEditorViewModel.swift:284-366 (copie enregistrée comme nouvel asset), Recherche locale : `/edits\|editAsset\|getAssetEdits\|removeAssetEdits\|assetEdit\|AssetEdit` sur Sources → 0 | B-25 |
-| U-3 | Empilement automatique des retouches faites sur le téléphone | absent | PR #31082 (v3.3.0, « Auto-stacked mobile edits ») ; `mobile/lib/domain/services/asset.service.dart:205-218@v3.4.0` (`stackEditedUpload`) ; `asset.service.dart:100-107@v3.4.0` | Sources/Features/LocalLibrary/LocalLibraryViewModel.swift:232-233 (l'original seul est sauvegardé), Recherche locale : `stackEdited\|autoStack\|createStack\|createStacks` sur Sources/Services/BackupEngine.swift Sources/Features/Upload → 0 | B-26 |
+| U-3 | Empilement automatique des retouches faites sur le téléphone | présent | PR #31082 (v3.3.0, « Auto-stacked mobile edits ») ; `mobile/lib/domain/services/asset.service.dart:205-218@v3.4.0` (`stackEditedUpload`) ; `asset.service.dart:100-107@v3.4.0` | Sources/Services/BackupEngine.swift:1190 (`processEdit` : envoi de la retouche puis pile), Sources/Services/BackupEngine.swift:1362 (`stackPendingEdits` : pile refaite sans renvoi), Sources/Services/PhotoLibraryServiceImpl.swift:428 (`exportEditedRendering`) | — |
 | U-4 | Renommage de tag | hors périmètre | Recherche négative : `(?i)renam\|rename\|updateTag\|PUT\|patch\|\.update\(` sur tag.dart, tag.action.dart, tag_details.widget.dart, tag.model.dart, store/tag.dart (mobile/lib@v3.4.0) → 0 ; `TagApiRepository` : bulkTagAssets, untagAssets, getAll, upsert seulement ; serveur : `PUT /tags/{id}` (PR #27909, web) | — | Exclu : absent du mobile v3.4.0 |
 
 ### A.5 Réglages
@@ -482,7 +482,7 @@ Chaque écran principal a une ligne par aspect. « États » regroupe le chargem
 | L-19 | VoiceOver : un libellé explicite sur chaque bouton | B-23 | livré | 50100ed2e26f | AC-34 (non vérifié à l'exécution), AC-34.1, AC-34.2, AC-34.3, AC-34.4 (non vérifié à l'exécution), AC-34.5, AC-34.6 (non vérifié à l'exécution), AC-34.7 (non vérifié à l'exécution), AC-34.8, AC-34.9, AC-34.10, AC-34.11, AC-34.12 |
 | L-20 | Compatibilité Immich v3.4.0 sans routes dépréciées | B-24 | planifié | — | — |
 | L-21 | Retouches non destructives sur le serveur | B-25 | planifié | — | — |
-| L-22 | Sauvegarde des retouches faites sur le téléphone, empilées sur l'original | B-26 | planifié | — | — |
+| L-22 | Sauvegarde des retouches faites sur le téléphone, empilées sur l'original | B-26 | livré | 806848e2b6bc | AC-41 (non vérifié à l'exécution), AC-200 (non vérifié à l'exécution), AC-201 (non vérifié à l'exécution), AC-202 (non vérifié à l'exécution), AC-203 (non vérifié à l'exécution), AC-204 (non vérifié à l'exécution), AC-205 (non vérifié à l'exécution), AC-206 (non vérifié à l'exécution), AC-207 (non vérifié à l'exécution), AC-208 (non vérifié à l'exécution) |
 | L-23 | Recherche : personnes, filtres complets et sélection multiple | B-27 | planifié | — | — |
 | L-24 | Détails de la photo : âge des personnes et propriétaire | B-28 | planifié | — | — |
 | L-25 | Lieux : saisie des coordonnées et carte centrée sur ma position | B-29 | planifié | — | — |
@@ -520,7 +520,7 @@ Chaque écran principal a une ligne par aspect. « États » regroupe le chargem
 - L-19 : AC-34
 - L-20 : AC-35, AC-36
 - L-21 : AC-39, AC-40
-- L-22 : AC-41
+- L-22 : AC-41, AC-200, AC-201, AC-202, AC-203, AC-204, AC-205, AC-206, AC-207, AC-208
 - L-23 : AC-42, AC-43, AC-44
 - L-24 : AC-45, AC-46
 - L-25 : AC-47, AC-48

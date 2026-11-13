@@ -336,7 +336,10 @@ ac2() {
     case "$st" in
       absent) has_bn "$last" || fail $ac "U-$n absent sans B-<n>" ;;
       "hors périmètre") case "$amont" in *"Recherche négative :"*) ;; *) fail $ac "U-$n hors périmètre sans « Recherche négative : » en preuve amont" ;; esac ;;
-      *) fail $ac "U-$n statut $st : attendu absent ou hors périmètre" ;;
+      # Closed by its lot (S-14): the row is `présent`, with its upstream proof kept. Whether it may be
+      # closed is checked by AC-1 (S-17: every B-<n> of the expectation sits in a `livré` lot).
+      "présent") [ -n "$amont" ] || fail $ac "U-$n présent sans preuve amont" ;;
+      *) fail $ac "U-$n statut $st : attendu absent, présent ou hors périmètre" ;;
     esac
   done
 }
