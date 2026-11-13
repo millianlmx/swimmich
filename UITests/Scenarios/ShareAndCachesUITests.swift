@@ -808,13 +808,29 @@ final class ShareAndCachesUITests: XCTestCase {
         settleOnShell()
     }
 
+    /// The first system sign-in of a freshly erased simulator is slow (the alert,
+    /// then a cold `SafariViewService`) and, on a loaded pool, can outlast a fixed
+    /// wait: a stuck attempt is restarted from the onboarding, never failed on the
+    /// first miss.
     private func signIn() {
-        XCTAssertTrue(waitForStaticText(Self.welcome, timeout: 30),
-                      "the onboarding did not appear — the scenario would start from a stale session")
-        walkOnboardingToLogin()
-        XCTAssertTrue(tapButton(containing: "Immich SSO"), "SSO button missing on login screen")
-        dismissSystemSignInAlertIfPresent()
-        XCTAssertTrue(tapAuthorizeInProvider(), "Authorize link not reachable in the auth sheet")
+        for attempt in 0..<3 {
+            if attempt > 0 {
+                app.terminate()
+                stubGet("/__provider?mode=manual")
+                app.launchArguments = launchArguments
+                app.launch()
+            }
+            XCTAssertTrue(waitForStaticText(Self.welcome, timeout: 30),
+                          "the onboarding did not appear — the scenario would start from a stale session")
+            walkOnboardingToLogin()
+            XCTAssertTrue(tapButton(containing: "Immich SSO"), "SSO button missing on login screen")
+            dismissSystemSignInAlertIfPresent(timeout: 20)
+            if tapAuthorizeInProvider(timeout: 45) { break }
+            if attempt == 2 {
+                XCTFail("Authorize link not reachable in the auth sheet after 3 attempts")
+                return
+            }
+        }
         XCTAssertTrue(app.tabBars.buttons.matching(labelPredicate(["Photos", "Fotos"]))
             .firstMatch.waitForExistence(timeout: 30), "OAuth did not reach the authenticated shell")
     }
@@ -890,22 +906,23 @@ final class ShareAndCachesUITests: XCTestCase {
         XCTAssertTrue(onLogin, "Login screen did not appear — \(screenReads())")
     }
 
-    private func dismissSystemSignInAlertIfPresent() {
+    /// Taps the system "Continue" of the sign-in alert, whenever it shows within
+    /// `timeout`; returns early once the provider page itself is up.
+    private func dismissSystemSignInAlertIfPresent(timeout: TimeInterval = 12) {
         let springboard = XCUIApplication(bundleIdentifier: "com.apple.springboard")
-        for label in ["Continue", "Continuer"] {
-            let button = springboard.alerts.buttons[label]
-            if button.waitForExistence(timeout: 6) {
-                button.tap()
-                return
+        let safari = XCUIApplication(bundleIdentifier: "com.apple.SafariViewService")
+        let authorize = NSPredicate(format: "label CONTAINS 'Authorize'")
+        let deadline = Date().addingTimeInterval(timeout)
+        repeat {
+            for label in ["Continue", "Continuer"] {
+                let system = springboard.alerts.buttons[label]
+                if system.exists { system.tap(); return }
+                let inApp = app.alerts.buttons[label]
+                if inApp.exists { inApp.tap(); return }
             }
-        }
-        for label in ["Continue", "Continuer"] {
-            let button = app.alerts.buttons[label]
-            if button.waitForExistence(timeout: 2) {
-                button.tap()
-                return
-            }
-        }
+            if safari.links.matching(authorize).firstMatch.exists { return }
+            Thread.sleep(forTimeInterval: 0.4)
+        } while Date() < deadline
     }
 
     /// The provider page lives in `SafariViewService`, a separate process.

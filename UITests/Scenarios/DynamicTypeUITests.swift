@@ -522,12 +522,35 @@ final class DynamicTypeUITests: XCTestCase {
         let toggle = element(identifier)
         XCTAssertTrue(reveal(identifier), "no '\(identifier)' — \(screenText())")
         scrollToHittable(identifier)
+        centerFully(identifier)
         let before = toggle.value as? String
         for point in [CGVector(dx: 0.5, dy: 0.5), CGVector(dx: 0.13, dy: 0.85), CGVector(dx: 0.95, dy: 0.5)] {
             toggle.coordinate(withNormalizedOffset: point).tap()
             if waitUntil(3, { (toggle.value as? String) != before || done() }) { return }
         }
         XCTFail("\(identifier) did not flip — \(screenText())")
+    }
+
+    /// Moves the row `identifier` so that it sits entirely inside the window, away
+    /// from both edges. `scrollToHittable` stops as soon as the row's CENTRE is
+    /// hittable; at AX5 a switch row is tall (label, then the switch under it), so
+    /// the switch can still be below the fold, where the tap points of `flipSwitch`
+    /// land outside the screen. Where that stop falls depends on the height of the
+    /// rows above, so any change to the Me hub moves it.
+    private func centerFully(_ identifier: String) {
+        let target = element(identifier)
+        let window = app.windows.firstMatch.frame
+        let low = window.minY + window.height * 0.18
+        let high = window.maxY - window.height * 0.22
+        for _ in 0..<8 {
+            let frame = target.frame
+            if frame.minY >= low && frame.maxY <= high { return }
+            let upward = frame.maxY > high
+            let start = app.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: upward ? 0.62 : 0.4))
+            let end = app.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: upward ? 0.5 : 0.52))
+            start.press(forDuration: 0.05, thenDragTo: end)
+            Thread.sleep(forTimeInterval: 0.6)
+        }
     }
 
     private func openMe() {
