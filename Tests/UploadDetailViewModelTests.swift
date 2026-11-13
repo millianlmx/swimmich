@@ -58,6 +58,7 @@ final class UploadDetailViewModelTests: XCTestCase {
             client: client, photos: MockPhotoLibraryService(), engine: engine,
             settings: settings, scheduler: MockBackupScheduler(),
             activityService: MockBackupLiveActivityService(),
+            notifications: MockNotificationService(),
             readOnly: .ephemeral()
         )
         return Harness(

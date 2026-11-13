@@ -24,7 +24,7 @@ jobs:
     # Required by the branch protection of `main` under this exact name.
     name: Unit tests (iOS simulator)
     runs-on: [self-hosted, macOS, ARM64, xcode]
-    # Unit tests, then the UI scenarios of Scripts/ci-ui-scenarios.txt.
+    # Unit tests and the UI scenarios of Scripts/ci-ui-scenarios.txt, side by side.
     timeout-minutes: 120
     steps:
       - uses: actions/checkout@v4
