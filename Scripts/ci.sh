@@ -141,8 +141,13 @@ worker_pids=()
 cleanup() {
   rm -f "$build_log" "$python_log" "$audit_log"
   rm -rf "$media_dir"
-  local pid
+  local pid sim
   for pid in ${worker_pids[@]+"${worker_pids[@]}"}; do kill "$pid" 2>/dev/null || true; done
+  # The simulators are kept (created once, erased before use: their disk stays
+  # bounded) but not left running: a booted pool holds memory and CPU between runs.
+  for sim in "$udid" ${worker_udids[@]+"${worker_udids[@]}"}; do
+    xcrun simctl shutdown "$sim" 2>/dev/null || true
+  done
 }
 trap cleanup EXIT
 if ! xcodebuild build-for-testing "${common[@]}" -quiet 2>&1 | tee "$build_log"; then
