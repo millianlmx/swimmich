@@ -22,3 +22,14 @@ immich_stub_dynamic_type.py DynamicTypeUITests/test_AC_26_7
 immich_stub_dynamic_type.py DynamicTypeUITests/test_AC_26_4_appLock
 immich_stub_dynamic_type.py DynamicTypeUITests/test_AC_26_4_shareExtension --content-size accessibility-extra-extra-extra-large --media Summer-holidays-in-the-Gorges-du-Verdon-with-the-whole-family.png
 immich_stub_dynamic_type.py DynamicTypeUITests/test_AC_26_5
+
+# L-27 Share quality, log level and caches (AC-50, AC-52, AC-270 to AC-280).
+immich_stub_share_caches.py ShareAndCachesUITests/test_AC_280
+immich_stub_share_caches.py ShareAndCachesUITests/test_AC_52
+immich_stub_share_caches.py ShareAndCachesUITests/test_AC_277
+immich_stub_share_caches.py ShareAndCachesUITests/test_AC_279
+immich_stub_share_caches.py ShareAndCachesUITests/test_AC_272
+immich_stub_share_caches.py ShareAndCachesUITests/test_AC_275
+immich_stub_share_caches.py ShareAndCachesUITests/test_AC_50
+immich_stub_share_caches.py ShareAndCachesUITests/test_AC_270
+immich_stub_share_caches.py ShareAndCachesUITests/test_AC_273

@@ -42,6 +42,9 @@ final class OfflineDownloadViewModel {
     /// The read in flight comes from a pull-to-refresh.
     private(set) var isRefreshingListing = false
     private var listingGeneration = 0
+
+    /// How the last purge ended, for the alert the three storage screens show.
+    private(set) var purgeResult: OfflinePurgeResult?
     private var refreshCount = 0
 
     /// What the storage screens render, decided here and not in the views.
@@ -214,11 +217,30 @@ final class OfflineDownloadViewModel {
         await reload()
     }
 
+    /// Wipes this account's offline copies and records what happened: a purge
+    /// never ends in silence. Copies the disk would not delete stay listed (and
+    /// readable) and the message counts them.
     func clearAll() async {
-        guard await store.clearAll(accountID: accountID) else { return }
-        index.removeAll()
-        errorMessage = nil
-        await reload()
+        switch await store.clearAll(accountID: accountID) {
+        case .cleared:
+            index.removeAll()
+            errorMessage = nil
+            await reload()
+            purgeResult = .succeeded
+        case .refused:
+            // Another account's storage: the shared mirror is not ours to touch.
+            purgeResult = .failed(
+                message: String(localized: "This offline storage belongs to another account. Nothing was removed.")
+            )
+        case .incomplete(let remaining):
+            // The listing is read back from disk: what survived stays listed.
+            await reload()
+            purgeResult = .failed(message: String(localized: "\(remaining) offline items could not be removed."))
+        }
+    }
+
+    func dismissPurgeResult() {
+        purgeResult = nil
     }
 
     /// Persists a new budget; the store trims the cache down to it immediately.
@@ -231,4 +253,10 @@ final class OfflineDownloadViewModel {
         errorMessage = nil
         lastDownloadedID = nil
     }
+}
+
+/// How a purge of the offline cache ended.
+enum OfflinePurgeResult: Equatable {
+    case succeeded
+    case failed(message: String)
 }

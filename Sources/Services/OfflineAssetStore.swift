@@ -431,23 +431,45 @@ actor OfflineAssetStore {
 
     /// Wipes the copies of `accountID` (and only those) and aborts every
     /// transfer still in flight: each pending `download` throws a cancellation
-    /// and writes nothing (see `generation`). Refused (`false`) when that
-    /// account is not the active one.
+    /// and writes nothing (see `generation`). Refused (`.refused`, nothing
+    /// touched) when that account is not the active one.
+    ///
+    /// An entry leaves the index only once its file is gone (a file already
+    /// missing counts as gone): a copy the disk refuses to delete stays listed
+    /// and readable, and the outcome says how many were left, instead of
+    /// announcing an emptiness that is not there.
     @discardableResult
-    func clearAll(accountID: String) -> Bool {
+    func clearAll(accountID: String) -> OfflineClearOutcome {
         let s = scope.snapshot()
-        guard s.accountID == accountID else { return false }
+        guard s.accountID == accountID else { return .refused }
         generation += 1
         for task in inFlight.values { task.cancel() }
         _ = try? prepare(s)
         let folder = folderURL(forAccount: accountID)
-        index.removeAll()
-        for url in (try? fileManager.contentsOfDirectory(at: folder, includingPropertiesForKeys: nil)) ?? [] {
+        var remaining = 0
+        for (id, info) in index {
+            let url = folder.appendingPathComponent(info.fileName)
+            do {
+                try fileManager.removeItem(at: url)
+                index.removeValue(forKey: id)
+            } catch {
+                if fileManager.fileExists(atPath: url.path) {
+                    remaining += 1
+                } else {
+                    index.removeValue(forKey: id)
+                }
+            }
+        }
+        // What else the folder holds (half-written payloads, strays) goes too,
+        // uncounted; the index and the copies still listed stay.
+        let kept = Set(index.values.map(\.fileName)).union(["index.json"])
+        for url in (try? fileManager.contentsOfDirectory(at: folder, includingPropertiesForKeys: nil)) ?? []
+        where !kept.contains(url.lastPathComponent) {
             try? fileManager.removeItem(at: url)
         }
         saveIndex(folder)
         try? ensureFolderExists(folder)
-        return true
+        return remaining == 0 ? .cleared : .incomplete(remaining: remaining)
     }
 
     /// Wipes every account's copies, `Unassigned/` and any legacy leftover,
@@ -675,4 +697,14 @@ actor OfflineAssetStore {
         }
         return isVideo ? "mp4" : "jpg"
     }
+}
+
+/// What `OfflineAssetStore.clearAll(accountID:)` did.
+enum OfflineClearOutcome: Equatable, Sendable {
+    /// Every copy of the account is gone.
+    case cleared
+    /// The account is not the active one: nothing was touched.
+    case refused
+    /// `remaining` copies could not be deleted and are still listed.
+    case incomplete(remaining: Int)
 }
