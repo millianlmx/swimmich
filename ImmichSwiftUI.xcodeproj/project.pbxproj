@@ -119,6 +119,7 @@
 		1BF291E3C493E40B144B18CD /* Localizable.xcstrings in Resources */ = {isa = PBXBuildFile; fileRef = EFAA3C714B2F0D7284D3FA95 /* Localizable.xcstrings */; };
 		1C7150DF2D056EB945C9598D /* AssetTagsSheet.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0290C0875F3298F544C1320C /* AssetTagsSheet.swift */; };
 		1DB3F51D0ECDB05A6A44D382 /* FolderViewUITests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 78372C4588F75079AFAE958B /* FolderViewUITests.swift */; };
+		A24E7001C0DE4D1A8B3F0002 /* PhotoDetailsUITests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A24E7001C0DE4D1A8B3F0001 /* PhotoDetailsUITests.swift */; };
 		1DE222F8440F7B387939A8D1 /* CastService.swift in Sources */ = {isa = PBXBuildFile; fileRef = B8B8F992F536E50B945F00D7 /* CastService.swift */; };
 		1E74193A3B7A6BCF7FAF24A1 /* LocalizationTestSupport.swift in Sources */ = {isa = PBXBuildFile; fileRef = 27692E2B260CCBE82D1B836A /* LocalizationTestSupport.swift */; };
 		1EAA004AF23F270A2AB8D92D /* CreateMemorySheet.swift in Sources */ = {isa = PBXBuildFile; fileRef = F6E00FDD2DB7F0A86DB2415E /* CreateMemorySheet.swift */; };
@@ -162,6 +163,7 @@
 		312C6108E79DED9F8D17BEFF /* RoadTripSmoothPathTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = C62D363214447C0DD053D77F /* RoadTripSmoothPathTests.swift */; };
 		32DA0757617E602B6B277FB2 /* immich_stub_shared_link_viewer.py in Resources */ = {isa = PBXBuildFile; fileRef = FDE53ED2DD3C1FD0C04F4DB9 /* immich_stub_shared_link_viewer.py */; };
 		332E532AFB4139649D93275D /* immich_stub_folder_view.py in Resources */ = {isa = PBXBuildFile; fileRef = C524A83EB4E2B20E819024A1 /* immich_stub_folder_view.py */; };
+		A24E7001C0DE4D1A8B3F0004 /* immich_stub_photo_details.py in Resources */ = {isa = PBXBuildFile; fileRef = A24E7001C0DE4D1A8B3F0003 /* immich_stub_photo_details.py */; };
 		336577129FC5EBFD2E75F980 /* WhatsNewView.swift in Sources */ = {isa = PBXBuildFile; fileRef = F652F3563FE0B9612CBC15D1 /* WhatsNewView.swift */; };
 		33BBA3EEDF4E4B1BDAC722A7 /* CleanupSettingsStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = F240124D8EA51284282B0685 /* CleanupSettingsStore.swift */; };
 		34F5B8121C30F152F86C8862 /* immich_stub_change_password.py in Resources */ = {isa = PBXBuildFile; fileRef = C506AACAC6418CB2888BD9D8 /* immich_stub_change_password.py */; };
@@ -1051,6 +1053,7 @@
 		76FD477D673E55393FBBDD4D /* Color+PhotoVault.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "Color+PhotoVault.swift"; sourceTree = "<group>"; };
 		77E5BF80AB0CFF4C8AD80BA2 /* DownloadItem.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DownloadItem.swift; sourceTree = "<group>"; };
 		78372C4588F75079AFAE958B /* FolderViewUITests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FolderViewUITests.swift; sourceTree = "<group>"; };
+		A24E7001C0DE4D1A8B3F0001 /* PhotoDetailsUITests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PhotoDetailsUITests.swift; sourceTree = "<group>"; };
 		794BEC4709A8CF43A1D2DCAA /* WidgetDeepLinkTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WidgetDeepLinkTests.swift; sourceTree = "<group>"; };
 		7B165010C2BC88FD901034EF /* NotificationSettingsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NotificationSettingsView.swift; sourceTree = "<group>"; };
 		7CF7041596F97609707BFED1 /* LockedFolderViewModelTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LockedFolderViewModelTests.swift; sourceTree = "<group>"; };
@@ -1259,6 +1262,7 @@
 		C4C534A4D00C20CD9AF627AF /* AirPlayCastService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AirPlayCastService.swift; sourceTree = "<group>"; };
 		C506AACAC6418CB2888BD9D8 /* immich_stub_change_password.py */ = {isa = PBXFileReference; lastKnownFileType = text.script.python; path = immich_stub_change_password.py; sourceTree = "<group>"; };
 		C524A83EB4E2B20E819024A1 /* immich_stub_folder_view.py */ = {isa = PBXFileReference; lastKnownFileType = text.script.python; path = immich_stub_folder_view.py; sourceTree = "<group>"; };
+		A24E7001C0DE4D1A8B3F0003 /* immich_stub_photo_details.py */ = {isa = PBXFileReference; lastKnownFileType = text.script.python; path = immich_stub_photo_details.py; sourceTree = "<group>"; };
 		C61A290672FB6C3338E64F11 /* AdjustLocationSheet.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AdjustLocationSheet.swift; sourceTree = "<group>"; };
 		C62D363214447C0DD053D77F /* RoadTripSmoothPathTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RoadTripSmoothPathTests.swift; sourceTree = "<group>"; };
 		C65EB72EC3454F835A833B2D /* LanguageToast.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LanguageToast.swift; sourceTree = "<group>"; };
@@ -2297,6 +2301,7 @@
 				03632C077FCF1B55FBC589F0 /* immich_stub_favorites_filter.py */,
 				5D1A7C3E9B2F40186AC7D306 /* immich_stub_timeline_scrubber.py */,
 				C524A83EB4E2B20E819024A1 /* immich_stub_folder_view.py */,
+				A24E7001C0DE4D1A8B3F0003 /* immich_stub_photo_details.py */,
 				5674388C6E6D6308091F95AC /* immich_stub_free_up_space.py */,
 				8FD4678BF9AC2355AC59D544 /* immich_stub_local_library.py */,
 				B032F8E8A997D00D932B511E /* immich_stub_locked_folder.py */,
@@ -2427,6 +2432,7 @@
 				B03C5CFAF754218B24E97A04 /* FavoritesFilterUITests.swift */,
 				5D1A7C3E9B2F40186AC7D304 /* TimelineScrubberUITests.swift */,
 				78372C4588F75079AFAE958B /* FolderViewUITests.swift */,
+				A24E7001C0DE4D1A8B3F0001 /* PhotoDetailsUITests.swift */,
 				A14A4BDD1813503721593F03 /* FreeUpSpaceUITests.swift */,
 				B2BE58A959176290845E8EF8 /* LocalLibraryUITests.swift */,
 				86533554A77DF5D2D61EA1FF /* LockedFolderUITests.swift */,
@@ -2856,6 +2862,7 @@
 				70A9CF257B5FFECEF0C8B85B /* immich_stub_favorites_filter.py in Resources */,
 				5D1A7C3E9B2F40186AC7D305 /* immich_stub_timeline_scrubber.py in Resources */,
 				332E532AFB4139649D93275D /* immich_stub_folder_view.py in Resources */,
+				A24E7001C0DE4D1A8B3F0004 /* immich_stub_photo_details.py in Resources */,
 				4748E6D5E5941D3DD2BCC558 /* immich_stub_free_up_space.py in Resources */,
 				79D68068E03737251E7BBB4B /* immich_stub_local_library.py in Resources */,
 				555B79A8AFFA156A3DE49FF8 /* immich_stub_locked_folder.py in Resources */,
@@ -3151,6 +3158,7 @@
 				DF7A0FB005A9A1230D45DAC0 /* FavoritesFilterUITests.swift in Sources */,
 				5D1A7C3E9B2F40186AC7D303 /* TimelineScrubberUITests.swift in Sources */,
 				1DB3F51D0ECDB05A6A44D382 /* FolderViewUITests.swift in Sources */,
+				A24E7001C0DE4D1A8B3F0002 /* PhotoDetailsUITests.swift in Sources */,
 				3C7D0A06D816806EBE848628 /* FreeUpSpaceUITests.swift in Sources */,
 				6EE4B13C616AD03120A4C765 /* ImmichRenderScreenshots.swift in Sources */,
 				D5CF1D6B97E1CEF46C6A53C0 /* ImmichWidgetHomeScreen.swift in Sources */,
