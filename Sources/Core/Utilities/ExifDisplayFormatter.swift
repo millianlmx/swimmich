@@ -49,15 +49,7 @@ extension ExifResponseDto {
     /// returns raw string if parsing fails so UI degrades gracefully.
     var dateFormatted: String? {
         guard let raw = dateTimeOriginal else { return nil }
-        let fmt = ISO8601DateFormatter()
-        fmt.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
-        if let date = fmt.date(from: raw) {
-            return DateFormatter.localizedString(from: date, dateStyle: .medium, timeStyle: .short)
-        }
-        let plain = ISO8601DateFormatter()
-        if let date = plain.date(from: raw) {
-            return DateFormatter.localizedString(from: date, dateStyle: .medium, timeStyle: .short)
-        }
-        return raw
+        guard let date = LongDateFormatter.parse(isoTimestamp: raw) else { return raw }
+        return DateFormatter.localizedString(from: date, dateStyle: .medium, timeStyle: .short)
     }
 }
