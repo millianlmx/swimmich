@@ -4,6 +4,7 @@ import XCTest
 /// The sign-in step shows what the server accepts (L-28, B-32.1 / B-32.2).
 final class LoginOptionsTests: XCTestCase {
 
+    @MainActor
     private func makeAuth(
         mock: MockImmichClient,
         url: String = "https://photos.example.com"

@@ -404,8 +404,10 @@ final class AuthViewModel: AuthSessionDelegate {
             }
         }
         let version = try? await client.serverVersion()
-        if serverConfig == nil { serverConfig = try? await client.serverConfig() }
+        // Read for `url`: kept only if the address is still the one asked about.
+        let config = serverConfig == nil ? (try? await client.serverConfig()) : nil
         guard baseURL == url else { return }
+        if let config { serverConfig = config }
         await loadLoginOptions(for: url, version: version)
     }
 

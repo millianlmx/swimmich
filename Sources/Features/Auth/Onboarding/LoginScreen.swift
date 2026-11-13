@@ -88,7 +88,7 @@ struct LoginScreen: View {
                                     } else {
                                         Image(systemName: "person.badge.key.fill")
                                     }
-                                    Text(verbatim: presentation.ssoLabel)
+                                    Text(presentation.ssoLabel)
                                         .multilineTextAlignment(.center)
                                         .fixedSize(horizontal: false, vertical: true)
                                         .accessibilityIdentifier("loginSSOLabel")

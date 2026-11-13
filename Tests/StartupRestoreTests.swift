@@ -107,15 +107,15 @@ final class StartupRestoreTests: XCTestCase {
     // AC-342: the 401 delegate can arrive before the validation's own catch; the result is the same.
     @MainActor
     func test_AC_342_delegateFirstGivesTheSameResult() async {
-        var auth: AuthViewModel!
+        let target = TestBox<AuthViewModel?>(nil)
         let rig = makeRig { mock in
             mock.validateTokenGate = {
-                await MainActor.run { auth.didReceiveUnauthorized() }
+                await MainActor.run { target.value?.didReceiveUnauthorized() }
                 try await Task.sleep(for: .milliseconds(50)) // the delegate's task runs first
             }
             mock.validateError = APIError.unauthorized
         }
-        auth = rig.auth
+        target.value = rig.auth
         defer { rig.defaults.removePersistentDomain(forName: rig.suite) }
 
         await rig.auth.restoreSession()
@@ -129,12 +129,12 @@ final class StartupRestoreTests: XCTestCase {
     // A refusal that comes back after another session took over is not that session's.
     @MainActor
     func test_refusalForAReplacedSessionIsIgnored() async {
-        var auth: AuthViewModel!
+        let target = TestBox<AuthViewModel?>(nil)
         let rig = makeRig { mock in
-            mock.validateTokenGate = { await MainActor.run { auth.serverURLString = "https://other.example.com" } }
+            mock.validateTokenGate = { await MainActor.run { target.value?.serverURLString = "https://other.example.com" } }
             mock.validateError = APIError.unauthorized
         }
-        auth = rig.auth
+        target.value = rig.auth
         defer { rig.defaults.removePersistentDomain(forName: rig.suite) }
 
         await rig.auth.restoreSession()
