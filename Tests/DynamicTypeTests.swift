@@ -398,4 +398,53 @@ final class DynamicTypeTests: XCTestCase {
         )
         XCTAssertEqual(ax5, ax2, accuracy: 0.5, "capped at AX2")
     }
+
+    // MARK: - L-24 (AC-45, AC-227)
+
+    /// Natural size of `view` (both axes free), for comparing widths.
+    private func idealSize(_ view: some View, size: DynamicTypeSize) -> CGSize {
+        let hosted = view.fixedSize().environment(\.dynamicTypeSize, size)
+        let controller = UIHostingController(rootView: hosted)
+        return controller.sizeThatFits(in: CGSize(width: 2000, height: 2000))
+    }
+
+    func test_AC_45_ageStacksUnderName() {
+        let size = DynamicTypeSize.accessibility5
+        let name = "Nina"
+        let age = "19 years old"
+        let with = idealSize(FaceTileLabel(name: name, age: age), size: size)
+        let without = idealSize(FaceTileLabel(name: name, age: nil), size: size)
+        let nameOnly = idealSize(Text(name).font(.pvCaption), size: size)
+        let ageOnly = idealSize(Text(age).font(.pvCaption), size: size)
+
+        XCTAssertGreaterThanOrEqual(
+            with.height - without.height, PVFontMetrics.lineHeight(.pvCaption, at: size),
+            "the age takes its own line under the name"
+        )
+        XCTAssertLessThanOrEqual(
+            with.width, max(nameOnly.width, ageOnly.width) + 0.5,
+            "stacked, not side by side"
+        )
+    }
+
+    func test_AC_227_faceTileLabelAndOwnerRowWholeAtAX5() {
+        assertWraps(
+            long: FaceTileLabel(name: Self.longText, age: "1 year and 2 months old"),
+            short: FaceTileLabel(name: Self.shortText, age: "1 year and 2 months old"),
+            token: .pvCaption, "face tile name"
+        )
+        let owner = { (name: String) in
+            UserResponseDto(
+                id: "p1", name: name, email: "p1@example.org", profileImagePath: "",
+                avatarColor: "primary", profileChangedAt: "2024-01-01T00:00:00.000Z"
+            )
+        }
+        assertWraps(
+            long: AssetOwnerRow(owner: owner(Self.longText), baseURL: nil, token: nil)
+                .padding(.horizontal, PVSpacing.s16),
+            short: AssetOwnerRow(owner: owner(Self.shortText), baseURL: nil, token: nil)
+                .padding(.horizontal, PVSpacing.s16),
+            token: .pvSubhead, "owner row"
+        )
+    }
 }
