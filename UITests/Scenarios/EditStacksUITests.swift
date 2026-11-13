@@ -365,10 +365,13 @@ final class EditStacksUITests: XCTestCase {
         }
     }
 
-    /// Everything a failed wait has to say: which pass, what the progress
-    /// section shows, what SpringBoard still holds up, and what reached the stub.
+    /// Everything a failed wait has to say. The CI annotation is cut around 300
+    /// characters, so the message opens on a head of at most 200 (`runHead`):
+    /// the engine's phase and the stub's journal by route. The rest — buttons,
+    /// SpringBoard, every static text, the whole wire — follows it.
     /// `isEnabled` is only read on a button that exists (XCUITest throws otherwise).
     private func runState(pass: String) -> String {
+        let wire = stubRequests()
         let run = element("runBackupButton")
         let cancel = element("cancelBackupButton")
         let runExists = run.exists
@@ -376,11 +379,49 @@ final class EditStacksUITests: XCTestCase {
         let springboard = XCUIApplication(bundleIdentifier: "com.apple.springboard")
         let alert = springboard.alerts.firstMatch
         let alertButtons = alert.exists ? alert.buttons.allElementsBoundByIndex.map(\.label) : []
-        return "pass=\(pass) cancelBackupButton.exists=\(cancel.exists) "
+        return runHead(wire: wire)
+            + "\npass=\(pass) cancelBackupButton.exists=\(cancel.exists) "
             + "runBackupButton.exists=\(runExists) runBackupButton.isEnabled=\(runEnabled) "
             + "springboardAlertButtons=\(alertButtons)"
             + "\nscreen reads: \(app.staticTexts.allElementsBoundByIndex.map(\.label))"
-            + "\nwire:\n\(describe(stubRequests()))"
+            + "\nwire:\n\(describe(wire))"
+    }
+
+    /// What the progress section says about the engine, read from its static
+    /// texts (`BackupSettingsView.activeProgress`, en and fr — the CI slot
+    /// follows the host's language): `scanning` is `.checking` before the
+    /// library scan returned (no total yet), `preparing` is `.checking` with
+    /// a total (exports and hashes), `uploading` is `.uploading`.
+    private static let scanningTexts = ["Scanning your library", "Analyse de votre photothèque"]
+    private static let preparingPrefixes = ["Preparing ", "Préparation de "]
+    private static let uploadingTexts = ["Backing up", "Sauvegarde en cours"]
+
+    /// At most 200 characters: `phase=… n=x of y st=… | check=… upload=… stack=… last=METHOD path`.
+    /// `last` skips the realtime socket's polling (`/api/socket.io/`), which
+    /// would otherwise always be the last request and say nothing.
+    private func runHead(wire: [StubRequest]) -> String {
+        let texts = app.staticTexts.allElementsBoundByIndex.map(\.label)
+        let phase: String
+        if texts.contains(where: { text in Self.scanningTexts.contains { text.hasPrefix($0) } }) {
+            phase = "scanning"
+        } else if let preparing = texts.first(where: { text in Self.preparingPrefixes.contains { text.hasPrefix($0) } }) {
+            phase = "preparing(\(preparing.filter(\.isNumber)))"
+        } else if texts.contains(where: { Self.uploadingTexts.contains($0) }) {
+            phase = "uploading"
+        } else {
+            phase = element("cancelBackupButton").exists ? "running(unread)" : "idle"
+        }
+        let counter = texts.first { $0.range(of: #"^\d+\s(of|sur)\s\d+$"#, options: .regularExpression) != nil } ?? "-"
+        let status = texts.first { $0.contains("iCloud") || $0.hasPrefix("Checking server") || $0.hasPrefix("Vérification du serveur") }
+        let posts = wire.filter { $0.method == "POST" }
+        let checkCount = posts.filter { $0.path == "/api/assets/bulk-upload-check" }.count
+        let uploadCount = posts.filter { $0.path == "/api/assets" }.count
+        let stackCount = posts.filter { $0.path == "/api/stacks" }.count
+        let last = wire.last(where: { $0.path != "/api/socket.io/" }).map { "\($0.method) \($0.path)" } ?? "-"
+        let tail = " | check=\(checkCount) upload=\(uploadCount) stack=\(stackCount) last=\(last)"
+        var head = "phase=\(phase) n=\(counter)"
+        if let status { head += " st=\(status)" }
+        return String((head.prefix(max(0, 200 - tail.count)) + tail).prefix(200))
     }
 
     /// Taps "Run now" and waits for the run to end. The end is what the screen
@@ -416,11 +457,11 @@ final class EditStacksUITests: XCTestCase {
         }
         guard let completed else {
             shot("es-run-never-ended-\(pass)")
-            return XCTFail("the backup run never ended — \(runState(pass: pass))")
+            return XCTFail("\(runState(pass: pass))\n→ [\(pass)] the backup run never ended")
         }
         guard completed else {
             shot("es-run-finished-with-errors-\(pass)")
-            return XCTFail("the backup run finished with errors — \(runState(pass: pass))")
+            return XCTFail("\(runState(pass: pass))\n→ [\(pass)] the backup run finished with errors")
         }
 
         // The summary is up, so the engine is idle: "Run now" is back, maybe
@@ -433,7 +474,7 @@ final class EditStacksUITests: XCTestCase {
         }
         if !back {
             shot("es-run-button-never-back-\(pass)")
-            XCTFail("the run reported its outcome but 'Run now' never came back — \(runState(pass: pass))")
+            XCTFail("\(runState(pass: pass))\n→ [\(pass)] the run reported its outcome but 'Run now' never came back")
         }
         allowPhotoAccessIfAsked(timeout: 0.5)
     }
