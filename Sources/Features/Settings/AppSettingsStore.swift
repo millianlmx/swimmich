@@ -168,6 +168,7 @@ final class AppSettingsStore {
             storedShareQuality = newValue
             defaults.set(newValue.rawValue, forKey: Self.shareFileTypeKey)
         }
+    }
 
     /// A tap on a photo advances to the next one instead of toggling the chrome.
     var tapToNavigate: Bool {
