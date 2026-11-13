@@ -662,6 +662,10 @@ final class SearchCriteriaTests: XCTestCase {
             func notInAlbum(_ dto: MetadataSearchDto) -> Bool {
                 structured ? dto.filter?.hasAlbums?.eq == false : dto.isNotInAlbum == true
             }
+            func archivedAndOutOfAlbum() throws -> Bool {
+                let dto = try sent()
+                return isArchive(dto) && notInAlbum(dto)
+            }
             func tagIds(_ dto: MetadataSearchDto) -> [String]? {
                 structured ? dto.filter?.tagIds?.all : dto.tagIds
             }
@@ -678,24 +682,24 @@ final class SearchCriteriaTests: XCTestCase {
 
             vm.filter.isNotInAlbum = true
             await vm.applyFilters()
-            XCTAssertTrue(isArchive(try sent()) && notInAlbum(try sent()), "not in album, structured=\(structured)")
+            XCTAssertTrue(try archivedAndOutOfAlbum(), "not in album, structured=\(structured)")
 
             vm.toggleTag(japon)
             await vm.applyFilters()
             XCTAssertEqual(tagIds(try sent()), ["t-japon"], "tag, structured=\(structured)")
-            XCTAssertTrue(isArchive(try sent()) && notInAlbum(try sent()))
+            XCTAssertTrue(try archivedAndOutOfAlbum())
 
             await vm.selectSearchMode(.filename)
             XCTAssertEqual(fileName(try sent()), "kyoto", "file name, structured=\(structured)")
             XCTAssertNil(descriptionOf(try sent()))
             XCTAssertEqual(tagIds(try sent()), ["t-japon"])
-            XCTAssertTrue(isArchive(try sent()) && notInAlbum(try sent()))
+            XCTAssertTrue(try archivedAndOutOfAlbum())
 
             await vm.selectSearchMode(.description)
             XCTAssertEqual(descriptionOf(try sent()), "kyoto", "description, structured=\(structured)")
             XCTAssertNil(fileName(try sent()), "the previous mode's criterion is gone")
             XCTAssertEqual(tagIds(try sent()), ["t-japon"])
-            XCTAssertTrue(isArchive(try sent()) && notInAlbum(try sent()))
+            XCTAssertTrue(try archivedAndOutOfAlbum())
         }
     }
 }
