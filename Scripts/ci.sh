@@ -197,6 +197,10 @@ if ! xcodebuild test-without-building "${common[@]}" -quiet \
   exit 65
 fi
 
+# The unit tests' simulator has done its part: off before the UI pool boots, so
+# a runner never holds one simulator more than its workers.
+xcrun simctl shutdown "$udid" 2>/dev/null || true
+
 # UI scenarios. One line of Scripts/ci-ui-scenarios.txt per xcodebuild run:
 #
 #   <stub.py> <Class>[/<test>] [--content-size <simctl category>]
