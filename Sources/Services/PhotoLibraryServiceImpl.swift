@@ -602,6 +602,16 @@ extension PhotoLibraryServiceImpl: BackupAssetSource {
     }
 
     /// Maps a PHAsset to its value-typed candidate.
+    ///
+    /// Every PhotoKit read here is one the scan made before "Also back up edits"
+    /// existed: the properties `prefetchProperties` warms and the resource list.
+    /// The edit flag is read from that list (an `.adjustmentData` resource is
+    /// what an in-place edit writes and a revert removes — the fact
+    /// `PHAsset.hasAdjustments` reports), never from `hasAdjustments` itself:
+    /// that property is outside the prefetched set, and the scan runs off the
+    /// main thread, where a property Photos must fetch on demand is not a
+    /// plain read. With the setting off, the scan touches Photos exactly as
+    /// it did before the setting.
     private func makeCandidate(_ asset: PHAsset) -> BackupCandidate? {
         let kind: BackupAssetKind = asset.mediaType == .video ? .video : .image
         let timestamps = isoTimestamps(for: asset)
@@ -617,7 +627,7 @@ extension PhotoLibraryServiceImpl: BackupAssetSource {
             isFavorite: asset.isFavorite,
             isLivePhoto: asset.mediaSubtypes.contains(.photoLive),
             fileSize: Self.originalSize(of: asset),
-            hasAdjustments: asset.hasAdjustments
+            hasAdjustments: resources.contains { $0.type == .adjustmentData }
         )
     }
 

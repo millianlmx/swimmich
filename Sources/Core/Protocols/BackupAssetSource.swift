@@ -26,9 +26,10 @@ struct BackupCandidate: Identifiable, Equatable, Sendable {
     /// which the UI renders as "Unknown size" rather than 0 B. Defaulted, so
     /// every existing construction keeps compiling.
     var fileSize: Int64? = nil
-    /// True when the Photos asset carries adjustment data (`PHAsset.hasAdjustments`):
-    /// it was edited in place, in Photos or by an app that edits through PhotoKit.
-    /// Only read when the "Also back up edits" setting is on.
+    /// True when the Photos asset carries adjustment data — an `.adjustmentData`
+    /// resource, what `PHAsset.hasAdjustments` reports: it was edited in place,
+    /// in Photos or by an app that edits through PhotoKit. Filled by every scan;
+    /// the engine only acts on it when the "Also back up edits" setting is on.
     var hasAdjustments: Bool = false
 }
 
