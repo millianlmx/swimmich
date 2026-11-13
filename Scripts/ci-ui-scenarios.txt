@@ -22,3 +22,12 @@ immich_stub_dynamic_type.py DynamicTypeUITests/test_AC_26_7
 immich_stub_dynamic_type.py DynamicTypeUITests/test_AC_26_4_appLock
 immich_stub_dynamic_type.py DynamicTypeUITests/test_AC_26_4_shareExtension --content-size accessibility-extra-extra-extra-large --media Summer-holidays-in-the-Gorges-du-Verdon-with-the-whole-family.png
 immich_stub_dynamic_type.py DynamicTypeUITests/test_AC_26_5
+immich_stub_search_filters.py SearchCriteriaUITests/test_AC_42
+immich_stub_search_filters.py SearchCriteriaUITests/test_AC_209
+immich_stub_search_filters.py SearchCriteriaUITests/test_AC_210
+immich_stub_search_filters.py SearchCriteriaUITests/test_AC_211
+immich_stub_search_filters.py SearchCriteriaUITests/test_AC_212
+immich_stub_search_filters.py SearchCriteriaUITests/test_AC_213
+immich_stub_search_filters.py SearchCriteriaUITests/test_AC_43
+immich_stub_search_filters.py SearchCriteriaUITests/test_AC_215
+immich_stub_search_filters.py SearchCriteriaUITests/test_AC_218

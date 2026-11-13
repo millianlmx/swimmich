@@ -33,7 +33,7 @@ La parité avec le client Flutter est suivie dans [`docs/mobile-features-vs-flut
 |---|---|---|
 | **Timeline** | buckets par jour, zoom de grille, vignettes | `Sources/Features/Timeline/` |
 | **Visionneuse** | plein écran, zoom, filmstrip, vidéo, diaporama, panneau EXIF, stacks, visages | `Sources/Features/PhotoViewer/` |
-| **Recherche** | sémantique (CLIP), visages, lieux (carte), tags, filtres avancés | `Sources/Features/Search/` |
+| **Recherche** | sémantique (CLIP), lieux (carte), filtres par personnes, tags, « hors album », favoris et archive, recherche de texte dans le nom de fichier ou la description, densité de grille réglée dans les préférences | `Sources/Features/Search/` |
 | **Albums** | CRUD, partage, flux d'activité | `Sources/Features/Albums/` |
 | **Personnes, tags, doublons, corbeille** | gestion des visages, tags, détection de doublons, restauration | `Sources/Features/People/`, `Tags/`, `Duplicates/`, `Trash/` |
 | **Liens partagés** | CRUD, mot de passe, expiration, **visionneuse publique** (ouvrir un lien reçu, le déverrouiller, le parcourir, upload invité) | `Sources/Features/SharedLinks/` |

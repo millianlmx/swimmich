@@ -16,7 +16,14 @@ exclusive: one body carries one of the two groups, never a mix (v3.2.0's
   a cursor. A stub that answered both would let a scenario pass while the app
   mixed the two languages;
 * REFUSES a mixed body with the server's own 400, so the rule the scenario
-  asserts on the wire is also the rule the stub enforces.
+  asserts on the wire is also the rule the stub enforces;
+* serves a small LIBRARY behind the search (people Alice, Bob and the hidden
+  Carla, the tags `Voyages` and `Voyages/Japon`, archived / out-of-album /
+  tagged / named photos) and FILTERS it on the criteria the body carries, in
+  both languages, with the server's semantics — so a scenario asserts which
+  tiles appear, not only what was sent;
+* serves `POST /api/search/smart` (flat criteria, `page`, a 400 on `filter` /
+  `orderBy` / `cursor`), `GET /api/people` and `GET /api/tags`.
 
     python3 UITests/stubs/immich_stub_search_filters.py 8421
 
@@ -38,7 +45,7 @@ WHY `/__version` IS GRAFTED RATHER THAN REGISTERED
 from urllib.parse import parse_qsl
 
 import immich_stub_base as base
-from immich_stub_base import STATE, TIMELINE_ASSETS, Response, asset, main, router
+from immich_stub_base import STATE, TIMELINE_ASSETS, Response, asset, main, png, router
 
 # What the shell answers for `/api/server/version` — the generation a scenario
 # gets unless it asks for another one. Pre-v3.2.0 on purpose: a stub that
@@ -52,14 +59,178 @@ DEFAULT_VERSION = (1, 119, 0)
 CURSOR = "stub-cursor-0001"
 
 # The deprecated flat fields of `MetadataSearchDto` this stub knows about: the
-# ones the sheet writes plus the two pagination/order fields. `query`, `size`
-# and `withExif` are NOT in the list — the structured shape sends those too, and
-# they are the fields both shapes legitimately share.
+# ones the sheet writes, the criteria of the people / tags / display / text
+# pickers, plus the two pagination/order fields. `query`, `size` and `withExif`
+# are NOT in the list — the structured shape sends those too, and they are the
+# fields both shapes legitimately share.
 FLAT_FIELDS = (
     "page", "rating", "ocr", "city", "state", "country", "make", "model",
     "lensModel", "type", "isFavorite", "takenAfter", "takenBefore", "order",
+    "personIds", "tagIds", "isNotInAlbum", "visibility", "originalFileName", "description",
 )
 NEW_FIELDS = ("filter", "orderBy", "cursor")
+
+
+# MARK: - The library behind the search
+#
+# Fixed UUID v4s, so a scenario names a photo by its id. Each fixture says what
+# the criteria of the search match on: who is on it, its tags, its visibility,
+# whether it sits in an album, its file name and description — and the words a
+# smart (CLIP) search would find it by.
+
+ALICE = "a11ce000-0000-4000-8000-000000000001"
+BOB = "b0b00000-0000-4000-8000-000000000002"
+CARLA = "ca41a000-0000-4000-8000-000000000003"
+PEOPLE = [
+    {"id": ALICE, "name": "Alice", "isHidden": False},
+    {"id": BOB, "name": "Bob", "isHidden": False},
+    {"id": CARLA, "name": "Carla", "isHidden": True},
+]
+
+TAG_VOYAGES = "7a9e5000-0000-4000-8000-000000000001"
+TAG_JAPON = "7a9e5000-0000-4000-8000-000000000002"
+TAGS = [
+    {"id": TAG_VOYAGES, "name": "Voyages", "value": "Voyages", "parentId": None},
+    {"id": TAG_JAPON, "name": "Japon", "value": "Voyages/Japon", "parentId": TAG_VOYAGES},
+]
+# A tag also matches the photos of its descendants, like the server's
+# `tag_closure`: asking for `Voyages` finds a photo tagged `Voyages/Japon`.
+TAG_PARENT = {TAG_JAPON: TAG_VOYAGES}
+
+P1 = "f1000000-0000-4000-8000-000000000001"
+P2 = "f1000000-0000-4000-8000-000000000002"
+P3 = "f1000000-0000-4000-8000-000000000003"
+P4 = "f1000000-0000-4000-8000-000000000004"
+J1 = "f1000000-0000-4000-8000-000000000005"
+A1 = "f1000000-0000-4000-8000-000000000006"
+N1 = "f1000000-0000-4000-8000-000000000007"
+Z1 = "f1000000-0000-4000-8000-000000000008"
+IMG = "f1000000-0000-4000-8000-000000000009"
+DSC = "f1000000-0000-4000-8000-00000000000a"
+
+
+def _fixture(aid, name, people=(), tags=(), visibility="timeline", in_album=True,
+             description="", keywords=()):
+    return {"id": aid, "name": name, "people": list(people), "tags": list(tags),
+            "visibility": visibility, "inAlbum": in_album, "description": description,
+            "keywords": list(keywords)}
+
+
+FIXTURES = [
+    _fixture(P1, "p1.jpg", people=[ALICE]),
+    _fixture(P2, "p2.jpg", people=[ALICE, BOB]),
+    _fixture(P3, "p3.jpg", people=[ALICE], keywords=["plage"]),
+    _fixture(P4, "p4.jpg", keywords=["plage"]),
+    _fixture(J1, "j1.jpg", tags=[TAG_JAPON]),
+    _fixture(A1, "a1.jpg", visibility="archive"),
+    _fixture(N1, "n1.jpg", in_album=False),
+    # Z1 meets every criterion of the cumulative scenario: archived, not in an
+    # album, tagged `Voyages/Japon`, named and described after Kyoto — and shot
+    # with Alice and Bob, so a search on every criterion at once still has a hit
+    # (archived, it never shows in a search where "Archive" is unticked).
+    _fixture(Z1, "KYOTO_0042.JPG", people=[ALICE, BOB], tags=[TAG_JAPON], visibility="archive",
+             in_album=False, description="Temple de Kyoto"),
+    _fixture(IMG, "IMG_1234.HEIC", description="Plage de Biarritz"),
+    _fixture(DSC, "DSC_0001.JPG"),
+]
+
+
+def _library():
+    """The six photos of the shell's timeline, then the fixtures above."""
+    base = [_fixture(aid, f"{aid[:4]}-{aid[-2:]}.jpg") for aid in TIMELINE_ASSETS]
+    return base + FIXTURES
+
+
+def _asset(fixture):
+    item = asset(fixture["id"])
+    item["originalFileName"] = fixture["name"]
+    item["visibility"] = fixture["visibility"]
+    item["isArchived"] = fixture["visibility"] == "archive"
+    if fixture["description"]:
+        item["exifInfo"]["description"] = fixture["description"]
+    return item
+
+
+def _with_ancestors(tag_ids):
+    closure = set(tag_ids)
+    for tag in tag_ids:
+        while tag in TAG_PARENT:
+            tag = TAG_PARENT[tag]
+            closure.add(tag)
+    return closure
+
+
+def _criteria(body):
+    """The criteria of a search body, read from whichever language it speaks."""
+    flt = body.get("filter") or {}
+
+    def ids(key):
+        group = flt.get(key)
+        return (group or {}).get("all") if group is not None else body.get(key)
+
+    def like(key):
+        pattern = flt.get(key)
+        return (pattern or {}).get("like") if pattern is not None else body.get(key)
+
+    has_albums = flt.get("hasAlbums")
+    not_in_album = (has_albums.get("eq") is False) if has_albums is not None else bool(body.get("isNotInAlbum"))
+    visibility = flt.get("visibility")
+    visibility = (visibility or {}).get("eq") if visibility is not None else body.get("visibility")
+    return {"people": ids("personIds") or [], "tags": ids("tagIds") or [],
+            "notInAlbum": not_in_album, "visibility": visibility,
+            "name": like("originalFileName"), "description": like("description")}
+
+
+def _matches(fixture, crit):
+    """The server's semantics: people and tags are "all of them" (tags
+    descendants included), visibility absent means timeline and archive, text
+    is "contains" without regard to case."""
+    if not set(crit["people"]) <= set(fixture["people"]):
+        return False
+    if not set(crit["tags"]) <= _with_ancestors(fixture["tags"]):
+        return False
+    if crit["notInAlbum"] and fixture["inAlbum"]:
+        return False
+    if crit["visibility"] is not None and fixture["visibility"] != crit["visibility"]:
+        return False
+    if crit["visibility"] is None and fixture["visibility"] not in ("timeline", "archive"):
+        return False
+    if crit["name"] and crit["name"].lower() not in fixture["name"].lower():
+        return False
+    if crit["description"] and crit["description"].lower() not in fixture["description"].lower():
+        return False
+    return True
+
+
+def _results(body):
+    crit = _criteria(body)
+    return [_asset(fixture) for fixture in _library() if _matches(fixture, crit)]
+
+
+# MARK: - People and tags
+
+
+@router.get("/api/people")
+def people(req):
+    """The named people; the hidden one only when asked for."""
+    with_hidden = req.params.get("withHidden") == "true"
+    listed = [person for person in PEOPLE if with_hidden or not person["isHidden"]]
+    return Response({"people": listed, "hidden": sum(1 for p in PEOPLE if p["isHidden"]),
+                     "total": len(listed), "hasNextPage": False})
+
+
+@router.prefix("GET", "/api/people/")
+def person_thumbnail(req):
+    """`/api/people/{id}/thumbnail`: a real PNG whose colour follows the id."""
+    if not req.rest.endswith("/thumbnail"):
+        return None
+    return Response(png(req.rest.split("/")[0]), ctype="image/png",
+                    headers={"Cache-Control": "no-store"})
+
+
+@router.get("/api/tags")
+def tags(req):
+    return Response(TAGS)
 
 
 # MARK: - The server generation
@@ -118,9 +289,38 @@ def metadata_search(req):
         # pagination stops here (no token of either kind).
         return Response({"assets": {"count": 0, "items": [], "nextPage": None, "nextCursor": None}})
 
-    items = [asset(aid) for aid in TIMELINE_ASSETS]
+    items = _results(body)
     token = {"nextPage": None, "nextCursor": CURSOR} if structured else {"nextPage": "2", "nextCursor": None}
     return Response({"assets": {"count": len(items), "items": items, **token}})
+
+
+@router.post("/api/search/smart")
+def smart_search(req):
+    """The smart (CLIP) route: flat criteria only, paginated by `page`.
+
+    v3.4.0 refuses `filter`, `orderBy` and `cursor` here with the same 400 as a
+    mixed Metadata body, so a Smart request that reached for the structured
+    language is caught on every generation. The photos found are the ones whose
+    keywords contain the query, narrowed by the same criteria as Metadata.
+    """
+    body = req.body
+    clash = next((key for key in NEW_FIELDS if key in body), None)
+    if clash is not None:
+        return Response({
+            "message": f"Unrecognized key {clash} on the smart search",
+            "error": "Bad Request",
+            "statusCode": 400,
+        }, status=400)
+
+    if (body.get("page") or 1) > 1:
+        return Response({"assets": {"count": 0, "items": [], "nextPage": None, "nextCursor": None}})
+
+    query = (body.get("query") or "").strip().lower()
+    crit = _criteria(body)
+    items = [_asset(fixture) for fixture in _library()
+             if _matches(fixture, crit)
+             and (not query or any(query in word for word in fixture["keywords"]))]
+    return Response({"assets": {"count": len(items), "items": items, "nextPage": "2", "nextCursor": None}})
 
 
 # MARK: - `/__version`, grafted onto the shell's control routes
