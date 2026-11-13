@@ -283,6 +283,18 @@ open(sys.argv[1], "wb").write(png(sys.argv[2], size=64))
     return 1
   fi
 
+  # A cancelled run (GitHub kills the job, not its subshells' children) leaves its
+  # stub listening: that orphan, a stub of this repository, is stopped first.
+  # Anything else on the port is left alone, and the `/__whoami` check fails.
+  local holder
+  for holder in $(lsof -nP -t -iTCP:"$port" -sTCP:LISTEN 2>/dev/null); do
+    if ps -o command= -p "$holder" | grep -q 'UITests/stubs/'; then
+      echo "ci.sh: stopping orphan stub $holder on port $port"
+      kill "$holder" 2>/dev/null || true
+    fi
+  done
+  sleep 0.5
+
   python3 -u "UITests/stubs/$stub" "$port" >"$stub_log" 2>&1 &
   stub_pid=$!
   local ready=0 attempt
