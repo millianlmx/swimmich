@@ -21,6 +21,9 @@ final class PhotoDetailsUITests: XCTestCase {
     // Keep in step with immich_stub_photo_details.py.
     private let p1 = "22222222-2222-4222-8222-000000000001"
     private let p2 = "22222222-2222-4222-8222-000000000002"
+    /// P1's `profileChangedAt` in the stub: the app's cache-buster (`?v=`, see
+    /// `ImmichAssetURL.profileImage`), the ONLY query item the read may carry.
+    private let p1ProfileStamp = "2026-01-01T00:00:00.000Z"
     private let nina = "33333333-3333-4333-8333-00000000a001"
     private let mine = "24000000-0000-4000-8000-000000000001"
     private let mineNoBirth = "24000000-0000-4000-8000-000000000002"
@@ -173,7 +176,10 @@ final class PhotoDetailsUITests: XCTestCase {
         }
         XCTAssertNotNil(read, "P1 has a profile photo: it must be read — \(describe(stubRequests()))")
         XCTAssertEqual(read?.bearer, true, "the token must travel in the Authorization header")
-        XCTAssertTrue(read?.params.isEmpty ?? false, "the token must never be in the URL — \(String(describing: read?.params))")
+        // The only query item is the cache-buster `v` = P1's profileChangedAt: any
+        // other key (a token, `key`, `apiKey`, `sessionKey`…) would break equality.
+        XCTAssertEqual(read?.params, ["v": p1ProfileStamp],
+                       "the URL carries the cache-buster only, never the token — \(String(describing: read?.params))")
 
         closeDetailsAndViewer()
         openDetails(of: p2Photo)
