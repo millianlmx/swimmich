@@ -54,3 +54,70 @@ enum PersonBirthday {
         return AppDateFormat.string(from: date, style: .yearMonthDay)
     }
 }
+
+/// A day on the Gregorian calendar, with no time and no time zone: the unit
+/// both a birthday and a photo's reference day are compared in.
+struct CalendarDay: Equatable {
+    let year: Int
+    let month: Int
+    let day: Int
+}
+
+extension PersonBirthday {
+
+    /// Parses the wire's `"YYYY-MM-DD"` into a `CalendarDay`, under the same
+    /// acceptance rules as `date(from:)` but checked on a fixed UTC Gregorian
+    /// calendar, so neither the device's time zone nor its calendar can move
+    /// the day. `nil` for `nil` and for any other shape or a day that does not
+    /// exist.
+    static func day(from wire: String?) -> CalendarDay? {
+        guard let wire else { return nil }
+        let parts = wire.split(separator: "-", omittingEmptySubsequences: false)
+        guard parts.count == 3,
+              parts[0].count == 4, parts[1].count == 2, parts[2].count == 2,
+              parts.allSatisfy({ $0.allSatisfy(\.isASCII) }),
+              let year = Int(parts[0]), let month = Int(parts[1]), let day = Int(parts[2])
+        else { return nil }
+
+        var calendar = Calendar(identifier: .gregorian)
+        calendar.timeZone = TimeZone(identifier: "UTC") ?? .gmt
+        guard let date = calendar.date(from: DateComponents(year: year, month: month, day: day)) else { return nil }
+        let roundTrip = calendar.dateComponents([.year, .month, .day], from: date)
+        guard roundTrip.year == year, roundTrip.month == month, roundTrip.day == day else { return nil }
+        return CalendarDay(year: year, month: month, day: day)
+    }
+}
+
+/// A person's age on a given day, in the official client's three forms
+/// (`formatAge`, `people.utils.dart@v3.4.0`): months for a baby, "1 year and N
+/// months" up to two years, whole years after.
+enum PersonAge: Equatable {
+    case months(Int)
+    case oneYearAnd(months: Int)
+    case years(Int)
+
+    /// The age on `reference`. `nil` when `birth` is after `reference`.
+    /// The formula is the official client's, line for line: 12 months falls in
+    /// the years branch ("1 year") and the birth day itself is "0 months".
+    static func at(birth b: CalendarDay, on r: CalendarDay) -> PersonAge? {
+        var years = r.year - b.year
+        if r.month < b.month || (r.month == b.month && r.day < b.day) { years -= 1 }
+        let months = (r.year - b.year) * 12 + r.month - b.month - (r.day < b.day ? 1 : 0)
+        if years < 0 { return nil }
+        if months <= 11 { return .months(months) }
+        if (13...23).contains(months) { return .oneYearAnd(months: months - 12) }
+        return .years(years)
+    }
+
+    /// Localized label, every form read from the catalog (plural-aware).
+    func label(bundle: Bundle = .main, locale: Locale = .current) -> String {
+        switch self {
+        case .months(let n):
+            return String(localized: "\(n) months old", bundle: bundle, locale: locale)
+        case .oneYearAnd(let n):
+            return String(localized: "1 year and \(n) months old", bundle: bundle, locale: locale)
+        case .years(let n):
+            return String(localized: "\(n) years old", bundle: bundle, locale: locale)
+        }
+    }
+}
