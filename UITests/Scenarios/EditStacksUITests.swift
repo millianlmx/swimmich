@@ -343,25 +343,98 @@ final class EditStacksUITests: XCTestCase {
         XCTAssertEqual(toggle.value as? String, "1", "the 'Also back up edits' toggle did not turn on")
     }
 
-    /// Taps "Run now" and waits for the run to end. While a run goes, the Backup
-    /// screen swaps `runBackupButton` for `cancelBackupButton`, so `isEnabled` is
-    /// only ever read on an element that exists (XCUITest throws otherwise).
-    private func runBackup() {
+    /// The two ways a run can end, as the Backup screen's completion summary
+    /// says them (`UploadViewModel.completionSummary`).
+    private static let runCompleted = ["Backup complete", "Sauvegarde terminée"]
+    private static let runErrored = ["Finished with errors", "Terminé avec des erreurs"]
+
+    /// A manual run asks for the notification permission (the run's outcome is
+    /// posted as a local alert). That alert belongs to SpringBoard: left up, it
+    /// swallows every swipe the wait below needs to bring "Run now" back into
+    /// reach. Copied from `SyncBadgeUITests`.
+    private func dismissNotificationsAlertIfPresent(wait: TimeInterval) {
+        let springboard = XCUIApplication(bundleIdentifier: "com.apple.springboard")
+        let alert = springboard.alerts.firstMatch
+        guard alert.waitForExistence(timeout: wait) else { return }
+        for label in ["Allow", "Autoriser", "Erlauben", "Consentir"] {
+            let button = alert.buttons[label]
+            if button.exists {
+                button.tap()
+                return
+            }
+        }
+    }
+
+    /// Everything a failed wait has to say: which pass, what the progress
+    /// section shows, what SpringBoard still holds up, and what reached the stub.
+    /// `isEnabled` is only read on a button that exists (XCUITest throws otherwise).
+    private func runState(pass: String) -> String {
+        let run = element("runBackupButton")
+        let cancel = element("cancelBackupButton")
+        let runExists = run.exists
+        let runEnabled = runExists ? "\(run.isEnabled)" : "n/a"
+        let springboard = XCUIApplication(bundleIdentifier: "com.apple.springboard")
+        let alert = springboard.alerts.firstMatch
+        let alertButtons = alert.exists ? alert.buttons.allElementsBoundByIndex.map(\.label) : []
+        return "pass=\(pass) cancelBackupButton.exists=\(cancel.exists) "
+            + "runBackupButton.exists=\(runExists) runBackupButton.isEnabled=\(runEnabled) "
+            + "springboardAlertButtons=\(alertButtons)"
+            + "\nscreen reads: \(app.staticTexts.allElementsBoundByIndex.map(\.label))"
+            + "\nwire:\n\(describe(stubRequests()))"
+    }
+
+    /// Taps "Run now" and waits for the run to end. The end is what the screen
+    /// says — "Backup complete" is the run happening, "Finished with errors" is a
+    /// failure of its own — not the swap of `cancelBackupButton` back to
+    /// `runBackupButton`: that swap can sit below the fold once the completion
+    /// summary is drawn, and a SpringBoard alert left up blocks the swipe that
+    /// would reach it. Every turn of the wait answers the system alerts a manual
+    /// run raises (notifications, Photos). `pass` names the call in failures.
+    private func runBackup(pass: String) {
         let run = row("runBackupButton")
         XCTAssertTrue(run.waitForExistence(timeout: 20),
-                      "the Backup screen has no 'Run now' button — screen reads: \(screenReads())")
+                      "[\(pass)] the Backup screen has no 'Run now' button — screen reads: \(screenReads())")
         XCTAssertTrue(waitUntil(timeout: 20) { run.exists && run.isEnabled },
-                      "'Run now' is disabled before the run")
-        run.tap()
+                      "[\(pass)] 'Run now' is disabled before the run")
         let cancel = element("cancelBackupButton")
-        // "Cancel" replaces "Run now" while the run goes; a run too quick to be seen is fine.
-        _ = waitUntil(timeout: 8) { cancel.exists || !run.exists }
-        let ended = waitUntil(timeout: 180) {
+        // Every pass follows a fresh launch, so no outcome should be on screen
+        // yet. If one is, it belongs to an earlier run: only a run seen going
+        // (Cancel up, which replaces the summary) may then be judged by the text.
+        let staleOutcome = waitForStaticText(Self.runCompleted + Self.runErrored, timeout: 0.5)
+        run.tap()
+        if staleOutcome { _ = waitUntil(timeout: 8) { cancel.exists } }
+
+        var completed: Bool?
+        let deadline = Date().addingTimeInterval(180)
+        while Date() < deadline {
+            dismissNotificationsAlertIfPresent(wait: 0.5)
+            allowPhotoAccessIfAsked(timeout: 0.5)
+            // Errors first: the French "Sauvegarde terminée avec des erreurs"
+            // (the completion notification) also contains the success phrase.
+            if waitForStaticText(Self.runErrored, timeout: 1) { completed = false; break }
+            if waitForStaticText(Self.runCompleted, timeout: 2) { completed = true; break }
+        }
+        guard let completed else {
+            shot("es-run-never-ended-\(pass)")
+            return XCTFail("the backup run never ended — \(runState(pass: pass))")
+        }
+        guard completed else {
+            shot("es-run-finished-with-errors-\(pass)")
+            return XCTFail("the backup run finished with errors — \(runState(pass: pass))")
+        }
+
+        // The summary is up, so the engine is idle: "Run now" is back, maybe
+        // below the taller summary.
+        let back = waitUntil(timeout: 30) {
+            self.dismissNotificationsAlertIfPresent(wait: 0.2)
             if cancel.exists { return false }
             if !run.exists { _ = self.row("runBackupButton", swipes: 2) }
             return run.exists && run.isEnabled
         }
-        XCTAssertTrue(ended, "the backup run never ended — screen reads: \(screenReads())")
+        if !back {
+            shot("es-run-button-never-back-\(pass)")
+            XCTFail("the run reported its outcome but 'Run now' never came back — \(runState(pass: pass))")
+        }
         allowPhotoAccessIfAsked(timeout: 0.5)
     }
 
@@ -419,7 +492,7 @@ final class EditStacksUITests: XCTestCase {
         openBackup()
         if enablingEdits { enableBackupEdits() }
         shot("es03-backup-screen")
-        runBackup()
+        runBackup(pass: "first")
         let first = uploads()
         XCTAssertGreaterThanOrEqual(first.count, 1,
                                     "the first backup uploaded nothing — wire:\n\(describe(stubRequests()))")
@@ -470,7 +543,7 @@ final class EditStacksUITests: XCTestCase {
         editPhotoInPlace(named: "L22-edit-on.png")
         openBackup()
         XCTAssertEqual((backupEditsToggle().value as? String), "1", "the setting did not survive the relaunch")
-        runBackup()
+        runBackup(pass: "second")
 
         // One more upload (the edited rendering, a checksum the server never saw)
         // and one stack, edit first.
@@ -525,7 +598,7 @@ final class EditStacksUITests: XCTestCase {
         editPhotoInPlace(named: "L22-edit-off.png")
         openBackup()
         XCTAssertEqual((backupEditsToggle().value as? String), "0", "the setting is not off by default")
-        runBackup()
+        runBackup(pass: "second")
         // Absence needs a settle delay: a late upload would land after the run ended.
         Thread.sleep(forTimeInterval: 4)
 
