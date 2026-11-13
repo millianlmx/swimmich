@@ -343,17 +343,25 @@ final class EditStacksUITests: XCTestCase {
         XCTAssertEqual(toggle.value as? String, "1", "the 'Also back up edits' toggle did not turn on")
     }
 
-    /// Taps "Run now" and waits for the run to end (the button is enabled again).
+    /// Taps "Run now" and waits for the run to end. While a run goes, the Backup
+    /// screen swaps `runBackupButton` for `cancelBackupButton`, so `isEnabled` is
+    /// only ever read on an element that exists (XCUITest throws otherwise).
     private func runBackup() {
         let run = row("runBackupButton")
         XCTAssertTrue(run.waitForExistence(timeout: 20),
                       "the Backup screen has no 'Run now' button — screen reads: \(screenReads())")
-        XCTAssertTrue(waitUntil(timeout: 20) { run.isEnabled }, "'Run now' is disabled before the run")
+        XCTAssertTrue(waitUntil(timeout: 20) { run.exists && run.isEnabled },
+                      "'Run now' is disabled before the run")
         run.tap()
-        // Disabled while the run is going; a run too quick to be seen is fine.
-        _ = waitUntil(timeout: 8) { !run.isEnabled }
-        XCTAssertTrue(waitUntil(timeout: 180) { run.isEnabled },
-                      "the backup run never ended — screen reads: \(screenReads())")
+        let cancel = element("cancelBackupButton")
+        // "Cancel" replaces "Run now" while the run goes; a run too quick to be seen is fine.
+        _ = waitUntil(timeout: 8) { cancel.exists || !run.exists }
+        let ended = waitUntil(timeout: 180) {
+            if cancel.exists { return false }
+            if !run.exists { _ = self.row("runBackupButton", swipes: 2) }
+            return run.exists && run.isEnabled
+        }
+        XCTAssertTrue(ended, "the backup run never ended — screen reads: \(screenReads())")
         allowPhotoAccessIfAsked(timeout: 0.5)
     }
 
