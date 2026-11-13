@@ -47,6 +47,7 @@ final class UploadViewModelLiveActivityTests: XCTestCase {
             client: client, photos: MockPhotoLibraryService(),
             engine: engine, settings: makeEnabledStore(),
             scheduler: scheduler, activityService: activity,
+            notifications: MockNotificationService(),
             readOnly: .ephemeral()
         )
 
@@ -88,6 +89,7 @@ final class UploadViewModelLiveActivityTests: XCTestCase {
             client: client, photos: MockPhotoLibraryService(),
             engine: engine, settings: makeEnabledStore(),
             scheduler: scheduler, activityService: activity,
+            notifications: MockNotificationService(),
             readOnly: .ephemeral()
         )
 
@@ -122,6 +124,7 @@ final class UploadViewModelLiveActivityTests: XCTestCase {
             client: client, photos: MockPhotoLibraryService(),
             engine: engine, settings: makeEnabledStore(),
             scheduler: MockBackupScheduler(), activityService: activity,
+            notifications: MockNotificationService(),
             readOnly: .ephemeral()
         )
         let first = Task { @MainActor in await vm.runBackup(manual: true) }
@@ -163,6 +166,7 @@ final class UploadViewModelLiveActivityTests: XCTestCase {
             client: client, photos: MockPhotoLibraryService(),
             engine: engine, settings: makeEnabledStore(),
             scheduler: scheduler, activityService: MockBackupLiveActivityService(),
+            notifications: MockNotificationService(),
             readOnly: .ephemeral()
         )
         client.uploadGate = suspendUntilCancelled
@@ -198,6 +202,7 @@ final class UploadViewModelLiveActivityTests: XCTestCase {
             client: client, photos: MockPhotoLibraryService(),
             engine: engine, settings: store,
             scheduler: MockBackupScheduler(), activityService: activity,
+            notifications: MockNotificationService(),
             readOnly: .ephemeral()
         )
 
@@ -226,6 +231,7 @@ final class UploadViewModelLiveActivityTests: XCTestCase {
             client: client, photos: MockPhotoLibraryService(),
             engine: engineOffline, settings: store,
             scheduler: MockBackupScheduler(), activityService: activity,
+            notifications: MockNotificationService(),
             readOnly: .ephemeral()
         )
 
@@ -246,6 +252,7 @@ final class UploadViewModelLiveActivityTests: XCTestCase {
             client: client, photos: MockPhotoLibraryService(),
             engine: engine, settings: makeEnabledStore(),
             scheduler: MockBackupScheduler(), activityService: MockBackupLiveActivityService(),
+            notifications: MockNotificationService(),
             readOnly: .ephemeral()
         )
 
@@ -282,6 +289,7 @@ final class UploadViewModelLiveActivityTests: XCTestCase {
             client: client, photos: MockPhotoLibraryService(),
             engine: engine, settings: makeEnabledStore(),
             scheduler: MockBackupScheduler(), activityService: activity,
+            notifications: MockNotificationService(),
             readOnly: .ephemeral()
         )
 
@@ -326,6 +334,7 @@ final class UploadViewModelLiveActivityTests: XCTestCase {
             client: client, photos: MockPhotoLibraryService(),
             engine: engine, settings: makeEnabledStore(),
             scheduler: MockBackupScheduler(), activityService: activity,
+            notifications: MockNotificationService(),
             readOnly: .ephemeral()
         )
 
