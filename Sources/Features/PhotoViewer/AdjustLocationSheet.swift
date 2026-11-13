@@ -5,46 +5,66 @@ import MapKit
 ///
 /// UIKit-backed like `MiniMapView`: the SwiftUI `Map` API cannot expose
 /// `isDraggable` annotations, so this wraps `MKMapView` with a draggable
-/// `MKMarkerAnnotationView`. Drag end (settled) reports the new spot through
-/// `onCoordinateChange` — the sheet's source of truth stays in SwiftUI state.
+/// `MKMarkerAnnotationView`. The map follows `pin` (typed coordinates move
+/// it); a settled drag reports the new spot through `onPinDragged`. With no
+/// `pin` (photo without a location) it shows the world and no annotation.
 struct DraggablePinMapView: UIViewRepresentable {
-    let latitude: Double
-    let longitude: Double
-    var onCoordinateChange: (Double, Double) -> Void = { _, _ in }
+    let pin: PhotoCoordinate?
+    let reduceMotion: Bool
+    var onPinDragged: (PhotoCoordinate) -> Void = { _ in }
 
     private static let reuseID = "draggablePin"
+    private static let span = MKCoordinateSpan(latitudeDelta: 0.05, longitudeDelta: 0.05)
 
-    func makeCoordinator() -> Coordinator { Coordinator(onCoordinateChange: onCoordinateChange) }
+    func makeCoordinator() -> Coordinator { Coordinator(onPinDragged: onPinDragged) }
 
     func makeUIView(context: Context) -> MKMapView {
-        let coordinate = CLLocationCoordinate2D(latitude: latitude, longitude: longitude)
         let map = MKMapView()
         map.delegate = context.coordinator
         map.mapType = .standard
         map.register(MKMarkerAnnotationView.self, forAnnotationViewWithReuseIdentifier: Self.reuseID)
-        map.setRegion(
-            MKCoordinateRegion(
-                center: coordinate,
-                span: MKCoordinateSpan(latitudeDelta: 0.05, longitudeDelta: 0.05)
-            ),
-            animated: false
-        )
-        let annotation = MKPointAnnotation()
-        annotation.coordinate = coordinate
-        map.addAnnotation(annotation)
+        if let pin {
+            let coordinate = CLLocationCoordinate2D(latitude: pin.latitude, longitude: pin.longitude)
+            map.setRegion(MKCoordinateRegion(center: coordinate, span: Self.span), animated: false)
+            let annotation = MKPointAnnotation()
+            annotation.coordinate = coordinate
+            map.addAnnotation(annotation)
+        } else {
+            map.setVisibleMapRect(.world, animated: false)
+        }
         return map
     }
 
     func updateUIView(_ map: MKMapView, context: Context) {
-        map.annotations.compactMap { $0 as? MKPointAnnotation }.first?.coordinate =
-            CLLocationCoordinate2D(latitude: latitude, longitude: longitude)
+        context.coordinator.onPinDragged = onPinDragged
+        let existing = map.annotations.compactMap { $0 as? MKPointAnnotation }.first
+        guard let pin else {
+            if let existing { map.removeAnnotation(existing) }
+            return
+        }
+        let target = CLLocationCoordinate2D(latitude: pin.latitude, longitude: pin.longitude)
+        if let existing {
+            if abs(existing.coordinate.latitude - pin.latitude) > 1e-9
+                || abs(existing.coordinate.longitude - pin.longitude) > 1e-9 {
+                existing.coordinate = target
+                if !map.visibleMapRect.contains(MKMapPoint(target)) {
+                    map.setCenter(target, animated: !reduceMotion)
+                }
+            }
+            map.view(for: existing)?.accessibilityValue = AdjustLocationViewModel.accessibilityValue(pin)
+        } else {
+            let annotation = MKPointAnnotation()
+            annotation.coordinate = target
+            map.addAnnotation(annotation)
+            map.setRegion(MKCoordinateRegion(center: target, span: Self.span), animated: !reduceMotion)
+        }
     }
 
     final class Coordinator: NSObject, MKMapViewDelegate {
-        private let onCoordinateChange: (Double, Double) -> Void
+        var onPinDragged: (PhotoCoordinate) -> Void
 
-        init(onCoordinateChange: @escaping (Double, Double) -> Void) {
-            self.onCoordinateChange = onCoordinateChange
+        init(onPinDragged: @escaping (PhotoCoordinate) -> Void) {
+            self.onPinDragged = onPinDragged
         }
 
         func mapView(_ mapView: MKMapView, viewFor annotation: MKAnnotation) -> MKAnnotationView? {
@@ -55,113 +75,169 @@ struct DraggablePinMapView: UIViewRepresentable {
             view.isDraggable = true
             view.markerTintColor = UIColor(Color.immichPrimary)
             view.glyphImage = UIImage(systemName: "mappin")
+            view.isAccessibilityElement = true
+            view.accessibilityIdentifier = "adjustLocationPin"
+            view.accessibilityLabel = String(localized: "Photo location")
+            view.accessibilityValue = AdjustLocationViewModel.accessibilityValue(
+                PhotoCoordinate(latitude: annotation.coordinate.latitude, longitude: annotation.coordinate.longitude)
+            )
             return view
         }
 
         func mapView(_ mapView: MKMapView, annotationView view: MKAnnotationView, didChange newState: MKAnnotationView.DragState, fromOldState oldState: MKAnnotationView.DragState) {
             guard newState == .ending || newState == .canceling,
                   let coordinate = view.annotation?.coordinate else { return }
-            onCoordinateChange(coordinate.latitude, coordinate.longitude)
+            onPinDragged(PhotoCoordinate(latitude: coordinate.latitude, longitude: coordinate.longitude))
         }
     }
 }
 
-/// Adjust-location sheet: drag the pin to the right spot, Save issues the
-/// write (via `AssetDetailViewModel.setLocation`) and re-geocodes. Error and
-/// in-flight states surface inline; `onDone` reports whether the change
-/// persisted (controller dismisses only then).
+/// Adjust-location sheet: the two typed fields and the draggable pin stay in
+/// step (`AdjustLocationViewModel`); Save writes whatever the fields read at
+/// that instant, keyboard open or not. `onDone` reports whether the change
+/// persisted (the host dismisses only then). Pushed content: no navigation
+/// stack of its own, Cancel/Save sit in the header.
 struct AdjustLocationSheet: View {
-    let asset: AssetReactItem
-    let vm: AssetDetailViewModel
+    @Bindable var vm: AdjustLocationViewModel
     let onDone: (Bool) -> Void
 
-    @State private var latitude: Double
-    @State private var longitude: Double
-    @State private var isSaving = false
-
-    init(asset: AssetReactItem, vm: AssetDetailViewModel, onDone: @escaping (Bool) -> Void) {
-        self.asset = asset
-        self.vm = vm
-        self.onDone = onDone
-        _latitude = State(initialValue: asset.latitude ?? 0)
-        _longitude = State(initialValue: asset.longitude ?? 0)
-    }
+    @FocusState private var focus: CoordinateAxis?
+    @PVReduceMotion private var reduceMotion
 
     var body: some View {
         ScrollView {
             VStack(spacing: PVSpacing.s16) {
                 header
-                DraggablePinMapView(latitude: latitude, longitude: longitude) { lat, lon in
-                    latitude = lat
-                    longitude = lon
-                    vm.errorMessage = nil
+                Text("Drag the pin or enter the coordinates.")
+                    .font(.pvCaption)
+                    .foregroundStyle(Color.textSecondaryPV)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                fields
+                DraggablePinMapView(pin: vm.pin, reduceMotion: reduceMotion, onPinDragged: vm.pinDragged)
+                    .frame(minHeight: 240)
+                    .clipShape(RoundedRectangle(cornerRadius: PVRadius.md, style: .continuous))
+                if let error = vm.detail.errorMessage {
+                    Text(error)
+                        .font(.pvCaption)
+                        .foregroundStyle(Color.immichError)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .accessibilityIdentifier("adjustLocationServerError")
                 }
-                .frame(minHeight: 240)
-                .clipShape(RoundedRectangle(cornerRadius: PVRadius.md, style: .continuous))
-                footer
             }
             .padding(PVSpacing.s16)
         }
         .scrollBounceBehavior(.basedOnSize)
+        .scrollDismissesKeyboard(.interactively)
     }
 
     private var header: some View {
-        VStack(spacing: PVSpacing.s4) {
-            Text("Adjust Location")
-                .font(.pvH6)
-                .foregroundStyle(Color.textPrimaryPV)
-            Text("Drag the pin to the photo's true location.")
-                .font(.pvCaption)
-                .foregroundStyle(Color.textSecondaryPV)
+        HStack(spacing: PVSpacing.s12) {
+            Button {
+                onDone(false)
+            } label: {
+                Text("Cancel")
+                    .font(.pvBody.weight(.medium))
+                    .foregroundStyle(Color.textPrimaryPV)
+            }
+            .buttonStyle(.plain)
+            .disabled(vm.isSaving)
+            .accessibilityIdentifier("adjustLocationCancelButton")
+
+            Group {
+                if vm.startedWithoutLocation {
+                    Text("Add Location")
+                } else {
+                    Text("Adjust Location")
+                }
+            }
+            .font(.pvH6)
+            .foregroundStyle(Color.textPrimaryPV)
+            .frame(maxWidth: .infinity)
+            .accessibilityAddTraits(.isHeader)
+
+            Button {
+                Task {
+                    if await vm.save() {
+                        onDone(true)
+                    } else if let message = firstFieldMessage {
+                        AccessibilityNotification.Announcement(message).post()
+                    }
+                }
+            } label: {
+                HStack(spacing: PVSpacing.s8) {
+                    if vm.isSaving {
+                        ProgressView()
+                    }
+                    Text("Save")
+                        .font(.pvBody.weight(.semibold))
+                        .foregroundStyle(Color.immichPrimary)
+                }
+            }
+            .buttonStyle(.plain)
+            .disabled(vm.isSaving)
+            .accessibilityIdentifier("adjustLocationSaveButton")
         }
     }
 
-    private var footer: some View {
-        VStack(spacing: PVSpacing.s8) {
-            if let error = vm.errorMessage {
-                Text(error)
-                    .font(.pvCaption)
-                    .foregroundStyle(Color.immichError)
-                    .frame(maxWidth: .infinity, alignment: .leading)
-            }
-            HStack(spacing: PVSpacing.s12) {
-                Button {
-                    onDone(false)
-                } label: {
-                    Text("Cancel")
-                        .font(.pvBody.weight(.medium))
-                        .frame(maxWidth: .infinity)
-                        .padding(.vertical, PVSpacing.s12)
-                }
-                .buttonStyle(.plain)
-                .background(RoundedRectangle(cornerRadius: PVRadius.md, style: .continuous).fill(Color.gray.opacity(0.12)))
-                .disabled(isSaving)
+    private var firstFieldMessage: String? {
+        if let error = vm.latitudeError {
+            return AdjustLocationViewModel.message(for: error, axis: .latitude)
+        }
+        if let error = vm.longitudeError {
+            return AdjustLocationViewModel.message(for: error, axis: .longitude)
+        }
+        return nil
+    }
 
-                Button {
-                    Task {
-                        isSaving = true
-                        await vm.setLocation(latitude: latitude, longitude: longitude)
-                        isSaving = false
-                        if vm.errorMessage == nil {
-                            onDone(true)
-                        }
-                    }
-                } label: {
-                    HStack(spacing: PVSpacing.s8) {
-                        if isSaving {
-                            ProgressView()
-                        }
-                        Text("Save")
-                            .font(.pvBody.weight(.medium))
-                            .frame(maxWidth: .infinity)
-                    }
-                    .padding(.vertical, PVSpacing.s12)
+    private var fields: some View {
+        PVAdaptiveStack(spacing: PVSpacing.s12) {
+            VStack(alignment: .leading, spacing: PVSpacing.s4) {
+                Text("Latitude")
+                    .font(.pvCaption.weight(.semibold))
+                    .foregroundStyle(Color.textSecondaryPV)
+                TextField("Latitude", text: $vm.latitudeText, prompt: Text("Between -90 and 90"))
+                    .keyboardType(.numbersAndPunctuation)
+                    .autocorrectionDisabled()
+                    .textInputAutocapitalization(.never)
+                    .focused($focus, equals: .latitude)
+                    .submitLabel(.next)
+                    .onSubmit { focus = .longitude }
+                    .font(.pvBody)
+                    .padding(PVSpacing.s12)
+                    .background(RoundedRectangle(cornerRadius: PVRadius.md, style: .continuous).fill(Color.gray.opacity(0.12)))
+                    .accessibilityIdentifier("adjustLocationLatitudeField")
+                if let error = vm.latitudeError {
+                    errorText(error, axis: .latitude)
+                        .accessibilityIdentifier("adjustLocationLatitudeError")
                 }
-                .buttonStyle(.plain)
-                .foregroundStyle(Color.white)
-                .background(RoundedRectangle(cornerRadius: PVRadius.md, style: .continuous).fill(Color.immichPrimary))
-                .disabled(isSaving)
+            }
+            VStack(alignment: .leading, spacing: PVSpacing.s4) {
+                Text("Longitude")
+                    .font(.pvCaption.weight(.semibold))
+                    .foregroundStyle(Color.textSecondaryPV)
+                TextField("Longitude", text: $vm.longitudeText, prompt: Text("Between -180 and 180"))
+                    .keyboardType(.numbersAndPunctuation)
+                    .autocorrectionDisabled()
+                    .textInputAutocapitalization(.never)
+                    .focused($focus, equals: .longitude)
+                    .submitLabel(.done)
+                    .onSubmit { focus = nil }
+                    .font(.pvBody)
+                    .padding(PVSpacing.s12)
+                    .background(RoundedRectangle(cornerRadius: PVRadius.md, style: .continuous).fill(Color.gray.opacity(0.12)))
+                    .accessibilityIdentifier("adjustLocationLongitudeField")
+                if let error = vm.longitudeError {
+                    errorText(error, axis: .longitude)
+                        .accessibilityIdentifier("adjustLocationLongitudeError")
+                }
             }
         }
+    }
+
+    private func errorText(_ error: CoordinateFieldError, axis: CoordinateAxis) -> some View {
+        Text(AdjustLocationViewModel.message(for: error, axis: axis))
+            .font(.pvCaption)
+            .foregroundStyle(Color.immichError)
+            .fixedSize(horizontal: false, vertical: true)
     }
 }
