@@ -483,7 +483,7 @@ Chaque écran principal a une ligne par aspect. « États » regroupe le chargem
 | L-20 | Compatibilité Immich v3.4.0 sans routes dépréciées | B-24 | planifié | — | — |
 | L-21 | Retouches non destructives sur le serveur | B-25 | planifié | — | — |
 | L-22 | Sauvegarde des retouches faites sur le téléphone, empilées sur l'original | B-26 | planifié | — | — |
-| L-23 | Recherche : personnes, filtres complets et sélection multiple | B-27 | livré | a999dae1c4ed | AC-42, AC-43, AC-44 (volet XCUITest non vérifié à l'exécution), AC-209, AC-210, AC-211, AC-212, AC-213, AC-214, AC-215, AC-216 (volet XCUITest non vérifié à l'exécution), AC-217 (volet XCUITest non vérifié à l'exécution), AC-218, AC-219 |
+| L-23 | Recherche : personnes, filtres complets et sélection multiple | B-27 | livré | 3c5c65d5cbc6 | AC-42, AC-43, AC-44 (volet XCUITest non vérifié à l'exécution), AC-209, AC-210, AC-211, AC-212, AC-213, AC-214, AC-215, AC-216 (volet XCUITest non vérifié à l'exécution), AC-217 (volet XCUITest non vérifié à l'exécution), AC-218, AC-219 |
 | L-24 | Détails de la photo : âge des personnes et propriétaire | B-28 | planifié | — | — |
 | L-25 | Lieux : saisie des coordonnées et carte centrée sur ma position | B-29 | planifié | — | — |
 | L-26 | Adresse locale et adresse externe du serveur | B-30 | planifié | — | — |
