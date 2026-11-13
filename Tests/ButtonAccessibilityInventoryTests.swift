@@ -289,6 +289,8 @@ enum ButtonScanner {
             "DownloadProgressPanel.swift|vm.panelAccessibilityLabel": "Texte composé de String(localized:) par le modèle de vue.",
             "PVRatingBar.swift|Self.starLabel(": "Fonction pure : String(localized:) de la note, accord par le catalogue.",
             "SearchFilterSheet.swift|PVRatingBar.starLabel(": "Même fonction pure que la barre de notation.",
+            "SearchPeoplePicker.swift|Text(verbatim: name)": "Nom de la personne (donnée du serveur) ou « Unnamed » traduit : un seul élément VoiceOver nommé d'après la personne.",
+            "SearchTagPicker.swift|Text(verbatim: row.tag.path)": "Chemin du tag (donnée du serveur) : un seul élément VoiceOver nommé d'après le tag.",
             "PhotoViewer.swift|Self.filmstripAccessibilityLabel(": "Fonction pure : Photo N of M ou Video N of M, en clés du catalogue.",
         ],
         opaqueTextBearing: [

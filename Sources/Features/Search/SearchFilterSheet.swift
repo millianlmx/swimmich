@@ -22,8 +22,10 @@ struct SearchFilterSheet: View {
                     NavigationLink {
                         SearchPeoplePicker(vm: vm)
                     } label: {
-                        LabeledContent("People") {
+                        LabeledContent {
                             selectionSummary(vm.filter.people.map { $0.name.isEmpty ? String(localized: "Unnamed") : $0.name })
+                        } label: {
+                            Text("People")
                         }
                     }
                     .accessibilityIdentifier("searchFilterPeople")
@@ -31,8 +33,10 @@ struct SearchFilterSheet: View {
                     NavigationLink {
                         SearchTagPicker(vm: vm)
                     } label: {
-                        LabeledContent("Tags") {
+                        LabeledContent {
                             selectionSummary(vm.filter.tags.map(\.path))
+                        } label: {
+                            Text("Tags")
                         }
                     }
                     .accessibilityIdentifier("searchFilterTags")
