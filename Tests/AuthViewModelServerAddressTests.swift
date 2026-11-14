@@ -163,6 +163,25 @@ final class AuthViewModelServerAddressTests: XCTestCase {
         XCTAssertEqual(fx.published.load()?.baseURL, account.absoluteString)
     }
 
+    func test_AC_239_4_recordedVersionIsPublishedAgain() async {
+        let fx = makeFixture(settings: switchOn)
+        fx.probe.answer(account, .immich(version: version))
+        fx.probe.answer(local, .unreachable)
+        await fx.auth.restoreSession()
+        await waitUntil { fx.store.settings(for: self.accountID).lastKnownVersion == self.version }
+        XCTAssertEqual(fx.published.load()?.lastKnownVersion, version, "the version read at launch reaches the widgets")
+        let before = fx.published.load()
+
+        fx.mock.serverVersionResponse = ServerVersionResponseDto(major: 1, minor: 120, patch: 0, prerelease: nil)
+        await fx.endpoints.refreshKnownVersion()
+
+        let after = fx.published.load()
+        XCTAssertEqual(after?.lastKnownVersion, "1.120.0", "a server update read after the publication is published again")
+        XCTAssertEqual(after?.localURL, before?.localURL)
+        XCTAssertEqual(after?.autoSwitch, before?.autoSwitch)
+        XCTAssertEqual(after?.baseURL, before?.baseURL)
+    }
+
     func test_AC_241_publishedSessionTrustsTheApprovedLocalHost() async {
         let fx = makeFixture(settings: switchOn)
         fx.probe.answer(account, .immich(version: version))
