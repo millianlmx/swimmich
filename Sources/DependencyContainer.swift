@@ -226,7 +226,6 @@ final class DependencyContainer {
             customHeaders: customHeaders
         )
         self.realtime = realtime
-<<<<<<< HEAD
         self.serverEndpoints = ServerEndpointSwitch(
             client: libraryClient, realtime: realtime,
             store: UserDefaultsServerAddressSettingsStore(defaults: .standard),
@@ -240,10 +239,8 @@ final class DependencyContainer {
             // Test only: the simulator does not apply the local-network permission.
             localNetworkDeniedOverride: UserDefaults.standard.bool(forKey: "uiTestLocalNetworkDenied")
         )
-=======
         let reloadWidgets: @Sendable () -> Void = { WidgetCenter.shared.reloadAllTimelines() }
         self.reloadWidgets = reloadWidgets
->>>>>>> 2886428df51d0867f28fde47723cf523ac9742d3
         self.clientCertificates = ClientCertificateService(
             store: identities,
             log: .shared,

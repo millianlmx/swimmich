@@ -135,31 +135,26 @@ immich_stub_edit_stacks.py EditStacksUITests/test_AC_41_editStackedOnOriginal --
 immich_stub_edit_stacks.py EditStacksUITests/test_AC_41_settingOffSendsNothing --media L22-edit-off.png --erase --release
 immich_stub_edit_stacks.py EditStacksUITests/test_AC_200_settingOffByDefaultAndPersisted --release
 
-<<<<<<< HEAD
 # L-26 adresse locale et externe (AC-49, AC-235, AC-236, AC-238 to AC-240, AC-242,
 # AC-246, AC-248, AC-250): one stub serves the external address on the worker's
 # port P and the local one on a port the system picks (`bind` on 0, reported as
 # `localPort` by `/__whoami`: a fixed P + 100 can fall in another runner's pool);
 # the scenario switches between them and reads which address every request
 # reached. AC-239 poses the Photos widget (`--erase`: a widget posed earlier would
-# falsify the gallery search).
+# falsify the gallery search). Core: the journey of AC-49 and the widget of AC-239
+# (another process); the others double unit tests of the same criteria
+# (ServerEndpointSwitchTests, ServerAddressSelectorTests, NetworkSettingsViewModelTests…).
 immich_stub_server_addresses.py ServerAddressesUITests/test_AC_49
-immich_stub_server_addresses.py ServerAddressesUITests/test_AC_248
-immich_stub_server_addresses.py ServerAddressesUITests/test_AC_236
-immich_stub_server_addresses.py ServerAddressesUITests/test_AC_235
-immich_stub_server_addresses.py ServerAddressesUITests/test_AC_238
-immich_stub_server_addresses.py ServerAddressesUITests/test_AC_240
-immich_stub_server_addresses.py ServerAddressesUITests/test_AC_242
-immich_stub_server_addresses.py ServerAddressesUITests/test_AC_246
-immich_stub_server_addresses.py ServerAddressesUITests/test_AC_250
+immich_stub_server_addresses.py ServerAddressesUITests/test_AC_248 --release
+immich_stub_server_addresses.py ServerAddressesUITests/test_AC_236 --release
+immich_stub_server_addresses.py ServerAddressesUITests/test_AC_235 --release
+immich_stub_server_addresses.py ServerAddressesUITests/test_AC_238 --release
+immich_stub_server_addresses.py ServerAddressesUITests/test_AC_240 --release
+immich_stub_server_addresses.py ServerAddressesUITests/test_AC_242 --release
+immich_stub_server_addresses.py ServerAddressesUITests/test_AC_246 --release
+immich_stub_server_addresses.py ServerAddressesUITests/test_AC_250 --release
 immich_stub_server_addresses.py ServerAddressesUITests/test_AC_239 --erase
 
-# L-32 "Remaining to back up": the entry and the list over the real Photos library of the simulator
-# (3 seeded media, plus the sample photos of an erased simulator) → a pass against a server that accepts
-# everything empties both. The AX5 line reads a row at the largest text size: whole file name, no overflow.
-immich_stub_backup_remainder.py BackupRemainderUITests/test_AC_65_remainderFromBackupScreen --media L32-a.png --media L32-b.png --media L32-c.png --erase
-immich_stub_backup_remainder.py BackupRemainderUITests/test_AC_65_9_rowsReadableAtAX5 --content-size accessibility-extra-extra-extra-large --media L32-ax5.png --erase
-=======
 # L-33 date correction with a time zone (AC-66, AC-66.4, AC-66.6): the device is set to Asia/Tokyo by the
 # scenario (TZ), the photo's EXIF zone is Europe/Paris; the picker shows the photo's wall clock, the PUT
 # carries the chosen zone's offset. Core: the journey of AC-66; the two others double unit tests of
@@ -194,4 +189,3 @@ immich_stub_asset_edits.py AssetEditsUITests/test_AC_192_editMadeBeforeShowsOnEv
 immich_stub_asset_edits.py EditedWidgetUITests/test_AC_193_widgetShowsTheEditedImageAfterTheEdit --erase
 immich_stub_asset_edits.py AssetEditsUITests/test_AC_194_shareAndEditorStayOnTheOriginal --release
 immich_stub_asset_edits.py AssetEditsUITests/test_AC_195_oldServerShowsPhotosAsBefore
->>>>>>> 2886428df51d0867f28fde47723cf523ac9742d3
