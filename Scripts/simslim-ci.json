@@ -1,0 +1,11 @@
+{
+  "name": "swimmich-ci",
+  "description": "Simulators of Scripts/ci.sh: every background daemon simslim manages is off, but the Photos library (share extension, backup, PhotoKit edits), widgets and Live Activities, and App Intents",
+  "keep": [
+    "com.apple.assetsd",
+    "com.apple.assetsd.nebulad",
+    "com.apple.chronod",
+    "com.apple.liveactivitiesd",
+    "com.apple.linkd"
+  ]
+}

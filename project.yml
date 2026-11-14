@@ -69,6 +69,9 @@ targets:
         NSPhotoLibraryAddUsageDescription: "Swimmich needs Photos access to add uploaded assets."
         NSFaceIDUsageDescription: "Swimmich uses Face ID to unlock the app."
         NSCameraUsageDescription: "Swimmich uses the camera to scan server configuration QR codes."
+        NSLocationWhenInUseUsageDescription: "Swimmich uses your location to center the map on where you are and to place a photo at your position."
+        NSLocationTemporaryUsageDescriptionDictionary:
+          MyLocation: "Swimmich needs your precise location to place a photo where you are."
         NSSupportsLiveActivities: true
         NSSupportsLiveActivitiesFrequentUpdates: true
         # Documents/Downloads is exposed to the Files app (Downloads panel).

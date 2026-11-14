@@ -44,6 +44,13 @@
 	<string>Swimmich uses the camera to scan server configuration QR codes.</string>
 	<key>NSFaceIDUsageDescription</key>
 	<string>Swimmich uses Face ID to unlock the app.</string>
+	<key>NSLocationTemporaryUsageDescriptionDictionary</key>
+	<dict>
+		<key>MyLocation</key>
+		<string>Swimmich needs your precise location to place a photo where you are.</string>
+	</dict>
+	<key>NSLocationWhenInUseUsageDescription</key>
+	<string>Swimmich uses your location to center the map on where you are and to place a photo at your position.</string>
 	<key>NSPhotoLibraryAddUsageDescription</key>
 	<string>Swimmich needs Photos access to add uploaded assets.</string>
 	<key>NSPhotoLibraryUsageDescription</key>

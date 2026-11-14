@@ -43,6 +43,16 @@ DEVICE_TYPE="com.apple.CoreSimulator.SimDeviceType.iPhone-17"
 RESULT="${SWIMMICH_CI_RESULT:-build/ci/unit-tests.xcresult}"
 # The app's PRODUCT_BUNDLE_IDENTIFIER (project.yml): what a simulator reset uninstalls.
 APP_BUNDLE_ID="fr.millianlmx.immich-ios"
+# simslim (https://github.com/MobAI-App/simslim, `brew install mobai-app/tap/simslim`)
+# turns off, in each simulator of the pool, the background daemons the tests do
+# not need: wallpaper posters, Siri and Apple Intelligence, photo analysis, sync,
+# telemetry. Measured on an erased iPhone 17 (iOS 27.2): 209 processes down to
+# 113, memory 2.0 down to 1.1 GB, idle CPU 24 down to 7 s a minute. The profile,
+# Scripts/simslim-ci.json, keeps what the scenarios use (Photos, widgets, Live
+# Activities, App Intents). Its overrides persist in the simulator across boots
+# and resets; only an erase drops them. Without simslim the pool runs stock.
+SIMSLIM_PROFILE="Scripts/simslim-ci.json"
+if command -v simslim >/dev/null; then SIMSLIM=1; else SIMSLIM=0; fi
 
 xcodegen generate --quiet
 
@@ -237,10 +247,27 @@ cleanup() {
 }
 trap cleanup EXIT
 
+# Boots a shut-down simulator slim: the profile is written into its launchd store
+# first (a single read when it already matches), so the boot starts none of the
+# daemons it turns off.
+boot_simulator() {
+  local sim="$1"
+  if (( SIMSLIM )); then
+    simslim on "$sim" --profile "$SIMSLIM_PROFILE" --preserve-boot-state >/dev/null || return
+  fi
+  xcrun simctl boot "$sim" 2>/dev/null || true
+  xcrun simctl bootstatus "$sim" -b >/dev/null
+}
+
 # The pool boots while the app builds: its simulators booting at once took up to
 # two minutes before the first test, now spent beside the build (each job still
 # waits for its own simulator, `prepare_simulator`).
-for sim in "${worker_udids[@]}"; do xcrun simctl boot "$sim" >/dev/null 2>&1 & done
+(( SIMSLIM )) || echo "ci.sh: simslim is not installed: the simulators run stock (see SIMSLIM_PROFILE)"
+boot_pids=()
+for sim in "${worker_udids[@]}"; do
+  boot_simulator "$sim" >/dev/null 2>&1 &
+  boot_pids+=($!)
+done
 if ! xcodebuild build-for-testing "${common[@]}" -quiet 2>&1 | tee "$build_log"; then
   echo "ci.sh: build failed; compiler errors of the first attempt:" >&2
   report_errors "$build_log"
@@ -258,6 +285,10 @@ fi
 # and resolving its packages again.
 xctestrun=$(ls -t "$CACHE"/DerivedData/Build/Products/*.xctestrun 2>/dev/null | head -1)
 [[ -n "$xctestrun" ]] || { echo "ci.sh: the build wrote no .xctestrun" >&2; exit 65; }
+
+# The pool's boots end before its first job: a job's own `bootstatus -b` would
+# otherwise boot a simulator stock while simslim is still writing its profile.
+for pid in "${boot_pids[@]}"; do wait "$pid" || true; done
 
 # A test failure leaves nothing readable in the public log either (the log is
 # admin-only), so the failed tests are read back from the result bundle and
@@ -302,7 +333,7 @@ prepare_simulator() {
   local sim="$1" erase="$2"
   if (( erase )); then
     xcrun simctl shutdown "$sim" 2>/dev/null || true
-    xcrun simctl erase "$sim" && xcrun simctl bootstatus "$sim" -b >/dev/null
+    xcrun simctl erase "$sim" && boot_simulator "$sim"
     return
   fi
   xcrun simctl bootstatus "$sim" -b >/dev/null || return
