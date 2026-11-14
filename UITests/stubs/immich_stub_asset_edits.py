@@ -1,4 +1,4 @@
-"""Immich API stub for the editor's server-side edits (`AssetEditsUITests`).
+"""Immich API stub for the server-side edits (`AssetEditsUITests`, `EditedWidgetUITests`).
 
     python3 UITests/stubs/immich_stub_asset_edits.py 8421
 
@@ -6,8 +6,9 @@
         UITests/stubs/immich_stub_asset_edits.py AssetEditsUITests --erase
 
 Built on `immich_stub_base` (OAuth shell, request journal `/__requests`, asset
-thumbnails and originals). What it adds is the `/edits` family of Immich v3.4.0
-and a control route to arm it.
+thumbnails and originals) and `immich_stub_socketio` (the `AssetEditReadyV2` event). What it adds is
+the `/edits` family of Immich v3.4.0, the regeneration job that follows a change, one album, two
+searches, and control routes to arm all of it.
 
 SERVER VERSION
 * `GET /api/server/version` answers the configured version: `3.4.0` (default) or
@@ -32,38 +33,74 @@ THE EDIT LIST, replaying `asset.service.ts` `editAsset` of Immich v3.4.0
   "status":"created"}`, and the journal entry carries the file name sent
   (`filename`). A scenario that must prove "no copy" asserts there is no entry.
 
-CONTROL ROUTE (under `/api/`: the base answers every `/__…` path itself)
-* `GET /api/__edits/config?version=3.4.0|2.0.0&put=200|500&regen=<seconds>&live=<id>` sets
-  what is given; `seed=<id>&edits=<json>` stores the list of an asset (`edits` is the
-  JSON array of `{action, parameters}`). Unknown parameters are ignored. The
-  state is wiped by `/__reset`.
+THE REGENERATION JOB, as v3.4.0 runs it after a `PUT` or `DELETE`
+* Each change of a list (`PUT`, `DELETE`, `/api/__edits/remote`) is a new generation `n` of the asset.
+  The server takes `regen` seconds (default 0) to regenerate the thumbnails, and until then it keeps
+  serving the previous rendering: the previous list's image for `edited=true` and the previous
+  thumbhash (`GET /api/assets/<id>`, `GET /api/timeline/bucket`), **after a `DELETE` as after a `PUT`**.
+* Rendered images: a non-empty rendered list serves, for `edited=true`, an edited image (other colour
+  AND other size: thumbnail 12×12, original 96×96); otherwise the image as uploaded (thumbnail 8×8,
+  original 64×64). The journal notes `sha` (a fingerprint of what was served), `edited_served` and `at`
+  (the time of the request).
+* Thumbhash: the base's while the rendered list is empty (so after a removal, as a server that
+  regenerates from the same original does), `<base>-e<n>` for the rendered generation `n` of an edited
+  asset.
+* At the end of the job the stub emits `AssetEditReadyV2` on the socket (`{"asset": {"id", "thumbhash"}}`)
+  unless `event=0`. The socket is `ws://…/api/socket.io/` (see `immich_stub_socketio.py`); its journal
+  entry has `status: 101`.
 
-EDITED IMAGES AND THUMBHASH GENERATIONS (display and download scenarios)
-* `GET /api/assets/<id>/thumbnail` and `/original` serve, for `edited=true` and a
-  non-empty list, an edited image (other colour AND other size); otherwise the
-  image as uploaded. The journal notes `sha` (a fingerprint of what was served).
-* Each `PUT` or `DELETE /edits` is a new generation of the asset. Its thumbhash
-  (`GET /api/assets/<id>`, `GET /api/timeline/bucket`) is `<base>-e<n>` and its
-  edited image is served only `regen` seconds later (default 0): until then the
-  old thumbhash and the old image, as a v3.4.0 server before its regeneration job
-  ends. The `AssetEditReadyV2` websocket event is not emitted: the app also
-  polls the record for as long as the official client waits for the event.
+ALBUM AND SEARCHES (the scenarios' surfaces besides the timeline)
+* `GET /api/albums` answers one album `eeeeeeee-2222-4222-8222-000000000001` ("Edits", cover = the first
+  timeline photo, 6 photos, `updatedAt` 2026-09-01); `?shared=true` answers `[]`. `GET /api/albums/<id>` the
+  same DTO, another id 404. Its `lastModifiedAssetTimestamp` is the time of the latest regeneration already
+  done of one of its photos (what the server derives from `asset.updatedAt`), `updatedAt` before any.
+* `POST /api/search/metadata` with `albumIds` containing the album: the six timeline photos; otherwise
+  none. `POST /api/search/smart`: the first timeline photo, for any query. Both carry the photo's
+  thumbhash of the moment.
+* `GET /api/memories` answers one "on this day" memory `dddddddd-4444-4444-8444-000000000001` over the first
+  three timeline photos (each with the thumbhash of the moment), `GET /api/memories/statistics`
+  `{"total": 1}`: the card and the playback of the Memories tab.
+
+CONTROL ROUTES (under `/api/`: the base answers every `/__…` path itself). Unknown parameters are
+ignored; the state is wiped by `/__reset`.
+* `GET /api/__edits/config?version=3.4.0|2.0.0&put=200|500&regen=<seconds>&live=<id>&event=0|1&down=0|1`
+  sets what is given; `seed=<id>&edits=<json>` stores the list of an asset (`edits` is the JSON array of
+  `{action, parameters}`; no generation). `down=1` is a server that does not answer: every `/api/` route
+  but `/api/__edits/…` answers 503 (journal entry `dropped: true`), the socket is cut and refused.
+* `GET /api/__edits/remote?id=<id>&edits=<json>` is a change made by ANOTHER client: no request from the
+  app. `[]` empties the list, otherwise the list is checked like a `PUT` (400) and stored; then a new
+  generation starts, with its event.
+* `GET /api/__edits/state?id=<id>` answers `{now, generation, changedAt, readyAt, ready, emittedAt,
+  thumbhash, sha: {thumbnail, thumbnailEdited, original, originalEdited}}`: the times are epoch
+  seconds (`null` before any change), the `sha` values are the fingerprints a journal entry can be
+  compared with.
 """
+import datetime
 import hashlib
 import json
 import re
+import threading
 import time
+from urllib.parse import parse_qsl
 
-from immich_stub_base import STATE, TIMELINE_ASSETS, Response, asset, bucket_payload, main, png, router
+from immich_stub_base import (ME, STATE, TIMELINE_ASSETS, Response, StubHandler, asset, bucket_payload, main,
+                              png, router)
+from immich_stub_socketio import close_all, emit, is_upgrade, serve
 
 WIDTH, HEIGHT = 4000, 3000
 VERSIONS = {"3.4.0": (3, 4, 0), "2.0.0": (2, 0, 0)}
 NEW_ASSET = "new-asset"
+ALBUM = "eeeeeeee-2222-4222-8222-000000000001"
+ALBUM_UPDATED_AT = "2026-09-01T00:00:00.000Z"
 
 
 @router.reset
 def fresh():
-    STATE["edits"] = {"version": "3.4.0", "put": 200, "lists": {}, "live": set(), "regen": 0.0, "changes": {}}
+    STATE["edits"] = {
+        "version": "3.4.0", "put": 200, "lists": {}, "live": set(), "regen": 0.0, "changes": {},
+        "event": True, "down": False, "ready_at": {}, "emitted_at": {},
+    }
+    close_all()
 
 
 fresh()  # a request before the first `/__reset` must not find an empty STATE
@@ -73,10 +110,29 @@ def serves_edits():
     return STATE["edits"]["version"] != "2.0.0"
 
 
-def bump(aid):
-    """The edits of `aid` changed: a new generation, which the server takes `regen` seconds to render."""
-    generation = STATE["edits"]["changes"].get(aid, (0, 0))[1]
-    STATE["edits"]["changes"][aid] = (time.time(), generation + 1)
+def bump(aid, previous):
+    """The edits of `aid` changed (`previous` is the list before): a new generation, which the server takes
+    `regen` seconds to render, and then announces."""
+    state = STATE["edits"]
+    now = time.time()
+    generation = state["changes"].get(aid, (0, 0, []))[1] + 1
+    state["changes"][aid] = (now, generation, previous)
+    state["ready_at"][aid] = now + state["regen"]
+    state["emitted_at"].pop(aid, None)
+    timer = threading.Timer(state["regen"], ready, (aid, generation, state))
+    timer.daemon = True
+    timer.start()
+
+
+def ready(aid, generation, token):
+    """The `AssetEditThumbnailGeneration` job of `generation` ends: `AssetEditReadyV2`."""
+    while STATE["edits"] is token and not regenerated(aid):
+        time.sleep(0.005)
+    change = token["changes"].get(aid)
+    if STATE["edits"] is not token or change is None or change[1] != generation or not token["event"]:
+        return
+    emit("AssetEditReadyV2", {"asset": {"id": aid, "thumbhash": thumbhash_of(aid)}})
+    token["emitted_at"][aid] = time.time()
 
 
 def regenerated(aid):
@@ -85,20 +141,31 @@ def regenerated(aid):
     return change is None or time.time() - change[0] >= STATE["edits"]["regen"]
 
 
+def rendered(aid):
+    """`(generation, list)` the server renders now: the last change once its job is done, the one before
+    until then."""
+    state = STATE["edits"]
+    current = state["lists"].get(aid, [])
+    change = state["changes"].get(aid)
+    if change is None:
+        return 0, current
+    _, generation, previous = change
+    if regenerated(aid):
+        return generation, current
+    return generation - 1, previous
+
+
 def edited_ready(aid):
-    """`edited=true` serves the edited image: the list is not empty and its generation is rendered."""
-    return bool(STATE["edits"]["lists"].get(aid)) and regenerated(aid)
+    """`edited=true` serves the edited image: the rendered list is not empty."""
+    return bool(rendered(aid)[1])
 
 
 def thumbhash_of(aid):
-    """The thumbhash advertised for `aid`: the base's, then `<base>-e<n>` for the n-th change, each one
-    only once its thumbnails are regenerated (until then the previous one, as v3.4.0 does)."""
+    """The thumbhash advertised for `aid`: the base's while the rendered list is empty, then
+    `<base>-e<n>` for the rendered generation `n`."""
     base = STATE["thumbhash"]
-    change = STATE["edits"]["changes"].get(aid)
-    if change is None:
-        return base
-    generation = change[1] if regenerated(aid) else change[1] - 1
-    return base if generation == 0 else f"{base}-e{generation}"
+    generation, current = rendered(aid)
+    return f"{base}-e{generation}" if current and generation else base
 
 
 def not_found(path):
@@ -111,6 +178,12 @@ def bad_request(message):
 
 def edits_payload(aid):
     return {"assetId": aid, "edits": STATE["edits"]["lists"].get(aid, [])}
+
+
+def listed(edits):
+    """A list with the `id` the server gives each action."""
+    return [{"id": f"edit-{n}", "action": item["action"], "parameters": item["parameters"]}
+            for n, item in enumerate(edits, start=1)]
 
 
 def check(edits):
@@ -140,6 +213,48 @@ def check(edits):
     return None
 
 
+def detail(aid):
+    """`GET /api/assets/<id>`: the base's asset with the thumbhash of the rendered generation, `isEdited`
+    and `livePhotoVideoId`. The searches serve the same."""
+    record = asset(aid)
+    record["thumbhash"] = thumbhash_of(aid)
+    if serves_edits():
+        record["isEdited"] = bool(STATE["edits"]["lists"].get(aid))
+    else:
+        record.pop("isEdited", None)
+    if aid in STATE["edits"]["live"]:
+        record["livePhotoVideoId"] = f"live-{aid}"
+    return record
+
+
+# MARK: - The server that does not answer
+
+
+class EditsHandler(StubHandler):
+    """`StubHandler`, plus the socket and the `down` switch."""
+
+    def do_GET(self):
+        if is_upgrade(self):
+            if STATE["edits"]["down"]:
+                self.close_connection = True
+                self.send_error(503)
+                return
+            serve(self)
+            return
+        super().do_GET()
+
+    def _dispatch(self, method):
+        path, _, query = self.path.partition("?")
+        if STATE["edits"]["down"] and path.startswith("/api/") and not path.startswith("/api/__edits/"):
+            self._body()
+            STATE["requests"].append({"method": method, "path": path,
+                                      "params": dict(parse_qsl(query, keep_blank_values=True)),
+                                      "body": {}, "dropped": True})
+            self._send(Response({"message": "Service Unavailable"}, status=503))
+            return
+        super()._dispatch(method)
+
+
 # MARK: - Version and asset
 
 
@@ -166,15 +281,11 @@ def get_asset_or_edits(req):
         return image(req, aid, tail)
     if tail:
         return None  # video playback… the base serves it
-    detail = asset(aid)
-    detail["thumbhash"] = thumbhash_of(aid)
-    if serves_edits():
-        detail["isEdited"] = bool(STATE["edits"]["lists"].get(aid))
-    else:
-        detail.pop("isEdited", None)
-    if aid in STATE["edits"]["live"]:
-        detail["livePhotoVideoId"] = f"live-{aid}"
-    return Response(detail)
+    return Response(detail(aid))
+
+
+def sha_of(data):
+    return hashlib.sha1(data).hexdigest()
 
 
 def image(req, aid, kind):
@@ -188,7 +299,7 @@ def image(req, aid, kind):
     else:
         data = png(aid + "-edited", size=12) if shown_edited else png(aid)
         ctype = "image/png"
-    req.note(sha=hashlib.sha1(data).hexdigest(), edited_served=shown_edited)
+    req.note(sha=sha_of(data), edited_served=shown_edited, at=time.time())
     return Response(data, ctype=ctype, headers={"Cache-Control": "no-store"})
 
 
@@ -214,11 +325,9 @@ def put_edits(req):
     reason = check(edits)
     if reason:
         return bad_request(reason)
-    STATE["edits"]["lists"][aid] = [
-        {"id": f"edit-{n}", "action": item["action"], "parameters": item["parameters"]}
-        for n, item in enumerate(edits, start=1)
-    ]
-    bump(aid)
+    previous = STATE["edits"]["lists"].get(aid, [])
+    STATE["edits"]["lists"][aid] = listed(edits)
+    bump(aid, previous)
     return Response(edits_payload(aid))
 
 
@@ -229,8 +338,8 @@ def delete_edits(req):
         return None
     if not serves_edits():
         return not_found(f"DELETE {req.path}")
-    STATE["edits"]["lists"].pop(aid, None)
-    bump(aid)
+    previous = STATE["edits"]["lists"].pop(aid, [])
+    bump(aid, previous)
     return Response(b"", status=204, ctype="application/octet-stream")
 
 
@@ -245,7 +354,104 @@ def upload(req):
     return Response({"id": NEW_ASSET, "status": "created"}, status=201)
 
 
+# MARK: - Album and searches
+
+
+def iso(epoch):
+    stamp = datetime.datetime.fromtimestamp(epoch, tz=datetime.timezone.utc)
+    return stamp.strftime("%Y-%m-%dT%H:%M:%S.") + f"{stamp.microsecond // 1000:03d}Z"
+
+
+def album_dto():
+    """A fresh dict per call. `lastModifiedAssetTimestamp`: the latest regeneration already done of a photo."""
+    now = time.time()
+    done = [at for aid, at in STATE["edits"]["ready_at"].items() if aid in TIMELINE_ASSETS and at <= now]
+    return {
+        "id": ALBUM, "albumName": "Edits", "description": "",
+        "createdAt": "2026-01-01T00:00:00.000Z", "updatedAt": ALBUM_UPDATED_AT,
+        "albumThumbnailAssetId": TIMELINE_ASSETS[0], "shared": False, "hasSharedLink": False,
+        "assetCount": len(TIMELINE_ASSETS), "isActivityEnabled": False, "order": "desc", "albumUsers": [],
+        "lastModifiedAssetTimestamp": iso(max(done)) if done else ALBUM_UPDATED_AT,
+    }
+
+
+@router.get("/api/albums")
+def albums(req):
+    return Response([] if req.params.get("shared") == "true" else [album_dto()])
+
+
+@router.prefix("GET", "/api/albums/")
+def album_detail(req):
+    if not req.rest or "/" in req.rest:
+        return None
+    if req.rest == ALBUM:
+        return Response(album_dto())
+    return not_found(f"GET {req.path}")
+
+
+def search_page(ids):
+    items = [detail(aid) for aid in ids]
+    return Response({"assets": {"count": len(items), "items": items, "nextPage": None, "nextCursor": None}})
+
+
+@router.post("/api/search/metadata")
+def search_metadata(req):
+    body = req.body if isinstance(req.body, dict) else {}
+    return search_page(TIMELINE_ASSETS if ALBUM in (body.get("albumIds") or []) else [])
+
+
+@router.post("/api/search/smart")
+def search_smart(req):
+    return search_page(TIMELINE_ASSETS[:1])
+
+
+# MARK: - Memory
+
+
+MEMORY = "dddddddd-4444-4444-8444-000000000001"
+MEMORY_AT = "2022-09-01T00:00:00.000Z"
+
+
+def memory_dto():
+    """One "on this day" memory over the first three timeline photos, each with the thumbhash of the moment."""
+    return {
+        "id": MEMORY, "createdAt": MEMORY_AT, "updatedAt": MEMORY_AT, "memoryAt": MEMORY_AT, "ownerId": ME,
+        "type": "on_this_day", "data": {"year": 2022}, "assets": [detail(aid) for aid in TIMELINE_ASSETS[:3]],
+        "isSaved": False, "showAt": None, "hideAt": None, "seenAt": None, "deletedAt": None,
+    }
+
+
+@router.get("/api/memories")
+def memories(req):
+    return Response([memory_dto()])
+
+
+@router.get("/api/memories/statistics")
+def memory_statistics(req):
+    return Response({"total": 1})
+
+
 # MARK: - Control
+
+
+def state_payload(aid):
+    state = STATE["edits"]
+    change = state["changes"].get(aid)
+    return {
+        "now": time.time(),
+        "generation": change[1] if change else 0,
+        "changedAt": change[0] if change else None,
+        "readyAt": state["ready_at"].get(aid),
+        "ready": regenerated(aid),
+        "emittedAt": state["emitted_at"].get(aid),
+        "thumbhash": thumbhash_of(aid),
+        "sha": {
+            "thumbnail": sha_of(png(aid)),
+            "thumbnailEdited": sha_of(png(aid + "-edited", size=12)),
+            "original": sha_of(png(aid, size=64)),
+            "originalEdited": sha_of(png(aid + "-edited", size=96)),
+        },
+    }
 
 
 @router.get("/api/__edits/config")
@@ -258,17 +464,43 @@ def config(req):
         state["put"] = int(params["put"])
     if params.get("regen"):
         state["regen"] = float(params["regen"])
+    if params.get("event") in ("0", "1"):
+        state["event"] = params["event"] == "1"
     if params.get("live"):
         state["live"].add(params["live"])
     if params.get("seed") and params.get("edits"):
-        listed = json.loads(params["edits"])
-        state["lists"][params["seed"]] = [
-            {"id": f"edit-{n}", "action": item["action"], "parameters": item["parameters"]}
-            for n, item in enumerate(listed, start=1)
-        ]
+        state["lists"][params["seed"]] = listed(json.loads(params["edits"]))
+    if params.get("down") in ("0", "1"):
+        state["down"] = params["down"] == "1"
+        if state["down"]:
+            close_all()
     return Response({"version": state["version"], "put": state["put"], "regen": state["regen"],
+                     "event": state["event"], "down": state["down"],
                      "live": sorted(state["live"]), "seeded": sorted(state["lists"])})
 
 
+@router.get("/api/__edits/remote")
+def remote(req):
+    """A change made by another client."""
+    aid = req.params.get("id", "")
+    edits = json.loads(req.params.get("edits") or "[]")
+    if edits:
+        reason = check(edits)
+        if reason:
+            return bad_request(reason)
+    previous = STATE["edits"]["lists"].get(aid, [])
+    if edits:
+        STATE["edits"]["lists"][aid] = listed(edits)
+    else:
+        STATE["edits"]["lists"].pop(aid, None)
+    bump(aid, previous)
+    return Response(state_payload(aid))
+
+
+@router.get("/api/__edits/state")
+def state_route(req):
+    return Response(state_payload(req.params.get("id", "")))
+
+
 if __name__ == "__main__":
-    main(label="asset_edits")
+    main(label="asset_edits", handler=EditsHandler)

@@ -46,6 +46,7 @@ final class OfflineDownloadViewModel {
     /// How the last purge ended, for the alert the three storage screens show.
     private(set) var purgeResult: OfflinePurgeResult?
     private var refreshCount = 0
+    @ObservationIgnored private var queuedRedownloads: [String: QueuedRedownload] = [:]
 
     /// What the storage screens render, decided here and not in the views.
     var listingState: ListRenderState {
@@ -166,6 +167,36 @@ final class OfflineDownloadViewModel {
     /// `OfflineAssetIndex` (`cachedAt` changes with each download).
     func downloadAsset(_ asset: AssetReactItem, baseURL: URL, token: String?, edited: Bool = true) async {
         guard !downloadingIDs.contains(asset.id) else { return }
+        await performDownload(asset, baseURL: baseURL, token: token, edited: edited)
+        // A new version was announced while this download ran (`followEdits`): the copy is fetched again
+        // once this one is over, unless it failed or was cancelled and the photo is not kept.
+        if let next = queuedRedownloads.removeValue(forKey: asset.id), isCached(asset.id) {
+            await downloadAsset(next.item, baseURL: next.baseURL, token: next.token, edited: next.edited)
+        }
+    }
+
+    /// A redownload that waits for the download of the same photo in flight.
+    struct QueuedRedownload: Equatable {
+        let item: AssetReactItem
+        let edited: Bool
+        let baseURL: URL
+        let token: String?
+    }
+
+    func queuedRedownload(for id: String) -> QueuedRedownload? { queuedRedownloads[id] }
+
+    /// The photo's edits changed on the server (L-21): fetches the copy again, in the version the app now
+    /// displays (`edited`), when the photo is kept offline. Behind a download in flight, the request waits
+    /// (the latest wins) and starts when that one ends. Nothing for a photo that is not kept.
+    func followEdits(of item: AssetReactItem, edited: Bool, baseURL: URL, token: String?) async {
+        if isDownloading(item.id) {
+            queuedRedownloads[item.id] = QueuedRedownload(item: item, edited: edited, baseURL: baseURL, token: token)
+        } else if isCached(item.id) {
+            await downloadAsset(item, baseURL: baseURL, token: token, edited: edited)
+        }
+    }
+
+    private func performDownload(_ asset: AssetReactItem, baseURL: URL, token: String?, edited: Bool) async {
         downloadingIDs.insert(asset.id)
         progressByID[asset.id] = 0
         errorMessage = nil
@@ -217,6 +248,7 @@ final class OfflineDownloadViewModel {
     // MARK: - Removal
 
     func removeFromOffline(_ assetID: String) async {
+        queuedRedownloads[assetID] = nil
         guard await store.remove(assetID: assetID, accountID: accountID) else { return }
         index.remove(assetID)
         await reload()
@@ -226,6 +258,7 @@ final class OfflineDownloadViewModel {
     /// never ends in silence. Copies the disk would not delete stay listed (and
     /// readable) and the message counts them.
     func clearAll() async {
+        queuedRedownloads.removeAll()
         switch await store.clearAll(accountID: accountID) {
         case .cleared:
             index.removeAll()
