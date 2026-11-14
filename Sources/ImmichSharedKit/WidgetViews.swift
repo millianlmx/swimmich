@@ -898,10 +898,17 @@ enum WidgetTileLayout {
         let columns: Int
         let limit: Int
         switch target.family {
-        case .accessoryCircular, .accessoryRectangular, .accessoryInline: return []
-        case .systemSmall: (columns, limit) = (2, 4)
-        case .systemLarge: (columns, limit) = (3, 9)
-        default: (columns, limit) = (3, 6)
+        case .accessoryCircular, .accessoryRectangular, .accessoryInline:
+            return []
+        case .systemSmall:
+            columns = 2
+            limit = 4
+        case .systemLarge:
+            columns = 3
+            limit = 9
+        default:
+            columns = 3
+            limit = 6
         }
         let drawn = min(count, limit)
         guard drawn > 0 else { return [] }
