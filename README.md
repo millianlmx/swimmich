@@ -32,7 +32,7 @@ Feature parity with the Flutter client is tracked in [`docs/mobile-features-vs-f
 | Domain | Content | Code |
 |---|---|---|
 | **Timeline** | daily buckets, grid zoom, thumbnails | `Sources/Features/Timeline/` |
-| **Viewer** | full-screen pager, zoom, filmstrip, video, slideshow, EXIF panel, stacks, faces | `Sources/Features/PhotoViewer/` |
+| **Viewer** | full-screen pager, zoom, filmstrip, video, slideshow, EXIF panel, stacks, faces; "Try Again" on a photo that fails to load and on the details panel; haptic on favorite and delete (follows the Haptic Feedback setting); the screen stays on while the slideshow is displayed; a video whose offline copy cannot be read plays from the server's transcoded stream | `Sources/Features/PhotoViewer/` |
 | **Search** | semantic (CLIP), faces, locations (map), tags, advanced filters | `Sources/Features/Search/` |
 | **Albums** | CRUD, sharing, activity feed | `Sources/Features/Albums/` |
 | **People, Tags, Duplicates, Trash** | face management, tags, duplicate detection, restore | `Sources/Features/People/`, `Tags/`, `Duplicates/`, `Trash/` |
@@ -55,7 +55,7 @@ Strict MVVM in 4 layers. Protocols in `Core/Protocols/` are **immutable** and fo
 | Layer | Role | Content |
 |---|---|---|
 | `Sources/Core/Types/` | API DTOs | `DTOs*.swift`, `SearchDTOs.swift`, `APIError.swift`, … |
-| `Sources/Core/Protocols/` | Contracts (sole injection point) | `ImmichClient`, `PhotoLibraryService`, `BackupAssetSource`, `BackupLedgerStoring`, `KeychainStore`, `TrustedServerStore`, `AppLockService`, `VideoPlaybackEngine` |
+| `Sources/Core/Protocols/` | Contracts (sole injection point) | `ImmichClient`, `PhotoLibraryService`, `BackupAssetSource`, `BackupLedgerStoring`, `KeychainStore`, `TrustedServerStore`, `AppLockService`, `VideoPlaybackEngine`, `IdleTimerControlling` |
 | `Sources/Services/` | Implementations | `ImmichAPIClient`, `PhotoLibraryServiceImpl`, `BackupEngine`, `BackupLedger`, `MultipartBody`, `ImageCache`, `AuthenticatedAsyncImage`, `RealtimeService` (Socket.IO), `KeychainStoreImpl`, … |
 | `Sources/Features/<Feature>/` | Per-feature MVVM | `<Feature>ViewModel.swift` (`@Observable`, `@MainActor`) + `<Feature>View.swift` (stateless) |
 
