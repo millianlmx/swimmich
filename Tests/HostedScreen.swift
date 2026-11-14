@@ -39,7 +39,7 @@ final class HostedScreen {
         let label: String
         let scrolls: Bool
         let depth: Int
-        let summary: String
+        var summary: String
         var children: [Node] = []
 
         init(kind: Kind, frame: CGRect, identifier: String, label: String, scrolls: Bool, depth: Int, summary: String) {
@@ -71,6 +71,8 @@ final class HostedScreen {
             for child in children { child.forEach(visit) }
         }
     }
+
+    private static let userTestingChildren = Selector(("_accessibilityUserTestingChildren"))
 
     let window: UIWindow
     private let controller: UIViewController
@@ -160,6 +162,17 @@ final class HostedScreen {
                 children = view.subviews
             }
         }
+        // A SwiftUI button is a leaf for VoiceOver (one element, its texts merged
+        // into its label) but not for the UI automation, which still reads the
+        // texts inside it: the same children XCUITest sees, so a title inside a
+        // card or a row is measured on its own frame here too.
+        var automationChildren = -1
+        if children.isEmpty, !(object is UIView), object.responds(to: Self.userTestingChildren),
+           let value = object.perform(Self.userTestingChildren)?.takeUnretainedValue() as? [NSObject] {
+            children = value
+            automationChildren = value.count
+        }
+        result.summary += " utc=\(automationChildren)"
         let inside = scrolls || object is UIScrollView
         for child in children {
             if let childNode = node(for: child, scrolls: inside, depth: depth + 1, visited: &visited) {
