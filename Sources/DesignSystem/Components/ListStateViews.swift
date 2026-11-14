@@ -57,11 +57,11 @@ enum DataStatus: Equatable {
 
 extension View {
     /// Makes a `ProgressView` or a skeleton one VoiceOver element with a
-    /// localized "Loading…" label and an identifier XCUITest can find.
-    func pvLoadingIndicator(_ identifier: String) -> some View {
+    /// localized label (default "Loading…", or a more specific one) and an identifier XCUITest can find.
+    func pvLoadingIndicator(_ identifier: String, label: LocalizedStringKey = "Loading…") -> some View {
         self
             .accessibilityElement(children: .ignore)
-            .accessibilityLabel(Text("Loading…"))
+            .accessibilityLabel(Text(label))
             .accessibilityIdentifier(identifier)
     }
 }

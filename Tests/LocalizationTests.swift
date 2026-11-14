@@ -92,6 +92,31 @@ final class LocalizationTests: XCTestCase {
         }
     }
 
+    /// L-29: the viewer's failure copy, the details error and the VoiceOver
+    /// label of the details spinner resolve to the catalog text in every
+    /// shipped language, "Try Again" included.
+    func test_AC_57_6_viewerRetryCopyTranslated() throws {
+        let expected: [String: [String: String]] = [
+            "Couldn't load this photo": [
+                "fr": "Impossible de charger cette photo", "de": "Dieses Foto konnte nicht geladen werden",
+                "es": "No se pudo cargar esta foto", "it": "Impossibile caricare questa foto"],
+            "Couldn't load details": [
+                "fr": "Impossible de charger les détails", "de": "Details konnten nicht geladen werden",
+                "es": "No se pudieron cargar los detalles", "it": "Impossibile caricare i dettagli"],
+            "Loading details…": [
+                "fr": "Chargement des détails…", "de": "Details werden geladen…",
+                "es": "Cargando detalles…", "it": "Caricamento dei dettagli…"]
+        ]
+        for (key, byLanguage) in expected {
+            for (code, value) in byLanguage {
+                XCTAssertEqual(try localized(key, language: code), value, "\(key) in \(code)")
+            }
+        }
+        for code in ["fr", "de", "es", "it"] {
+            XCTAssertNotEqual(try localized("Try Again", language: code), "Try Again", "Try Again in \(code)")
+        }
+    }
+
     /// The regression this whole card exists for: onboarding copy used to be
     /// hardcoded French, and half the catalog had no translation at all. A key
     /// that resolves to itself means the lookup fell through to English.

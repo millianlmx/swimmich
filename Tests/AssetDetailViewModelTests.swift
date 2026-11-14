@@ -175,11 +175,98 @@ final class AssetDetailViewModelTests: XCTestCase {
             await vm.setLocation(latitude: 45.5, longitude: 6.8)
 
             let message = vm.errorMessage ?? ""
+            await vm.loadDetail()
+            let loadMessage = vm.loadError ?? ""
+            XCTAssertFalse(loadMessage.isEmpty, "\(failure) must surface a load message")
+            for leak in ["Decoding failed", "Network error", "HTTP", "secret-body", "SQL error"] {
+                XCTAssertFalse(loadMessage.contains(leak), "\(failure) leaked \"\(leak)\" into the load error: \(loadMessage)")
+            }
             XCTAssertFalse(message.isEmpty, "\(failure) must surface a message")
             for leak in ["Decoding failed", "Network error", "HTTP", "secret-body", "SQL error"] {
                 XCTAssertFalse(message.contains(leak), "\(failure) leaked \"\(leak)\" into: \(message)")
             }
         }
+    }
+
+    // MARK: - Retry of the details (L-29, B-33.2)
+
+    @MainActor
+    func test_AC_57_5_failedLoadThenRetryShowsDetailsAndNoError() async {
+        let item = makeItem()
+        let mock = MockImmichClient()
+        mock.getAssetResponse[item.id] = makeDetail()
+        mock.globalError = APIError.serverError(500, "boom")
+        let vm = AssetDetailViewModel(asset: item, client: mock)
+
+        await vm.loadDetail()
+        XCTAssertNotNil(vm.loadError)
+        XCTAssertNil(vm.detail)
+        XCTAssertNil(vm.errorMessage, "the load error never reaches the write-error slot")
+
+        mock.globalError = nil
+        await vm.loadDetail()
+        XCTAssertNotNil(vm.detail)
+        XCTAssertNil(vm.loadError)
+        XCTAssertNil(vm.errorMessage)
+    }
+
+    @MainActor
+    func test_AC_57_5_retryAfterFailedLoadGeocodes() async {
+        let item = makeItem()
+        let mock = MockImmichClient()
+        mock.getAssetResponse[item.id] = AssetResponseDto(
+            id: item.id, type: "IMAGE", thumbhash: nil, localDateTime: "2020-06-14T10:00:00.000Z",
+            duration: nil, hasMetadata: true, width: 100, height: 100, createdAt: "2020-06-14T10:00:00.000Z",
+            ownerId: "me", originalPath: "/a1.jpg", originalFileName: "a1.jpg",
+            fileCreatedAt: "2020-06-14T10:00:00.000Z", fileModifiedAt: "2020-06-14T10:00:00.000Z",
+            updatedAt: "2020-06-14T10:00:00.000Z", isFavorite: false, isArchived: false,
+            isTrashed: false, isOffline: false, visibility: "timeline", checksum: "abc", isEdited: false,
+            exifInfo: ExifResponseDto(latitude: 48.85, longitude: 2.35)
+        )
+        let geocoder = MockLocationGeocoding()
+        geocoder.placeNameResult = "Paris"
+        let vm = AssetDetailViewModel(asset: item, client: mock)
+        vm.geocoder = geocoder
+
+        mock.globalError = APIError.serverError(500, "boom")
+        await vm.loadDetail()
+        XCTAssertEqual(geocoder.callCount, 0)
+
+        mock.globalError = nil
+        await vm.loadDetail()
+        XCTAssertEqual(geocoder.callCount, 1)
+        XCTAssertEqual(vm.placeName, "Paris")
+
+        await vm.loadDetail()
+        XCTAssertEqual(geocoder.callCount, 1, "a later reload does not geocode again")
+    }
+
+    @MainActor
+    func test_AC_57_5_reloadFailureKeepsDetails() async {
+        let item = makeItem()
+        let mock = MockImmichClient()
+        let vm = await loadedVM(item: item, detail: makeDetail(), mock: mock)
+        XCTAssertNotNil(vm.detail)
+
+        mock.globalError = APIError.serverError(500, "boom")
+        await vm.loadDetail()
+
+        XCTAssertNotNil(vm.detail, "details already on screen stay (decision #7)")
+        XCTAssertNotNil(vm.loadError)
+        XCTAssertNil(vm.errorMessage)
+    }
+
+    @MainActor
+    func test_AC_57_5_writeFailureDoesNotSetLoadError() async {
+        let item = makeItem()
+        let mock = MockImmichClient()
+        let vm = await loadedVM(item: item, detail: makeDetail(), mock: mock)
+
+        mock.globalError = APIError.serverError(500, "boom")
+        await vm.setLocation(latitude: 45.5, longitude: 6.8)
+
+        XCTAssertNotNil(vm.errorMessage)
+        XCTAssertNil(vm.loadError)
     }
 
     // MARK: - Age and owner (L-24, B-28)

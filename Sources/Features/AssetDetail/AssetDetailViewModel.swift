@@ -10,7 +10,11 @@ final class AssetDetailViewModel {
     var isFavorite: Bool
     var detail: AssetResponseDto?
     var isLoading = false
+    /// Write failures (favorite, rating, date, place, faces). Loading the
+    /// details never writes here: it has its own `loadError`.
     var errorMessage: String?
+    /// Why the last `loadDetail()` failed; nil when it succeeded or hasn't failed.
+    private(set) var loadError: String?
 
     /// Reverse-geocoded place label. Nil if no coords, geocoder failed with no fallback data,
     /// or loadDetail not yet run. (AC-204/205/206)
@@ -55,10 +59,11 @@ final class AssetDetailViewModel {
     @MainActor
     func loadDetail() async {
         isLoading = true
+        loadError = nil
         do {
             detail = try await client.getAsset(id: asset.id)
             rating = detail?.exifInfo?.rating
-        } catch let e { errorMessage = e.userFacingMessage }
+        } catch let e { loadError = e.userFacingMessage }
         isLoading = false
         await reverseGeocodeIfNeeded()
         await loadFaces()
@@ -158,9 +163,11 @@ final class AssetDetailViewModel {
     /// No-op without coords (AC-206). On geocoder throw, fall back to EXIF city/state/country (AC-205).
     private func reverseGeocodeIfNeeded() async {
         guard !geocoded else { return } // FM-3: skip on reload
+        // A load that failed has no EXIF yet: the guard stays open so a retry
+        // that succeeds geocodes once (L-29).
+        guard let exif = detail?.exifInfo else { return }
         geocoded = true
-        guard let exif = detail?.exifInfo,
-              let lat = exif.latitude,
+        guard let lat = exif.latitude,
               let lon = exif.longitude else { return } // AC-206: no coords → no geocode
         do {
             placeName = try await geocoder.placeName(latitude: lat, longitude: lon)

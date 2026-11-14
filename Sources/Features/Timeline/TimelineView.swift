@@ -441,11 +441,9 @@ struct TimelineView: View {
             baseURL: auth.baseURL ?? URL(string: "https://example.com")!,
             token: auth.accessToken,
             troubleshoot: troubleshoot,
+            // The viewer owns the favorite haptic (at the gesture): no second one here.
             onToggleFavorite: { asset, isFavorite in
-                Task {
-                    await vm.setFavorite(id: asset.id, isFavorite: isFavorite)
-                    lastFavoriteTick &+= 1
-                }
+                Task { await vm.setFavorite(id: asset.id, isFavorite: isFavorite) }
             },
             onDelete: { asset in
                 Task { await vm.delete(id: asset.id) }

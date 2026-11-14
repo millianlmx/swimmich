@@ -123,6 +123,13 @@ struct PhotoInfoPanel: View {
     private var content: some View {
         if let detail = vm?.detail, let exif = detail.exifInfo {
             ScrollView {
+                // A reload that failed keeps the details on screen (decision #7).
+                if let vm, let reloadError = vm.loadError {
+                    InlineErrorBadge(message: reloadError, retry: { Task { await vm.loadDetail() } })
+                        .accessibilityIdentifier("viewerInfoReloadError")
+                        .padding(.horizontal, PVSpacing.s16)
+                        .padding(.top, PVSpacing.s8)
+                }
                 if let owner = vm?.sharedByOwner(currentUserId: currentUserId) {
                     AssetOwnerRow(owner: owner, baseURL: baseURL, token: token)
                         .padding(.horizontal, PVSpacing.s16)
@@ -163,13 +170,19 @@ struct PhotoInfoPanel: View {
                 .padding(.horizontal, PVSpacing.s16)
                 .padding(.bottom, PVSpacing.s24)
             }
-        } else if let error = vm?.errorMessage {
-            Text(error)
-                .font(.pvCaption)
-                .foregroundStyle(Color.immichError)
-                .frame(maxWidth: .infinity, maxHeight: .infinity)
+            .accessibilityElement(children: .contain)
+            .accessibilityIdentifier("viewerInfoDetails")
+        } else if let loadError = vm?.loadError, let vm {
+            PVErrorStateView(
+                title: "Couldn't load details",
+                message: loadError,
+                identifierPrefix: "viewerInfo",
+                retry: { Task { await vm.loadDetail() } }
+            )
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
         } else {
             ProgressView()
+                .pvLoadingIndicator("viewerInfoLoading", label: "Loading details…")
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
         }
     }

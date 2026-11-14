@@ -45,3 +45,13 @@ immich_stub_asset_edits.py AssetEditsUITests/test_AC_188_oldServerSavesCopy
 immich_stub_asset_edits.py AssetEditsUITests/test_AC_189_putErrorShowsMessage
 immich_stub_asset_edits.py AssetEditsUITests/test_AC_39_editedVersionShownThenTheOriginalComesBack
 immich_stub_asset_edits.py AssetEditsUITests/test_AC_40_downloadEditedThenOriginalAsksTwiceWithDifferentFiles
+
+# L-29 viewer resilience (AC-57 to AC-59.6): Try Again on a photo and on its details, the haptics of
+# a favorite and a delete (read through a probe), the screen kept on by the slideshow, and the
+# video that falls back to the server when its offline copy cannot be read. The last one makes
+# an offline copy: freshly erased.
+immich_stub_viewer_resilience.py ViewerResilienceUITests/test_AC_59_offlineCopyFallsBack --erase
+immich_stub_viewer_resilience.py ViewerResilienceUITests/test_AC_58_haptics
+immich_stub_viewer_resilience.py ViewerResilienceUITests/test_AC_57_photoRetry
+immich_stub_viewer_resilience.py ViewerResilienceUITests/test_AC_57_5_detailsRetry
+immich_stub_viewer_resilience.py ViewerResilienceUITests/test_AC_58_1_slideshowKeepsScreenAwake

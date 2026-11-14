@@ -28,6 +28,9 @@ final class AVVideoPlaybackEngine: NSObject, VideoPlaybackEngine, @unchecked Sen
     private let player = AVPlayer()
     private var timeObserver: Any?
     private var endObserver: NSObjectProtocol?
+    private var statusObserver: NSKeyValueObservation?
+    private var failedToEndObserver: NSObjectProtocol?
+    private var failureReported = false
     private var currentItem: AVPlayerItem?
 
     private(set) var duration: Double = 0
@@ -95,13 +98,17 @@ final class AVVideoPlaybackEngine: NSObject, VideoPlaybackEngine, @unchecked Sen
             let options = Self.assetOptions(url: url, token: token, customHeaders: customHeaders)
             asset = AVURLAsset(url: url, options: options)
         }
-        let loadedDuration = try await asset.load(.duration)
+        // `isPlayable` is false for a file the device cannot play (a codec it lacks):
+        // its container still loads a duration, so the duration alone proves nothing.
+        let (loadedDuration, playable) = try await asset.load(.duration, .isPlayable)
+        guard playable else { throw VideoPlaybackEngineError.notPlayable }
         let item = AVPlayerItem(asset: asset)
 
         invalidateObservers()
         currentItem = item
         player.replaceCurrentItem(with: item)
         observeEnd(of: item)
+        observeFailure(of: item)
         armTimeObserver()
 
         let seconds = loadedDuration.seconds
@@ -172,6 +179,32 @@ final class AVVideoPlaybackEngine: NSObject, VideoPlaybackEngine, @unchecked Sen
         }
     }
 
+    /// An item that fails after it was ready — a file whose container reads but
+    /// whose frames do not — is the only way to learn the media is unreadable
+    /// once `prepare` has succeeded. Emits `onFailure` once per item, on the
+    /// main queue; neither the item's error text nor its URL leave the engine.
+    private func observeFailure(of item: AVPlayerItem) {
+        failureReported = false
+        let identity = ObjectIdentifier(item)
+        statusObserver = item.observe(\.status, options: [.initial, .new]) { [weak self] item, _ in
+            guard item.status == .failed else { return }
+            DispatchQueue.main.async { self?.reportFailure(of: identity) }
+        }
+        failedToEndObserver = NotificationCenter.default.addObserver(
+            forName: .AVPlayerItemFailedToPlayToEndTime,
+            object: item,
+            queue: .main
+        ) { [weak self] _ in
+            self?.reportFailure(of: identity)
+        }
+    }
+
+    private func reportFailure(of identity: ObjectIdentifier) {
+        guard let currentItem, ObjectIdentifier(currentItem) == identity, !failureReported else { return }
+        failureReported = true
+        onFailure?(UserFacingError.genericMessage)
+    }
+
     private func invalidateObservers() {
         if let timeObserver {
             player.removeTimeObserver(timeObserver)
@@ -180,6 +213,12 @@ final class AVVideoPlaybackEngine: NSObject, VideoPlaybackEngine, @unchecked Sen
         if let endObserver {
             NotificationCenter.default.removeObserver(endObserver)
             self.endObserver = nil
+        }
+        statusObserver?.invalidate()
+        statusObserver = nil
+        if let failedToEndObserver {
+            NotificationCenter.default.removeObserver(failedToEndObserver)
+            self.failedToEndObserver = nil
         }
     }
 }

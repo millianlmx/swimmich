@@ -209,6 +209,125 @@ final class VideoPlaybackViewModelTests: XCTestCase {
         XCTAssertEqual(message, UserFacingError.genericMessage)
     }
 
+    // MARK: - Server fallback for an unreadable offline copy (L-29, AC-59)
+
+    private let localCopy = URL(fileURLWithPath: "/tmp/offline/v9.mp4")
+
+    /// Waits for the Task the engine's failure hook starts.
+    private func settle(_ mock: MockVideoPlaybackEngine, preparations: Int) async {
+        for _ in 0..<200 where mock.preparedURLs.count < preparations { await Task.yield() }
+        await Task.yield()
+    }
+
+    func test_AC_59_unreadableLocalCopyFallsBackToTheTranscodedStream() async {
+        let mock = MockVideoPlaybackEngine()
+        mock.prepareErrorsByURL[localCopy] = VideoPlaybackEngineError.notPlayable
+        let vm = VideoPlaybackViewModel(engine: mock, appSettings: settings)
+
+        await vm.prepare(asset: makeVideoAsset(id: "v9"), baseURL: baseURL, token: "tok-123", localFileURL: localCopy)
+
+        XCTAssertEqual(mock.preparedURLs.count, 2)
+        XCTAssertEqual(mock.preparedURLs.first, localCopy)
+        XCTAssertEqual(mock.preparedURLs.last?.path, "/api/assets/v9/video/playback")
+        XCTAssertEqual(mock.preparedTokens.last, "tok-123", "the server stream carries the session token")
+        XCTAssertEqual(vm.status, .playing)
+    }
+
+    func test_AC_59_1_fallbackIgnoresStreamOriginal() async {
+        settings.loadOriginalVideo = true
+        let mock = MockVideoPlaybackEngine()
+        mock.prepareErrorsByURL[localCopy] = VideoPlaybackEngineError.notPlayable
+        let vm = VideoPlaybackViewModel(engine: mock, appSettings: settings)
+
+        await vm.prepare(asset: makeVideoAsset(id: "v9"), baseURL: baseURL, token: "tok-123", localFileURL: localCopy)
+
+        XCTAssertEqual(mock.preparedURLs.last?.path, "/api/assets/v9/video/playback", "never /original")
+        XCTAssertEqual(mock.preparedTokens.last, "tok-123")
+        XCTAssertEqual(vm.status, .playing)
+    }
+
+    func test_AC_59_2_readableLocalCopyMakesNoServerRequest() async {
+        let mock = MockVideoPlaybackEngine()
+        let vm = VideoPlaybackViewModel(engine: mock, appSettings: settings)
+
+        await vm.prepare(asset: makeVideoAsset(id: "v9"), baseURL: baseURL, token: "tok-123", localFileURL: localCopy)
+
+        XCTAssertEqual(mock.preparedURLs, [localCopy])
+        XCTAssertEqual(mock.preparedTokens, [nil])
+        XCTAssertEqual(vm.status, .playing)
+    }
+
+    func test_AC_59_3_serverFailsTooEndsFailedAfterOneSwitch() async {
+        let mock = MockVideoPlaybackEngine()
+        mock.prepareError = URLError(.cannotConnectToHost)
+        let vm = VideoPlaybackViewModel(engine: mock, appSettings: settings)
+
+        await vm.prepare(asset: makeVideoAsset(id: "v9"), baseURL: baseURL, token: "tok-123", localFileURL: localCopy)
+
+        XCTAssertEqual(mock.preparedURLs.count, 2, "one switch, no loop")
+        guard case .failed = vm.status else { return XCTFail("expected failed, got \(vm.status)") }
+        XCTAssertNotNil(vm.errorMessage)
+    }
+
+    func test_AC_59_3_lateEngineFailureOfTheLocalItemSwitchesOnce() async {
+        let mock = MockVideoPlaybackEngine()
+        let vm = VideoPlaybackViewModel(engine: mock, appSettings: settings)
+        await vm.prepare(asset: makeVideoAsset(id: "v9"), baseURL: baseURL, token: "tok-123", localFileURL: localCopy)
+        XCTAssertEqual(mock.preparedURLs, [localCopy])
+
+        mock.fireFailure("late")
+        await settle(mock, preparations: 2)
+        XCTAssertEqual(mock.preparedURLs.count, 2)
+        XCTAssertEqual(mock.preparedURLs.last?.path, "/api/assets/v9/video/playback")
+        XCTAssertEqual(vm.status, .playing)
+
+        mock.fireFailure("again")
+        await settle(mock, preparations: 3)
+        XCTAssertEqual(mock.preparedURLs.count, 2, "no third preparation")
+        guard case .failed = vm.status else { return XCTFail("expected failed, got \(vm.status)") }
+    }
+
+    func test_AC_59_3_retryRearmsTheFallback() async {
+        let mock = MockVideoPlaybackEngine()
+        mock.prepareError = URLError(.cannotConnectToHost)
+        let vm = VideoPlaybackViewModel(engine: mock, appSettings: settings)
+        await vm.prepare(asset: makeVideoAsset(id: "v9"), baseURL: baseURL, token: "tok-123", localFileURL: localCopy)
+        XCTAssertEqual(mock.preparedURLs.count, 2)
+
+        vm.reset()
+        mock.prepareError = nil
+        mock.prepareErrorsByURL[localCopy] = VideoPlaybackEngineError.notPlayable
+        await vm.prepare(asset: makeVideoAsset(id: "v9"), baseURL: baseURL, token: "tok-123", localFileURL: localCopy)
+
+        XCTAssertEqual(mock.preparedURLs.count, 4, "copy, then server, again after the retry")
+        XCTAssertEqual(mock.preparedURLs[2], localCopy)
+        XCTAssertEqual(mock.preparedURLs[3].path, "/api/assets/v9/video/playback")
+        XCTAssertEqual(vm.status, .playing)
+    }
+
+    func test_AC_59_4_statusIsPreparingWhileSwitching() async {
+        let mock = MockVideoPlaybackEngine()
+        mock.prepareErrorsByURL[localCopy] = VideoPlaybackEngineError.notPlayable
+        let vm = VideoPlaybackViewModel(engine: mock, appSettings: settings)
+        let seen = TestBox<[VideoPlaybackStatus]>([])
+        mock.onPrepare = { _ in seen.value.append(vm.status) }
+
+        await vm.prepare(asset: makeVideoAsset(id: "v9"), baseURL: baseURL, token: "tok-123", localFileURL: localCopy)
+
+        XCTAssertEqual(seen.value, [.preparing, .preparing], "no .failed between the copy and the server")
+    }
+
+    func test_AC_59_cancelledLocalPreparationDoesNotFallBack() async {
+        let mock = MockVideoPlaybackEngine()
+        mock.prepareErrorsByURL[localCopy] = CancellationError()
+        let vm = VideoPlaybackViewModel(engine: mock, appSettings: settings)
+
+        await vm.prepare(asset: makeVideoAsset(id: "v9"), baseURL: baseURL, token: "tok-123", localFileURL: localCopy)
+
+        XCTAssertEqual(mock.preparedURLs, [localCopy])
+        XCTAssertEqual(vm.status, .idle)
+    }
+
     // MARK: - Live Photo pair (P1)
 
     func test_P1_livePhoto_pairUsesPairAssetID() async {
