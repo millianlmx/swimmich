@@ -9,8 +9,9 @@ name: CI
 # tier (`SWIMMICH_CI_UI_SCOPE` of Scripts/ci.sh, Scripts/ci_ui_select.py):
 #
 # * the gate, on every push: the build, the unit tests, the i18n audit, the UI
-#   scenarios the push changed and the smoke lines. About 5 minutes; it is the
-#   check the branch protection of `main` requires.
+#   scenarios the push changed and the smoke lines, one per free simulator.
+#   Under 5 minutes (`SWIMMICH_CI_GATE_BUDGET`); it is the check the branch
+#   protection of `main` requires.
 # * the core suite, every night on `main`: the smoke lines and the journeys and
 #   sole proofs of each feature (about 25 minutes). A scenario a merge broke
 #   turns the night's run red: fixed the next morning, it does not hold every
@@ -57,8 +58,6 @@ jobs:
     timeout-minutes: 45
     env:
       SWIMMICH_CI_UI_SCOPE: gate
-      # TEMPORARY, one measurement: the gate on two simulators, the smallest pool.
-      SWIMMICH_CI_UI_WORKERS: 2
       # What the changed scenarios are read against: `main` for a branch, and for
       # a push to `main` the commit it pointed at before the push.
       SWIMMICH_CI_UI_BASE: ${{ github.event_name == 'push' && github.ref == 'refs/heads/main' && github.event.before || 'main' }}

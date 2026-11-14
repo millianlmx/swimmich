@@ -2,6 +2,7 @@
 """Which lines of Scripts/ci-ui-scenarios.txt a run of Scripts/ci.sh executes.
 
     ci_ui_select.py --scope gate|core|all --list <file> [--base <git ref>]
+                    [--capacity <lines>]
 
 Prints the selected lines, in the order they run, one per line. Exit 2 when the
 list is malformed or over its budgets.
@@ -27,6 +28,12 @@ What a push can have broken, read against `--base`:
   outside the test functions (a helper, the set-up) selects the class's lines but
   the `--release` ones; a change of comments alone selects nothing;
 * a line whose stub changed, but the `--release` ones.
+
+The gate runs at most `--capacity` lines, one per simulator the unit tests leave
+free: a scenario never waits behind another, so the gate lasts as long as its
+longest line, not as the sum of them. Changed lines come first, then the smoke
+lines; what does not fit is left to the night's suite, with a warning when a
+changed line is left.
 
 Shared code (anything else under UITests/, `immich_stub_base.py`, Scripts/ci.sh,
 this script) can break any line: the gate does not run them all, the night's
@@ -165,7 +172,7 @@ def class_changes(diff, source):
     return touched
 
 
-def select(lines, scope, changed=(), base_keys=None, classes=None, log=None):
+def select(lines, scope, changed=(), base_keys=None, classes=None, log=None, capacity=None, warn=None):
     """Indices of the lines of `lines` the scope runs, in running order.
 
     `changed`: the paths the push changed. `base_keys`: `key()` of the base's
@@ -206,7 +213,18 @@ def select(lines, scope, changed=(), base_keys=None, classes=None, log=None):
         say("shared UI-test code changed (%s): the gate runs the smoke lines, the night's suite judges the others"
             % ", ".join(shared[:5]))
     say("UI scope gate: %d changed line(s), then %d smoke line(s), of %d" % (len(touched), len(smoke), len(lines)))
-    return touched + smoke
+    selected = touched + smoke
+    if capacity is not None and len(selected) > capacity:
+        capacity = max(capacity, 1)
+        left = [lines[index][1] for index in touched[capacity:]]
+        say("the gate runs %d line(s), one per free simulator: %d left to the night's suite"
+            % (capacity, len(selected) - capacity))
+        if left and warn:
+            warn("the gate ran %d of the %d scenario lines this push changed, one per free simulator. "
+                 "Not run: %s. Run them before merging (Run workflow, suite 'all'), or the night's suite will."
+                 % (min(capacity, len(touched)), len(touched), ", ".join(left)))
+        selected = selected[:capacity]
+    return selected
 
 
 def git(*arguments):
@@ -218,6 +236,7 @@ def main(argv=None):
     parser.add_argument("--scope", required=True)
     parser.add_argument("--list", required=True)
     parser.add_argument("--base")
+    parser.add_argument("--capacity", type=int)
     options = parser.parse_args(argv)
 
     def log(message):
@@ -243,7 +262,8 @@ def main(argv=None):
                         classes[name] = WHOLE
                         continue
                     classes[name] = class_changes(git("diff", "-U0", options.base, "HEAD", "--", path), source)
-        selected = select(lines, options.scope, changed, base_keys, classes, log)
+        selected = select(lines, options.scope, changed, base_keys, classes, log, options.capacity,
+                          lambda message: print("::warning::" + message, file=sys.stderr))
     except ListError as error:
         # On stderr: ci.sh captures stdout (the selected lines), and GitHub reads
         # the annotation from either stream.

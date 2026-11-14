@@ -129,7 +129,8 @@ print(ios[-1]["identifier"] if ios else "")
 #
 # * `gate`, the default on GitHub Actions: the lines the push can have broken
 #   (a line new or edited, a line whose test function or stub changed), then the
-#   `--smoke` lines. The gate of every push, in minutes.
+#   `--smoke` lines, one line per simulator the unit tests leave free. The gate
+#   of every push: under five minutes, build included.
 # * `core`: every line but the `--release` ones. The night's suite.
 # * `all`, the default on a developer's Mac: every line. The release suite, once
 #   a week and on a release tag.
@@ -143,8 +144,13 @@ UI_SCOPE="${SWIMMICH_CI_UI_SCOPE:-}"
 if [[ -z "$UI_SCOPE" ]]; then
   if [[ -n "${GITHUB_ACTIONS:-}" ]]; then UI_SCOPE=gate; else UI_SCOPE=all; fi
 fi
+# The pool's size is known before the selection: the gate runs one line per
+# simulator the unit tests leave free, so no scenario waits behind another.
+UI_WORKERS="${SWIMMICH_CI_UI_WORKERS:-3}"
+(( UI_WORKERS >= 1 )) || { echo "ci.sh: SWIMMICH_CI_UI_WORKERS must be at least 1" >&2; exit 2; }
 select_arguments=(--scope "$UI_SCOPE" --list "$UI_LIST")
 if [[ "$UI_SCOPE" == gate ]]; then
+  select_arguments+=(--capacity "$(( UI_WORKERS > 1 ? UI_WORKERS - 1 : 1 ))")
   # A tree diff against the base's tip: a branch behind main also selects what
   # main changed since, never less than its own changes. The tip alone is enough
   # (no merge base), so the shallow checkout of the runner only fetches it; a
@@ -176,8 +182,6 @@ done <<<"$selected_lines"
 # so they run beside the UI scenarios and a runner never holds more simulators
 # than its workers. The app is built for the first worker: a destination of this
 # exact kind keeps the build to the Mac's own architecture.
-UI_WORKERS="${SWIMMICH_CI_UI_WORKERS:-3}"
-(( UI_WORKERS >= 1 )) || { echo "ci.sh: SWIMMICH_CI_UI_WORKERS must be at least 1" >&2; exit 2; }
 (( UI_WORKERS <= ${#ui_lines[@]} + 1 )) || UI_WORKERS=$(( ${#ui_lines[@]} + 1 ))
 worker_udids=()
 for (( worker = 1; worker <= UI_WORKERS; worker++ )); do

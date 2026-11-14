@@ -26,11 +26,13 @@
 #
 # * `--smoke`: every push (the gate), after the lines the push changed. The
 #   gate has five minutes in all (`SWIMMICH_CI_GATE_BUDGET`), build and unit
-#   tests included, on a runner with two simulators: two short lines, the search
-#   (filters to request to results) and the editor (timeline to viewer to
-#   editor to saved edits). Measured: a smoke line costs the gate its own
-#   length, a minute to a minute and a half. The longer journeys (sign-in,
-#   three minutes) are core lines.
+#   tests included, so it runs one line per simulator the unit tests leave free
+#   (one on a pool of two, two on a pool of three) and no line waits behind
+#   another: the first smoke line of this file always runs, the next ones where
+#   there is room. Two short lines: the editor (timeline to viewer to editor to
+#   saved edits), then the search (filters to request to results). The longer
+#   journeys (sign-in, three minutes) are core lines. A changed line that finds
+#   no room gets a CI warning and is left to the night's suite.
 # * no flag, the core suite: every night with the smoke lines. A journey of a
 #   feature, or the only execution proof of a criterion (no unit test proves it).
 # * `--release`: once a week and on a release tag, with all the others. A second
@@ -40,6 +42,15 @@
 # night's suite (smoke and core). A feature brings one or two scenarios; one that
 # does not fit replaces a line or is `--release`, and its detailed criteria go to
 # the unit tests.
+
+# L-21 server-side edits (AC-39, AC-40, AC-181, AC-182, AC-188, AC-189): the editor, the edited
+# version shown by the viewer, and the choice of the file to download.
+immich_stub_asset_edits.py AssetEditsUITests/test_AC_182_reopenChangeRotationThenRevert --release
+immich_stub_asset_edits.py AssetEditsUITests/test_AC_181_cropRotateMirrorSavesEdits --smoke
+immich_stub_asset_edits.py AssetEditsUITests/test_AC_188_oldServerSavesCopy --release
+immich_stub_asset_edits.py AssetEditsUITests/test_AC_189_putErrorShowsMessage --release
+immich_stub_asset_edits.py AssetEditsUITests/test_AC_39_editedVersionShownThenTheOriginalComesBack
+immich_stub_asset_edits.py AssetEditsUITests/test_AC_40_downloadEditedThenOriginalAsksTwiceWithDifferentFiles
 
 # L-32 "Remaining to back up": the entry and the list over the real Photos library of the simulator
 # (3 seeded media, plus the sample photos of an erased simulator) → a pass against a server that accepts
@@ -101,15 +112,6 @@ immich_stub_share_caches.py ShareAndCachesUITests/test_AC_275
 immich_stub_share_caches.py ShareAndCachesUITests/test_AC_50
 immich_stub_share_caches.py ShareAndCachesUITests/test_AC_270 --release
 immich_stub_share_caches.py ShareAndCachesUITests/test_AC_273 --release
-
-# L-21 server-side edits (AC-39, AC-40, AC-181, AC-182, AC-188, AC-189): the editor, the edited
-# version shown by the viewer, and the choice of the file to download.
-immich_stub_asset_edits.py AssetEditsUITests/test_AC_182_reopenChangeRotationThenRevert --release
-immich_stub_asset_edits.py AssetEditsUITests/test_AC_181_cropRotateMirrorSavesEdits --smoke
-immich_stub_asset_edits.py AssetEditsUITests/test_AC_188_oldServerSavesCopy --release
-immich_stub_asset_edits.py AssetEditsUITests/test_AC_189_putErrorShowsMessage --release
-immich_stub_asset_edits.py AssetEditsUITests/test_AC_39_editedVersionShownThenTheOriginalComesBack
-immich_stub_asset_edits.py AssetEditsUITests/test_AC_40_downloadEditedThenOriginalAsksTwiceWithDifferentFiles
 
 # L-30 widgets photo à leur taille (AC-61.6): the large Photos and Favorites widgets, posed on the Home
 # Screen through SpringBoard, are archived and drawn at the new image sizes (a wall of 4 previews; one

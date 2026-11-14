@@ -122,6 +122,42 @@ class Gate(unittest.TestCase):
         self.assertIn("shared UI-test code changed", said[0])
 
 
+class Capacity(unittest.TestCase):
+    def setUp(self):
+        self.lines = sel.parse_list(LIST)
+        self.base = {sel.key(words) for words in self.lines}
+
+    def test_room_for_everything(self):
+        warned = []
+        selected = sel.select(self.lines, "gate", base_keys=self.base, classes={"AlphaUITests": {"test_two"}},
+                              capacity=2, warn=warned.append)
+        self.assertEqual(names(self.lines, selected), ["test_two", "test_one"])
+        self.assertEqual(warned, [])
+
+    def test_changed_lines_come_before_the_smoke_lines(self):
+        warned = []
+        selected = sel.select(self.lines, "gate", base_keys=self.base, classes={"AlphaUITests": {"test_two"}},
+                              capacity=1, warn=warned.append)
+        self.assertEqual(names(self.lines, selected), ["test_two"])
+        self.assertEqual(warned, [], "a smoke line left out is no warning")
+
+    def test_a_changed_line_left_out_is_a_warning(self):
+        warned = []
+        selected = sel.select(self.lines, "gate", base_keys=self.base,
+                              classes={"AlphaUITests": {"test_two", "test_three"}}, capacity=1, warn=warned.append)
+        self.assertEqual(names(self.lines, selected), ["test_two"])
+        self.assertEqual(len(warned), 1)
+        self.assertIn("AlphaUITests/test_three", warned[0])
+        self.assertIn("1 of the 2", warned[0])
+
+    def test_at_least_one_line(self):
+        selected = sel.select(self.lines, "gate", base_keys=self.base, capacity=0)
+        self.assertEqual(names(self.lines, selected), ["test_one"])
+
+    def test_the_suites_have_no_capacity(self):
+        self.assertEqual(len(sel.select(self.lines, "all", capacity=1)), 5)
+
+
 class ClassChanges(unittest.TestCase):
     def diff(self, *hunks):
         return "\n".join(["--- a/x", "+++ b/x"] + list(hunks))
