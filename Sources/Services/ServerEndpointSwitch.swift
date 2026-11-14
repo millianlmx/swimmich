@@ -153,6 +153,11 @@ final class ServerEndpointSwitch: ServerEndpointSwitching {
     // MARK: - Settings
 
     func save(_ new: ServerAddressSettings) async {
+        // A change of settings makes the result of any evaluation already running
+        // obsolete (it measured the old addresses): it must not write its state.
+        generation += 1
+        evaluationTask = nil
+        isEvaluating = false
         guard let accountID, let accountURL else { return }
         let oldExternal = externalURL
         let before = activeURL

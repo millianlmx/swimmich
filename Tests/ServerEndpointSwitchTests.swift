@@ -204,6 +204,31 @@ final class ServerEndpointSwitchTests: XCTestCase {
         XCTAssertEqual(rig.sut.localStatus, .unreachable)
     }
 
+    /// The Network screen starts an evaluation when it opens. Clearing the local
+    /// address while that probe is still out must not let its answer write the
+    /// state of an address that no longer exists.
+    func test_AC_235_clearingLocalDuringAProbeLeavesNoStaleState() async {
+        let rig = makeRig(deadline: .seconds(2))
+        rig.probe.answer(account, .immich(version: version))
+        rig.probe.script(local, .init(result: .immich(version: version), delay: .milliseconds(500)))
+        activate(rig)
+
+        let running = Task { await rig.sut.evaluate(.settingsChanged) }
+        await waitUntil { rig.probe.callCount(for: self.local) == 1 }
+        XCTAssertTrue(rig.sut.isEvaluating)
+
+        await rig.sut.save(ServerAddressSettings(localURL: nil, autoSwitch: true))
+        await running.value
+        try? await Task.sleep(for: .milliseconds(700))
+
+        XCTAssertEqual(rig.sut.localStatus, .notConfigured, "no state row under an empty local field")
+        XCTAssertNil(rig.sut.localURL)
+        XCTAssertNil(rig.sut.externalStatus, "the stale evaluation must not write the external state either")
+        XCTAssertFalse(rig.sut.isEvaluating)
+        XCTAssertEqual(rig.sut.activeURL, account)
+        XCTAssertFalse(rig.sut.usesLocal)
+    }
+
     // MARK: - AC-237
 
     func test_AC_237_bothUnreachableKeepsTheSession() async {
