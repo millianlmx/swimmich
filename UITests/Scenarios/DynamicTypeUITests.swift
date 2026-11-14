@@ -1161,15 +1161,22 @@ final class DynamicTypeUITests: XCTestCase {
         let springboard = XCUIApplication(bundleIdentifier: "com.apple.springboard")
         let cancel = springboard.buttons.matching(labelPredicate(["Cancel", "Annuler", "Abbrechen"])).firstMatch
         flipSwitch("appLockToggle", orUntil: { cancel.exists })
-        Thread.sleep(forTimeInterval: 2)
+        // The prompt can show late on a loaded Mac: the face is matched once it is up.
+        _ = cancel.waitForExistence(timeout: 15)
+        Thread.sleep(forTimeInterval: 1)
         FaceID.match()
         XCTAssertTrue(cancel.waitForNonExistence(timeout: 10), "the activation prompt did not close")
         XCTAssertTrue(waitUntil(10) { (self.element("appLockToggle").value as? String) == "1" },
                       "Require Face ID did not turn on — \(screenText())")
 
         // Background, foreground: the lock shows, the system prompt is cancelled.
+        // The lock follows the `.background` scene phase, not `.inactive`: the app is
+        // brought back only once it is really in the background (a fixed 2 s was too
+        // short on a loaded Mac, and the app came back unlocked).
         XCUIDevice.shared.press(.home)
-        sleep(2)
+        XCTAssertTrue(waitUntil(20) { [.runningBackground, .runningBackgroundSuspended].contains(self.app.state) },
+                      "the app never went to the background (state \(app.state.rawValue))")
+        sleep(1)
         app.activate()
         XCTAssertTrue(element("AppLockOverlay").waitForExistence(timeout: 30), "the lock did not show — \(screenText())")
         sleep(2)
