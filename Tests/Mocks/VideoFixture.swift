@@ -9,14 +9,12 @@ enum VideoFixture {
 
     /// A one-second 64×64 movie. Small, but a real MP4: `AVAssetImageGenerator`
     /// and `AVPlayer` behave exactly as they would on a server original.
-    static func makeMovieData(frameCount: Int = 15, size: Int = 64, optimizeForNetworkUse: Bool = false) throws -> Data {
+    static func makeMovieData(frameCount: Int = 15, size: Int = 64) throws -> Data {
         let url = FileManager.default.temporaryDirectory
             .appendingPathComponent("video-fixture-\(UUID().uuidString).mp4")
         defer { try? FileManager.default.removeItem(at: url) }
 
         let writer = try AVAssetWriter(outputURL: url, fileType: .mp4)
-        // `moov` before `mdat`, so a file cut inside `mdat` still loads its duration.
-        writer.shouldOptimizeForNetworkUse = optimizeForNetworkUse
         let input = AVAssetWriterInput(
             mediaType: .video,
             outputSettings: [
@@ -131,21 +129,6 @@ enum VideoFixture {
         return try Data(contentsOf: url)
     }
 
-    /// A real MP4 with `moov` first, cut right after the 8-byte header of its
-    /// `mdat` atom: the duration loads, the frames are missing.
-    static func makeTruncatedMovieData() throws -> Data {
-        let data = try makeMovieData(optimizeForNetworkUse: true)
-        var offset = 0
-        while offset + 8 <= data.count {
-            let size = data[offset..<offset + 4].reduce(0) { ($0 << 8) | Int($1) }
-            let type = String(decoding: data[offset + 4..<offset + 8], as: UTF8.self)
-            if type == "mdat" { return data.prefix(offset + 8) }
-            guard size >= 8 else { break }
-            offset += size
-        }
-        throw VideoFixtureError.noMediaDataAtom
-    }
-
     private static func makeSample(format: CMVideoFormatDescription, frame: Int) throws -> CMSampleBuffer {
         let bytes = [UInt8](repeating: UInt8(truncatingIfNeeded: frame &+ 1), count: 256)
         var block: CMBlockBuffer?
@@ -187,5 +170,4 @@ enum VideoFixtureError: Error {
     case pixelBufferFailed(CVReturn)
     case formatFailed(OSStatus)
     case sampleFailed(OSStatus)
-    case noMediaDataAtom
 }

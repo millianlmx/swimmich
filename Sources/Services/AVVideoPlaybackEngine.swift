@@ -102,14 +102,7 @@ final class AVVideoPlaybackEngine: NSObject, VideoPlaybackEngine, @unchecked Sen
         // its container still loads a duration, so the duration alone proves nothing.
         let (loadedDuration, playable) = try await asset.load(.duration, .isPlayable)
         guard playable else { throw VideoPlaybackEngineError.notPlayable }
-        let item = AVPlayerItem(asset: asset)
-
-        invalidateObservers()
-        currentItem = item
-        player.replaceCurrentItem(with: item)
-        observeEnd(of: item)
-        observeFailure(of: item)
-        armTimeObserver()
+        attach(AVPlayerItem(asset: asset))
 
         let seconds = loadedDuration.seconds
         duration = seconds.isFinite ? seconds : 0
@@ -127,6 +120,17 @@ final class AVVideoPlaybackEngine: NSObject, VideoPlaybackEngine, @unchecked Sen
             .setCategory(.playback, mode: .moviePlayback)
 
         onReady?(duration)
+    }
+
+    /// Puts `item` in the player and watches it (end, failure, time). Split from
+    /// `prepare` so a test can hand the engine an item that really fails.
+    func attach(_ item: AVPlayerItem) {
+        invalidateObservers()
+        currentItem = item
+        player.replaceCurrentItem(with: item)
+        observeEnd(of: item)
+        observeFailure(of: item)
+        armTimeObserver()
     }
 
     func play() {
