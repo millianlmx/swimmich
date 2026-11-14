@@ -495,7 +495,7 @@ final class AuthViewModelServerAddressTests: XCTestCase {
         XCTAssertEqual(fx.transport.connects.last?.baseURL, local)
         let before = fx.transport.connects.count
 
-        fx.auth.customHeadersDidChange(for: StaticCustomHeaders.of(account.absoluteString))
+        fx.auth.customHeadersDidChange(for: ServerKey.of(account.absoluteString))
 
         XCTAssertEqual(fx.transport.connects.count, before + 1)
         XCTAssertEqual(fx.transport.connects.last?.baseURL, local)
