@@ -664,6 +664,14 @@
 		C10E24A1B2C3D4E5F6A7B8C9 /* PKCS12ImporterTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = C10E23A1B2C3D4E5F6A7B8C9 /* PKCS12ImporterTests.swift */; };
 		C10E26A1B2C3D4E5F6A7B8C9 /* KeychainClientIdentityStoreTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = C10E25A1B2C3D4E5F6A7B8C9 /* KeychainClientIdentityStoreTests.swift */; };
 		C10E28A1B2C3D4E5F6A7B8C9 /* ClientCertificateResponderTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = C10E27A1B2C3D4E5F6A7B8C9 /* ClientCertificateResponderTests.swift */; };
+		D26E02A1B2C3D4E5F6A7B8C9 /* ServerAddresses.swift in Sources */ = {isa = PBXBuildFile; fileRef = D26E01A1B2C3D4E5F6A7B8C9 /* ServerAddresses.swift */; };
+		D26E03A1B2C3D4E5F6A7B8C9 /* ServerAddresses.swift in Sources */ = {isa = PBXBuildFile; fileRef = D26E01A1B2C3D4E5F6A7B8C9 /* ServerAddresses.swift */; };
+		D26E05A1B2C3D4E5F6A7B8C9 /* ServerAddressSettingsStoring.swift in Sources */ = {isa = PBXBuildFile; fileRef = D26E04A1B2C3D4E5F6A7B8C9 /* ServerAddressSettingsStoring.swift */; };
+		D26E07A1B2C3D4E5F6A7B8C9 /* UserDefaultsServerAddressSettingsStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = D26E06A1B2C3D4E5F6A7B8C9 /* UserDefaultsServerAddressSettingsStore.swift */; };
+		D26E09A1B2C3D4E5F6A7B8C9 /* ServerAddressInputTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = D26E08A1B2C3D4E5F6A7B8C9 /* ServerAddressInputTests.swift */; };
+		D26E0BA1B2C3D4E5F6A7B8C9 /* ServerAddressSelectorTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = D26E0AA1B2C3D4E5F6A7B8C9 /* ServerAddressSelectorTests.swift */; };
+		D26E0DA1B2C3D4E5F6A7B8C9 /* UserDefaultsServerAddressSettingsStoreTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = D26E0CA1B2C3D4E5F6A7B8C9 /* UserDefaultsServerAddressSettingsStoreTests.swift */; };
+		D26E0FA1B2C3D4E5F6A7B8C9 /* URLSessionServerAddressProbeTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = D26E0EA1B2C3D4E5F6A7B8C9 /* URLSessionServerAddressProbeTests.swift */; };
 		C10E2AA1B2C3D4E5F6A7B8C9 /* MissingClientCertificateTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = C10E29A1B2C3D4E5F6A7B8C9 /* MissingClientCertificateTests.swift */; };
 		C10E2CA1B2C3D4E5F6A7B8C9 /* ClientCertificateViewModelTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = C10E2BA1B2C3D4E5F6A7B8C9 /* ClientCertificateViewModelTests.swift */; };
 		C10E2EA1B2C3D4E5F6A7B8C9 /* ClientCertificateServiceTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = C10E2DA1B2C3D4E5F6A7B8C9 /* ClientCertificateServiceTests.swift */; };
@@ -1405,6 +1413,13 @@
 		C10E23A1B2C3D4E5F6A7B8C9 /* PKCS12ImporterTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PKCS12ImporterTests.swift; sourceTree = "<group>"; };
 		C10E25A1B2C3D4E5F6A7B8C9 /* KeychainClientIdentityStoreTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = KeychainClientIdentityStoreTests.swift; sourceTree = "<group>"; };
 		C10E27A1B2C3D4E5F6A7B8C9 /* ClientCertificateResponderTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ClientCertificateResponderTests.swift; sourceTree = "<group>"; };
+		D26E01A1B2C3D4E5F6A7B8C9 /* ServerAddresses.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ServerAddresses.swift; sourceTree = "<group>"; };
+		D26E04A1B2C3D4E5F6A7B8C9 /* ServerAddressSettingsStoring.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ServerAddressSettingsStoring.swift; sourceTree = "<group>"; };
+		D26E06A1B2C3D4E5F6A7B8C9 /* UserDefaultsServerAddressSettingsStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = UserDefaultsServerAddressSettingsStore.swift; sourceTree = "<group>"; };
+		D26E08A1B2C3D4E5F6A7B8C9 /* ServerAddressInputTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ServerAddressInputTests.swift; sourceTree = "<group>"; };
+		D26E0AA1B2C3D4E5F6A7B8C9 /* ServerAddressSelectorTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ServerAddressSelectorTests.swift; sourceTree = "<group>"; };
+		D26E0CA1B2C3D4E5F6A7B8C9 /* UserDefaultsServerAddressSettingsStoreTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = UserDefaultsServerAddressSettingsStoreTests.swift; sourceTree = "<group>"; };
+		D26E0EA1B2C3D4E5F6A7B8C9 /* URLSessionServerAddressProbeTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = URLSessionServerAddressProbeTests.swift; sourceTree = "<group>"; };
 		C10E29A1B2C3D4E5F6A7B8C9 /* MissingClientCertificateTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MissingClientCertificateTests.swift; sourceTree = "<group>"; };
 		C10E2BA1B2C3D4E5F6A7B8C9 /* ClientCertificateViewModelTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ClientCertificateViewModelTests.swift; sourceTree = "<group>"; };
 		C10E2DA1B2C3D4E5F6A7B8C9 /* ClientCertificateServiceTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ClientCertificateServiceTests.swift; sourceTree = "<group>"; };
@@ -1567,6 +1582,7 @@
 				125C8D15AD494746DDDC499A /* PhotoLibraryServiceImpl.swift */,
 				654AB8ED31CB6A932F118512 /* RealtimeService.swift */,
 				58F75B7704AC46C8D7E130CA /* ServerSessions.swift */,
+				D26E06A1B2C3D4E5F6A7B8C9 /* UserDefaultsServerAddressSettingsStore.swift */,
 				2733888CA0E8AA03F0B57E68 /* ThumbHashDecoder.swift */,
 				036BFADE71C7FA65CBFEA7D2 /* TrustedServerStoreImpl.swift */,
 				DCAE470CA70136D8F3AE85C5 /* TrustEvaluatingURLSessionDelegate.swift */,
@@ -1710,6 +1726,7 @@
 				C10E12A1B2C3D4E5F6A7B8C9 /* SessionRenewing.swift */,
 				A7932D379D0AC9ADED6B297A /* FileDownloadTransport.swift */,
 				52227E27B6C189FC528D1924 /* ImmichClient.swift */,
+				D26E04A1B2C3D4E5F6A7B8C9 /* ServerAddressSettingsStoring.swift */,
 				ACA8FE0FABA574203F62A5C1 /* KeychainStore.swift */,
 				16F7D31B8380292E146A2EC6 /* LocalCleanupSource.swift */,
 				2AAC708CF79B8E441BEB0481 /* LockedFolderPINStoring.swift */,
@@ -1952,6 +1969,10 @@
 				7A11CE00010000000000B001 /* RealtimeServiceTests.swift */,
 				E9F278A2DD511F10E13FDED5 /* TrashViewModelTests.swift */,
 				1D58BB447FEF7A1EE41810F9 /* TrustedServerStoreTests.swift */,
+				D26E08A1B2C3D4E5F6A7B8C9 /* ServerAddressInputTests.swift */,
+				D26E0AA1B2C3D4E5F6A7B8C9 /* ServerAddressSelectorTests.swift */,
+				D26E0CA1B2C3D4E5F6A7B8C9 /* UserDefaultsServerAddressSettingsStoreTests.swift */,
+				D26E0EA1B2C3D4E5F6A7B8C9 /* URLSessionServerAddressProbeTests.swift */,
 				E5D10C82D78CAF4D69F0B565 /* UploadDetailViewModelTests.swift */,
 				9F4DC04C9AE0A13B6A2ADF59 /* UploadViewModelLiveActivityTests.swift */,
 				3112223979E8A8D6485EC5BA /* UploadViewModelTests.swift */,
@@ -1996,6 +2017,7 @@
 				C10E04A1B2C3D4E5F6A7B8C9 /* PKCS12Importer.swift */,
 				C10E07A1B2C3D4E5F6A7B8C9 /* ClientIdentityStore.swift */,
 				C10E0AA1B2C3D4E5F6A7B8C9 /* ClientCertificateResponder.swift */,
+				D26E01A1B2C3D4E5F6A7B8C9 /* ServerAddresses.swift */,
 				C10E0DA1B2C3D4E5F6A7B8C9 /* MissingClientCertificate.swift */,
 				4B4FF6676DD74BB6DF67457F /* SharedUploadClient.swift */,
 				6977E7827E495C0488F26170 /* WidgetDataProvider.swift */,
@@ -2902,6 +2924,7 @@
 				C10E05A1B2C3D4E5F6A7B8C9 /* PKCS12Importer.swift in Sources */,
 				C10E08A1B2C3D4E5F6A7B8C9 /* ClientIdentityStore.swift in Sources */,
 				C10E0BA1B2C3D4E5F6A7B8C9 /* ClientCertificateResponder.swift in Sources */,
+				D26E03A1B2C3D4E5F6A7B8C9 /* ServerAddresses.swift in Sources */,
 				C10E0EA1B2C3D4E5F6A7B8C9 /* MissingClientCertificate.swift in Sources */,
 				C09E02A1B2C3D4E5F6A7B8C9 /* CustomHeaders.swift in Sources */,
 				5E4689D6F2D16D97A3851F71 /* BackupActivityAttributes.swift in Sources */,
@@ -3083,6 +3106,10 @@
 				7A11CE00010000000000B002 /* RealtimeServiceTests.swift in Sources */,
 				2516D9D5C7D2EC06E7CF8D30 /* TrashViewModelTests.swift in Sources */,
 				9C2C794CED578970A384690F /* TrustedServerStoreTests.swift in Sources */,
+				D26E09A1B2C3D4E5F6A7B8C9 /* ServerAddressInputTests.swift in Sources */,
+				D26E0BA1B2C3D4E5F6A7B8C9 /* ServerAddressSelectorTests.swift in Sources */,
+				D26E0DA1B2C3D4E5F6A7B8C9 /* UserDefaultsServerAddressSettingsStoreTests.swift in Sources */,
+				D26E0FA1B2C3D4E5F6A7B8C9 /* URLSessionServerAddressProbeTests.swift in Sources */,
 				649FA46B988D267F7F9BF744 /* UploadDetailViewModelTests.swift in Sources */,
 				9FFBC1370C7B55C6D8B921F4 /* UploadViewModelLiveActivityTests.swift in Sources */,
 				90D07D5E20EED13A92D9BBA9 /* UploadViewModelTests.swift in Sources */,
@@ -3167,6 +3194,9 @@
 				C09E0EA1B2C3D4E5F6A7B8C9 /* CustomHeadersView.swift in Sources */,
 				C09E0BA1B2C3D4E5F6A7B8C9 /* CustomHeadersViewModel.swift in Sources */,
 				C09E08A1B2C3D4E5F6A7B8C9 /* CustomHeadersRegistry.swift in Sources */,
+				D26E02A1B2C3D4E5F6A7B8C9 /* ServerAddresses.swift in Sources */,
+				D26E05A1B2C3D4E5F6A7B8C9 /* ServerAddressSettingsStoring.swift in Sources */,
+				D26E07A1B2C3D4E5F6A7B8C9 /* UserDefaultsServerAddressSettingsStore.swift in Sources */,
 				C09E06A1B2C3D4E5F6A7B8C9 /* ServerRedirectPolicy.swift in Sources */,
 				C10E03A1B2C3D4E5F6A7B8C9 /* TLSChallengeLog.swift in Sources */,
 				C10E06A1B2C3D4E5F6A7B8C9 /* PKCS12Importer.swift in Sources */,

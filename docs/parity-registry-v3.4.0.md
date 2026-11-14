@@ -359,7 +359,7 @@ Vocabulaire. Statut d'une fonction : `présent`, `partiel`, `absent` ou `hors p�
 | P-custom_proxy_headers_settings | En-têtes proxy personnalisés | présent | `mobile/lib/widgets/settings/custom_proxy_headers_settings/@v3.4.0` | Sources/ImmichSharedKit/CustomHeaders.swift:207 (stockage Keychain) ; Sources/Features/CustomHeaders/CustomHeadersView.swift:10 (éditeur) | — |
 | P-free_up_space_settings | Libérer de l'espace | présent | `mobile/lib/widgets/settings/free_up_space_settings.dart@v3.4.0` | Sources/Features/FreeUpSpace/FreeUpSpaceView.swift:12 | — |
 | P-language_settings | Langue | présent | `mobile/lib/widgets/settings/language_settings.dart@v3.4.0` | Sources/Features/Settings/LanguageSettingsView.swift:13 | — |
-| P-networking_settings | Réseau : adresse locale et adresse externe, bascule automatique par réseau | absent | `mobile/lib/widgets/settings/networking_settings/networking_settings.dart@v3.4.0` (`local_network_preference.dart`, `external_network_preference.dart`, `endpoint_input.dart`) | Sources/Features/Auth/Onboarding/ServerURLScreen.swift:13 (une seule adresse), Recherche locale : `localEndpoint\|externalEndpoint\|LocalEndpoint\|ExternalEndpoint\|externalURL` sur Sources → 0 | B-30 |
+| P-networking_settings | Réseau : adresse locale et adresse externe, bascule automatique par réseau | partiel | `mobile/lib/widgets/settings/networking_settings/networking_settings.dart@v3.4.0` (`local_network_preference.dart`, `external_network_preference.dart`, `endpoint_input.dart`) | Sources/ImmichSharedKit/ServerAddresses.swift:13 (réglages d'adresse par compte), Sources/ImmichSharedKit/ServerAddresses.swift:169 (sonde), Sources/ImmichSharedKit/ServerAddresses.swift:268 (règle de choix) ; pas encore d'écran « Réseau » ni d'aiguillage du trafic : Sources/Features/Auth/Onboarding/ServerURLScreen.swift:13 (une seule adresse) | B-30 |
 | P-notification_setting | Notifications | présent | `mobile/lib/widgets/settings/notification_setting.dart@v3.4.0` | Sources/Features/Notifications/NotificationSettingsView.swift:11 | — |
 | P-passkey_settings | Passkeys | hors périmètre | `mobile/lib/widgets/settings/passkey_settings.dart@v3.4.0` | — | Exclu : passkeys livrées sur le web et le serveur seulement, support mobile amont « en attente » |
 | P-preference_settings | Préférences : thème, couleur primaire, retour haptique | présent | `mobile/lib/widgets/settings/preference_settings/@v3.4.0` | Sources/Features/Settings/PreferencesView.swift:81-110 | — |
@@ -486,7 +486,7 @@ Chaque écran principal a une ligne par aspect. « États » regroupe le chargem
 | L-23 | Recherche : personnes, filtres complets et sélection multiple | B-27 | planifié | — | — |
 | L-24 | Détails de la photo : âge des personnes et propriétaire | B-28 | planifié | — | — |
 | L-25 | Lieux : saisie des coordonnées et carte centrée sur ma position | B-29 | planifié | — | — |
-| L-26 | Adresse locale et adresse externe du serveur | B-30 | planifié | — | — |
+| L-26 | Adresse locale et adresse externe du serveur | B-30 | en cours | — | — |
 | L-27 | Réglages : qualité de partage, niveau du journal et caches | B-31 | planifié | — | — |
 | L-28 | Connexion et démarrage comme le client officiel | B-32 | planifié | — | — |
 | L-29 | Visionneuse : relance des erreurs, haptique, diaporama éveillé et repli vidéo | B-33 | planifié | — | — |
@@ -524,7 +524,7 @@ Chaque écran principal a une ligne par aspect. « États » regroupe le chargem
 - L-23 : AC-42, AC-43, AC-44
 - L-24 : AC-45, AC-46
 - L-25 : AC-47, AC-48
-- L-26 : AC-49
+- L-26 : AC-49, AC-235, AC-236, AC-237, AC-238, AC-239, AC-240, AC-241, AC-242, AC-243, AC-244, AC-245, AC-246, AC-247, AC-248, AC-249, AC-250
 - L-27 : AC-50, AC-51, AC-52
 - L-28 : AC-53, AC-54, AC-55, AC-56
 - L-29 : AC-57, AC-58, AC-59

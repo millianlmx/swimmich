@@ -292,7 +292,7 @@ final class AuthViewModel: AuthSessionDelegate {
             // The client wraps URLSession failures in `APIError.network`, so the
             // `URLError` is read out of either shape.
             let urlError = Self.urlError(in: error)
-            if let urlError, Self.isTLSError(urlError)
+            if let urlError, ServerTrustFailure.isTLSError(urlError)
                 || (urlError.code == .cancelled && challengeLog.trustWasRefused(host: url.host ?? "")) {
                 // P5 selfsigned-cert: surface the host so the UI can offer to
                 // trust it explicitly. A refused trust wins over any other
@@ -345,19 +345,6 @@ final class AuthViewModel: AuthSessionDelegate {
         trustStore.add(host)
         pendingUntrustedHost = nil
         await connectServer()
-    }
-
-    /// TLS certificate failures that warrant the explicit trust flow.
-    static func isTLSError(_ error: URLError) -> Bool {
-        switch error.code {
-        case .serverCertificateUntrusted,
-             .serverCertificateHasUnknownRoot,
-             .serverCertificateHasBadDate,
-             .serverCertificateNotYetValid:
-            return true
-        default:
-            return false
-        }
     }
 
     // MARK: - Auth
