@@ -287,7 +287,9 @@ final class ServerAddressesUITests: XCTestCase {
     }
 
     private func saveLocal(_ address: String) {
-        replaceText(in: "networkLocalAddressField", with: address)
+        // Return ends the editing: the keyboard would otherwise hide the lower rows
+        // of the form (address in use, the test control) that the scenario taps next.
+        replaceText(in: "networkLocalAddressField", with: address + "\n")
         element("networkLocalSaveButton").tap()
     }
 
