@@ -391,17 +391,27 @@ final class SearchViewModel {
                 try? await Task.sleep(for: .milliseconds(50))
             }
             guard !Task.isCancelled else { return }
-            await search()
+            await runSearch()
         }
     }
 
     // MARK: - Search (AC-401 / AC-401b / AC-402 / AC-405)
 
-    /// Reset + dispatch a fresh search (page=1).
+    /// Reset + dispatch a fresh search (page=1). A pending debounced search is
+    /// dropped: this one supersedes it.
     func search() async {
+        searchTask?.cancel()
+        await runSearch()
+    }
+
+    /// The search itself. The debounced path calls it from inside `searchTask`,
+    /// so it must not cancel `searchTask`: that cancelled the very task running
+    /// it, the request went out cancelled (URLSession honours the task's
+    /// cancellation) and the cancellation was swallowed below, so a typed query
+    /// never reached the server and the screen stayed on "no results".
+    private func runSearch() async {
         guard !isLoading else { return }
         batch.exitSelectionMode()
-        searchTask?.cancel()
         let gen = searchGeneration + 1
         searchGeneration = gen
         lastQueried = query.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -428,12 +438,7 @@ final class SearchViewModel {
         do {
             let resp = try await dispatchSearch(page: 1)
             // A superseded search (newer keystroke / clear / city tap bumped the
-            // generation) must never overwrite the fresher state. We don't check
-            // `Task.isCancelled` here because `search()` runs inside the very
-            // `searchTask` it cancels on line above — that self-cancel is benign
-            // (it only clears the debounce sleep) and must not short-circuit a
-            // successful response. Cancellation from a *newer* search is caught
-            // by the generation guard.
+            // generation) must never overwrite the fresher state.
             guard gen == searchGeneration else { return }
             applyResponse(resp)
             recordRecentSearch()

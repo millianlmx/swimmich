@@ -597,7 +597,7 @@ final class SearchCriteriaUITests: XCTestCase {
         XCTAssertTrue((badge.value as? String ?? "").contains("4"), "the badge must count 4 criteria — \(badge.value as? String ?? "nil")")
 
         let mark = searches().count
-        element("searchFilterChipRemove_tagIds").tap()
+        tapChipRemove("tagIds")
         let withoutTag = waitForSearch("tag removed") { $0.tagIds == nil && $0.personIds != nil }
         XCTAssertGreaterThan(searches().count, mark)
         assertCriteria(withoutTag, people: [alice, bob], notInAlbum: true, visibility: "archive", "tag removed")
@@ -615,11 +615,22 @@ final class SearchCriteriaUITests: XCTestCase {
         chooseMode("filename")
         typeQuery("img_12")
         XCTAssertTrue(element("searchFilterChip_originalFileName").waitForExistence(timeout: 30))
-        element("searchFilterChipRemove_originalFileName").tap()
+        tapChipRemove("originalFileName")
         let smart = waitForSearch("chip removed") { $0.isSmart }
         XCTAssertEqual(smart.string("query"), "img_12", "\(smart.bodyJSON)")
         XCTAssertNil(smart.fileName, "\(smart.bodyJSON)")
         XCTAssertEqual(searchField.value as? String, "img_12", "the text must stay in the field")
+    }
+
+    /// The cross of a chip. The chips sit in a horizontal scroll view: with four of
+    /// them the last ones start past the window's edge, so the row is swiped left
+    /// until the cross can be tapped.
+    private func tapChipRemove(_ field: String) {
+        let cross = element("searchFilterChipRemove_\(field)")
+        XCTAssertTrue(cross.waitForExistence(timeout: 10), "no chip for \(field) — \(screenText())")
+        let firstChip = app.buttons.matching(NSPredicate(format: "identifier BEGINSWITH 'searchFilterChip_'")).firstMatch
+        for _ in 0..<5 where !cross.isHittable { firstChip.swipeLeft() }
+        cross.tap()
     }
 
     // MARK: - AC-43
@@ -695,8 +706,14 @@ final class SearchCriteriaUITests: XCTestCase {
         XCTAssertEqual(searchCount(), before, "changing the density must not send a search")
     }
 
-    /// Me sheet → Preferences → the Columns stepper, then back to the results.
+    /// Me sheet → Preferences → the Columns stepper, then back to the results. The
+    /// Me sheet is opened from the Photos tab: in results mode the Search toolbar
+    /// carries seven items, and on an iPhone the avatar goes into the system's
+    /// overflow menu, where it has no identifier of its own.
     private func setColumns(by steps: Int) {
+        let photos = app.tabBars.buttons.matching(labelPredicate(["Photos", "Fotos"])).firstMatch
+        XCTAssertTrue(photos.waitForExistence(timeout: 15), "no Photos tab")
+        photos.tap()
         let avatar = app.buttons.matching(identifier: "profileAvatar").firstMatch
         XCTAssertTrue(avatar.waitForExistence(timeout: 15), "Profile avatar missing")
         avatar.tap()
@@ -719,6 +736,7 @@ final class SearchCriteriaUITests: XCTestCase {
         }
         goBack()
         dismissMeSheet()
+        openSearchTab()
     }
 
     /// The Me sheet is dragged down from its navigation bar: a drag inside the

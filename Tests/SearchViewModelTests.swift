@@ -597,6 +597,20 @@ final class SearchViewModelTests: XCTestCase {
         XCTAssertEqual(vm.results.count, 1)
     }
 
+    /// The debounced search runs inside the debounce task: it must not cancel
+    /// that task, or the request goes out cancelled (as URLSession does, the gate
+    /// honours cancellation) and a typed query never gets results.
+    func test_liveSearch_debouncedRequestIsNotCancelled() async {
+        let mock = makeMock(items: [makeAsset(id: "a1")])
+        mock.searchSmartGate = { _ in try Task.checkCancellation() }
+        let vm = SearchViewModel(client: mock)
+        vm.debounceInterval = .zero
+        vm.query = "beach"
+        vm.queryDidChange()
+        try? await Task.sleep(for: .milliseconds(80))
+        XCTAssertEqual(vm.results.count, 1, "the debounced search was cancelled by itself")
+    }
+
     func test_liveSearch_empty_query_resets_to_idle() async {
         let mock = makeMock(items: [makeAsset(id: "a1")])
         let vm = SearchViewModel(client: mock)
