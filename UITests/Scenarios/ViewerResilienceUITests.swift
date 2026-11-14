@@ -123,6 +123,11 @@ final class ViewerResilienceUITests: XCTestCase {
         return condition()
     }
 
+    /// `exists` first: `isHittable` on a missing element fails the test on the spot.
+    private func waitHittable(_ element: XCUIElement, timeout: TimeInterval = 5) -> Bool {
+        waitUntil(timeout: timeout) { element.exists && element.isHittable }
+    }
+
     // MARK: - Navigation
 
     /// Starts the app already signed in: the session the stub's SSO sign-in hands out
@@ -261,7 +266,10 @@ final class ViewerResilienceUITests: XCTestCase {
             shot("swipe-\(attempt)-not-on-\(to.suffix(4))")
         }
         let pages = elements(withPrefix: "viewerImage_").allElementsBoundByIndex.map(\.identifier)
-        XCTFail("the pager never showed \(to) — viewerImage_* in the tree: \(pages)")
+        XCTFail("the pager never showed \(to) — viewerImage_* in the tree: \(pages), "
+                + "probe of \(from.suffix(4)): \(imageProbeValue(from)), retry cards: "
+                + "\(elements(withPrefix: "viewerImageRetry_").count), loading: "
+                + "\(elements(withPrefix: "viewerImageLoading_").count)")
     }
 
     private func viewerProbe() -> [String: String] {
@@ -337,6 +345,22 @@ final class ViewerResilienceUITests: XCTestCase {
         XCTAssertTrue(element("viewerImageRetry_\(bare)").waitForExistence(timeout: 30),
                       "no Try Again on a page with no thumbnail either — \(screenText())")
         shot("failed-bare")
+    }
+
+    /// AC-57.3 witness: the same swipe from …0002 to …0003, with a preview that
+    /// answers from the start (no failure, no retry). It tells a pager that does
+    /// not turn after a failure and a retry apart from a swipe the CI simulator
+    /// never turns into a page change.
+    func test_AC_57_3_swipeWitness() throws {
+        reset()
+        launchSignedIn(extraArguments: ["-uiTestImageProbe", "YES"])
+        openViewer(on: retry)
+        XCTAssertTrue(waitUntil(timeout: 20) { self.imageProbeValue(self.retry).hasPrefix("loaded 32x32") },
+                      "the preview never displayed — probe reads \(imageProbeValue(retry))")
+        XCTAssertEqual(elements(withPrefix: "viewerImageRetry_").count, 0, "a failure card with a preview that answers")
+        swipeToNextPage(from: retry, to: neighbour)
+        XCTAssertTrue(waitUntil(timeout: 20) { self.imageProbeValue(self.neighbour).hasPrefix("loaded") },
+                      "the next photo did not load — probe reads \(imageProbeValue(neighbour))")
     }
 
     // MARK: - AC-57: "Try Again" on the details
@@ -481,18 +505,53 @@ final class ViewerResilienceUITests: XCTestCase {
         }
         XCTAssertTrue(row.waitForExistence(timeout: 10), "Preferences row missing — \(screenText())")
         row.tap()
+        // The toggle sits in the Form's last section: off screen, it is not in the tree.
         let toggle = element("preferencesHapticsToggle")
-        XCTAssertTrue(toggle.waitForExistence(timeout: 15), "the Haptic Feedback toggle is missing")
+        for _ in 0..<6 where !(toggle.exists && toggle.isHittable) {
+            app.swipeUp()
+            sleep(1)
+        }
+        XCTAssertTrue(toggle.waitForExistence(timeout: 15), "the Haptic Feedback toggle is missing — \(screenText())")
+        XCTAssertTrue(waitHittable(toggle), "the Haptic Feedback toggle is not on screen — \(screenText())")
         let wanted = on ? "1" : "0"
         for _ in 0..<3 where (toggle.value as? String) != wanted {
             toggle.coordinate(withNormalizedOffset: CGVector(dx: 0.93, dy: 0.5)).tap()
             _ = waitUntil(timeout: 4) { (toggle.value as? String) == wanted }
         }
         XCTAssertEqual(toggle.value as? String, wanted, "Haptic Feedback never reached \(wanted)")
-        app.navigationBars.firstMatch.buttons.firstMatch.tap()
-        sleep(1)
-        app.swipeDown()
-        XCTAssertTrue(app.tabBars.buttons["Photos"].waitForExistence(timeout: 20), "the Me sheet did not close")
+        leavePreferencesAndHub()
+    }
+
+    /// The Me sheet's bar: the lowest one on screen (the covered timeline's sits above it).
+    private func sheetNavigationBar() -> XCUIElement {
+        let bars = app.navigationBars.allElementsBoundByIndex.filter(\.exists)
+        return bars.max { $0.frame.minY < $1.frame.minY } ?? app.navigationBars.firstMatch
+    }
+
+    /// Preferences → Back → the hub → dragged down from its bar (the sheet has no
+    /// Done button; a drag inside the list would scroll it). The close is VERIFIED
+    /// on `profileList`: the covered timeline stays in the tree, so its tab bar
+    /// proves nothing.
+    private func leavePreferencesAndHub() {
+        let back = sheetNavigationBar().buttons.firstMatch
+        XCTAssertTrue(back.waitForExistence(timeout: 10), "no Back button on Preferences — \(screenText())")
+        XCTAssertTrue(waitHittable(back), "the Back button of Preferences is not hittable")
+        back.tap()
+        XCTAssertTrue(element("profileList").waitForExistence(timeout: 10), "Back did not return to the Me hub")
+        XCTAssertTrue(waitUntil(timeout: 10) { !self.element("preferencesHapticsToggle").exists },
+                      "Preferences is still on screen after Back")
+        var closed = false
+        for attempt in 0..<3 where !closed {
+            let bar = sheetNavigationBar()
+            let start = bar.exists
+                ? bar.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5))
+                : app.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.12))
+            start.press(forDuration: 0.2, thenDragTo: start.withOffset(CGVector(dx: 0, dy: attempt == 0 ? 700 : 950)))
+            closed = waitUntil(timeout: 6) { !self.element("profileList").exists }
+        }
+        XCTAssertTrue(closed, "the Me sheet did not close — \(screenText())")
+        XCTAssertTrue(waitHittable(app.buttons.matching(identifier: "profileAvatar").firstMatch, timeout: 10),
+                      "the shell is not back after the Me sheet")
     }
 
     // MARK: - AC-58.1: the screen stays on
@@ -508,15 +567,27 @@ final class ViewerResilienceUITests: XCTestCase {
         waitForViewerProbe(["idle": "on"])
 
         let playPause = element("slideshowPlayPauseButton")
-        if !playPause.isHittable { app.tap() } // controls auto-hide: a tap brings them back
-        XCTAssertTrue(playPause.waitForExistence(timeout: 10), "no play/pause control")
+        XCTAssertTrue(revealSlideshowControl(playPause), "no hittable play/pause control — \(screenText())")
         playPause.tap()
         Thread.sleep(forTimeInterval: 1)
         waitForViewerProbe(["idle": "on"]) // paused: still awake
 
         let close = element("slideshowCloseButton")
-        if !close.isHittable { app.tap() }
+        XCTAssertTrue(revealSlideshowControl(close), "no hittable Close control — \(screenText())")
         close.tap()
+        waitForViewerProbe(["idle": "off"])
+    }
+
+    /// Brings the slideshow chrome back and waits until `control` can be tapped.
+    /// The chrome hides itself 3 s after a reveal while the show plays, so a
+    /// reveal that lands just before the hide is done again.
+    private func revealSlideshowControl(_ control: XCUIElement) -> Bool {
+        for _ in 0..<3 {
+            revealSlideshowChrome()
+            if waitHittable(control, timeout: 2) { return true }
+        }
+        return false
+    }
         waitForViewerProbe(["idle": "off"])
     }
 
