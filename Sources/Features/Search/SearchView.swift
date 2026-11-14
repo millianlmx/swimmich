@@ -69,12 +69,23 @@ struct SearchView: View {
                 // The map ignores the safe area and extends *under* this pill
                 // (Apple Maps-style); Résultats/Explorer content sits below it.
                 .safeAreaInset(edge: .top, spacing: 0) {
-                    // Compact pill centered with guaranteed side margins (never
-                    // kisses the screen edges).
-                    HStack {
-                        Spacer(minLength: PVSpacing.s16)
-                        SearchModeGlassBar(mode: $vm.viewMode)
-                        Spacer(minLength: PVSpacing.s16)
+                    VStack(spacing: PVSpacing.s4) {
+                        // Compact pill centered with guaranteed side margins (never
+                        // kisses the screen edges).
+                        HStack {
+                            Spacer(minLength: PVSpacing.s16)
+                            SearchModeGlassBar(mode: $vm.viewMode)
+                            Spacer(minLength: PVSpacing.s16)
+                        }
+                        // The selection's count. The navigation title says it too,
+                        // but iOS drops the title when the selection actions fill
+                        // the bar: this line is the one that always shows.
+                        if vm.selectionMode && vm.viewMode == .results {
+                            Text("\(vm.selectedIds.count) selected")
+                                .font(.pvSubhead.weight(.semibold))
+                                .foregroundStyle(Color.textSecondaryPV)
+                                .accessibilityIdentifier("searchSelectionCount")
+                        }
                     }
                     .padding(.top, PVSpacing.s8)
                     .padding(.bottom, PVSpacing.s4)
@@ -580,6 +591,10 @@ struct SearchView: View {
                 }
             }
             .padding(.horizontal, PVSpacing.s4)
+            // A new search builds a new grid: a cell kept from the previous
+            // results (the same photo found again) would not appear again, and
+            // the last one's `onAppear` is what asks for the next page.
+            .id(vm.searchGeneration)
             if status == .reloading {
                 ProgressView()
                     .pvLoadingIndicator("searchLoading")
@@ -606,7 +621,10 @@ struct SearchView: View {
                 } else {
                     openViewer(for: item)
                 }
-            }
+            },
+            // No context menu: its long press would win over the one that
+            // starts the selection (AC-216), and its actions are not wired here.
+            contextMenuEnabled: false
         )
         .buttonStyle(.plain)
         .onLongPressGesture(minimumDuration: 0.4) {

@@ -352,7 +352,7 @@ final class SearchViewModel {
     private var searchTask: Task<Void, Never>?
     /// Bumped on every new search intent; guards stale in-flight responses
     /// from overwriting the idle state after clear/reset.
-    private var searchGeneration = 0
+    private(set) var searchGeneration = 0
 
     init(
         client: any ImmichClient,

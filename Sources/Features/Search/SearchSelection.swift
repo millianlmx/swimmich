@@ -1,7 +1,8 @@
 import SwiftUI
 
 /// The navigation bar of the result grid while it is selecting (L-23b): Cancel
-/// on the leading side, the timeline's batch actions on the trailing side, with
+/// on the leading side, the timeline's batch actions on the trailing side (the
+/// three most used in the bar, the others in a menu), with
 /// the timeline's identifiers (`addToAlbumButton`, `archiveButton`, …) so one
 /// vocabulary names them on both screens. Every action is the timeline's own
 /// request (`SearchViewModel` forwards to the same engine); the two that need
@@ -57,6 +58,21 @@ struct SearchSelectionToolbar: ToolbarContent {
             .disabled(empty)
             .accessibilityIdentifier("addToAlbumButton")
 
+            // The other four in one menu: seven icons in the bar left no room
+            // for the selection's title, and iOS hid the overflow under its own
+            // unnamed button.
+            Menu {
+                secondaryActions(empty: empty)
+            } label: {
+                Label("More", systemImage: "ellipsis")
+                    .labelStyle(.iconOnly)
+            }
+            .accessibilityIdentifier("searchSelectionMoreMenu")
+        }
+    }
+
+    @ViewBuilder
+    private func secondaryActions(empty: Bool) -> some View {
             if vm.selectionOffersUnarchive {
                 Button {
                     Task { await vm.unarchiveSelected() }
@@ -101,7 +117,6 @@ struct SearchSelectionToolbar: ToolbarContent {
             }
             .disabled(empty)
             .accessibilityIdentifier("downloadSelectionButton")
-        }
     }
 }
 

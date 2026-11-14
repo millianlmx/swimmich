@@ -629,7 +629,9 @@ final class SearchCriteriaUITests: XCTestCase {
         let cross = element("searchFilterChipRemove_\(field)")
         XCTAssertTrue(cross.waitForExistence(timeout: 10), "no chip for \(field) — \(screenText())")
         let firstChip = app.buttons.matching(NSPredicate(format: "identifier BEGINSWITH 'searchFilterChip_'")).firstMatch
-        for _ in 0..<5 where !cross.isHittable { firstChip.swipeLeft() }
+        // By frame: `isHittable` itself throws on an element laid out past the edge.
+        let width = app.windows.firstMatch.frame.width
+        for _ in 0..<5 where cross.frame.maxX > width - 4 { firstChip.swipeLeft() }
         cross.tap()
     }
 
@@ -727,11 +729,11 @@ final class SearchCriteriaUITests: XCTestCase {
         row.tap()
         let stepper = element("preferencesColumnsStepper")
         XCTAssertTrue(stepper.waitForExistence(timeout: 15), "the Columns stepper is missing")
-        // The simulators run in French: the stepper's buttons read "Incrémenter" / "Décrémenter".
-        let labels = steps > 0 ? ["Increment", "Incrémenter"] : ["Decrement", "Décrémenter"]
-        let label = labels[0]
+        // By position, not by label: the simulators run in French. A stepper's
+        // buttons are minus, then plus.
+        let label = steps > 0 ? "Increment" : "Decrement"
         for _ in 0..<abs(steps) {
-            let button = stepper.buttons.matching(NSPredicate(format: "label IN %@", labels)).firstMatch
+            let button = stepper.buttons.element(boundBy: steps > 0 ? 1 : 0)
             XCTAssertTrue(button.waitForExistence(timeout: 5), "no \(label) button on the Columns stepper")
             button.tap()
             columnsDelta += steps > 0 ? 1 : -1
@@ -777,7 +779,7 @@ final class SearchCriteriaUITests: XCTestCase {
         row.tap()
         let stepper = element("preferencesColumnsStepper")
         guard stepper.waitForExistence(timeout: 15) else { return }
-        for _ in 0..<abs(delta) { stepper.buttons[delta > 0 ? "Decrement" : "Increment"].tap() }
+        for _ in 0..<abs(delta) { stepper.buttons.element(boundBy: delta > 0 ? 0 : 1).tap() }
     }
 
     // MARK: - AC-218
@@ -793,7 +795,10 @@ final class SearchCriteriaUITests: XCTestCase {
             choosePeople([alice])
             tapDone()
 
-            let smart = waitForSearch("\(pass): Smart with Alice") { $0.isSmart && $0.personIds != nil }
+            // The first page's request: the grid then asks for page 2 on its own.
+            let smart = waitForSearch("\(pass): Smart with Alice") {
+                $0.isSmart && $0.personIds != nil && ($0.body["page"] as? Int ?? 1) == 1
+            }
             XCTAssertEqual(smart.string("query"), "plage", "\(pass): \(smart.bodyJSON)")
             XCTAssertEqual(smart.personIds, [alice], "\(pass): \(smart.bodyJSON)")
             XCTAssertEqual(smart.visibility, "timeline", "\(pass): \(smart.bodyJSON)")
@@ -850,11 +855,11 @@ final class SearchCriteriaUITests: XCTestCase {
         }
     }
 
-    /// The title of the selection carries the count. Digits only: the words
+    /// The count line of the selection carries the count. Digits only: the words
     /// around them depend on the language.
     private func titleShows(_ count: Int) -> Bool {
-        let title = app.navigationBars.staticTexts.matching(NSPredicate(format: "label CONTAINS %@", String(count))).firstMatch
-        return waitUntil(15) { title.exists }
+        let line = element("searchSelectionCount")
+        return waitUntil(15) { line.exists && line.label.contains(String(count)) }
     }
 
     private func writes(_ method: String, _ path: String) -> [StubRequest] {
@@ -876,8 +881,18 @@ final class SearchCriteriaUITests: XCTestCase {
         Set(request.body["ids"] as? [String] ?? [])
     }
 
+    private func openSelectionMenu() {
+        let more = app.buttons.matching(identifier: "searchSelectionMoreMenu").firstMatch
+        XCTAssertTrue(more.waitForExistence(timeout: 15), "no More menu in the selection bar — \(screenText())")
+        more.tap()
+    }
+
+    /// An action of the selection bar, or of its "More" menu (archive, locked
+    /// folder, stack, download).
     private func tapSelectionAction(_ identifier: String) {
         let button = app.buttons.matching(identifier: identifier).firstMatch
+        let more = app.buttons.matching(identifier: "searchSelectionMoreMenu").firstMatch
+        if !button.waitForExistence(timeout: 3), more.exists { more.tap() }
         XCTAssertTrue(button.waitForExistence(timeout: 15), "no `\(identifier)` in the selection bar — \(screenText())")
         button.tap()
     }
@@ -914,7 +929,8 @@ final class SearchCriteriaUITests: XCTestCase {
 
         // A long press enters the selection and checks the photo.
         element("assetTile_\(p2)").press(forDuration: 1.0)
-        XCTAssertTrue(titleShows(1), "a long press did not start a selection — \(screenText())")
+        XCTAssertTrue(titleShows(1), "a long press did not start a selection — count line: "
+                      + "\(element("searchSelectionCount").exists ? element("searchSelectionCount").label : "absent") — \(screenText())")
     }
 
     func test_AC_44() {
@@ -953,6 +969,7 @@ final class SearchCriteriaUITests: XCTestCase {
         // Archive off: the selection archives.
         enterSelection()
         pick([p1, p2])
+        openSelectionMenu()
         XCTAssertFalse(element("unarchiveButton").exists, "Unarchive offered on live photos")
         tapSelectionAction("archiveButton")
         let archive = waitForWrite("PUT", "/api/assets", "archive") { $0.string("visibility") == "archive" }
@@ -966,6 +983,7 @@ final class SearchCriteriaUITests: XCTestCase {
         assertTiles([p1, p2, z1], "Archive on")
         enterSelection()
         pick([p1, p2])
+        openSelectionMenu()
         XCTAssertTrue(element("unarchiveButton").waitForExistence(timeout: 15), "no Unarchive on archived results")
         XCTAssertFalse(element("archiveButton").exists, "Archive offered on archived results")
         tapSelectionAction("unarchiveButton")
@@ -1009,7 +1027,9 @@ final class SearchCriteriaUITests: XCTestCase {
         enterSelection()
         pick([p2])
         tapSelectionAction("downloadSelectionButton")
-        let info = waitForWrite("POST", "/api/download/info", "download")
-        XCTAssertEqual(info.body["assetIds"] as? [String], [p2], info.bodyJSON)
+        // One photo is downloaded as its original file, as on the timeline; an
+        // archive (`/api/download/info`) is only asked for several.
+        let original = waitForWrite("GET", "/api/assets/\(p2)/original", "download")
+        XCTAssertEqual(original.path, "/api/assets/\(p2)/original")
     }
 }
