@@ -41,7 +41,7 @@ final class ServerSessionDelegate: NSObject, URLSessionTaskDelegate, @unchecked 
 /// (besides the API client's own). One instance per process, owned by
 /// `DependencyContainer`.
 ///
-/// Five sessions, sharing the delegate logic but not the configuration:
+/// Six sessions, sharing the delegate logic but not the configuration:
 /// - `images`: thumbnails and full-size images (disk cache, cache-first).
 /// - `transfers`: offline copies and the download queue (one pool for both).
 /// - `roadTrip`: road-trip asset pre-selection and image preloading, kept apart
@@ -49,11 +49,13 @@ final class ServerSessionDelegate: NSObject, URLSessionTaskDelegate, @unchecked 
 /// - `video`: the byte ranges AVFoundation asks for when a client certificate
 ///   is attached to the server (`AppTransportVideoLoader`).
 /// - `realtime`: the Socket.IO WebSocket (`URLSessionSocketEngine`).
+/// - `probe`: the 2 s address probes of L-26 (`URLSessionServerAddressProbe`),
+///   with no cache, no cookie and no waiting for connectivity.
 ///
 /// The sessions are replaceable (`renewSessions()`): they are computed
 /// properties, and every consumer reads the current one when it creates a task.
 final class ServerSessions: ConnectionResetting, SessionRenewing, @unchecked Sendable {
-    private enum Kind: CaseIterable { case images, transfers, roadTrip, video, realtime }
+    private enum Kind: CaseIterable { case images, transfers, roadTrip, video, realtime, probe }
 
     private let trustStore: TrustedServerStore
     private let clientCertificates: ClientCertificateResponder
@@ -66,6 +68,7 @@ final class ServerSessions: ConnectionResetting, SessionRenewing, @unchecked Sen
     var roadTrip: URLSession { session(.roadTrip) }
     var video: URLSession { session(.video) }
     var realtime: URLSession { session(.realtime) }
+    var probe: URLSession { session(.probe) }
 
     init(
         trustStore: TrustedServerStore,
@@ -82,6 +85,7 @@ final class ServerSessions: ConnectionResetting, SessionRenewing, @unchecked Sen
             .roadTrip: roadTripConfiguration,
             .video: .default,
             .realtime: .default,
+            .probe: Self.probeConfiguration(),
         ]
         for kind in Kind.allCases {
             current[kind] = Self.makeSession(
@@ -112,6 +116,20 @@ final class ServerSessions: ConnectionResetting, SessionRenewing, @unchecked Sen
         )
     }
 
+    /// One probe answers within 2 s or not at all: nothing waits, nothing is
+    /// cached and no cookie is read or stored (a probe never carries a session).
+    static func probeConfiguration() -> URLSessionConfiguration {
+        let config = URLSessionConfiguration.ephemeral
+        config.timeoutIntervalForRequest = 2
+        config.timeoutIntervalForResource = 2
+        config.waitsForConnectivity = false
+        config.urlCache = nil
+        config.requestCachePolicy = .reloadIgnoringLocalCacheData
+        config.httpShouldSetCookies = false
+        config.httpCookieStorage = nil
+        return config
+    }
+
     static func imageConfiguration(cache: URLCache) -> URLSessionConfiguration {
         let config = URLSessionConfiguration.default
         config.urlCache = cache
@@ -124,7 +142,7 @@ final class ServerSessions: ConnectionResetting, SessionRenewing, @unchecked Sen
         URLSessionFileDownloadTransport(session: { [self] in self.transfers })
     }
 
-    /// Voluntary-logout purge: empties the five current sessions.
+    /// Voluntary-logout purge: empties the current sessions.
     func resetConnections() async {
         for kind in Kind.allCases { await session(kind).reset() }
     }

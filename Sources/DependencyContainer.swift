@@ -157,7 +157,11 @@ final class DependencyContainer {
         if UserDefaults.standard.bool(forKey: "uiTestResetClientCertificates") {
             try? identities.removeAll()
         }
-        let responder = ClientCertificateResponder(store: identities, log: .shared)
+        let responder = ClientCertificateResponder(
+            store: identities, log: .shared,
+            // The local address presents the certificate saved for the connection address (L-26).
+            canonicalKey: { ServerAddressBook.shared.canonicalKey(for: $0) }
+        )
         self.clientCertificateResponder = responder
         let trustStore = TrustedServerStoreImpl()
         self.trustedServers = trustStore
@@ -294,7 +298,10 @@ final class DependencyContainer {
     /// `nonisolated` on purpose: `VideoPlaybackViewModel` takes it as a default
     /// argument, which is evaluated in the caller's (nonisolated) context.
     nonisolated var videoTransport: VideoAppTransport {
-        VideoAppTransport(session: { [serverSessions] in serverSessions.video }, identities: clientIdentities)
+        VideoAppTransport(
+            session: { [serverSessions] in serverSessions.video }, identities: clientIdentities,
+            canonicalKey: { ServerAddressBook.shared.canonicalKey(for: $0) }
+        )
     }
 
     func makeTimelineViewModel() -> TimelineViewModel {
