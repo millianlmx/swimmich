@@ -9,10 +9,10 @@
 # 1. Regenerates the project from project.yml: the committed .xcodeproj drifts,
 #    and a Tests/*.swift file missing from it would pass "green" by omission.
 # 2. Builds the app, its extensions and BOTH test bundles.
-# 3. Runs the unit tests (ImmichSwiftUITests) and the UI scenarios listed in
-#    Scripts/ci-ui-scenarios.txt side by side, on a pool of simulators of their
-#    own (`SWIMMICH_CI_UI_WORKERS`, 3 by default), created on first use so the CI
-#    never boots the developer's. Each scenario runs against its own Python stub
+# 3. Runs the unit tests (ImmichSwiftUITests) and UI scenarios listed in
+#    Scripts/ci-ui-scenarios.txt (all of them, or the gate's: `SWIMMICH_CI_UI_SCOPE`)
+#    side by side, on a pool of simulators of their own (`SWIMMICH_CI_UI_WORKERS`,
+#    3 by default), created on first use so the CI never boots the developer's. Each scenario runs against its own Python stub
 #    from UITests/stubs/ (the scenarios not listed there are compiled, not run).
 #    A scenario that skips itself fails the CI: a skip only means its stub was
 #    unreachable, which proves nothing.
@@ -120,65 +120,80 @@ while IFS= read -r line <&3; do
   ui_lines+=("${words[*]}")
 done 3<"$UI_LIST"
 
-# Which lines run (`SWIMMICH_CI_UI_SCOPE`): `all`, or `changed`, the lines this
-# branch can have broken: a line new or edited against `main`, or whose test
-# class (UITests/**/<Class>.swift) or stub changed. A change anywhere else in
-# UITests/ or UITests/stubs/ (shared helpers, `immich_stub_base.py`), or in this
-# script, selects every line. The default is `changed` for a branch run on GitHub
-# Actions and `all` on `main`, on a tag and on a developer's Mac: every line
-# still runs on `main` once the branch is merged. A branch whose code changes
-# break another feature's scenario is caught there, not on the branch: the price
-# of a branch CI that does not grow with every feature's scenarios.
+# Which lines run (`SWIMMICH_CI_UI_SCOPE`):
+#
+# * `all`: every line. The full suite: the nightly run and the release tags of
+#   the workflow, and the default on a developer's Mac.
+# * `gate`: the fast gate of every push, the default on GitHub Actions. First the
+#   lines this push can have broken (a line new or edited against the base, or
+#   whose test class, UITests/**/<Class>.swift, or stub changed), then the lines
+#   marked `--smoke`, one per critical journey. Changed lines run first, so a
+#   push that breaks its own scenario fails within minutes.
+#
+# The base (`SWIMMICH_CI_UI_BASE`, `main` by default) is a branch or a commit: the
+# workflow gives a push to `main` the commit `main` pointed at before it.
+#
+# A change to shared UI-test code (anything else in UITests/ or UITests/stubs/,
+# `immich_stub_base.py`, this script) can break any line: the gate does not run
+# them all (that is the full suite, 50 minutes), it runs the smoke lines and says
+# so. What the gate lets through, the full suite catches the following night: the
+# price of a gate that does not grow with every feature's scenarios.
 UI_SCOPE="${SWIMMICH_CI_UI_SCOPE:-}"
 if [[ -z "$UI_SCOPE" ]]; then
-  if [[ -n "${GITHUB_ACTIONS:-}" && "${GITHUB_REF:-}" == refs/heads/* && "${GITHUB_REF:-}" != refs/heads/main ]]; then
-    UI_SCOPE=changed
-  else
-    UI_SCOPE=all
-  fi
+  if [[ -n "${GITHUB_ACTIONS:-}" ]]; then UI_SCOPE=gate; else UI_SCOPE=all; fi
 fi
 case "$UI_SCOPE" in
   all) ;;
-  changed)
-    # A tree diff against main's tip: a branch behind main also selects what main
-    # changed since, never less than its own changes. Main's tip alone is enough
+  gate)
+    # A tree diff against the base's tip: a branch behind main also selects what
+    # main changed since, never less than its own changes. The tip alone is enough
     # (no merge base), so the shallow checkout of the runner only fetches it; a
     # developer's clone uses its own `origin/main`.
-    # Forced (`+`): the runner's work directory outlives a run, and the
-    # `origin/main` an earlier run left there is not an ancestor that a shallow
-    # clone can prove, so a plain fetch is rejected as non-fast-forward (and
-    # `--quiet` hides why).
+    # Forced (`+`): the runner's work directory outlives a run, and the ref an
+    # earlier run left there is not an ancestor that a shallow clone can prove,
+    # so a plain fetch is rejected as non-fast-forward (and `--quiet` hides why).
+    UI_BASE="${SWIMMICH_CI_UI_BASE:-main}"
     if [[ -n "${GITHUB_ACTIONS:-}" ]]; then
-      git fetch --quiet --no-tags --depth=1 origin +main:refs/remotes/origin/main
+      base_ref=refs/ci/ui-base
+      git fetch --quiet --no-tags --depth=1 origin "+$UI_BASE:$base_ref" ||
+        { echo "ci.sh: could not fetch the base '$UI_BASE' of SWIMMICH_CI_UI_SCOPE=gate" >&2; exit 2; }
+    else
+      base_ref="refs/remotes/origin/$UI_BASE"
     fi
-    git rev-parse --quiet --verify refs/remotes/origin/main >/dev/null ||
-      { echo "ci.sh: no origin/main to compare with: SWIMMICH_CI_UI_SCOPE=changed needs it" >&2; exit 2; }
-    selected=$(git diff --name-only refs/remotes/origin/main HEAD | python3 -c '
+    git rev-parse --quiet --verify "$base_ref^{commit}" >/dev/null ||
+      { echo "ci.sh: no $base_ref to compare with: SWIMMICH_CI_UI_SCOPE=gate needs it" >&2; exit 2; }
+    selected=$(git diff --name-only "$base_ref" HEAD | python3 -c '
 import subprocess, sys
 changed = [path for path in sys.stdin.read().split("\n") if path]
-base = subprocess.run(["git", "show", "refs/remotes/origin/main:" + sys.argv[1]],
+base = subprocess.run(["git", "show", sys.argv[1] + ":" + sys.argv[2]],
                       capture_output=True, text=True).stdout.split("\n")
 base_lines = {" ".join(line.split("#", 1)[0].split()) for line in base}
-everything = any(
-    path == "Scripts/ci.sh"
+shared = sorted(
+    path for path in changed
+    if path == "Scripts/ci.sh"
     or (path.startswith("UITests/") and not path.startswith("UITests/Scenarios/")
         and not (path.startswith("UITests/stubs/immich_stub_") and path != "UITests/stubs/immich_stub_base.py"))
-    for path in changed
 )
 classes = {path.rsplit("/", 1)[1][:-len(".swift")] for path in changed
            if path.startswith("UITests/Scenarios/") and path.endswith(".swift")}
 stubs = {path.rsplit("/", 1)[1] for path in changed if path.startswith("UITests/stubs/immich_stub_")}
-for index, line in enumerate(sys.argv[2:]):
-    words = line.split()
-    if everything or line not in base_lines or words[0] in stubs or words[1].split("/")[0] in classes:
-        print(index)
-' "$UI_LIST" ${ui_lines[@]+"${ui_lines[@]}"})
+lines = [line.split() for line in sys.argv[3:]]
+touched = [index for index, words in enumerate(lines)
+           if " ".join(words) not in base_lines or words[0] in stubs or words[1].split("/")[0] in classes]
+smoke = [index for index, words in enumerate(lines) if "--smoke" in words and index not in touched]
+if shared:
+    print("ci.sh: shared UI-test code changed (%s): the gate runs the smoke lines, the full suite judges the others"
+          % ", ".join(shared[:5]), file=sys.stderr)
+print("ci.sh: UI scope gate: %d changed line(s), then %d smoke line(s), of %d"
+      % (len(touched), len(smoke), len(lines)), file=sys.stderr)
+for index in touched + smoke:
+    print(index)
+' "$base_ref" "$UI_LIST" ${ui_lines[@]+"${ui_lines[@]}"})
     kept=()
     for index in $selected; do kept+=("${ui_lines[index]}"); done
-    echo "ci.sh: UI scope 'changed': ${#kept[@]} of ${#ui_lines[@]} line(s) can be affected by this branch"
     ui_lines=(${kept[@]+"${kept[@]}"})
     ;;
-  *) echo "ci.sh: SWIMMICH_CI_UI_SCOPE must be 'all' or 'changed'" >&2; exit 2 ;;
+  *) echo "ci.sh: SWIMMICH_CI_UI_SCOPE must be 'all' or 'gate'" >&2; exit 2 ;;
 esac
 
 # The pool: `SWIMMICH_CI_UI_WORKERS` simulators (3 by default), worker k being
@@ -364,9 +379,9 @@ run_unit_tests() {
 # UI scenarios. One line of Scripts/ci-ui-scenarios.txt per xcodebuild run:
 #
 #   <stub.py> <Class>[/<test>] [--content-size <simctl category>]
-#             [--media <file name>]... [--skip <test>]... [--erase]
+#             [--media <file name>]... [--skip <test>]... [--erase] [--smoke]
 #
-# A line runs on a worker's simulator, reset by `prepare_simulator` (`--erase`
+# `--smoke` marks a line of the gate (see `SWIMMICH_CI_UI_SCOPE` above). A line runs on a worker's simulator, reset by `prepare_simulator` (`--erase`
 # for a freshly erased device), and against its own stub on the
 # worker's port, `SWIMMICH_CI_STUB_PORT` (8421 by default) + k - 1, which must
 # answer `/__whoami` with its own pid (an orphan stub squatting the port would
@@ -442,6 +457,7 @@ run_scenario() {
       --media) media+=("$2"); shift ;;
       --skip) skips+=("-skip-testing:ImmichSwiftUIUITests/${selector%%/*}/$2"); shift ;;
       --erase) erase=1 ;;
+      --smoke) ;;
       *) echo "::error::$UI_LIST: unknown option $1"; return 2 ;;
     esac
     shift

@@ -3,7 +3,7 @@
 # and against its own stub (UITests/stubs/<stub.py>, on the worker's port):
 #
 #   <stub.py> <Class>[/<test>] [--content-size <simctl category>]
-#             [--media <file name>]... [--skip <test>]... [--erase]
+#             [--media <file name>]... [--skip <test>]... [--erase] [--smoke]
 #
 # A test that fails or skips itself fails the CI. Scenarios not listed here are
 # compiled by the CI, not run. The lines run several at a time and a free
@@ -11,13 +11,30 @@
 # lasts at least as long as its longest line: a test over 3 minutes gets a CI
 # warning and is cut in several (a feature brings one or two end-to-end
 # scenarios; its detailed criteria belong to the unit tests).
+#
+# Two suites read this list (`SWIMMICH_CI_UI_SCOPE` of Scripts/ci.sh):
+#
+# * the gate of every push runs the lines the push changed (a line new or edited,
+#   or whose test class or stub changed), then the `--smoke` lines;
+# * the full suite (every night on `main`, and on a release tag) runs every line.
+#
+# `--smoke` is a budget, not a label of importance: one line per critical journey
+# (sign-in, timeline and viewer, search, editor, share, offline, backup), about
+# 14 minutes of simulator in all, so the gate stays under 10 minutes on 3
+# simulators. A new smoke line replaces one, it is not added to them.
+
+# L-32 "Remaining to back up": the entry and the list over the real Photos library of the simulator
+# (3 seeded media, plus the sample photos of an erased simulator) → a pass against a server that accepts
+# everything empties both. The AX5 line reads a row at the largest text size: whole file name, no overflow.
+immich_stub_backup_remainder.py BackupRemainderUITests/test_AC_65_remainderFromBackupScreen --media L32-a.png --media L32-b.png --media L32-c.png --erase --smoke
+immich_stub_backup_remainder.py BackupRemainderUITests/test_AC_65_9_rowsReadableAtAX5 --content-size accessibility-extra-extra-extra-large --media L32-ax5.png --erase
 
 # L-13 Dynamic Type (AC-26 to AC-26.9). The long walks are cut in several tests
 # (one line each) so the pool spreads them. The share extension follows the
 # SYSTEM text size (AX5) and needs a long-named photo in Photos.
 immich_stub_dynamic_type.py DynamicTypeUITests/test_AC_26_8_albums
 immich_stub_dynamic_type.py DynamicTypeUITests/test_AC_26_3_albums
-immich_stub_dynamic_type.py DynamicTypeUITests/test_AC_26_3
+immich_stub_dynamic_type.py DynamicTypeUITests/test_AC_26_3 --smoke
 immich_stub_dynamic_type.py DynamicTypeUITests/test_AC_26_8
 immich_stub_dynamic_type.py DynamicTypeUITests/test_AC_26_9
 immich_stub_dynamic_type.py DynamicTypeUITests/test_AC_26_1_signedIn
@@ -33,10 +50,10 @@ immich_stub_dynamic_type.py DynamicTypeUITests/test_AC_26_4_appLock
 immich_stub_dynamic_type.py DynamicTypeUITests/test_AC_26_4_lists
 immich_stub_dynamic_type.py DynamicTypeUITests/test_AC_26_6
 immich_stub_dynamic_type.py DynamicTypeUITests/test_AC_26
-immich_stub_dynamic_type.py DynamicTypeUITests/test_AC_26_4_shareExtension --content-size accessibility-extra-extra-extra-large --media Summer-holidays-in-the-Gorges-du-Verdon-with-the-whole-family.png
-immich_stub_dynamic_type.py DynamicTypeUITests/test_AC_26_7
+immich_stub_dynamic_type.py DynamicTypeUITests/test_AC_26_4_shareExtension --content-size accessibility-extra-extra-extra-large --media Summer-holidays-in-the-Gorges-du-Verdon-with-the-whole-family.png --smoke
+immich_stub_dynamic_type.py DynamicTypeUITests/test_AC_26_7 --smoke
 immich_stub_dynamic_type.py DynamicTypeUITests/test_AC_26_5
-immich_stub_search_filters.py SearchCriteriaUITests/test_AC_42
+immich_stub_search_filters.py SearchCriteriaUITests/test_AC_42 --smoke
 immich_stub_search_filters.py SearchCriteriaUITests/test_AC_209
 immich_stub_search_filters.py SearchCriteriaUITests/test_AC_210
 immich_stub_search_filters.py SearchCriteriaUITests/test_AC_211
@@ -55,7 +72,7 @@ immich_stub_share_caches.py ShareAndCachesUITests/test_AC_52
 immich_stub_share_caches.py ShareAndCachesUITests/test_AC_277
 immich_stub_share_caches.py ShareAndCachesUITests/test_AC_279
 immich_stub_share_caches.py ShareAndCachesUITests/test_AC_272
-immich_stub_share_caches.py ShareAndCachesUITests/test_AC_275
+immich_stub_share_caches.py ShareAndCachesUITests/test_AC_275 --smoke
 immich_stub_share_caches.py ShareAndCachesUITests/test_AC_50
 immich_stub_share_caches.py ShareAndCachesUITests/test_AC_270
 immich_stub_share_caches.py ShareAndCachesUITests/test_AC_273
@@ -63,7 +80,7 @@ immich_stub_share_caches.py ShareAndCachesUITests/test_AC_273
 # L-21 server-side edits (AC-39, AC-40, AC-181, AC-182, AC-188, AC-189): the editor, the edited
 # version shown by the viewer, and the choice of the file to download.
 immich_stub_asset_edits.py AssetEditsUITests/test_AC_182_reopenChangeRotationThenRevert
-immich_stub_asset_edits.py AssetEditsUITests/test_AC_181_cropRotateMirrorSavesEdits
+immich_stub_asset_edits.py AssetEditsUITests/test_AC_181_cropRotateMirrorSavesEdits --smoke
 immich_stub_asset_edits.py AssetEditsUITests/test_AC_188_oldServerSavesCopy
 immich_stub_asset_edits.py AssetEditsUITests/test_AC_189_putErrorShowsMessage
 immich_stub_asset_edits.py AssetEditsUITests/test_AC_39_editedVersionShownThenTheOriginalComesBack
@@ -78,9 +95,3 @@ immich_stub_widgets.py WidgetDisplaySizeUITests/test_AC_61_6_favoritesLargeOneFa
 immich_stub_edit_stacks.py EditStacksUITests/test_AC_41_editStackedOnOriginal --media L22-edit-on.png --erase
 immich_stub_edit_stacks.py EditStacksUITests/test_AC_41_settingOffSendsNothing --media L22-edit-off.png --erase
 immich_stub_edit_stacks.py EditStacksUITests/test_AC_200_settingOffByDefaultAndPersisted
-
-# L-32 "Remaining to back up": the entry and the list over the real Photos library of the simulator
-# (3 seeded media, plus the sample photos of an erased simulator) → a pass against a server that accepts
-# everything empties both. The AX5 line reads a row at the largest text size: whole file name, no overflow.
-immich_stub_backup_remainder.py BackupRemainderUITests/test_AC_65_remainderFromBackupScreen --media L32-a.png --media L32-b.png --media L32-c.png --erase
-immich_stub_backup_remainder.py BackupRemainderUITests/test_AC_65_9_rowsReadableAtAX5 --content-size accessibility-extra-extra-extra-large --media L32-ax5.png --erase
