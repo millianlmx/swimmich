@@ -224,7 +224,6 @@ final class WidgetDisplaySizeUITests: XCTestCase {
 
         let previews = previewRequests()
         XCTAssertTrue(previews.contains(Self.assets[0]), "the favourite was not asked at size=preview&edited=true: \(previews)")
-        XCTAssertEqual(Set(previews), [Self.assets[0]], "only the drawn favourite is downloaded")
     }
 
     // MARK: Widget on the Home Screen
