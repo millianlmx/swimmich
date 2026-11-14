@@ -172,16 +172,27 @@ final class EditStacksUITests: XCTestCase {
         }
     }
 
+    /// The provider page loads in another process (`SafariViewService`), slowly on a
+    /// loaded Mac, and the system's sign-in consent can show late: while the
+    /// "Authorize" link is awaited, the consent is accepted whenever it is up.
     @discardableResult
-    private func tapAuthorizeInProvider(timeout: TimeInterval = 20) -> Bool {
+    private func tapAuthorizeInProvider(timeout: TimeInterval = 60) -> Bool {
         let safari = XCUIApplication(bundleIdentifier: "com.apple.SafariViewService")
+        let springboard = XCUIApplication(bundleIdentifier: "com.apple.springboard")
         let predicate = NSPredicate(format: "label CONTAINS 'Authorize'")
-        for candidate in [safari.links.matching(predicate).firstMatch,
-                          safari.buttons.matching(predicate).firstMatch] {
-            if candidate.waitForExistence(timeout: timeout) {
-                candidate.tap()
+        let consent = NSPredicate(format: "label IN %@", ["Continue", "Continuer"])
+        let candidates = [safari.links.matching(predicate).firstMatch, safari.buttons.matching(predicate).firstMatch]
+        let deadline = Date().addingTimeInterval(timeout)
+        while Date() < deadline {
+            if let authorize = candidates.first(where: { $0.exists }) {
+                authorize.tap()
                 return true
             }
+            for button in [springboard.alerts.buttons.matching(consent).firstMatch,
+                           app.alerts.buttons.matching(consent).firstMatch] where button.exists {
+                button.tap()
+            }
+            Thread.sleep(forTimeInterval: 0.5)
         }
         return false
     }
