@@ -258,6 +258,7 @@ struct PhotoViewer: View {
     /// asset to the same queue the floating panel projects; the default is the
     /// composition root's instance, so no presenter has to thread it through.
     let downloads: DownloadQueueViewModel
+    let followUp: EditedAssetFollowUp
     /// The viewer's own mutation paths (favorite, archive, delete, restore —
     /// the ones a presenting surface does not override) run through these two
     /// view models, never on the client directly: a write must be published,
@@ -388,6 +389,7 @@ struct PhotoViewer: View {
         token: String?,
         client: any ImmichClient = DependencyContainer.shared.libraryClient,
         downloads: DownloadQueueViewModel = DependencyContainer.shared.downloadQueue,
+        followUp: EditedAssetFollowUp = DependencyContainer.shared.editedAssetFollowUp,
         castService: any CastService = DependencyContainer.shared.castService,
         troubleshoot: AssetTroubleshootViewModel? = nil,
         onToggleFavorite: ((AssetReactItem, Bool) -> Void)? = nil,
@@ -403,6 +405,7 @@ struct PhotoViewer: View {
         self.token = token
         self.client = client
         self.downloads = downloads
+        self.followUp = followUp
         self.castService = castService
         self.troubleshoot = troubleshoot
         self.onToggleFavorite = onToggleFavorite
@@ -723,6 +726,12 @@ struct PhotoViewer: View {
             if let v = await ViewerArchiveAction.resolveVisibility(of: asset, client: client) {
                 resolvedVisibility[asset.id] = v
             }
+        }
+        // A photo saved here whose regeneration was not seen yet (the wait ran out, or the viewer was
+        // closed): showing it reads its record again.
+        .task(id: currentAsset?.id) {
+            guard let id = currentAsset?.id, followUp.pending(for: id) != nil else { return }
+            refreshCurrentAfterRegeneration()
         }
         .task { await runOpeningTransition() }
         // Whatever removes the viewer (a close, a delete that emptied the list, the
@@ -1327,37 +1336,44 @@ struct PhotoViewer: View {
     // MARK: - Edited photo refresh (L-21)
 
     /// After `PUT`/`DELETE /api/assets/{id}/edits` the server regenerates the thumbnails in the
-    /// background: wait for the new thumbhash, then adopt it, so every screen builds the URL of the
-    /// edited (or restored) image, and bring the offline copy, if there is one, in line with the
-    /// version displayed (`edited=true` after an edit, `edited=false` after its removal).
+    /// background. `EditedAssetFollowUp` waits for the new thumbhash (and keeps following the photo when
+    /// it takes longer than the wait), then every screen builds the URL of the edited (or restored)
+    /// image and the offline copy, if there is one, is brought in line with the version displayed
+    /// (`edited=true` after an edit, `edited=false` after its removal).
     private func refreshAfterEdits(assetId: String, removed: Bool) {
         guard let previous = localAssets.first(where: { $0.id == assetId }) else { return }
         Task {
-            if let fresh = await EditedAssetRefresh.awaitRegeneration(
-                assetId: assetId, previousThumbhash: previous.thumbhash, client: client
-            ) {
-                adoptRegeneratedAsset(fresh, previousThumbhash: previous.thumbhash)
-            }
-            if let offlineVM, offlineVM.isCached(assetId),
-               let item = localAssets.first(where: { $0.id == assetId }) {
-                await offlineVM.downloadAsset(item, baseURL: baseURL, token: token, edited: !removed)
-            }
-            onDataChanged?()
+            let fresh = await followUp.afterSave(
+                of: previous, removed: removed, offline: offlineVM, baseURL: baseURL, token: token,
+                onRegenerated: { record in
+                    adoptIntoViewer(record)
+                    onDataChanged?()
+                }
+            )
+            if fresh == nil { onDataChanged?() }
         }
     }
 
-    /// A burst of server events carried a thumbnail regeneration: the photo on screen may be one of
-    /// them (edited on another device), so its record is read once more.
+    /// A burst of server events carried a thumbnail regeneration, or the photo on screen is waiting for
+    /// one: its record is read once more. A photo saved here and still pending is resumed even when the
+    /// viewer already holds the new thumbhash (the timeline was read in the meantime).
     private func refreshCurrentAfterRegeneration() {
         guard let asset = currentAsset else { return }
         Task {
-            guard let record = try? await client.getAsset(id: asset.id), record.thumbhash != asset.thumbhash else { return }
-            adoptRegeneratedAsset(record, previousThumbhash: asset.thumbhash)
+            guard let record = try? await client.getAsset(id: asset.id) else { return }
+            if record.thumbhash != asset.thumbhash {
+                adoptRegeneratedAsset(record, previousThumbhash: asset.thumbhash)
+            }
+            await followUp.resume(with: record, offline: offlineVM, baseURL: baseURL, token: token)
         }
     }
 
     private func adoptRegeneratedAsset(_ record: AssetResponseDto, previousThumbhash: String?) {
-        ThumbhashSuccession.shared.record(old: previousThumbhash, new: record.thumbhash)
+        ThumbhashSuccession.shared.record(old: previousThumbhash, new: record.thumbhash, assetId: record.id)
+        adoptIntoViewer(record)
+    }
+
+    private func adoptIntoViewer(_ record: AssetResponseDto) {
         if let index = localAssets.firstIndex(where: { $0.id == record.id }) {
             localAssets[index] = localAssets[index].refreshed(from: record)
         }
@@ -2085,7 +2101,8 @@ private struct PhotoShareSheet: View {
                 client: client,
                 baseURL: baseURL,
                 externalDomain: auth.serverConfig?.externalDomain ?? "",
-                currentUserId: auth.userId
+                currentUserId: auth.userId,
+                publicServerURL: auth.publicServerURL
             )
             vm = new
             await new.load()

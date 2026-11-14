@@ -168,6 +168,30 @@ final class ViewerShareViewModelTests: XCTestCase {
         try XCTUnwrap(presenter.completions.first ?? nil)()
     }
 
+    /// L-21 AC-194: a photo the server says is edited is shared as it was uploaded, in both qualities (the
+    /// editor's working image is the original too: `AssetEditsEditorTests.test_AC_182_workingImageAsksEditedFalse`).
+    func test_AC_194_editedPhotoSharesTheOriginalInBothQualities() async throws {
+        var edited = detail(id: "p1", name: "IMG_0001.HEIC", mime: "image/heic")
+        edited.isEdited = true
+        client.getAssetResponse["p1"] = edited
+        let vm = makeViewModel()
+
+        vm.share(asset("p1"), quality: .original)
+        await vm.waitForCompletion()
+        let original = try XCTUnwrap(transport.lastRequest?.url)
+        XCTAssertEqual(original.path, "/api/assets/p1/original")
+        XCTAssertEqual(queryValue("edited", in: original), "false")
+        try XCTUnwrap(presenter.completions.last ?? nil)()
+
+        transport.contentType = "image/jpeg"
+        vm.share(asset("p1"), quality: .preview)
+        await vm.waitForCompletion()
+        let preview = try XCTUnwrap(transport.lastRequest?.url)
+        XCTAssertEqual(preview.path, "/api/assets/p1/thumbnail")
+        XCTAssertEqual(queryValue("edited", in: preview), "false")
+        try XCTUnwrap(presenter.completions.last ?? nil)()
+    }
+
     func test_AC_271_videoIsAlwaysOriginal() async throws {
         transport.contentType = "video/quicktime"
         let vm = makeViewModel()

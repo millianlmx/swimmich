@@ -96,8 +96,9 @@ final class SystemDeviceLocationService: NSObject, DeviceLocationProviding, CLLo
 
 /// A scripted position for the UI tests and the unit tests: the permission,
 /// the answers to the two prompts and the fix are all set up front. The app only
-/// builds one when `-uiTestLocationStatus` is on the launch arguments; the key is
-/// never written by the app, so production never reads it.
+/// builds one in Debug builds (`DependencyContainer.makeDeviceLocation`), when
+/// `-uiTestLocationStatus` is on the launch arguments; a Release build never reads
+/// these keys and always gets `SystemDeviceLocationService`.
 ///
 /// Launch arguments:
 /// - `-uiTestLocationStatus`: `servicesDisabled`, `notDetermined`, `denied`,
@@ -141,7 +142,9 @@ final class ScriptedDeviceLocationService: DeviceLocationProviding {
     static let promptKey = "uiTestLocationPrompt"
     static let preciseKey = "uiTestLocationPrecise"
 
-    /// The scripted service the launch arguments ask for, `nil` in production.
+    /// The scripted service the launch arguments ask for: `nil` without
+    /// `-uiTestLocationStatus`, or with a status this type does not know. Only
+    /// `DependencyContainer.makeDeviceLocation` calls it, in Debug builds.
     static func fromLaunchArguments(_ defaults: UserDefaults = .standard) -> ScriptedDeviceLocationService? {
         guard let raw = defaults.string(forKey: statusKey) else { return nil }
         let status: DeviceLocationStatus

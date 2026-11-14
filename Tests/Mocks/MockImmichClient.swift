@@ -37,7 +37,16 @@ final class MockImmichClient: ImmichClient, @unchecked Sendable {
     // ImmichClient lifecycle surface (no-op storage; tests inspect directly).
     var configuredBaseURL: URL?
     var configuredToken: String?
+    /// Every address `retarget` pointed the client at, in order (L-26).
+    private(set) var retargetedURLs: [URL] = []
+    func retarget(baseURL: URL) {
+        configuredBaseURL = baseURL
+        retargetedURLs.append(baseURL)
+    }
+    /// How many times `configure` (not `retarget`) was called (L-26).
+    private(set) var configureCount = 0
     func configure(baseURL: URL?, token: String?) {
+        configureCount += 1
         configuredBaseURL = baseURL
         configuredToken = token
     }

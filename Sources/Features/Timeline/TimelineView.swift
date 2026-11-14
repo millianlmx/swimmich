@@ -4,7 +4,7 @@ import SwiftUI
 ///
 /// Visual layers (AC-V01..V07):
 /// - Large "Photos" title (collapsing); selection overrides to "X selected".
-/// - SF Symbol toolbar (xmark cancel; selection-mode favorite/delete/add-to-album).
+/// - SF Symbol toolbar: the selection bar is the shared `BatchSelectionBar` (also the search results').
 /// - Photos-style pinch-to-zoom grid (2-7 columns) via `TimelineGridZoom`.
 /// - Skeleton shimmer grid for loading (4×3 initial, 1×3 load-more).
 /// - `ContentUnavailableView` empty + error states.
@@ -68,11 +68,7 @@ struct TimelineView: View {
     @State private var lastFavoriteTick = 0
     @State private var lastDeleteTick = 0
     @State private var lastSelectionTick = 0
-    @State private var pendingDeleteSelected = false
-    /// The selection waiting for the "edited version or original" answer (L-21).
-    @State private var pendingDownloadSelection: [AssetReactItem]?
     @State private var pendingDeleteSingleID: String?
-    @State private var presentAlbumPicker = false // AC-515 — Add to Album sheet
     @State private var viewerItem: PhotoViewerItem? // Full-screen photo viewer
     /// True from `openViewer` until the cover's `onDismiss`: the grid alert
     /// must not be presented while the cover is on screen or closing.
@@ -326,7 +322,8 @@ struct TimelineView: View {
                 }
                 .navigationTitle(vm.selectionMode ? Text("\(vm.selectedIds.count) selected") : Text(verbatim: ""))
                 .navigationBarTitleDisplayMode(.inline)
-                .toolbar { toolbarContent }
+                // L-23b: the one selection bar, shared with the search results.
+                .batchSelectionBar(vm, userId: auth.userId, downloads: downloads, alertsSuspended: viewerOnScreen)
                 // Photos-style: no top bar normally (photos start right under
                 // the island); the bar returns in selection mode for the
                 // xmark + favorite/delete/add-to-album controls.
@@ -336,7 +333,6 @@ struct TimelineView: View {
             .navigationDestination(item: $openedStackID) { stackId in
                 StackDetailView(stackId: stackId, vm: stacks)
             }
-            .appSensoryFeedback(.selection, trigger: vm.selectionMode)
             .appSensoryFeedback(.selection, trigger: lastSelectionTick)
             .appSensoryFeedback(.success, trigger: lastFavoriteTick)
             .appSensoryFeedback(.warning, trigger: lastDeleteTick)
@@ -376,55 +372,6 @@ struct TimelineView: View {
             columnCount = newValue
             gridScale = TimelineGridZoom.scale(forColumnCount: newValue, defaultColumns: newValue)
         }
-        // L-21: the selection may hold photos edited on the server — which file does the user want?
-        .alert(
-            "Which version?",
-            isPresented: Binding(get: { pendingDownloadSelection != nil }, set: { if !$0 { pendingDownloadSelection = nil } }),
-            presenting: pendingDownloadSelection
-        ) { selection in
-            Button("Edited version") { downloadSelection(selection, edited: true) }
-                .accessibilityIdentifier("downloadChoiceEdited")
-            Button("Original") { downloadSelection(selection, edited: false) }
-                .accessibilityIdentifier("downloadChoiceOriginal")
-            Button("Cancel", role: .cancel) {}
-        } message: { _ in
-            Text("Photos with edits saved on the server come as edited or as uploaded.")
-        }
-        .alert("Delete \(vm.ownerScopedSelection(currentUserId: auth.userId).ids.count) assets?", isPresented: $pendingDeleteSelected) {
-            Button("Delete", role: .destructive) {
-                Task {
-                    await vm.deleteSelected(currentUserId: auth.userId)
-                    lastDeleteTick &+= 1
-                }
-            }
-            Button("Cancel", role: .cancel) {}
-        } message: {
-            let skipped = vm.ownerScopedSelection(currentUserId: auth.userId).skipped
-            if skipped > 0 {
-                Text("\(skipped) photos belong to a partner and will not be deleted. The others are removed from your library. Action cannot be undone.")
-            } else {
-                Text("This removes them from your library. Action cannot be undone.")
-            }
-        }
-        // D3: surface VM errors (favorite/delete/load failures) — never swallow silently.
-        .alert("Something went wrong", isPresented: Binding(
-            get: { vm.actionErrorMessage != nil && !viewerOnScreen },
-            set: { if !$0 { vm.actionErrorMessage = nil } }
-        )) {
-            Button("OK", role: .cancel) {}
-        } message: {
-            Text(verbatim: vm.actionErrorMessage ?? "")
-        }
-        // Partner photos left out of a selection action (owner-only rights) — an
-        // outcome, not a failure, hence its own title. Same viewer rule as above.
-        .alert("Partner photos skipped", isPresented: Binding(
-            get: { vm.skippedPartnerCount != nil && !viewerOnScreen },
-            set: { if !$0 { vm.skippedPartnerCount = nil } }
-        )) {
-            Button("OK", role: .cancel) {}
-        } message: {
-            Text("\(vm.skippedPartnerCount ?? 0) photos belong to a partner and were not changed.")
-        }
         // D5: single-asset context-menu delete confirmation.
         .alert("Delete this asset?", isPresented: Binding(
             get: { pendingDeleteSingleID != nil },
@@ -442,12 +389,6 @@ struct TimelineView: View {
             Button("Cancel", role: .cancel) { pendingDeleteSingleID = nil }
         } message: {
             Text("This removes it from your library. Action cannot be undone.")
-        }
-        // AC-515 — Add to Album picker (shares AlbumsViewModel via environment, FM-3).
-        .sheet(isPresented: $presentAlbumPicker) {
-            AddToAlbumPickerSheet(selectedAssetIds: vm.selectedIds) {
-                vm.exitSelectionMode()
-            }
         }
         // Full-screen photo viewer (tap any photo → Photos-style browse/zoom).
         .photoViewer(
@@ -824,149 +765,6 @@ struct TimelineView: View {
                 let jumped: String? = await vm.jumpToMonth(at: 0, fraction: 0)
                 if jumped != nil { requestScroll(to: "top") }
             }
-        }
-    }
-
-    // MARK: - Toolbar — swaps between normal + selection modes (SF Symbols, V03)
-
-    @ToolbarContentBuilder
-    private var toolbarContent: some ToolbarContent {
-        ToolbarItem(placement: .topBarLeading) {
-            if vm.selectionMode {
-                Button {
-                    vm.exitSelectionMode()
-                } label: {
-                    Label("Cancel", systemImage: "xmark")
-                        .labelStyle(.iconOnly)
-                }
-            }
-        }
-        ToolbarItemGroup(placement: .topBarTrailing) {
-            if vm.selectionMode {
-                Button {
-                    Task {
-                        await vm.favoriteSelected(currentUserId: auth.userId)
-                        lastFavoriteTick &+= 1
-                    }
-                } label: {
-                    Label("Favorite", systemImage: "heart")
-                        .labelStyle(.iconOnly)
-                }
-                .disabled(vm.selectedIds.isEmpty)
-
-                Button(role: .destructive) {
-                    // Nothing sendable: no confirmation (nothing would be
-                    // deleted); the "Partner photos skipped" notice shows alone.
-                    if vm.ownerScopedSelection(currentUserId: auth.userId).ids.isEmpty {
-                        Task {
-                            await vm.deleteSelected(currentUserId: auth.userId)
-                            lastDeleteTick &+= 1
-                        }
-                    } else {
-                        pendingDeleteSelected = true
-                    }
-                } label: {
-                    Label("Delete", systemImage: "trash")
-                        .labelStyle(.iconOnly)
-                }
-                .disabled(vm.selectedIds.isEmpty)
-                // Matched by identifier in `ReadOnlyModeUITests`: the label is
-                // translated, and the scenario taps this one control to attempt a
-                // write the read-only guard must refuse.
-                .accessibilityIdentifier("deleteSelectedButton")
-
-                // AC-515 — Add to Album. Opens picker sheet w/ selected assets.
-                Button {
-                    presentAlbumPicker = true
-                } label: {
-                    Label("Add to Album", systemImage: "rectangle.stack.badge.plus")
-                        .labelStyle(.iconOnly)
-                }
-                .disabled(vm.selectedIds.isEmpty)
-                .accessibilityIdentifier("addToAlbumButton")
-
-                // Archive / Unarchive selected assets — bulk visibility.
-                if vm.selectionOffersUnarchive {
-                    Button {
-                        Task {
-                            await vm.unarchiveSelected()
-                        }
-                    } label: {
-                        Label("Unarchive", systemImage: "tray.and.arrow.up")
-                            .labelStyle(.iconOnly)
-                    }
-                    .disabled(vm.selectedIds.isEmpty)
-                    .accessibilityIdentifier("unarchiveButton")
-                } else {
-                    Button {
-                        Task {
-                            await vm.archiveSelected(currentUserId: auth.userId)
-                        }
-                    } label: {
-                        Label("Archive", systemImage: "archivebox")
-                            .labelStyle(.iconOnly)
-                    }
-                    .disabled(vm.selectedIds.isEmpty)
-                    .accessibilityIdentifier("archiveButton")
-                }
-
-                // Locked folder (gap G12) — bulk visibility "locked". The
-                // assets leave the grid here and are the folder's business
-                // from now on; the filter menu deliberately stays without a
-                // "locked" entry (the folder is not a timeline view).
-                Button {
-                    Task {
-                        await vm.moveSelectedToLockedFolder(currentUserId: auth.userId)
-                    }
-                } label: {
-                    Label("Move to Locked Folder", systemImage: "lock")
-                        .labelStyle(.iconOnly)
-                }
-                .disabled(vm.selectedIds.isEmpty)
-                .accessibilityIdentifier("moveToLockedFolderButton")
-
-                // Stack selected assets (gap #1) — 2+ required.
-                Button {
-                    Task {
-                        await vm.stackSelected(currentUserId: auth.userId)
-                    }
-                } label: {
-                    Label("Stack", systemImage: "square.stack.3d.up")
-                        .labelStyle(.iconOnly)
-                }
-                .disabled(vm.selectedIds.count < 2)
-                .accessibilityIdentifier("stackButton")
-
-                // Download selected (gap G10) — a batch goes to the process-wide
-                // queue, which announces it to the server before streaming
-                // (the server refuses a batch it was never told about). The
-                // selection is the grid's, in grid order. Whether a photo of it is edited is not known
-                // here, so on a server that serves edits the user is asked which version to take (L-21).
-                Button {
-                    Task {
-                        let selection = vm.items.filter { vm.selectedIds.contains($0.id) }
-                        if await downloads.offersEditedChoice(forSelectionOf: selection) {
-                            pendingDownloadSelection = selection
-                        } else {
-                            await downloads.enqueue(assets: selection, edited: false)
-                            vm.exitSelectionMode()
-                        }
-                    }
-                } label: {
-                    Label("Download", systemImage: "arrow.down.circle")
-                        .labelStyle(.iconOnly)
-                }
-                .disabled(vm.selectedIds.isEmpty)
-                .accessibilityIdentifier("downloadSelectionButton")
-            }
-        }
-    }
-
-    /// The answer to "edited version or original": the whole selection goes to the queue with that choice.
-    private func downloadSelection(_ selection: [AssetReactItem], edited: Bool) {
-        Task {
-            await downloads.enqueue(assets: selection, edited: edited)
-            vm.exitSelectionMode()
         }
     }
 

@@ -328,6 +328,7 @@ final class SearchCriteriaUITests: XCTestCase {
         XCTAssertTrue(searchField.waitForExistence(timeout: 20), "the search field is missing")
         searchField.tap()
         searchField.typeText(text)
+        XCTAssertEqual(searchField.value as? String, text, "the typed text did not reach the search field — \(screenText())")
     }
 
     private func clearQuery(_ current: String) {
@@ -335,6 +336,10 @@ final class SearchCriteriaUITests: XCTestCase {
         searchField.typeText(String(repeating: XCUIKeyboardKey.delete.rawValue, count: current.count))
     }
 
+    /// Picks a text mode in the menu: `searchModeMenu`, then `searchTextMode_<mode>`.
+    /// Returns once the menu is gone and its button answers again — a touch on
+    /// the field made while the menu still closes is swallowed by it, and the
+    /// text that follows is typed into nothing.
     private func chooseMode(_ mode: String) {
         let menu = app.buttons.matching(identifier: "searchModeMenu").firstMatch
         XCTAssertTrue(menu.waitForExistence(timeout: 20), "the search mode menu is missing")
@@ -342,6 +347,8 @@ final class SearchCriteriaUITests: XCTestCase {
         let item = app.buttons.matching(identifier: "searchTextMode_\(mode)").firstMatch
         XCTAssertTrue(item.waitForExistence(timeout: 10), "no `searchTextMode_\(mode)` item — \(screenText())")
         item.tap()
+        XCTAssertTrue(item.waitForNonExistence(timeout: 5), "the mode menu did not close after `\(mode)` — \(screenText())")
+        XCTAssertTrue(waitUntil(5) { menu.exists && menu.isHittable }, "the mode menu's button never answered again — \(screenText())")
     }
 
     /// Ids of the fixture photos the results grid shows now.
@@ -623,15 +630,21 @@ final class SearchCriteriaUITests: XCTestCase {
     }
 
     /// The cross of a chip. The chips sit in a horizontal scroll view: with four of
-    /// them the last ones start past the window's edge, so the row is swiped left
-    /// until the cross can be tapped.
+    /// them the last ones start past the window's edge, so the row itself — the
+    /// smallest scroll view holding the cross, not the results grid — is swiped
+    /// left until the cross can be tapped, as a user would.
     private func tapChipRemove(_ field: String) {
-        let cross = element("searchFilterChipRemove_\(field)")
+        let identifier = "searchFilterChipRemove_\(field)"
+        let cross = element(identifier)
         XCTAssertTrue(cross.waitForExistence(timeout: 10), "no chip for \(field) — \(screenText())")
-        let firstChip = app.buttons.matching(NSPredicate(format: "identifier BEGINSWITH 'searchFilterChip_'")).firstMatch
+        let holders = app.scrollViews.containing(.button, identifier: identifier).allElementsBoundByIndex
+        let row = holders.min { $0.frame.height < $1.frame.height }
         // By frame: `isHittable` itself throws on an element laid out past the edge.
         let width = app.windows.firstMatch.frame.width
-        for _ in 0..<5 where cross.frame.maxX > width - 4 { firstChip.swipeLeft() }
+        for _ in 0..<6 where cross.frame.maxX > width - 4 { row?.swipeLeft() }
+        XCTAssertTrue(cross.isHittable, "the cross of `\(field)` is still out of reach — \(screenText())")
+        XCTAssertGreaterThanOrEqual(cross.frame.width, 44, "the cross is narrower than the 44 pt touch target")
+        XCTAssertGreaterThanOrEqual(cross.frame.height, 44, "the cross is shorter than the 44 pt touch target")
         cross.tap()
     }
 
@@ -881,20 +894,151 @@ final class SearchCriteriaUITests: XCTestCase {
         Set(request.body["ids"] as? [String] ?? [])
     }
 
-    private func openSelectionMenu() {
-        let more = app.buttons.matching(identifier: "searchSelectionMoreMenu").firstMatch
-        XCTAssertTrue(more.waitForExistence(timeout: 15), "no More menu in the selection bar — \(screenText())")
-        more.tap()
+    // MARK: - The selection bar, as the timeline's (identifiers, then labels)
+
+    /// The bar's identifiers in the timeline's order, Cancel first. The fifth is
+    /// `archiveButton` or `unarchiveButton`, never both.
+    private static func barOrder(archive: Bool) -> [String] {
+        ["selectionCancelButton", "favoriteSelectedButton", "deleteSelectedButton", "addToAlbumButton",
+         archive ? "archiveButton" : "unarchiveButton", "moveToLockedFolderButton", "stackButton", "downloadSelectionButton"]
     }
 
-    /// An action of the selection bar, or of its "More" menu (archive, locked
-    /// folder, stack, download).
-    private func tapSelectionAction(_ identifier: String) {
-        let button = app.buttons.matching(identifier: identifier).firstMatch
-        let more = app.buttons.matching(identifier: "searchSelectionMoreMenu").firstMatch
-        if !button.waitForExistence(timeout: 3), more.exists { more.tap() }
-        XCTAssertTrue(button.waitForExistence(timeout: 15), "no `\(identifier)` in the selection bar — \(screenText())")
-        button.tap()
+    /// The catalogue label of each action, in en, fr, de, es and it. iOS may
+    /// file some of the seven icons under its own overflow button, and an item
+    /// there can lose its identifier: it is then recognised by its label,
+    /// compared for EQUALITY (`CONTAINS` would take "Archiver" for "Désarchiver").
+    private static let barLabels: [String: [String]] = [
+        "selectionCancelButton": ["Cancel", "Annuler", "Abbrechen", "Cancelar", "Annulla"],
+        "favoriteSelectedButton": ["Favorite", "Favori", "Favorit", "Favorito", "Preferito"],
+        "deleteSelectedButton": ["Delete", "Supprimer", "Löschen", "Eliminar", "Elimina"],
+        "addToAlbumButton": ["Add to Album", "Ajouter à l'album", "Zu Album hinzufügen", "Añadir a álbum", "Aggiungi all'album"],
+        "archiveButton": ["Archive", "Archiver", "Archivieren", "Archivar", "Archivia"],
+        "unarchiveButton": ["Unarchive", "Désarchiver", "Dearchivieren", "Desarchivar", "Rimuovi dall'archivio"],
+        "moveToLockedFolderButton": ["Move to Locked Folder", "Déplacer vers le dossier verrouillé",
+                                     "In den gesperrten Ordner verschieben", "Mover a la carpeta bloqueada",
+                                     "Sposta nella cartella bloccata"],
+        "stackButton": ["Stack", "Pile", "Stapel", "Pila", "Gruppo"],
+        "downloadSelectionButton": ["Download", "Télécharger", "Herunterladen", "Descargar", "Scarica"],
+    ]
+
+    /// The element's own identifier, else the action whose label equals its label.
+    private func canonicalId(of element: XCUIElement) -> String? {
+        if !element.identifier.isEmpty { return element.identifier }
+        let label = element.label
+        return Self.barLabels.first { $0.value.contains(label) }?.key
+    }
+
+    private struct BarLayout {
+        var inBar: [String]
+        var overflow: [String]
+        var raw: [String]
+    }
+
+    private func selectionBar() -> XCUIElement {
+        app.navigationBars.containing(.button, identifier: "selectionCancelButton").firstMatch
+    }
+
+    /// The system's overflow button of the bar: of its buttons that carry no
+    /// identifier and are no known action, the one furthest right.
+    private func overflowButton(in bar: XCUIElement) -> XCUIElement? {
+        bar.buttons.allElementsBoundByIndex
+            .filter { canonicalId(of: $0) == nil && $0.isHittable }
+            .max { $0.frame.maxX < $1.frame.maxX }
+    }
+
+    private func logElement(_ place: String, _ element: XCUIElement) {
+        print("selection-bar \(place): identifier=\(element.identifier) label=\(element.label) frame=\(element.frame)")
+    }
+
+    /// The menu's actions while the overflow is open: below the bar, recognised
+    /// by identifier or label, top to bottom.
+    private func overflowActions(below bar: XCUIElement) -> [String] {
+        let barBottom = bar.frame.maxY
+        let items = app.buttons.allElementsBoundByIndex
+            .filter { $0.frame.minY >= barBottom - 1 && $0.isHittable }
+            .compactMap { element -> (CGFloat, String)? in
+                guard let id = canonicalId(of: element), Self.barLabels[id] != nil else { return nil }
+                logElement("menu", element)
+                return (element.frame.minY, id)
+            }
+        return items.sorted { $0.0 < $1.0 }.map(\.1)
+    }
+
+    /// Every action of the bar and of the overflow iOS makes of it, in reading
+    /// order. Asserts the bar is exactly the 8 canonical actions: no menu of the
+    /// app's own, no action twice, none missing, Archive XOR Unarchive.
+    private func barLayout() -> BarLayout {
+        let bar = selectionBar()
+        XCTAssertTrue(bar.waitForExistence(timeout: 20), "no selection bar — \(screenText())")
+        var inBar: [(CGFloat, String)] = []
+        var raw: [String] = []
+        let overflow = overflowButton(in: bar)
+        for button in bar.buttons.allElementsBoundByIndex where button.isHittable {
+            logElement("bar", button)
+            if !button.identifier.isEmpty { raw.append(button.identifier) }
+            if let id = canonicalId(of: button) {
+                inBar.append((button.frame.minX, id))
+            } else if button.frame != overflow?.frame {
+                XCTFail("an unknown control in the selection bar: identifier=\(button.identifier) label=\(button.label) frame=\(button.frame)")
+            }
+        }
+        let ordered = inBar.sorted { $0.0 < $1.0 }.map(\.1)
+        var menu: [String] = []
+        if ordered.count < Self.barOrder(archive: true).count, let overflow {
+            overflow.tap()
+            Thread.sleep(forTimeInterval: 1)
+            menu = overflowActions(below: bar)
+            for id in menu where !id.isEmpty { raw.append(id) }
+            overflow.tap()
+            Thread.sleep(forTimeInterval: 1)
+        }
+        let all = ordered + menu
+        let expected = Set(Self.barOrder(archive: true) + ["unarchiveButton"])
+        let archiveVariants = all.filter { $0 == "archiveButton" || $0 == "unarchiveButton" }
+        XCTAssertTrue(all.count == 8 && Set(all).count == 8 && Set(all).isSubset(of: expected) && archiveVariants.count == 1,
+                      "the selection bar is not the 8 canonical actions — bar \(ordered), overflow \(menu)")
+        return BarLayout(inBar: ordered, overflow: menu, raw: raw)
+    }
+
+    /// An action of the selection bar, in the bar or in the overflow iOS makes of it.
+    private func tapBarAction(_ id: String) {
+        let bar = selectionBar()
+        XCTAssertTrue(bar.waitForExistence(timeout: 20), "no selection bar — \(screenText())")
+        func inBar() -> XCUIElement? {
+            bar.buttons.allElementsBoundByIndex.first { canonicalId(of: $0) == id && $0.isHittable }
+        }
+        if waitUntil(3, { inBar() != nil }), let button = inBar() {
+            button.tap()
+            return
+        }
+        if let overflow = overflowButton(in: bar) {
+            overflow.tap()
+            let found = waitUntil(15) { overflowActions(below: bar).contains(id) }
+            if found,
+               let item = app.buttons.allElementsBoundByIndex.first(where: {
+                   $0.frame.minY >= bar.frame.maxY - 1 && canonicalId(of: $0) == id && $0.isHittable
+               }) {
+                item.tap()
+                return
+            }
+        }
+        XCTFail("no `\(id)` in the selection bar or its overflow — \(screenText())")
+    }
+
+    /// Taps Delete with one photo selected and returns the confirmation's title,
+    /// then cancels it: nothing is sent.
+    private func deleteConfirmationTitle() -> String {
+        tapBarAction("deleteSelectedButton")
+        let alert = app.alerts.firstMatch
+        XCTAssertTrue(alert.waitForExistence(timeout: 10), "the delete confirmation never came up — \(screenText())")
+        XCTAssertEqual(alert.buttons.count, 2, "the confirmation is not Delete / Cancel — \(alert.buttons.allElementsBoundByIndex.map(\.label))")
+        let title = alert.label
+        let cancel = alert.buttons.matching(labelPredicate(["Cancel", "Annuler", "Abbrechen", "Cancelar", "Annulla"])).firstMatch
+        XCTAssertTrue(cancel.waitForExistence(timeout: 5), "no cancel in the confirmation")
+        cancel.tap()
+        XCTAssertTrue(alert.waitForNonExistence(timeout: 5), "the confirmation stayed up")
+        XCTAssertTrue(writes("DELETE", "/api/assets").isEmpty, "the confirmation's Cancel still deleted")
+        return title
     }
 
     func test_AC_216() {
@@ -911,7 +1055,7 @@ final class SearchCriteriaUITests: XCTestCase {
         XCTAssertTrue(titleShows(0), "the title with nothing chosen carries no 0 — \(screenText())")
         pick([p1])
         XCTAssertTrue(titleShows(1), "the title for one carries no 1 — \(screenText())")
-        XCTAssertTrue(element("searchSelectionCancelButton").exists,
+        XCTAssertTrue(element("selectionCancelButton").exists,
                       "a touch on a thumbnail in selection opened the viewer")
 
         // The next page lands; the first photo stays selected.
@@ -924,7 +1068,7 @@ final class SearchCriteriaUITests: XCTestCase {
         pick([p3])
         XCTAssertTrue(titleShows(2), "the photo is not checked again — \(screenText())")
 
-        tapSelectionAction("searchSelectionCancelButton")
+        tapBarAction("selectionCancelButton")
         XCTAssertTrue(element("searchSelectButton").waitForExistence(timeout: 15), "Cancel did not leave the selection")
 
         // A long press enters the selection and checks the photo.
@@ -940,7 +1084,7 @@ final class SearchCriteriaUITests: XCTestCase {
         pick([p1, p2, p3])
         XCTAssertTrue(titleShows(3), "the title does not say 3 — \(screenText())")
 
-        tapSelectionAction("favoriteSelectedButton")
+        tapBarAction("favoriteSelectedButton")
         for id in [p1, p2, p3] {
             let request = waitForWrite("PUT", "/api/assets/\(id)", "favourite of \(id)") { ($0.body["isFavorite"] as? Bool) == true }
             XCTAssertEqual(request.body["isFavorite"] as? Bool, true, "\(id): \(request.bodyJSON)")
@@ -953,7 +1097,7 @@ final class SearchCriteriaUITests: XCTestCase {
         enterSelection()
         pick([p1, p2, p3])
         XCTAssertTrue(titleShows(3), "the title does not say 3 after the heart — \(screenText())")
-        tapSelectionAction("addToAlbumButton")
+        tapBarAction("addToAlbumButton")
         let row = element("addToAlbumRow_\(album)")
         XCTAssertTrue(row.waitForExistence(timeout: 20), "the album sheet lists no album — \(screenText())")
         row.tap()
@@ -969,9 +1113,10 @@ final class SearchCriteriaUITests: XCTestCase {
         // Archive off: the selection archives.
         enterSelection()
         pick([p1, p2])
-        openSelectionMenu()
-        XCTAssertFalse(element("unarchiveButton").exists, "Unarchive offered on live photos")
-        tapSelectionAction("archiveButton")
+        let live = barLayout()
+        XCTAssertFalse((live.inBar + live.overflow).contains("unarchiveButton"), "Unarchive offered on live photos — \(live)")
+        XCTAssertTrue((live.inBar + live.overflow).contains("archiveButton"), "no Archive on live photos — \(live)")
+        tapBarAction("archiveButton")
         let archive = waitForWrite("PUT", "/api/assets", "archive") { $0.string("visibility") == "archive" }
         XCTAssertEqual(bodyIds(archive), [p1, p2], archive.bodyJSON)
         assertTiles([p3], "after archiving")
@@ -983,10 +1128,11 @@ final class SearchCriteriaUITests: XCTestCase {
         assertTiles([p1, p2, z1], "Archive on")
         enterSelection()
         pick([p1, p2])
-        openSelectionMenu()
-        XCTAssertTrue(element("unarchiveButton").waitForExistence(timeout: 15), "no Unarchive on archived results")
-        XCTAssertFalse(element("archiveButton").exists, "Archive offered on archived results")
-        tapSelectionAction("unarchiveButton")
+        // The bar read in full, overflow included: Unarchive replaces Archive.
+        let offered = barLayout()
+        XCTAssertTrue((offered.inBar + offered.overflow).contains("unarchiveButton"), "no Unarchive on archived results — \(offered)")
+        XCTAssertFalse((offered.inBar + offered.overflow).contains("archiveButton"), "Archive offered on archived results — \(offered)")
+        tapBarAction("unarchiveButton")
         let unarchive = waitForWrite("PUT", "/api/assets", "unarchive") { $0.string("visibility") == "timeline" }
         XCTAssertEqual(bodyIds(unarchive), [p1, p2], unarchive.bodyJSON)
         assertTiles([z1], "after unarchiving")
@@ -998,21 +1144,21 @@ final class SearchCriteriaUITests: XCTestCase {
         assertTiles([p1, p2, p3], "Archive off again")
         enterSelection()
         pick([p1])
-        tapSelectionAction("moveToLockedFolderButton")
+        tapBarAction("moveToLockedFolderButton")
         let locked = waitForWrite("PUT", "/api/assets", "locked folder") { $0.string("visibility") == "locked" }
         XCTAssertEqual(bodyIds(locked), [p1], locked.bodyJSON)
         assertTiles([p2, p3], "after the locked folder")
 
         enterSelection()
         pick([p2, p3])
-        tapSelectionAction("stackButton")
+        tapBarAction("stackButton")
         let stack = waitForWrite("POST", "/api/stacks", "stack")
         XCTAssertEqual(stack.body["assetIds"] as? [String], [p2, p3], "the cover is the first of the grid — \(stack.bodyJSON)")
         assertTiles([p2, p3], "after stacking")
 
         enterSelection()
         pick([p3])
-        tapSelectionAction("deleteSelectedButton")
+        tapBarAction("deleteSelectedButton")
         let alert = app.alerts.firstMatch
         XCTAssertTrue(alert.waitForExistence(timeout: 10), "the delete confirmation never came up")
         let confirm = alert.buttons.matching(labelPredicate(["Delete", "Supprimer", "Löschen", "Eliminar", "Elimina"])).firstMatch
@@ -1026,10 +1172,82 @@ final class SearchCriteriaUITests: XCTestCase {
         // Last: the download leaves a progress panel behind.
         enterSelection()
         pick([p2])
-        tapSelectionAction("downloadSelectionButton")
+        tapBarAction("downloadSelectionButton")
         // One photo is downloaded as its original file, as on the timeline; an
         // archive (`/api/download/info`) is only asked for several.
         let original = waitForWrite("GET", "/api/assets/\(p2)/original", "download")
         XCTAssertEqual(original.path, "/api/assets/\(p2)/original")
+    }
+
+    // MARK: - AC-44.1 (the download choice of the shared bar)
+
+    func test_AC_44_1() {
+        // A server that serves edits: the timeline would ask "Edited version" / "Original",
+        // so the search results ask the same question, with the same identifiers.
+        startSession(major: 3, minor: 4)
+        searchAlice()
+        enterSelection()
+        pick([p1])
+        tapBarAction("downloadSelectionButton")
+        let edited = element("downloadChoiceEdited")
+        XCTAssertTrue(edited.waitForExistence(timeout: 15), "no edited-or-original question on a v3.4 server — \(screenText())")
+        XCTAssertTrue(element("downloadChoiceOriginal").exists, "no `downloadChoiceOriginal` beside the edited choice")
+        edited.tap()
+        let original = waitForWrite("GET", "/api/assets/\(p1)/original", "download of the edited version") {
+            $0.params["edited"] == "true"
+        }
+        XCTAssertEqual(original.params["edited"], "true", "the choice must reach the request — \(original.bodyJSON)")
+        XCTAssertTrue(element("searchSelectButton").waitForExistence(timeout: 15), "the answer did not leave the selection")
+
+        // A server that serves no edits: no question, the original goes, the selection ends.
+        startSession(major: 1, minor: 119)
+        searchAlice()
+        enterSelection()
+        pick([p1])
+        tapBarAction("downloadSelectionButton")
+        XCTAssertFalse(element("downloadChoiceEdited").waitForExistence(timeout: 5), "a question on a server without edits")
+        let plain = waitForWrite("GET", "/api/assets/\(p1)/original", "download of the original") {
+            $0.params["edited"] == "false"
+        }
+        XCTAssertEqual(plain.params["edited"], "false")
+        XCTAssertTrue(element("searchSelectButton").waitForExistence(timeout: 15), "the download did not leave the selection")
+    }
+
+    // MARK: - AC-44.2 (the same bar on both screens)
+
+    func test_AC_44_2() {
+        startSession(major: 1, minor: 119)
+
+        // The timeline's bar for one photo.
+        let photosTab = app.tabBars.buttons.matching(labelPredicate(["Photos", "Fotos"])).firstMatch
+        XCTAssertTrue(photosTab.waitForExistence(timeout: 30), "no Photos tab")
+        photosTab.tap()
+        let select = element("selectButton")
+        XCTAssertTrue(select.waitForExistence(timeout: 30), "no Select entry on the timeline — \(screenText())")
+        select.tap()
+        let tile = app.descendants(matching: .any)
+            .matching(NSPredicate(format: "identifier BEGINSWITH 'assetTile_'")).firstMatch
+        XCTAssertTrue(tile.waitForExistence(timeout: 30), "the timeline shows no tile — \(screenText())")
+        tile.tap()
+        let layoutTimeline = barLayout()
+        let titleTimeline = deleteConfirmationTitle()
+        tapBarAction("selectionCancelButton")
+
+        // The search results' bar for one photo.
+        openSearchTab()
+        searchAlice()
+        enterSelection()
+        pick([p1])
+        let layoutSearch = barLayout()
+        let titleSearch = deleteConfirmationTitle()
+
+        XCTAssertEqual(layoutSearch.inBar, layoutTimeline.inBar, "the bar's actions differ")
+        XCTAssertEqual(layoutSearch.overflow, layoutTimeline.overflow, "the overflow's actions differ")
+        XCTAssertEqual(layoutSearch.raw, layoutTimeline.raw, "the exposed identifiers differ")
+        XCTAssertEqual(layoutTimeline.inBar + layoutTimeline.overflow, Self.barOrder(archive: true),
+                       "the timeline's bar left the canonical order — \(layoutTimeline)")
+        XCTAssertEqual(titleSearch, titleTimeline, "the delete confirmation differs")
+        XCTAssertTrue(layoutSearch.raw.allSatisfy { !$0.hasPrefix("searchSelection") },
+                      "an identifier of the search's own bar is still exposed — \(layoutSearch.raw)")
     }
 }

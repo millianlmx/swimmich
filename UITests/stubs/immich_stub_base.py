@@ -631,7 +631,7 @@ class StubHandler(BaseHTTPRequestHandler):
         self.wfile.write(body)
 
 
-def main(port=None, label="stub"):
+def main(port=None, label="stub", handler=None):
     """Serve the shell plus the routes registered on `router`.
 
     `port` defaults to `sys.argv[1]` (how `.omp/orchestration/uitest.sh` and a
@@ -641,6 +641,9 @@ def main(port=None, label="stub"):
         if __name__ == "__main__":
             main(label="things")
 
+    `handler` is the request handler class, `StubHandler` by default: a stub that must answer something
+    the router cannot (a WebSocket upgrade, a switch that cuts every route) subclasses it and passes it.
+
     The startup line is the stub's contract, for a by-hand run: it lists every
     endpoint this process answers, shell first, feature routes after. `/__whoami`
     answers the same port, which is how the launcher proves it is talking to the
@@ -648,7 +651,7 @@ def main(port=None, label="stub"):
     """
     if port is None:
         port = int(sys.argv[1]) if len(sys.argv) > 1 else 8421
-    server = ThreadingHTTPServer(("127.0.0.1", port), StubHandler)
+    server = ThreadingHTTPServer(("127.0.0.1", port), handler or StubHandler)
     STATE["port"] = server.server_address[1]
     print(json.dumps({
         "port": STATE["port"],

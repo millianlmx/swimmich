@@ -18,15 +18,21 @@ final class CustomHeadersRegistry: CustomHeadersProviding, CustomHeadersEditing,
     private var lists: [ServerKey: [CustomHTTPHeader]] = [:]
     private var loaded = false
     private let notificationCenter: NotificationCenter
+    /// Maps a declared local or external address back to the account's own key (L-26).
+    private let addressBook: ServerAddressBook
 
-    init(store: any CustomHeadersStoring, notificationCenter: NotificationCenter = .default) {
+    init(
+        store: any CustomHeadersStoring, notificationCenter: NotificationCenter = .default,
+        addressBook: ServerAddressBook = .shared
+    ) {
         self.store = store
         self.notificationCenter = notificationCenter
+        self.addressBook = addressBook
     }
 
     func headers(for url: URL?) -> [CustomHTTPHeader] {
         guard let url, let key = ServerKey(url: url) else { return [] }
-        return headers(for: key)
+        return headers(for: addressBook.canonicalKey(for: key))
     }
 
     func headers(for key: ServerKey) -> [CustomHTTPHeader] {

@@ -37,25 +37,29 @@ final class ShareViewController: UIViewController {
             return
         }
 
+        // The local address of the server when it answers as this server, the
+        // external one otherwise (L-26), measured while the files are staged.
+        async let resolved = WidgetEndpointResolver.live().resolve(session)
         let items = await stageAttachments()
         guard !items.isEmpty else {
             // Nothing image/movie in this share (a URL, a text snippet): the
-            // request is over, hand it straight back.
+            // request is over, hand it straight back (the check is cancelled).
             finish()
             return
         }
+        let target = await resolved
 
         let client = SharedUploadClient(
-            baseURL: session.baseURL,
-            token: session.token,
-            deviceId: session.deviceId ?? Self.fallbackDeviceId(),
-            customHeaders: session.customHeaders ?? []
+            baseURL: target.baseURL,
+            token: target.token,
+            deviceId: target.deviceId ?? Self.fallbackDeviceId(),
+            customHeaders: target.customHeaders ?? []
         )
         self.uploadClient = client
         let model = ShareExtensionViewModel(
             uploader: client,
             stage: FileManager.default.temporaryDirectory,
-            serverLabel: Self.serverLabel(for: session)
+            serverLabel: Self.serverLabel(for: target)
         )
         model.setItems(items)
         self.model = model

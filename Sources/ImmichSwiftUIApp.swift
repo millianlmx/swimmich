@@ -23,6 +23,9 @@ struct ImmichSwiftUIApp: App {
                         // engine directly when auto-backup is configured,
                         // then keep the pending background request alive so
                         // the next OS window picks up anything new.
+                        // Back from the background the network may have changed:
+                        // evaluate the address first (L-26), never awaited here.
+                        Task { await container.serverEndpoints.evaluate(.foreground) }
                         container.kickOffAutoBackup()
                         container.syncLibraryMonitor()
                         if container.isAutoBackupEnabled() {
@@ -70,7 +73,12 @@ struct ImmichSwiftUIApp: App {
                 Task { @MainActor in upload.engine.cancel() }
             }
             Task {
-                await upload.runBackup()
+                // The address is evaluated first (L-26), then the engine runs.
+                let endpoints = container.serverEndpoints
+                await BackgroundBackupPass(
+                    evaluate: { await endpoints.evaluate(.backgroundPass) },
+                    runBackup: { await upload.runBackup() }
+                ).run()
                 // New photos landed: the widget is showing the library.
                 WidgetCenter.shared.reloadAllTimelines()
                 task.setTaskCompleted(
