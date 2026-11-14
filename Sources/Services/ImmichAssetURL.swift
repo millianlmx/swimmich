@@ -16,6 +16,7 @@ final class ThumbhashSuccession: @unchecked Sendable, Observable {
     private let lock = NSLock()
     private let registrar = ObservationRegistrar()
     private var successors: [String: String] = [:]
+    private var latestByAsset: [String: String] = [:]
     private var revision = 0
 
     /// Observation key path only: bumped by `record`.
@@ -35,13 +36,27 @@ final class ThumbhashSuccession: @unchecked Sendable, Observable {
         }
     }
 
-    /// Records that the thumbhash `old` is now `new`. No-op for an empty or unchanged value.
-    func record(old: String?, new: String?) {
-        guard let old, let new, !old.isEmpty, !new.isEmpty, old != new else { return }
+    /// The newest thumbhash recorded for the photo `id`, nil when none. For a URL built without a
+    /// thumbhash (a screen that does not hold one), never used to shadow a thumbhash read from the server.
+    func latest(forAsset id: String) -> String? {
+        registrar.access(self, keyPath: \.observedRevision)
+        return lock.withLock { latestByAsset[id] }
+    }
+
+    /// Records that the thumbhash `old` of the photo `assetId` is now `new`. A nil or empty `new` is a no-op.
+    /// `new` becomes the end of the chain (its own successor is dropped), so a removal that gives back the
+    /// thumbhash of before the edit (`h0 → h1`, then `h1 → h0`) cannot form a cycle.
+    func record(old: String?, new: String?, assetId: String) {
+        guard let new, !new.isEmpty else { return }
+        let chainedFrom: String? = if let old, !old.isEmpty, old != new { old } else { nil }
         registrar.withMutation(of: self, keyPath: \.observedRevision) {
             lock.withLock {
-                successors[old] = new
-                revision += 1
+                var changed = latestByAsset.updateValue(new, forKey: assetId) != new
+                if let chainedFrom {
+                    if successors.removeValue(forKey: new) != nil { changed = true }
+                    if successors.updateValue(new, forKey: chainedFrom) != new { changed = true }
+                }
+                if changed { revision += 1 }
             }
         }
     }
@@ -51,6 +66,7 @@ final class ThumbhashSuccession: @unchecked Sendable, Observable {
         registrar.withMutation(of: self, keyPath: \.observedRevision) {
             lock.withLock {
                 successors.removeAll()
+                latestByAsset.removeAll()
                 revision += 1
             }
         }
@@ -89,12 +105,24 @@ enum ImmichAssetURL {
         )
         var items = [
             URLQueryItem(name: "size", value: size.rawValue),
-            URLQueryItem(name: "c", value: ThumbhashSuccession.shared.current(for: thumbhash))
+            URLQueryItem(name: "c", value: thumbhash.isEmpty
+                ? ThumbhashSuccession.shared.latest(forAsset: assetId) ?? ""
+                : ThumbhashSuccession.shared.current(for: thumbhash))
         ]
         if let sharedLink { items.append(sharedLink.queryItem) }
         items.append(URLQueryItem(name: "edited", value: edited ? "true" : "false"))
         components?.queryItems = items
         return components?.url ?? baseURL
+    }
+
+    /// Thumbnail of an album's cover photo. The `c` cache key is the album's stamp (the newest `updatedAt`
+    /// of its photos: an edit made elsewhere changes it), followed by the thumbhash recorded for the photo
+    /// in this session when there is one (an edit made here): either change gives the image caches a new URL.
+    static func albumCover(assetId: String, album: AlbumResponseDto, baseURL: URL,
+                           size: AssetMediaSize = .thumbnail) -> URL {
+        var key = album.coverCacheStamp
+        if let latest = ThumbhashSuccession.shared.latest(forAsset: assetId) { key += "_" + latest }
+        return thumbnail(assetId: assetId, thumbhash: key, baseURL: baseURL, size: size)
     }
 
     /// Original-file URL for a given asset. `edited` (when not nil) is sent explicitly: `false` asks for
