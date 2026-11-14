@@ -7,7 +7,7 @@ import XCTest
 /// first, so a simulator that reads the fixture differently fails loudly there
 /// instead of passing for the wrong reason.
 @MainActor
-final class AVVideoPlaybackEngineTests: XCTestCase {
+final class AVVideoPlaybackEngineReadabilityTests: XCTestCase {
 
     private var files: [URL] = []
 
