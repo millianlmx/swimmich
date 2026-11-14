@@ -79,14 +79,23 @@ immich_stub_edit_stacks.py EditStacksUITests/test_AC_41_editStackedOnOriginal --
 immich_stub_edit_stacks.py EditStacksUITests/test_AC_41_settingOffSendsNothing --media L22-edit-off.png --erase
 immich_stub_edit_stacks.py EditStacksUITests/test_AC_200_settingOffByDefaultAndPersisted
 
-# L-26 adresse locale et externe (AC-49, AC-236, AC-248): one stub serves the
-# external address on the worker's port P and the local one on a port the system
-# picks (`bind` on 0, reported as `localPort` by `/__whoami`: a fixed P + 100
-# can fall in another runner's pool); the scenario switches between them and
-# reads which address every request reached.
+# L-26 adresse locale et externe (AC-49, AC-235, AC-236, AC-238 to AC-240, AC-242,
+# AC-246, AC-248, AC-250): one stub serves the external address on the worker's
+# port P and the local one on a port the system picks (`bind` on 0, reported as
+# `localPort` by `/__whoami`: a fixed P + 100 can fall in another runner's pool);
+# the scenario switches between them and reads which address every request
+# reached. AC-239 poses the Photos widget (`--erase`: a widget posed earlier would
+# falsify the gallery search).
 immich_stub_server_addresses.py ServerAddressesUITests/test_AC_49
 immich_stub_server_addresses.py ServerAddressesUITests/test_AC_248
 immich_stub_server_addresses.py ServerAddressesUITests/test_AC_236
+immich_stub_server_addresses.py ServerAddressesUITests/test_AC_235
+immich_stub_server_addresses.py ServerAddressesUITests/test_AC_238
+immich_stub_server_addresses.py ServerAddressesUITests/test_AC_240
+immich_stub_server_addresses.py ServerAddressesUITests/test_AC_242
+immich_stub_server_addresses.py ServerAddressesUITests/test_AC_246
+immich_stub_server_addresses.py ServerAddressesUITests/test_AC_250
+immich_stub_server_addresses.py ServerAddressesUITests/test_AC_239 --erase
 
 # L-32 "Remaining to back up": the entry and the list over the real Photos library of the simulator
 # (3 seeded media, plus the sample photos of an erased simulator) → a pass against a server that accepts

@@ -35,9 +35,12 @@ Control (never logged, answered on both ports)
   GET /__reset, GET /__requests    as in the base (`/__reset` also puts the local
                                    address back to `immich`).
 
-`/api/assets/<id>/video/playback` and `/api/socket.io/` are only logged (the
-base answers them like any unrouted read), which is all a scenario needs: the
-log says WHICH address a video read and a socket handshake went to.
+`/api/socket.io/` is only logged (the base answers it like any unrouted read),
+which is all a scenario needs: the log says WHICH address a socket handshake
+went to. The first asset of the day (`aaaaaaaa-…-000000000001`) is a video with
+real MP4 bytes on `/api/assets/<id>/video/playback`: the routes of
+`immich_stub_video_player` (imported below), so a video opened in the viewer is
+read and logged on the address it went to (`ServerAddressesUITests.test_AC_238`).
 
 Run by hand (the launcher `.omp/orchestration/uitest.sh` is not involved):
 
@@ -58,6 +61,9 @@ from http.server import ThreadingHTTPServer
 from urllib.parse import parse_qsl
 
 import immich_stub_base as base
+# Registers the video routes on the shared router: the day's first tile is a
+# real MP4 (timeline bucket, playback with byte ranges, one video memory).
+import immich_stub_video_player  # noqa: F401
 from immich_stub_base import STATE, Request, Response, StubHandler, router
 
 SILENT_DELAY = 3.0

@@ -105,8 +105,11 @@ final class ServerAddressesUITests: XCTestCase {
         let path: String
         let address: String
         let token: Bool
+        let params: [String: String]?
 
         var isProbe: Bool { path == "/api/server/ping" || path == "/api/server/version" }
+        /// The widget asks its photos at `size=preview`; the app's grid asks `size=thumbnail`.
+        var isWidgetPreview: Bool { path.hasSuffix("/thumbnail") && params?["size"] == "preview" }
     }
 
     private func requests() -> [StubRequest] {
@@ -483,11 +486,35 @@ final class ServerAddressesUITests: XCTestCase {
         simulateNetworkChange()
         waitForActiveKind("local")
         setLocalMode("silent")
+        let switched = mark()
         simulateNetworkChange()
         waitForActiveKind("external", timeout: 30)
+        // The socket follows the switch: it reconnects on the external address.
+        let socket = waitForRequest(from: switched, timeout: 30) {
+            $0.path.hasPrefix("/api/socket.io") && $0.address == "external"
+        }
+        XCTAssertNotNil(socket, "the realtime socket never reconnected on the external address:\n\(describe(traffic(from: switched)))")
         dismissHub()
 
         let index = mark()
+        // A download: the share sheet's "Download for Offline" fetches the original.
+        XCTAssertTrue(tile(photoID).waitForExistence(timeout: 30), "the photo tile never rendered — \(screenReads())")
+        tile(photoID).tap()
+        let share = element("viewerShareButton")
+        XCTAssertTrue(share.waitForExistence(timeout: 25), "the viewer never opened — \(screenReads())")
+        share.tap()
+        reveal("downloadForOfflineButton")
+        let download = element("downloadForOfflineButton")
+        XCTAssertTrue(download.waitForExistence(timeout: 15), "no 'Download for Offline' — \(screenReads())")
+        download.tap()
+        let original = waitForRequest(from: index, timeout: 60) { $0.path == "/api/assets/\(self.photoID)/original" }
+        XCTAssertEqual(original?.address, "external", "the original is downloaded from the external address:\n\(describe(traffic(from: index)))")
+        let close = element("closeShareSheet")
+        if close.waitForExistence(timeout: 5) { close.tap() }
+        let back = element("viewerBackButton")
+        if back.waitForExistence(timeout: 20) { back.tap() }
+
+        // A video (the stub serves `videoID` as a real MP4).
         XCTAssertTrue(tile(videoID).waitForExistence(timeout: 30), "the video tile never rendered — \(screenReads())")
         tile(videoID).tap()
         let playback = waitForRequest(from: index, timeout: 60) { $0.path == "/api/assets/\(self.videoID)/video/playback" }
@@ -517,6 +544,115 @@ final class ServerAddressesUITests: XCTestCase {
         Thread.sleep(forTimeInterval: 3)
         let thumbs = traffic(from: index).filter { $0.path.hasSuffix("/thumbnail") }
         XCTAssertTrue(thumbs.isEmpty, "a thumbnail already seen is not requested again:\n\(describe(thumbs))")
+    }
+
+    // MARK: - AC-239 (widget)
+
+    /// The Photos widget, posed on the Home Screen with the app closed, applies the
+    /// app's rule itself: its photos come from the local address while it answers
+    /// as this server, and from the external one once it is mute. The widget is
+    /// told apart from the app by its `size=preview` thumbnails (the grid asks
+    /// `size=thumbnail`). The share extension is proved in unit tests
+    /// (`WidgetServerAddressTests.test_AC_239_shareUploadsToTheChosenAddress`).
+    func test_AC_239() throws {
+        start()
+        openNetwork()
+        setSwitch(on: true)
+        saveLocal(localAddress)
+        waitForLocalStatus("reachable")
+        dismissHub()
+
+        // 1. The local address answers: the widget reads its photos there.
+        app.terminate()
+        let posed = mark()
+        poseWidget(title: NSPredicate(format: "label CONTAINS 'Swimmich' AND label CONTAINS 'Photos'"))
+        XCTAssertTrue(waitUntil(timeout: 90) { !self.widgetPhotos().isEmpty },
+                      "the Photos widget never drew a dated photo: \(widgetPhotos().map(\.label))")
+        let local = waitForRequest(from: posed, timeout: 30) { $0.isWidgetPreview && $0.address == "local" }
+        XCTAssertEqual(local?.token, true, "the widget reads its photos on the local address:\n\(describe(traffic(from: posed)))")
+        XCTAssertFalse(traffic(from: posed).contains { $0.isWidgetPreview && $0.address == "external" },
+                       "nothing goes to the external address while the local one answers:\n\(describe(traffic(from: posed)))")
+
+        // 2. The local address goes mute: saving the setting again republishes the
+        // session, which reloads the widget; its next refresh goes external.
+        setLocalMode("silent")
+        relaunchKeepingSession()
+        settleOnShell()
+        openNetwork()
+        let muted = mark()
+        saveLocal(localAddress)
+        // The probe of the mute address times out: the save is over, the session republished.
+        waitForLocalStatus("unreachable", timeout: 20)
+        app.terminate()
+        let external = waitForRequest(from: muted, timeout: 90) { $0.isWidgetPreview && $0.address == "external" }
+        XCTAssertEqual(external?.token, true, "the widget falls back on the external address:\n\(describe(traffic(from: muted)))")
+        XCTAssertFalse(traffic(from: muted).contains { $0.isWidgetPreview && $0.address == "local" },
+                       "the mute local address gets probes only:\n\(describe(traffic(from: muted)))")
+    }
+
+    /// "Photo, from <day>" or "Video …": the label of a drawn tile carries the day,
+    /// the waiting state's does not (`WidgetDisplaySizeUITests`).
+    private func widgetPhotos() -> [XCUIElement] {
+        let springboard = XCUIApplication(bundleIdentifier: "com.apple.springboard")
+        let predicate = NSPredicate(
+            format: "(label BEGINSWITH 'Photo' OR label BEGINSWITH 'Video' OR label BEGINSWITH 'Vidéo') AND label MATCHES '.*[0-9].*'"
+        )
+        return springboard.descendants(matching: .any).matching(predicate).allElementsBoundByIndex
+    }
+
+    /// Poses the widget whose page title matches `title`, in its first size, through
+    /// SpringBoard's edit mode (flow of `WidgetDisplaySizeUITests.poseLargeWidget`).
+    private func poseWidget(title: NSPredicate) {
+        let springboard = XCUIApplication(bundleIdentifier: "com.apple.springboard")
+        func hittable(_ text: String, timeout: TimeInterval) -> XCUIElement? {
+            let query = springboard.buttons.matching(NSPredicate(format: "label CONTAINS %@", text))
+            let deadline = Date().addingTimeInterval(timeout)
+            while Date() < deadline {
+                for index in 0..<query.count where query.element(boundBy: index).isHittable {
+                    return query.element(boundBy: index)
+                }
+                usleep(400_000)
+            }
+            return nil
+        }
+        XCUIDevice.shared.press(.home)
+        sleep(2)
+        springboard.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.75)).press(forDuration: 2.0)
+        sleep(3)
+        if let edit = hittable("Modifier", timeout: 6) ?? hittable("Edit", timeout: 2) {
+            edit.tap()
+            sleep(2)
+        }
+        guard let addWidget = hittable("Ajouter un widget", timeout: 8) ?? hittable("Add Widget", timeout: 2) else {
+            return XCTFail("the edit menu has no widget entry — SpringBoard flow changed")
+        }
+        addWidget.tap()
+        sleep(4)
+        let gallerySearch = [springboard.searchFields["Rechercher des widgets"], springboard.searchFields["Search Widgets"]]
+            .first { $0.waitForExistence(timeout: 8) }
+        guard let gallerySearch else { return XCTFail("the widget gallery never appeared") }
+        gallerySearch.tap()
+        gallerySearch.typeText("Swimmich")
+        sleep(3)
+        let result = springboard.cells.containing(NSPredicate(format: "label CONTAINS 'Swimmich'")).firstMatch
+        guard result.waitForExistence(timeout: 10) else { return XCTFail("the gallery lists no Swimmich widget") }
+        result.tap()
+        sleep(3)
+        let preview = springboard.buttons.matching(NSPredicate(format: "value CONTAINS 'Widget'")).firstMatch
+        XCTAssertTrue(preview.waitForExistence(timeout: 8), "the sheet shows no widget preview")
+        let widgetTitle = springboard.staticTexts.matching(title).firstMatch
+        for _ in 0..<12 where !widgetTitle.exists {
+            preview.swipeLeft()
+            sleep(2)
+        }
+        XCTAssertTrue(widgetTitle.waitForExistence(timeout: 5), "never reached the widget's page")
+        guard let place = hittable("Ajouter le widget", timeout: 10) ?? hittable("Add Widget", timeout: 2) else {
+            return XCTFail("the widget sheet has no add button")
+        }
+        place.tap()
+        sleep(2)
+        XCUIDevice.shared.press(.home)
+        sleep(2)
     }
 
     // MARK: - AC-250
