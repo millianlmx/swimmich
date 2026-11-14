@@ -1173,8 +1173,12 @@ final class DynamicTypeUITests: XCTestCase {
         // The lock follows the `.background` scene phase, not `.inactive`: the app is
         // brought back only once it is really in the background (a fixed 2 s was too
         // short on a loaded Mac, and the app came back unlocked).
+        // The Home button alone sometimes left the app in the foreground (state 4):
+        // bringing SpringBoard forward is what puts it in the background.
         XCUIDevice.shared.press(.home)
-        XCTAssertTrue(waitUntil(20) { [.runningBackground, .runningBackgroundSuspended].contains(self.app.state) },
+        let backgrounded = { [.runningBackground, .runningBackgroundSuspended].contains(self.app.state) }
+        if !waitUntil(5, backgrounded) { springboard.activate() }
+        XCTAssertTrue(waitUntil(20, backgrounded),
                       "the app never went to the background (state \(app.state.rawValue))")
         sleep(1)
         app.activate()
