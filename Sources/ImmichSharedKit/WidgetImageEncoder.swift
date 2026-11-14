@@ -3,63 +3,90 @@ import ImageIO
 import UIKit
 import os
 
-/// Shrinks the JPEG/PNG bytes the widget carries in its timeline entry.
+/// A tile's size on the glass, in pixels (points × screen scale).
+struct WidgetPixelSize: Equatable, Sendable {
+    let width: Int
+    let height: Int
+}
+
+/// Prepares the JPEG bytes the widget carries in its timeline entry: one image
+/// per drawn tile, exactly as large as the tile, never larger than its source.
 ///
-/// WidgetKit archives every entry to disk and reads it back to render. An entry
-/// carrying the server's full-size thumbnails (a `preview` hero is ~300 KB, and
-/// a wall holds several) can fail to archive — and a widget whose entry was
-/// never archived shows its **placeholder forever**: no photos, no error, no log
-/// line on the extension side. That is exactly the symptom this project chased
-/// for two days, and the reason it never reproduced on a simulator: the test
-/// stub serves 8×8 PNGs, so the entry stayed tiny.
+/// WidgetKit archives every entry to disk and reads it back to render, and it
+/// refuses an image whose area is too large for the widget ("Widget archival
+/// failed due to image being too large … totalArea > max"). A widget whose entry
+/// was never archived shows its **placeholder forever**: no photos, no error,
+/// no log line on the extension side. That is the symptom this project chased
+/// for two days, and it never reproduced on a simulator because the test stub
+/// serves 8×8 PNGs.
 ///
-/// So the bytes are re-encoded here, once per fetch, at the size the widget can
-/// actually draw: the hero gets room for a large-family tile, satellites are
-/// small, and the whole wall stays inside `budget`.
+/// So each photo is decoded once, at the size of the tile it is drawn in
+/// (`encode(_:toCover:)`), and the whole entry stays inside `budget`. A tile is
+/// sharp at the widget's real size on any screen, and nothing bigger than a
+/// tile ever reaches the archive.
 enum WidgetImageEncoder {
 
-    /// Total image bytes an entry may carry. Comfortably below what WidgetKit
-    /// refuses to archive, and small enough to keep the whole widget cheap.
-    static let budget = 256 * 1024
+    /// Total image bytes an entry may carry, every photo and every memory card
+    /// together (1 MiB). Each image is already bounded by its tile, so the
+    /// budget is a safety net, not a quality knob: quality is never lowered.
+    static let budget = 1_048_576
 
-    /// Longest edge, in pixels, for a re-encoded image.
-    enum Size: CGFloat {
-        /// A hero drawn across a large widget. 900 px is under the 1032 px a
-        /// 344 pt tile wants at 3×, and keeps the encoded weight around 100 KB
-        /// for a real photo — the difference is invisible behind the widget's
-        /// corner radius and scrim.
-        case hero = 900
-        /// A mosaic cell (a third of a medium widget).
-        case cell = 320
-    }
+    /// JPEG quality of every encoded image.
+    static let quality: CGFloat = 0.6
 
-    /// Re-encodes `data` at `size`. Returns nil when the bytes cannot be decoded
-    /// (the caller then renders its branded plate) or when re-encoding would not
-    /// help.
-    static func encode(_ data: Data, at size: Size, quality: CGFloat = 0.6) -> Data? {
-        guard let source = CGImageSourceCreateWithData(data as CFData, nil) else { return nil }
+    /// Decodes `data` just large enough to cover `tile`, then crops it to the
+    /// tile, centred: each dimension is `min(source reduced to cover the tile,
+    /// tile)`. The source is never enlarged. Returns nil when the bytes cannot
+    /// be decoded (the caller then renders its branded plate) or the tile is
+    /// empty.
+    static func encode(_ data: Data, toCover tile: WidgetPixelSize) -> Data? {
+        guard tile.width > 0, tile.height > 0,
+              let source = CGImageSourceCreateWithData(data as CFData, nil),
+              let properties = CGImageSourceCopyPropertiesAtIndex(source, 0, nil) as? [CFString: Any],
+              var width = (properties[kCGImagePropertyPixelWidth] as? NSNumber)?.intValue,
+              var height = (properties[kCGImagePropertyPixelHeight] as? NSNumber)?.intValue,
+              width > 0, height > 0
+        else { return nil }
+        // Pixel sizes are those of the stored image; orientations 5…8 turn it.
+        if let orientation = (properties[kCGImagePropertyOrientation] as? NSNumber)?.intValue,
+           (5...8).contains(orientation) {
+            swap(&width, &height)
+        }
+        let factor = min(1, max(CGFloat(tile.width) / CGFloat(width), CGFloat(tile.height) / CGFloat(height)))
         let options: [CFString: Any] = [
             kCGImageSourceCreateThumbnailFromImageAlways: true,
             kCGImageSourceCreateThumbnailWithTransform: true,
-            kCGImageSourceThumbnailMaxPixelSize: size.rawValue,
+            kCGImageSourceThumbnailMaxPixelSize: Int((CGFloat(max(width, height)) * factor - 1e-6).rounded(.up)),
         ]
-        guard let thumbnail = CGImageSourceCreateThumbnailAtIndex(source, 0, options as CFDictionary) else {
+        guard let decoded = CGImageSourceCreateThumbnailAtIndex(source, 0, options as CFDictionary) else {
             return nil
         }
-        let renderer = UIImage(cgImage: thumbnail)
-        return renderer.jpegData(compressionQuality: quality)
+        let outWidth = min(decoded.width, tile.width)
+        let outHeight = min(decoded.height, tile.height)
+        var image = decoded
+        if outWidth != decoded.width || outHeight != decoded.height {
+            let crop = CGRect(
+                x: (decoded.width - outWidth) / 2,
+                y: (decoded.height - outHeight) / 2,
+                width: outWidth,
+                height: outHeight
+            )
+            guard let cropped = decoded.cropping(to: crop) else { return nil }
+            image = cropped
+        }
+        return UIImage(cgImage: image).jpegData(compressionQuality: quality)
     }
 
-    /// Re-encodes a wall's photos, hero first, and stops attaching bytes once
-    /// `budget` is spent — a partial mosaic beats an entry that never renders.
+    /// Keeps the images of `photos` (already encoded, in the order they are
+    /// drawn) while the running total stays inside `budget`; a photo that would
+    /// overflow it loses its bytes but keeps its cell — a partial mosaic beats
+    /// an entry that never renders.
     static func budgeted(_ photos: [WidgetPhoto], budget: Int = budget) -> [WidgetPhoto] {
         var spent = 0
-        return photos.enumerated().map { index, photo in
+        return photos.map { photo in
             guard let data = photo.imageData else { return photo }
-            let size: Size = index == 0 ? .hero : .cell
-            guard let encoded = encode(data, at: size), spent + encoded.count <= budget else {
-                // Drop the bytes, keep the cell: `hydrating(with: nil)` is a
-                // no-op by design, so this needs a fresh photo.
+            guard spent + data.count <= budget else {
+                // `hydrating(with: nil)` is a no-op by design, so this needs a fresh photo.
                 return WidgetPhoto(
                     id: photo.id,
                     imageData: nil,
@@ -68,14 +95,8 @@ enum WidgetImageEncoder {
                     day: photo.day
                 )
             }
-            spent += encoded.count
-            return WidgetPhoto(
-                id: photo.id,
-                imageData: encoded,
-                isVideo: photo.isVideo,
-                isFavorite: photo.isFavorite,
-                day: photo.day
-            )
+            spent += data.count
+            return photo
         }
     }
 }
