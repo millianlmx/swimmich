@@ -29,6 +29,10 @@ final class VideoPlaybackViewModel {
     private var autoPlayWhenReady = true
     private var loopWhenEnded = false
 
+    /// Armed by `prepare(assetID:…)` when it plays an offline copy; consumed by
+    /// the single switch to the server's stream.
+    private var serverFallback: (url: URL, token: String?)?
+
     init(
         engine: any VideoPlaybackEngine = AVVideoPlaybackEngine(appTransport: DependencyContainer.shared.videoTransport),
         appSettings: AppSettingsStore = .shared,
@@ -62,7 +66,15 @@ final class VideoPlaybackViewModel {
             }
         }
         engine.onFailure = { [weak self] _ in
-            self?.status = .failed(UserFacingError.genericMessage)
+            guard let self else { return }
+            // The offline copy's item failed after it was ready: same single switch.
+            if let fallback = self.serverFallback {
+                self.serverFallback = nil
+                self.status = .preparing
+                Task { await self.streamFromServer(fallback) }
+            } else {
+                self.status = .failed(UserFacingError.genericMessage)
+            }
         }
     }
 
@@ -80,10 +92,17 @@ final class VideoPlaybackViewModel {
     /// video pairs, where the playable pair has a different id than the
     /// still page (`livePhotoVideoId`).
     func prepare(assetID: String, baseURL: URL, token: String?, localFileURL: URL? = nil) async {
+        // A preparation in flight keeps its own fallback state.
+        guard status != .preparing else { return }
         if let localFileURL {
+            // The copy can be intact on disk and still unreadable here (a codec the
+            // device lacks) — whatever "Stream Original" says, the fallback is the
+            // server's transcode: it plays on this device, the original may not.
+            serverFallback = (ImmichAssetURL.videoPlayback(assetId: assetID, baseURL: baseURL), token)
             await prepare(url: localFileURL, assetID: assetID, token: nil)
             return
         }
+        serverFallback = nil
         // "Stream Original" (gap G22): the original file instead of the
         // server's transcode of it. The offline copy above wins over both — a
         // downloaded file is not streamed at all.
@@ -121,6 +140,33 @@ final class VideoPlaybackViewModel {
         } catch {
             // A cancelled preparation is no event, but `.preparing` would block
             // every later `prepare` (guard above): fall back to `.idle` (SP-1).
+            guard let failure = UserFacingError.from(error) else {
+                if status == .preparing { status = .idle }
+                return
+            }
+            // An unreadable offline copy: one switch to the server, with no
+            // `.failed` published in between.
+            if let fallback = serverFallback {
+                serverFallback = nil
+                await streamFromServer(fallback)
+                return
+            }
+            status = .failed(failure.message)
+        }
+    }
+
+    /// The one switch from an unreadable offline copy to the server's
+    /// transcoded stream. `status` stays `.preparing` throughout. If this
+    /// fails too, the usual error state (with "Retry") applies: the fallback
+    /// is consumed, so nothing loops.
+    private func streamFromServer(_ fallback: (url: URL, token: String?)) async {
+        status = .preparing
+        engine.reload()
+        currentTime = 0
+        duration = 0
+        do {
+            try await engine.prepare(url: fallback.url, token: fallback.token)
+        } catch {
             guard let failure = UserFacingError.from(error) else {
                 if status == .preparing { status = .idle }
                 return
@@ -184,6 +230,7 @@ final class VideoPlaybackViewModel {
     /// re-prepare cleanly.
     func reset() {
         engine.reload()
+        serverFallback = nil
         status = .idle
         preparedAssetID = nil
         currentTime = 0

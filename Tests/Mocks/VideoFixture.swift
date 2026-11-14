@@ -9,12 +9,14 @@ enum VideoFixture {
 
     /// A one-second 64×64 movie. Small, but a real MP4: `AVAssetImageGenerator`
     /// and `AVPlayer` behave exactly as they would on a server original.
-    static func makeMovieData(frameCount: Int = 15, size: Int = 64) throws -> Data {
+    static func makeMovieData(frameCount: Int = 15, size: Int = 64, optimizeForNetworkUse: Bool = false) throws -> Data {
         let url = FileManager.default.temporaryDirectory
             .appendingPathComponent("video-fixture-\(UUID().uuidString).mp4")
         defer { try? FileManager.default.removeItem(at: url) }
 
         let writer = try AVAssetWriter(outputURL: url, fileType: .mp4)
+        // `moov` before `mdat`, so a file cut inside `mdat` still loads its duration.
+        writer.shouldOptimizeForNetworkUse = optimizeForNetworkUse
         let input = AVAssetWriterInput(
             mediaType: .video,
             outputSettings: [
@@ -85,6 +87,96 @@ enum VideoFixture {
         CVPixelBufferUnlockBaseAddress(pixelBuffer, [])
         return pixelBuffer
     }
+
+    // MARK: - Intact but unreadable media (L-29)
+
+    /// A `.mov` whose container is intact and whose video track no decoder knows:
+    /// a passthrough track tagged with the FourCC `zzzz`. Its duration loads,
+    /// `isPlayable` is false: the copy a device cannot play, as a MKV would be.
+    static func makeUnsupportedCodecMovieData(frameCount: Int = 15, size: Int = 64) throws -> Data {
+        let url = FileManager.default.temporaryDirectory
+            .appendingPathComponent("video-fixture-\(UUID().uuidString).mov")
+        defer { try? FileManager.default.removeItem(at: url) }
+
+        var format: CMVideoFormatDescription?
+        let formatStatus = CMVideoFormatDescriptionCreate(
+            allocator: kCFAllocatorDefault, codecType: CMVideoCodecType(0x7A7A_7A7A),
+            width: Int32(size), height: Int32(size), extensions: nil, formatDescriptionOut: &format
+        )
+        guard formatStatus == noErr, let format else { throw VideoFixtureError.formatFailed(formatStatus) }
+
+        let writer = try AVAssetWriter(outputURL: url, fileType: .mov)
+        let input = AVAssetWriterInput(mediaType: .video, outputSettings: nil, sourceFormatHint: format)
+        input.expectsMediaDataInRealTime = false
+        guard writer.canAdd(input) else { throw VideoFixtureError.writerRejectedInput }
+        writer.add(input)
+        guard writer.startWriting() else { throw VideoFixtureError.startFailed(writer.error) }
+        writer.startSession(atSourceTime: .zero)
+
+        for frame in 0..<frameCount {
+            while !input.isReadyForMoreMediaData {
+                Thread.sleep(forTimeInterval: 0.01)
+            }
+            guard input.append(try makeSample(format: format, frame: frame)) else {
+                throw VideoFixtureError.appendFailed(writer.error)
+            }
+        }
+        input.markAsFinished()
+
+        let done = DispatchSemaphore(value: 0)
+        writer.finishWriting { done.signal() }
+        _ = done.wait(timeout: .now() + 20)
+        guard writer.status == .completed else { throw VideoFixtureError.finishFailed(writer.error) }
+
+        return try Data(contentsOf: url)
+    }
+
+    /// A real MP4 with `moov` first, cut right after the 8-byte header of its
+    /// `mdat` atom: the duration loads, the frames are missing.
+    static func makeTruncatedMovieData() throws -> Data {
+        let data = try makeMovieData(optimizeForNetworkUse: true)
+        var offset = 0
+        while offset + 8 <= data.count {
+            let size = data[offset..<offset + 4].reduce(0) { ($0 << 8) | Int($1) }
+            let type = String(decoding: data[offset + 4..<offset + 8], as: UTF8.self)
+            if type == "mdat" { return data.prefix(offset + 8) }
+            guard size >= 8 else { break }
+            offset += size
+        }
+        throw VideoFixtureError.noMediaDataAtom
+    }
+
+    private static func makeSample(format: CMVideoFormatDescription, frame: Int) throws -> CMSampleBuffer {
+        let bytes = [UInt8](repeating: UInt8(truncatingIfNeeded: frame &+ 1), count: 256)
+        var block: CMBlockBuffer?
+        var status = CMBlockBufferCreateWithMemoryBlock(
+            allocator: kCFAllocatorDefault, memoryBlock: nil, blockLength: bytes.count,
+            blockAllocator: kCFAllocatorDefault, customBlockSource: nil, offsetToData: 0,
+            dataLength: bytes.count, flags: kCMBlockBufferAssureMemoryNowFlag, blockBufferOut: &block
+        )
+        guard status == kCMBlockBufferNoErr, let block else { throw VideoFixtureError.sampleFailed(status) }
+        status = bytes.withUnsafeBytes {
+            CMBlockBufferReplaceDataBytes(
+                with: $0.baseAddress!, blockBuffer: block, offsetIntoDestination: 0, dataLength: bytes.count
+            )
+        }
+        guard status == kCMBlockBufferNoErr else { throw VideoFixtureError.sampleFailed(status) }
+
+        var timing = CMSampleTimingInfo(
+            duration: CMTime(value: 1, timescale: 15),
+            presentationTimeStamp: CMTime(value: CMTimeValue(frame), timescale: 15),
+            decodeTimeStamp: .invalid
+        )
+        var sampleSize = bytes.count
+        var sample: CMSampleBuffer?
+        status = CMSampleBufferCreateReady(
+            allocator: kCFAllocatorDefault, dataBuffer: block, formatDescription: format,
+            sampleCount: 1, sampleTimingEntryCount: 1, sampleTimingArray: &timing,
+            sampleSizeEntryCount: 1, sampleSizeArray: &sampleSize, sampleBufferOut: &sample
+        )
+        guard status == noErr, let sample else { throw VideoFixtureError.sampleFailed(status) }
+        return sample
+    }
 }
 
 enum VideoFixtureError: Error {
@@ -93,4 +185,7 @@ enum VideoFixtureError: Error {
     case appendFailed(Error?)
     case finishFailed(Error?)
     case pixelBufferFailed(CVReturn)
+    case formatFailed(OSStatus)
+    case sampleFailed(OSStatus)
+    case noMediaDataAtom
 }

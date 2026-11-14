@@ -88,6 +88,10 @@ final class DependencyContainer {
     /// time the viewer opens.
     let castService: any CastService = AirPlayCastService()
 
+    /// The system screen-lock flag (`isIdleTimerDisabled`), behind a seam: the
+    /// slideshow holds it on while it is displayed, and unit tests substitute a fake.
+    let idleTimer: any IdleTimerControlling = SystemIdleTimer()
+
     /// Backup-state mirror (G6), same shape and same reason as `offlineIndex`:
     /// one instance per process, rebuilt from the ledger on every ledger write
     /// and read by every thumbnail cell through the environment.

@@ -70,6 +70,14 @@
 		0E188CA49E1D5BE0CBAC782B /* InvitePartnerSheet.swift in Sources */ = {isa = PBXBuildFile; fileRef = B9587EEC6E24A19D7A4C2720 /* InvitePartnerSheet.swift */; };
 		0F15DFA965A44B54A1685E9A /* PhotoViewerSwipeDecisionTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8FA912A79360CEC0F4FA74B6 /* PhotoViewerSwipeDecisionTests.swift */; };
 		1414B0000000000000000003 /* ViewerZoomTransitionTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1414A0000000000000000003 /* ViewerZoomTransitionTests.swift */; };
+		29A0B0000000000000000001 /* IdleTimerControlling.swift in Sources */ = {isa = PBXBuildFile; fileRef = 29A0A0000000000000000001 /* IdleTimerControlling.swift */; };
+		29A0B0000000000000000002 /* SystemIdleTimer.swift in Sources */ = {isa = PBXBuildFile; fileRef = 29A0A0000000000000000002 /* SystemIdleTimer.swift */; };
+		29A0B0000000000000000003 /* ViewerImageFailureView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 29A0A0000000000000000003 /* ViewerImageFailureView.swift */; };
+		29A0B0000000000000000004 /* ViewerImageLoadViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 29A0A0000000000000000004 /* ViewerImageLoadViewModel.swift */; };
+		29A0B0000000000000000005 /* ViewerImageLoadViewModelTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 29A0A0000000000000000005 /* ViewerImageLoadViewModelTests.swift */; };
+		29A0B0000000000000000006 /* SystemIdleTimerTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 29A0A0000000000000000006 /* SystemIdleTimerTests.swift */; };
+		29A0B0000000000000000007 /* AVVideoPlaybackEngineTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 29A0A0000000000000000007 /* AVVideoPlaybackEngineTests.swift */; };
+		29A0B0000000000000000008 /* ViewerResilienceUITests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 29A0A0000000000000000008 /* ViewerResilienceUITests.swift */; };
 		0F328D546EF72C5A43EC4C53 /* RootView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0E3F725CF1DAB9C1E71FED8C /* RootView.swift */; };
 		0F4B54EE5AF64A135626E9C5 /* ImmichAPIClientTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = DD85A6F27E6B002D433EE957 /* ImmichAPIClientTests.swift */; };
 		102BF0407D14BA724F09B5AB /* LanguageSettingsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 516780D2BCB14922A880B766 /* LanguageSettingsView.swift */; };
@@ -1094,6 +1102,14 @@
 		8F3CC41BE0841865DDCC77FE /* TimelineView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TimelineView.swift; sourceTree = "<group>"; };
 		8FA912A79360CEC0F4FA74B6 /* PhotoViewerSwipeDecisionTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PhotoViewerSwipeDecisionTests.swift; sourceTree = "<group>"; };
 		1414A0000000000000000003 /* ViewerZoomTransitionTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ViewerZoomTransitionTests.swift; sourceTree = "<group>"; };
+		29A0A0000000000000000001 /* IdleTimerControlling.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = IdleTimerControlling.swift; sourceTree = "<group>"; };
+		29A0A0000000000000000002 /* SystemIdleTimer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SystemIdleTimer.swift; sourceTree = "<group>"; };
+		29A0A0000000000000000003 /* ViewerImageFailureView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ViewerImageFailureView.swift; sourceTree = "<group>"; };
+		29A0A0000000000000000004 /* ViewerImageLoadViewModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ViewerImageLoadViewModel.swift; sourceTree = "<group>"; };
+		29A0A0000000000000000005 /* ViewerImageLoadViewModelTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ViewerImageLoadViewModelTests.swift; sourceTree = "<group>"; };
+		29A0A0000000000000000006 /* SystemIdleTimerTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SystemIdleTimerTests.swift; sourceTree = "<group>"; };
+		29A0A0000000000000000007 /* AVVideoPlaybackEngineTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AVVideoPlaybackEngineTests.swift; sourceTree = "<group>"; };
+		29A0A0000000000000000008 /* ViewerResilienceUITests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ViewerResilienceUITests.swift; sourceTree = "<group>"; };
 		8FD4678BF9AC2355AC59D544 /* immich_stub_local_library.py */ = {isa = PBXFileReference; lastKnownFileType = text.script.python; path = immich_stub_local_library.py; sourceTree = "<group>"; };
 		8FDDC8C15182914EB1CB4D3C /* MockPhotoLibraryService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MockPhotoLibraryService.swift; sourceTree = "<group>"; };
 		908F137389F63CA8A90E5B5E /* SearchFilterDTOs.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SearchFilterDTOs.swift; sourceTree = "<group>"; };
@@ -1556,6 +1572,7 @@
 				1A01B74770A0F6AB7E2EA348 /* AppLogStore.swift */,
 				27F15786B27F07E89F8E6DC3 /* AssetFileTransfer.swift */,
 				CF59DA9133D4929044AB198C /* AuthenticatedAsyncImage.swift */,
+				29A0A0000000000000000002 /* SystemIdleTimer.swift */,
 				324603CD70D1FFDA9575AA93 /* AVVideoPlaybackEngine.swift */,
 				B07A5F2A47B9299F033309AE /* BackgroundBackupScheduling.swift */,
 				1FF43F4AECC7F357BDA161FA /* BackupEngine.swift */,
@@ -1732,6 +1749,7 @@
 				19228B23E7674EA5BE6AA5AF /* PhotoLibraryService.swift */,
 				6B809395179EFC13C5A424BE /* TrustedServerStore.swift */,
 				008EFA8FA5F57D82C472BDA7 /* VideoPlaybackEngine.swift */,
+				29A0A0000000000000000001 /* IdleTimerControlling.swift */,
 			);
 			path = Protocols;
 			sourceTree = "<group>";
@@ -1933,6 +1951,9 @@
 				2D304BADD551486F5FA7E8BF /* PhotoViewerArchiveActionTests.swift */,
 				8FA912A79360CEC0F4FA74B6 /* PhotoViewerSwipeDecisionTests.swift */,
 				1414A0000000000000000003 /* ViewerZoomTransitionTests.swift */,
+				29A0A0000000000000000005 /* ViewerImageLoadViewModelTests.swift */,
+				29A0A0000000000000000006 /* SystemIdleTimerTests.swift */,
+				29A0A0000000000000000007 /* AVVideoPlaybackEngineTests.swift */,
 				F7D1D90459AF88C50049CAB5 /* PhotoViewerTopBarLayoutTests.swift */,
 				72BCC89BE645699ADC4BDC14 /* PinnedHeaderResolverTests.swift */,
 				8D53BE0FB493BC5617ABCB96 /* ProfilePictureViewModelTests.swift */,
@@ -2454,6 +2475,7 @@
 				D6D13AA3CE7A3AE9BDB68B4D /* VideoPlayerLayoutUITests.swift */,
 				84531B07C3EA859178C90796 /* ViewerTopBarUITests.swift */,
 				1414A0000000000000000004 /* ViewerZoomUITests.swift */,
+				29A0A0000000000000000008 /* ViewerResilienceUITests.swift */,
 				F10018180000000A /* ReduceMotionUITests.swift */,
 				F0811A00478B347A7005063B /* WhatsNewUITests.swift */,
 				C09E1CA1B2C3D4E5F6A7B8C9 /* CustomHeadersUITests.swift */,
@@ -2563,6 +2585,8 @@
 				7033916824290F1F230DBA38 /* OcrOverlayView.swift */,
 				D790EC18810C2C059DF078E5 /* OcrOverlayViewModel.swift */,
 				512A91B0BDC74B23033AEF0C /* AssetPixelSizeViewModel.swift */,
+				29A0A0000000000000000003 /* ViewerImageFailureView.swift */,
+				29A0A0000000000000000004 /* ViewerImageLoadViewModel.swift */,
 				0214052A9C938F92C8E2FA8E /* ZoomGeometry.swift */,
 				1414A0000000000000000001 /* ViewerZoomTransition.swift */,
 				1414A0000000000000000002 /* ViewerZoomSource.swift */,
@@ -3071,6 +3095,9 @@
 				6107455C6D06F33017A6180B /* PhotoViewerArchiveActionTests.swift in Sources */,
 				0F15DFA965A44B54A1685E9A /* PhotoViewerSwipeDecisionTests.swift in Sources */,
 				1414B0000000000000000003 /* ViewerZoomTransitionTests.swift in Sources */,
+				29A0B0000000000000000005 /* ViewerImageLoadViewModelTests.swift in Sources */,
+				29A0B0000000000000000006 /* SystemIdleTimerTests.swift in Sources */,
+				29A0B0000000000000000007 /* AVVideoPlaybackEngineTests.swift in Sources */,
 				9C1B173660659C6FCDA0DD97 /* PhotoViewerTopBarLayoutTests.swift in Sources */,
 				773A2F8FE5D391B22CA4DAA4 /* PinnedHeaderResolverTests.swift in Sources */,
 				83A590D7CC1B15F3C62E5EAE /* ProfilePictureViewModelTests.swift in Sources */,
@@ -3181,6 +3208,7 @@
 				290377155419160F014EAC10 /* VideoPlayerLayoutUITests.swift in Sources */,
 				E8EAA4674BEC0F44188B0EE8 /* ViewerTopBarUITests.swift in Sources */,
 				1414B0000000000000000004 /* ViewerZoomUITests.swift in Sources */,
+				29A0B0000000000000000008 /* ViewerResilienceUITests.swift in Sources */,
 				F100181800000009 /* ReduceMotionUITests.swift in Sources */,
 				E09ADD5088E5F330E8B782CA /* WhatsNewUITests.swift in Sources */,
 			);
@@ -3393,6 +3421,10 @@
 				7054B0C13EF885F5CC0A1C92 /* OcrOverlayView.swift in Sources */,
 				19784DEA4AA5EB47BEF7210C /* OcrOverlayViewModel.swift in Sources */,
 				F66E0A0679D0D191A6A759F2 /* AssetPixelSizeViewModel.swift in Sources */,
+				29A0B0000000000000000001 /* IdleTimerControlling.swift in Sources */,
+				29A0B0000000000000000002 /* SystemIdleTimer.swift in Sources */,
+				29A0B0000000000000000003 /* ViewerImageFailureView.swift in Sources */,
+				29A0B0000000000000000004 /* ViewerImageLoadViewModel.swift in Sources */,
 				1F95C6BD975FA726BA8317E5 /* ZoomGeometry.swift in Sources */,
 				1414B0000000000000000001 /* ViewerZoomTransition.swift in Sources */,
 				1414B0000000000000000002 /* ViewerZoomSource.swift in Sources */,
