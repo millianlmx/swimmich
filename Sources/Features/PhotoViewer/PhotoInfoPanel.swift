@@ -29,7 +29,7 @@ struct PhotoInfoPanel: View {
     /// so a presentation owns exactly the state it shows.
     var troubleshoot: AssetTroubleshootViewModel = DependencyContainer.shared.makeAssetTroubleshootViewModel()
 
-    @State private var presentAdjustLocation = false
+    @State private var adjustLocation: AdjustLocationViewModel?
     @State private var presentAdjustDate = false
     @State private var selectedFace: AssetFaceResponseDto?
     @State private var presentTags = false
@@ -43,14 +43,12 @@ struct PhotoInfoPanel: View {
                 .padding(.vertical, PVSpacing.s8)
             content
         }
-        .sheet(isPresented: $presentAdjustLocation) {
-            if let vm {
-                AdjustLocationSheet(asset: asset, vm: vm) { _ in
-                    presentAdjustLocation = false
-                }
-                .presentationDetents([.fraction(0.75)])
-                .presentationDragIndicator(.visible)
+        .sheet(item: $adjustLocation) { model in
+            AdjustLocationSheet(vm: model) { _ in
+                adjustLocation = nil
             }
+            .presentationDetents([.fraction(0.75), .large])
+            .presentationDragIndicator(.visible)
         }
         .sheet(isPresented: $presentAdjustDate) {
             if let vm {
@@ -152,7 +150,14 @@ struct PhotoInfoPanel: View {
                     fallbackLongitude: asset.longitude,
                     onOpenInMaps: onOpenInMaps,
                     onOpenLocationMap: onOpenLocationMap,
-                    onAdjustLocation: allowsOwnerEdits ? { presentAdjustLocation = true } : nil,
+                    onAdjustLocation: allowsOwnerEdits ? {
+                        if let vm {
+                            adjustLocation = AdjustLocationViewModel(
+                                detail: vm,
+                                location: DependencyContainer.shared.deviceLocation
+                            )
+                        }
+                    } : nil,
                     onAdjustDate: allowsOwnerEdits ? { presentAdjustDate = true } : nil
                 )
                 .padding(.horizontal, PVSpacing.s16)
@@ -466,7 +471,7 @@ struct ExifInfoPanel: View {
     private var whereCard: some View {
         let lat = exif.latitude ?? fallbackLatitude
         let lon = exif.longitude ?? fallbackLongitude
-        if !whereItems.isEmpty || lat != nil {
+        if !whereItems.isEmpty || (lat != nil && lon != nil) || onAdjustLocation != nil {
             InfoCard {
                 VStack(spacing: 0) {
                     if !whereItems.isEmpty {
@@ -497,6 +502,11 @@ struct ExifInfoPanel: View {
                             InfoCardDivider()
                             actionRow(latitude: lat, longitude: lon)
                         }
+                    } else if let onAdjustLocation {
+                        if !whereItems.isEmpty {
+                            InfoCardDivider()
+                        }
+                        addLocationRow(onAdjustLocation)
                     }
                 }
             }
@@ -524,8 +534,29 @@ struct ExifInfoPanel: View {
                         .frame(maxWidth: .infinity)
                 }
                 .accessibilityLabel("Adjust Location")
+                .accessibilityIdentifier("adjustLocationButton")
             }
         }
+        .font(.pvBody.weight(.medium))
+        .foregroundStyle(Color.textPrimaryPV)
+        .buttonStyle(.plain)
+        .padding(.horizontal, PVSpacing.s16)
+        .padding(.vertical, PVSpacing.s12)
+        .background(RoundedRectangle(cornerRadius: PVRadius.md, style: .continuous).fill(Color.gray.opacity(0.12)))
+        .padding(PVSpacing.s12)
+    }
+
+    /// A photo without coordinates: one entry that opens the same sheet with
+    /// empty fields (owner only, like "Adjust Location").
+    private func addLocationRow(_ action: @escaping () -> Void) -> some View {
+        Button {
+            action()
+        } label: {
+            Label("Add Location", systemImage: "mappin.and.ellipse")
+                .frame(maxWidth: .infinity)
+        }
+        .accessibilityLabel("Add Location")
+        .accessibilityIdentifier("addLocationButton")
         .font(.pvBody.weight(.medium))
         .foregroundStyle(Color.textPrimaryPV)
         .buttonStyle(.plain)
@@ -764,7 +795,20 @@ struct MiniMapView: UIViewRepresentable {
     }
 
     func updateUIView(_ map: MKMapView, context: Context) {
-        // Static snapshot — nothing to update.
+        // Follow the coordinates: after the location is corrected the same
+        // view survives, so move the pin and re-centre (no re-creation).
+        guard let annotation = map.annotations.compactMap({ $0 as? MKPointAnnotation }).first,
+              abs(annotation.coordinate.latitude - latitude) > 1e-9
+                || abs(annotation.coordinate.longitude - longitude) > 1e-9 else { return }
+        let coordinate = CLLocationCoordinate2D(latitude: latitude, longitude: longitude)
+        annotation.coordinate = coordinate
+        map.setRegion(
+            MKCoordinateRegion(
+                center: coordinate,
+                span: MKCoordinateSpan(latitudeDelta: 0.01, longitudeDelta: 0.01)
+            ),
+            animated: false
+        )
     }
 
     final class Coordinator: NSObject, MKMapViewDelegate {
