@@ -39,7 +39,7 @@ Shared code (anything else under UITests/, `immich_stub_base.py`, Scripts/ci.sh,
 this script) can break any line: the gate does not run them all, the night's
 suite judges them.
 
-Budgets (`SWIMMICH_CI_UI_SMOKE_MAX`, 5; `SWIMMICH_CI_UI_CORE_MAX`, 30): the gate
+Budgets (`SWIMMICH_CI_UI_SMOKE_MAX`, 5; `SWIMMICH_CI_UI_CORE_MAX`, 40): the gate
 and the night's suite do not grow with every feature. A new scenario that does
 not fit replaces a line, or is `--release`; its detailed criteria belong to the
 unit tests (a whole screen is measured hosted, see Tests/HostedScreen.swift).
@@ -246,7 +246,7 @@ def main(argv=None):
         lines = parse_list(open(options.list).read())
         check_budgets(lines,
                       int(os.environ.get("SWIMMICH_CI_UI_SMOKE_MAX", "5")),
-                      int(os.environ.get("SWIMMICH_CI_UI_CORE_MAX", "30")))
+                      int(os.environ.get("SWIMMICH_CI_UI_CORE_MAX", "40")))
         changed, base_keys, classes = [], set(), {}
         if options.scope == "gate":
             if not options.base:

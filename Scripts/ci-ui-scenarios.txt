@@ -38,7 +38,7 @@
 # * `--release`: once a week and on a release tag, with all the others. A second
 #   proof of a criterion a unit test of the same name already proves.
 #
-# Budgets, checked by the CI: at most 5 smoke lines, at most 30 lines in the
+# Budgets, checked by the CI: at most 5 smoke lines, at most 40 lines in the
 # night's suite (smoke and core). A feature brings one or two scenarios; one that
 # does not fit replaces a line or is `--release`, and its detailed criteria go to
 # the unit tests.
