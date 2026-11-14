@@ -5,33 +5,41 @@ name: CI
 # purpose: the runner is a self-hosted Mac, and a fork's pull request must never
 # run code on it.
 #
-# Two suites (`SWIMMICH_CI_UI_SCOPE` of Scripts/ci.sh):
+# Three suites over one list, Scripts/ci-ui-scenarios.txt, whose lines carry a
+# tier (`SWIMMICH_CI_UI_SCOPE` of Scripts/ci.sh, Scripts/ci_ui_select.py):
 #
 # * the gate, on every push: the build, the unit tests, the i18n audit, the UI
-#   scenarios the push changed and the smoke lines of Scripts/ci-ui-scenarios.txt.
-#   Under 10 minutes; it is the check the branch protection of `main` requires.
-# * the full suite, every UI scenario of the list (about 50 minutes): every night
-#   on `main`, on a `v*` tag before its IPA, and on demand (Run workflow, "full").
-#   A scenario outside the smoke lines that a merge broke turns the night's run
-#   red: it is fixed the next morning, it does not hold every push for an hour.
+#   scenarios the push changed and the smoke lines. About 5 minutes; it is the
+#   check the branch protection of `main` requires.
+# * the core suite, every night on `main`: the smoke lines and the journeys and
+#   sole proofs of each feature (about 25 minutes). A scenario a merge broke
+#   turns the night's run red: fixed the next morning, it does not hold every
+#   push for an hour.
+# * the release suite, every line (about 50 minutes): on Sunday night, and on a
+#   `v*` tag before its IPA.
 #
-# On `main` and on `v*` tags, once the gate passes (and, on a tag, the full
+# Run workflow offers the three (`suite`).
+#
+# On `main` and on `v*` tags, once the gate passes (and, on a tag, the release
 # suite), a last job archives in Release and keeps the IPA signed for the App
 # Store as an artifact. Nothing is uploaded to App Store Connect.
 on:
   push:
   schedule:
-    # 03:23 UTC. A schedule only runs on the default branch.
-    - cron: "23 3 * * *"
+    # 03:23 UTC. A schedule only runs on the default branch. Monday to Saturday:
+    # the core suite; Sunday: the release suite (see `ui-suite` below).
+    - cron: "23 3 * * 1-6"
+    - cron: "23 3 * * 0"
   workflow_dispatch:
     inputs:
-      full:
-        description: Also run the full UI suite (about 50 minutes)
-        type: boolean
-        default: false
+      suite:
+        description: UI scenarios to run beside the gate
+        type: choice
+        options: [gate, core, all]
+        default: gate
 
 # Per ref and per event: a push to `main` cancels the gate of the push before it,
-# not the night's full suite (which has its own group below).
+# not the night's suite (which has its own group below).
 concurrency:
   group: ci-${{ github.ref }}-${{ github.event_name }}
   cancel-in-progress: true
@@ -43,7 +51,7 @@ jobs:
   unit-tests:
     # Required by the branch protection of `main` under this exact name.
     name: Unit tests (iOS simulator)
-    # The night's run is the full suite alone: it runs the unit tests too.
+    # A scheduled run is the suite alone: it runs the unit tests too.
     if: github.event_name != 'schedule'
     runs-on: [self-hosted, macOS, ARM64, xcode]
     timeout-minutes: 45
@@ -71,22 +79,24 @@ jobs:
           path: build/ci/
           retention-days: 7
 
-  ui-full:
-    name: Full UI suite (iOS simulator)
+  ui-suite:
+    name: UI suite (iOS simulator)
     if: >-
       github.event_name == 'schedule'
       || startsWith(github.ref, 'refs/tags/v')
-      || (github.event_name == 'workflow_dispatch' && inputs.full)
+      || (github.event_name == 'workflow_dispatch' && inputs.suite != 'gate')
     runs-on: [self-hosted, macOS, ARM64, xcode]
     timeout-minutes: 120
-    # One full suite at a time on the whole repository, never cancelled: the
-    # runners share one Mac, and two full suites side by side (two pools of
-    # simulators) take longer than one after the other.
+    # One suite at a time on the whole repository, never cancelled: the runners
+    # share one Mac, and two suites side by side (two pools of simulators) take
+    # longer than one after the other.
     concurrency:
-      group: ci-ui-full
+      group: ci-ui-suite
       cancel-in-progress: false
     env:
-      SWIMMICH_CI_UI_SCOPE: all
+      # The core suite on a weekday night (or asked for); every line otherwise:
+      # Sunday night, a release tag, "all".
+      SWIMMICH_CI_UI_SCOPE: ${{ (github.event.schedule == '23 3 * * 1-6' || inputs.suite == 'core') && 'core' || 'all' }}
     steps:
       - uses: actions/checkout@v4
 
@@ -95,26 +105,26 @@ jobs:
           xcodebuild -version
           xcodegen --version
 
-      - name: Build, run unit tests and every listed UI scenario
+      - name: Build, run unit tests and the suite's UI scenarios
         run: Scripts/ci.sh
 
       - name: Keep the result bundles and stub logs
         if: failure()
         uses: actions/upload-artifact@v4
         with:
-          name: test-results-full
+          name: test-results-suite
           path: build/ci/
           retention-days: 7
 
   ipa:
     name: Signed IPA
-    needs: [unit-tests, ui-full]
-    # A skipped `ui-full` (a push to `main`) does not hold the IPA; a failed one
+    needs: [unit-tests, ui-suite]
+    # A skipped `ui-suite` (a push to `main`) does not hold the IPA; a failed one
     # (a tag) does. `always()`: without it a skipped need skips this job.
     if: >-
       always()
       && needs.unit-tests.result == 'success'
-      && (needs.ui-full.result == 'success' || needs.ui-full.result == 'skipped')
+      && (needs.ui-suite.result == 'success' || needs.ui-suite.result == 'skipped')
       && (github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/tags/v'))
     runs-on: [self-hosted, macOS, ARM64, xcode]
     timeout-minutes: 45
