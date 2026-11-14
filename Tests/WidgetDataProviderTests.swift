@@ -121,6 +121,8 @@ final class WidgetDataProviderTests: XCTestCase {
         // The thumbnails are fetched concurrently, so assert the set, not the order.
         let thumbnails = requests.filter { $0.url?.path.contains("/thumbnail") == true }
         XCTAssertEqual(thumbnails.count, 3)
+        // L-21 (AC-183): a widget shows the version edited on the server, asked for explicitly.
+        XCTAssertTrue(thumbnails.allSatisfy { url($0).contains("edited=true") }, "every widget thumbnail asks edited=true")
         let previews = thumbnails.filter { url($0).contains("size=preview") }
         XCTAssertEqual(previews.count, 1, "the hero is the one big render")
         XCTAssertTrue(url(previews[0]).contains("/api/assets/hero/thumbnail"))

@@ -180,6 +180,20 @@ final class ReadOnlyGuardClient: ImmichClient {
         return try await inner.updateAsset(id: id, dto: dto)
     }
 
+    func getAssetEdits(id: String) async throws -> AssetEditsResponseDto {
+        try await inner.getAssetEdits(id: id)
+    }
+
+    func putAssetEdits(id: String, edits: [AssetEditItem]) async throws -> AssetEditsResponseDto {
+        try assertWritable()
+        return try await inner.putAssetEdits(id: id, edits: edits)
+    }
+
+    func deleteAssetEdits(id: String) async throws {
+        try assertWritable()
+        try await inner.deleteAssetEdits(id: id)
+    }
+
     func setAssetRating(id: String, rating: Int?) async throws -> AssetResponseDto {
         try assertWritable()
         return try await inner.setAssetRating(id: id, rating: rating)
@@ -730,8 +744,8 @@ final class ReadOnlyGuardClient: ImmichClient {
         try await inner.downloadInfo(assetIds: assetIds, albumId: albumId)
     }
 
-    func originalRequest(assetId: String) throws -> URLRequest {
-        try inner.originalRequest(assetId: assetId)
+    func originalRequest(assetId: String, edited: Bool) throws -> URLRequest {
+        try inner.originalRequest(assetId: assetId, edited: edited)
     }
 
     func downloadArchiveRequest(archiveName: String, assetIds: [String], edited: Bool) throws -> URLRequest {

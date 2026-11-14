@@ -230,7 +230,7 @@ final class ImmichAPIClientTests: XCTestCase {
         )
         XCTAssertEqual(
             url.absoluteString,
-            "https://photos.example.com/api/assets/abc123/thumbnail?size=thumbnail&c=xyz"
+            "https://photos.example.com/api/assets/abc123/thumbnail?size=thumbnail&c=xyz&edited=true"
         )
     }
 
@@ -1029,6 +1029,81 @@ final class ImmichAPIClientTests: XCTestCase {
         let body = String(decoding: CapturingURLProtocol.lastBody, as: UTF8.self)
         XCTAssertTrue(body.contains(#""ids":["a1","a2"]"#))
         XCTAssertTrue(body.contains(#""visibility":"archive""#))
+    }
+
+    // MARK: - Asset edits (GET/PUT/DELETE /api/assets/{id}/edits)
+
+    private func makeEditsClient() -> ImmichAPIClient {
+        let client = ImmichAPIClient(session: makeMockedSession())
+        client.configure(baseURL: URL(string: "https://example.com")!, token: "tok")
+        return client
+    }
+
+    func test_AC_181_putAssetEditsBody() async throws {
+        let client = makeEditsClient()
+        CapturingURLProtocol.nextData = Data(#"{"assetId":"a1","edits":[{"id":"e1","action":"mirror","parameters":{"axis":"vertical"}}]}"#.utf8)
+
+        let response = try await client.putAssetEdits(id: "a1", edits: [
+            .crop(x: 750, y: 1000, width: 1500, height: 2000), .mirror(.vertical), .rotate(angle: 90)
+        ])
+
+        let captured = try XCTUnwrap(CapturingURLProtocol.lastRequest)
+        XCTAssertEqual(captured.httpMethod, "PUT")
+        XCTAssertEqual(captured.url?.path, "/api/assets/a1/edits")
+        let body = try decodedBody()
+        XCTAssertEqual(Set(body.keys), ["edits"])
+        let expected: [[String: Any]] = [
+            ["action": "crop", "parameters": ["x": 750, "y": 1000, "width": 1500, "height": 2000]],
+            ["action": "mirror", "parameters": ["axis": "vertical"]],
+            ["action": "rotate", "parameters": ["angle": 90]]
+        ]
+        XCTAssertEqual(body["edits"] as? NSArray, expected as NSArray, "the array order is significant")
+        XCTAssertEqual(response, AssetEditsResponseDto(assetId: "a1", edits: [.mirror(.vertical)]))
+    }
+
+    /// AC-40: the single-file download asks `edited` explicitly, for the original and for the edited file.
+    func test_AC_40_originalRequestCarriesEditedExplicitly() throws {
+        let client = makeEditsClient()
+        for edited in [true, false] {
+            let request = try client.originalRequest(assetId: "a1", edited: edited)
+            XCTAssertEqual(request.httpMethod, "GET")
+            XCTAssertEqual(request.url?.path, "/api/assets/a1/original")
+            let query = URLComponents(url: try XCTUnwrap(request.url), resolvingAgainstBaseURL: false)?.queryItems
+            XCTAssertEqual(query?.first(where: { $0.name == "edited" })?.value, edited ? "true" : "false")
+            XCTAssertNotNil(request.value(forHTTPHeaderField: "Authorization"), "the bearer stays on the request")
+        }
+    }
+
+    func test_AC_182_getAndDeleteAssetEditsRoutes() async throws {
+        let client = makeEditsClient()
+        CapturingURLProtocol.nextData = Data(#"{"assetId":"a1","edits":[{"id":"e1","action":"rotate","parameters":{"angle":90}}]}"#.utf8)
+        let response = try await client.getAssetEdits(id: "a1")
+        var captured = try XCTUnwrap(CapturingURLProtocol.lastRequest)
+        XCTAssertEqual(captured.httpMethod, "GET")
+        XCTAssertEqual(captured.url?.path, "/api/assets/a1/edits")
+        XCTAssertEqual(response.edits, [.rotate(angle: 90)])
+
+        CapturingURLProtocol.nextData = Data()
+        CapturingURLProtocol.nextStatus = 204
+        try await client.deleteAssetEdits(id: "a1")
+        captured = try XCTUnwrap(CapturingURLProtocol.lastRequest)
+        XCTAssertEqual(captured.httpMethod, "DELETE")
+        XCTAssertEqual(captured.url?.path, "/api/assets/a1/edits")
+        XCTAssertTrue(CapturingURLProtocol.lastBody.isEmpty, "DELETE carries no body")
+    }
+
+    func test_AC_189_putAssetEdits500Throws() async {
+        let client = makeEditsClient()
+        CapturingURLProtocol.nextStatus = 500
+        CapturingURLProtocol.nextData = Data(#"{"message":"boom"}"#.utf8)
+        do {
+            _ = try await client.putAssetEdits(id: "a1", edits: [.mirror(.horizontal)])
+            XCTFail("expected a server error")
+        } catch let error as APIError {
+            guard case .serverError(500, _) = error else { return XCTFail("unexpected \(error)") }
+        } catch {
+            XCTFail("unexpected \(error)")
+        }
     }
 
     // MARK: - Asset update verb (PUT /api/assets/{id}; PATCH 404s on v2.x servers)
@@ -1880,7 +1955,7 @@ final class ImmichAPIClientTests: XCTestCase {
         _ = try await client.validateToken()
         assertCarries("validateToken", authenticated: true)
 
-        let original = try client.originalRequest(assetId: "a1")
+        let original = try client.originalRequest(assetId: "a1", edited: false)
         XCTAssertEqual(original.value(forHTTPHeaderField: "X-Access"), "secret")
         XCTAssertEqual(original.value(forHTTPHeaderField: "Authorization"), "Bearer tok")
 
@@ -1964,7 +2039,7 @@ final class ImmichAPIClientTests: XCTestCase {
         XCTAssertEqual(request.value(forHTTPHeaderField: "x-immich-user-token"), "tok")
         XCTAssertEqual(request.allHTTPHeaderFields?.values.filter { $0.contains("Bearer") }.count, 0)
 
-        let original = try client.originalRequest(assetId: "a1")
+        let original = try client.originalRequest(assetId: "a1", edited: false)
         XCTAssertEqual(original.value(forHTTPHeaderField: "Authorization"), "Basic dXNlcjpwYXNz")
         XCTAssertEqual(original.value(forHTTPHeaderField: "x-immich-user-token"), "tok")
 

@@ -26,8 +26,8 @@ import UIKit
 /// The pixel size can arrive after the image (a grid item carries none, the page
 /// reads the record once): when the ceiling or the fitted rect then changes, the
 /// scale and offset are settled under the new values. While the image is
-/// displayed the ceiling follows the original's EXIF; when L-21 shows the edited
-/// version here, `AssetPixelSizeViewModel` must apply the `isEdited` rule too.
+/// displayed the ceiling follows the displayed version's size: an edited photo (`isEdited`) counts
+/// as unknown size in `AssetPixelSizeViewModel`, like on a shared link.
 struct ZoomableImageView: View {
     @PVReduceMotion private var reduceMotion
     let asset: AssetReactItem
@@ -95,7 +95,8 @@ struct ZoomableImageView: View {
         sharedLink: SharedLinkCredential? = nil
     ) -> URL {
         loadOriginal
-            ? ImmichAssetURL.original(assetId: asset.id, baseURL: baseURL, sharedLink: sharedLink)
+            ? ImmichAssetURL.original(assetId: asset.id, baseURL: baseURL, sharedLink: sharedLink, edited: true,
+                                      cacheKey: asset.thumbhash)
             : asset.thumbnailURL(base: baseURL, size: .preview, sharedLink: sharedLink)
     }
 

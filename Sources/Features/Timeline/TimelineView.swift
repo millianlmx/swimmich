@@ -66,6 +66,8 @@ struct TimelineView: View {
     @State private var lastDeleteTick = 0
     @State private var lastSelectionTick = 0
     @State private var pendingDeleteSelected = false
+    /// The selection waiting for the "edited version or original" answer (L-21).
+    @State private var pendingDownloadSelection: [AssetReactItem]?
     @State private var pendingDeleteSingleID: String?
     @State private var presentAlbumPicker = false // AC-515 — Add to Album sheet
     @State private var viewerItem: PhotoViewerItem? // Full-screen photo viewer
@@ -359,6 +361,20 @@ struct TimelineView: View {
             baseColumns = newValue
             columnCount = newValue
             gridScale = TimelineGridZoom.scale(forColumnCount: newValue, defaultColumns: newValue)
+        }
+        // L-21: the selection may hold photos edited on the server — which file does the user want?
+        .alert(
+            "Which version?",
+            isPresented: Binding(get: { pendingDownloadSelection != nil }, set: { if !$0 { pendingDownloadSelection = nil } }),
+            presenting: pendingDownloadSelection
+        ) { selection in
+            Button("Edited version") { downloadSelection(selection, edited: true) }
+                .accessibilityIdentifier("downloadChoiceEdited")
+            Button("Original") { downloadSelection(selection, edited: false) }
+                .accessibilityIdentifier("downloadChoiceOriginal")
+            Button("Cancel", role: .cancel) {}
+        } message: { _ in
+            Text("Photos with edits saved on the server come as edited or as uploaded.")
         }
         .alert("Delete \(vm.ownerScopedSelection(currentUserId: auth.userId).ids.count) assets?", isPresented: $pendingDeleteSelected) {
             Button("Delete", role: .destructive) {
@@ -886,11 +902,17 @@ struct TimelineView: View {
                 // Download selected (gap G10) — a batch goes to the process-wide
                 // queue, which announces it to the server before streaming
                 // (the server refuses a batch it was never told about). The
-                // selection is the grid's, in grid order.
+                // selection is the grid's, in grid order. Whether a photo of it is edited is not known
+                // here, so on a server that serves edits the user is asked which version to take (L-21).
                 Button {
                     Task {
-                        await downloads.enqueue(assets: vm.items.filter { vm.selectedIds.contains($0.id) })
-                        vm.exitSelectionMode()
+                        let selection = vm.items.filter { vm.selectedIds.contains($0.id) }
+                        if await downloads.offersEditedChoice(forSelectionOf: selection) {
+                            pendingDownloadSelection = selection
+                        } else {
+                            await downloads.enqueue(assets: selection, edited: false)
+                            vm.exitSelectionMode()
+                        }
                     }
                 } label: {
                     Label("Download", systemImage: "arrow.down.circle")
@@ -899,6 +921,14 @@ struct TimelineView: View {
                 .disabled(vm.selectedIds.isEmpty)
                 .accessibilityIdentifier("downloadSelectionButton")
             }
+        }
+    }
+
+    /// The answer to "edited version or original": the whole selection goes to the queue with that choice.
+    private func downloadSelection(_ selection: [AssetReactItem], edited: Bool) {
+        Task {
+            await downloads.enqueue(assets: selection, edited: edited)
+            vm.exitSelectionMode()
         }
     }
 

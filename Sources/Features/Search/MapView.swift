@@ -33,6 +33,12 @@ struct MapSegmentView: View {
     /// so it has to come down before the settings sheet can go up; this
     /// remembers to put it back when settings closes.
     @State private var restorePhotoSheet = false
+    @Environment(\.openURL) private var openURL
+    /// Whether the "why My Location did nothing" alert is up. The photo sheet
+    /// is presented by `RootView` on the same host controller, so it comes down
+    /// while the alert is up (same constraint as the settings sheet).
+    @State private var showLocationNotice = false
+    @State private var restorePhotoSheetAfterNotice = false
 
     var body: some View {
         Group {
@@ -48,6 +54,9 @@ struct MapSegmentView: View {
             await vm.loadMarkers()
             isLoadingPhotos = false
         }
+        // The position dot only ever follows an existing permission: reading it
+        // asks the user nothing.
+        .task { await vm.refreshLocationAuthorization() }
         .onAppear {
             // Re-present the photo sheet when the map segment is re-entered
             // (the onChange below only fires when `isEmpty` *changes*, so
@@ -95,6 +104,34 @@ struct MapSegmentView: View {
                 DispatchQueue.main.async { vm.isPhotoSheetPresented = true }
             }
         }
+        .onChange(of: vm.locationNotice) { _, notice in
+            guard notice != nil else { return }
+            restorePhotoSheetAfterNotice = vm.isPhotoSheetPresented
+            vm.isPhotoSheetPresented = false
+            showLocationNotice = true
+        }
+        .alert(
+            vm.locationNotice?.title ?? "",
+            isPresented: $showLocationNotice,
+            presenting: vm.locationNotice
+        ) { notice in
+            if notice.offersSettings {
+                Button("Open Settings") { openAppSettings() }
+                Button("Cancel", role: .cancel) {}
+            } else {
+                Button("OK", role: .cancel) {}
+            }
+        } message: { notice in
+            Text(notice.message)
+        }
+        .onChange(of: showLocationNotice) { _, isShown in
+            guard !isShown else { return }
+            vm.locationNotice = nil
+            guard restorePhotoSheetAfterNotice else { return }
+            restorePhotoSheetAfterNotice = false
+            guard !vm.visiblePhotos.isEmpty else { return }
+            DispatchQueue.main.async { vm.isPhotoSheetPresented = true }
+        }
     }
 
     /// Opens the settings sheet. The photo sheet is presented by `RootView` on
@@ -104,6 +141,12 @@ struct MapSegmentView: View {
         restorePhotoSheet = vm.isPhotoSheetPresented
         vm.isPhotoSheetPresented = false
         presentSettings = true
+    }
+
+    /// Opens Swimmich's page in the Settings app (where the location permission lives).
+    private func openAppSettings() {
+        guard let url = URL(string: UIApplication.openSettingsURLString) else { return }
+        openURL(url)
     }
 
     private var mapContent: some View {
@@ -132,7 +175,10 @@ struct MapSegmentView: View {
                 onMarkerDeselected: {
                     Task { @MainActor in vm.deselectMarker() }
                 },
-                interfaceStyle: vm.settings.theme.interfaceStyle
+                interfaceStyle: vm.settings.theme.interfaceStyle,
+                showsUserLocation: vm.showsUserLocation,
+                centerRequest: vm.centerRequest,
+                animatesRecentering: !reduceMotion
             )
             .ignoresSafeArea()
 
@@ -161,6 +207,7 @@ struct MapSegmentView: View {
             // spinner capsule).
             PVAdaptiveStack(hAlignment: .center, vAlignment: .trailing, spacing: PVSpacing.s8) {
                 if !vm.filter.isEmpty { activeFilterBadge }
+                myLocationButton
                 settingsButton
             }
             .frame(maxWidth: .infinity, alignment: .trailing)
@@ -176,6 +223,17 @@ struct MapSegmentView: View {
             if !vm.filter.isEmpty, vm.markers.isEmpty, !isLoadingPhotos, !vm.isLoading {
                 filteredEmptyOverlay
                     .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .center)
+            }
+
+            // Scripted-location runs only (UI tests): what the map was asked to
+            // do, readable by identifier. Absent in production.
+            if let scripted = vm.location as? ScriptedDeviceLocationService {
+                Color.clear
+                    .frame(width: 1, height: 1)
+                    .accessibilityElement(children: .ignore)
+                    .accessibilityIdentifier("mapMyLocationProbe")
+                    .accessibilityValue(Text(verbatim: Self.probeValue(vm: vm, scripted: scripted)))
+                    .allowsHitTesting(false)
             }
         }
     }
@@ -208,6 +266,26 @@ struct MapSegmentView: View {
         .pvFloating(.circle)
         .accessibilityLabel("Map settings")
         .accessibilityIdentifier("mapSettingsButton")
+    }
+
+    private var myLocationButton: some View {
+        Button { Task { await vm.centerOnMyLocation() } } label: {
+            Image(systemName: vm.showsUserLocation ? "location.fill" : "location")
+                .font(.pvBody.weight(.semibold))
+                .padding(PVSpacing.s12)
+        }
+        .buttonStyle(.plain)
+        .pvFloating(.circle)
+        .disabled(vm.isLocating)
+        .accessibilityLabel("My Location")
+        .accessibilityIdentifier("mapMyLocationButton")
+    }
+
+    private static func probeValue(vm: MapViewModel, scripted: ScriptedDeviceLocationService) -> String {
+        let center = vm.centerRequest.map { "\($0.coordinate.latitude),\($0.coordinate.longitude)" } ?? "none"
+        let dot = vm.showsUserLocation ? "shown" : "hidden"
+        return "center=\(center);dot=\(dot);prompts=\(scripted.authorizationPromptCount);"
+            + "precise=\(scripted.preciseAccuracyRequestCount)"
     }
 
     /// Explicit empty state for a filter that returned nothing (an inverted or
@@ -470,6 +548,12 @@ struct ClusteredMapView: UIViewRepresentable {
     /// only lever that actually repaints MapKit's tiles (a color filter over
     /// the view would leave the tiles' own rendering untouched).
     let interfaceStyle: UIUserInterfaceStyle?
+    /// Draws the device's position dot. Driven by the permission, never on by default.
+    let showsUserLocation: Bool
+    /// "My Location": each new `id` recenters the map once on `coordinate`.
+    let centerRequest: MapViewModel.CenterRequest?
+    /// False under Reduce Motion: the recentering jumps instead of gliding.
+    let animatesRecentering: Bool
 
     private static let photoReuseID = "photoMarker"
     private static let clusterReuseID = "photoCluster"
@@ -496,6 +580,25 @@ struct ClusteredMapView: UIViewRepresentable {
         let style = interfaceStyle ?? .unspecified
         if map.overrideUserInterfaceStyle != style {
             map.overrideUserInterfaceStyle = style
+        }
+
+        if map.showsUserLocation != showsUserLocation {
+            map.showsUserLocation = showsUserLocation
+        }
+
+        // "My Location": one recentering per order. A map that has been
+        // centered by the user is not fitted to the photos afterwards.
+        if let request = centerRequest, request.id != coordinator.handledCenterRequestID {
+            coordinator.handledCenterRequestID = request.id
+            coordinator.didFitInitial = true
+            let center = CLLocationCoordinate2D(
+                latitude: request.coordinate.latitude,
+                longitude: request.coordinate.longitude
+            )
+            map.setRegion(
+                MKCoordinateRegion(center: center, span: MKCoordinateSpan(latitudeDelta: 0.05, longitudeDelta: 0.05)),
+                animated: animatesRecentering
+            )
         }
 
         // Fit to all markers once (first load). Then force a region callback
@@ -567,6 +670,7 @@ struct ClusteredMapView: UIViewRepresentable {
     final class Coordinator: NSObject, MKMapViewDelegate {
         var parent: ClusteredMapView
         var didFitInitial = false
+        var handledCenterRequestID = 0
         /// One-shot: true after the first render signal is delivered.
         var didSignalInitialRender = false
 
