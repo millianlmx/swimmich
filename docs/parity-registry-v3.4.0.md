@@ -490,7 +490,7 @@ Chaque écran principal a une ligne par aspect. « États » regroupe le chargem
 | L-27 | Réglages : qualité de partage, niveau du journal et caches | B-31 | planifié | — | — |
 | L-28 | Connexion et démarrage comme le client officiel | B-32 | planifié | — | — |
 | L-29 | Visionneuse : relance des erreurs, haptique, diaporama éveillé et repli vidéo | B-33 | planifié | — | — |
-| L-30 | Widgets photo nets à leur taille réelle | B-35 | livré | 9250b6b0342f | AC-61, AC-61.1, AC-61.2, AC-61.3, AC-61.4, AC-61.5, AC-61.6, AC-61.7, AC-61.8, AC-61.9, AC-61.10, AC-61.11 |
+| L-30 | Widgets photo nets à leur taille réelle | B-35 | livré | 1438907cf4b6 | AC-61, AC-61.1, AC-61.2, AC-61.3, AC-61.4, AC-61.5, AC-61.6, AC-61.7, AC-61.8, AC-61.9, AC-61.10, AC-61.11 |
 | L-31 | Confirmations avec Annuler, échec Face ID, barre unique et retours haptiques | B-36 | planifié | — | — |
 | L-32 | Sauvegarde : liste des photos qui restent à sauvegarder | B-37 | planifié | — | — |
 | L-33 | Correction de la date avec choix du fuseau horaire | B-38 | planifié | — | — |
