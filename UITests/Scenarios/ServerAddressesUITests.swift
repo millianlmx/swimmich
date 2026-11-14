@@ -27,6 +27,10 @@ final class ServerAddressesUITests: XCTestCase {
     private var localAddress: String { "http://127.0.0.1:\(localPort)" }
     private let videoID = "aaaaaaaa-1111-4111-8111-000000000001"
     private let photoID = "aaaaaaaa-1111-4111-8111-000000000002"
+    /// A photo of the same day that is NOT a neighbour of `photoID` in the viewer:
+    /// the paging viewer renders the pages next to the one on screen, so their
+    /// previews are fetched (and cached) along with it.
+    private let farPhotoID = "aaaaaaaa-1111-4111-8111-000000000006"
 
     private static let getStarted = ["Get Started", "Commencer"]
     private static let checkConnection = ["Check connection", "Vérifier la connexion"]
@@ -341,7 +345,7 @@ final class ServerAddressesUITests: XCTestCase {
         waitForActiveKind("external", timeout: 30)
         dismissHub()
         index = mark()
-        let external = openPhotoAndFindPreview(from: index, id: videoID)
+        let external = openPhotoAndFindPreview(from: index, id: farPhotoID)
         XCTAssertEqual(external?.address, "external", "the local address went silent:\n\(describe(traffic(from: index)))")
         XCTAssertTrue(app.tabBars.buttons.matching(labelPredicate(["Photos", "Fotos"])).firstMatch.exists,
                       "the user must still be signed in")
@@ -438,8 +442,14 @@ final class ServerAddressesUITests: XCTestCase {
         dismissWhatsNewIfPresent()
         XCTAssertFalse(element("timelineLoadErrorBanner").exists, "no error message")
 
-        setLocalMode("immich")
+        // The Network screen measures the addresses again when it opens: that
+        // measure (bounded by 2 s) must end on the external address before the
+        // local one comes back, so the reload below is the network change's.
         openNetwork()
+        Thread.sleep(forTimeInterval: 3)
+        waitForLocalStatus("unreachable", timeout: 30)
+        waitForActiveKind("external")
+        setLocalMode("immich")
         let index = mark()
         simulateNetworkChange()
         waitForActiveKind("local")
