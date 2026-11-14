@@ -95,6 +95,7 @@ final class SystemDeviceLocationService: NSObject, DeviceLocationProviding, CLLo
 }
 
 /// A scripted position for the UI tests and the unit tests: the permission,
+/// the answers to the two prompts and the fix are all set up front. The app only
 /// builds one in Debug builds (`DependencyContainer.makeDeviceLocation`), when
 /// `-uiTestLocationStatus` is on the launch arguments; a Release build never reads
 /// these keys and always gets `SystemDeviceLocationService`.
