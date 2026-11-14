@@ -129,6 +129,24 @@ final class AuthViewModelServerAddressTests: XCTestCase {
         XCTAssertEqual(fx.store.settings(for: accountID).lastKnownVersion, version)
     }
 
+    // MARK: - AC-249
+
+    func test_AC_249_publicAddressIsTheExternalOneWhileOnLocal() async {
+        let vpn = URL(string: "https://vpn.example.org")!
+        let fx = makeFixture(
+            settings: ServerAddressSettings(localURL: local.absoluteString, externalURL: vpn.absoluteString, autoSwitch: true)
+        )
+        fx.probe.answer(vpn, .immich(version: version))
+        fx.probe.answer(local, .immich(version: version))
+        await fx.auth.restoreSession()
+
+        await fx.endpoints.evaluate(.networkChange)
+
+        XCTAssertEqual(fx.auth.baseURL, local, "the address \"Open in Browser\" opens: the one in use")
+        XCTAssertEqual(fx.auth.publicServerURL, vpn, "the base of every link handed out")
+        XCTAssertNotEqual(fx.auth.publicServerURL, account)
+    }
+
     // MARK: - AC-239
 
     func test_AC_239_publishedSessionCarriesBothAddresses() async {

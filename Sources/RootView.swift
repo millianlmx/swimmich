@@ -362,7 +362,10 @@ private struct AuthenticatedRoot: View {
         // their images follow the address by themselves.
         .onChange(of: container.serverEndpoints.lastOutcome) { _, outcome in
             guard let outcome else { return }
-            Task { await reloadVisibleTab(after: outcome) }
+            Task {
+                await VisibleTabReloader(photos: timeline, memories: memories, albums: albums, shared: sharedLinks)
+                    .reload(tab: selection, after: outcome)
+            }
         }
         // The locked folder closes when the app leaves the foreground, whichever
         // tab is up and whether or not its screen is on display: the elevation
@@ -497,27 +500,6 @@ private struct AuthenticatedRoot: View {
         }
     }
 
-    /// Reloads the root screen of the tab on display after an evaluation of the
-    /// server address (L-26). The search tab has nothing to reload.
-    @MainActor
-    private func reloadVisibleTab(after outcome: EvaluationOutcome) async {
-        func should(_ loadError: String?) -> Bool {
-            ReloadAfterEvaluation.shouldReload(changedAddress: outcome.changedAddress, hasLoadError: loadError != nil)
-        }
-        switch selection {
-        case .photos:
-            if should(timeline.loadErrorMessage) { await timeline.refresh() }
-        case .memories:
-            if should(memories.loadErrorMessage) { await memories.refresh() }
-        case .albums:
-            if should(albums.loadErrorMessage) { await albums.refresh() }
-        case .shared:
-            if should(sharedLinks.loadErrorMessage) { await sharedLinks.refresh() }
-        case .search:
-            break
-        }
-    }
-
     private func handleBubbleTap() {
         switch lastContentTab {
         case .photos, .memories: break // Landing on the Search tab is handled by the TabView itself.
@@ -529,7 +511,7 @@ private struct AuthenticatedRoot: View {
 }
 
 /// Root-level tabs. Order defines tab order; raw value used only for matching.
-private enum RootTab: Int, Hashable {
+enum RootTab: Int, Hashable {
     case photos
     case memories
     case albums
