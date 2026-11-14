@@ -30,7 +30,7 @@ struct PhotoInfoPanel: View {
     var troubleshoot: AssetTroubleshootViewModel = DependencyContainer.shared.makeAssetTroubleshootViewModel()
 
     @State private var adjustLocation: AdjustLocationViewModel?
-    @State private var presentAdjustDate = false
+    @State private var adjustDate: AdjustDateViewModel?
     @State private var selectedFace: AssetFaceResponseDto?
     @State private var presentTags = false
     @State private var presentStack = false
@@ -50,14 +50,12 @@ struct PhotoInfoPanel: View {
             .presentationDetents([.fraction(0.75), .large])
             .presentationDragIndicator(.visible)
         }
-        .sheet(isPresented: $presentAdjustDate) {
-            if let vm {
-                AdjustDateSheet(asset: asset, vm: vm) { _ in
-                    presentAdjustDate = false
-                }
-                .presentationDetents([.fraction(0.6)])
-                .presentationDragIndicator(.visible)
+        .sheet(item: $adjustDate) { model in
+            AdjustDateSheet(vm: model) { _ in
+                adjustDate = nil
             }
+            .presentationDetents([.fraction(0.6)])
+            .presentationDragIndicator(.visible)
         }
         .sheet(item: $selectedFace) { face in
             if let vm {
@@ -158,7 +156,11 @@ struct PhotoInfoPanel: View {
                             )
                         }
                     } : nil,
-                    onAdjustDate: allowsOwnerEdits ? { presentAdjustDate = true } : nil
+                    onAdjustDate: allowsOwnerEdits ? {
+                        if let vm {
+                            adjustDate = AdjustDateViewModel(detail: vm, deviceTimeZone: .current)
+                        }
+                    } : nil
                 )
                 .padding(.horizontal, PVSpacing.s16)
                 .padding(.bottom, PVSpacing.s24)
@@ -446,6 +448,7 @@ struct ExifInfoPanel: View {
                                     .frame(maxWidth: .infinity)
                             }
                             .accessibilityLabel("Adjust Date")
+                            .accessibilityIdentifier("adjustDateButton")
                         }
                         .font(.pvBody.weight(.medium))
                         .foregroundStyle(Color.textPrimaryPV)

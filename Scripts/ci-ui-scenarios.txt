@@ -122,3 +122,11 @@ immich_stub_widgets.py WidgetDisplaySizeUITests/test_AC_61_6_favoritesLargeOneFa
 immich_stub_edit_stacks.py EditStacksUITests/test_AC_41_editStackedOnOriginal --media L22-edit-on.png --erase
 immich_stub_edit_stacks.py EditStacksUITests/test_AC_41_settingOffSendsNothing --media L22-edit-off.png --erase --release
 immich_stub_edit_stacks.py EditStacksUITests/test_AC_200_settingOffByDefaultAndPersisted --release
+
+# L-33 date correction with a time zone (AC-66, AC-66.4, AC-66.6): the device is set to Asia/Tokyo by the
+# scenario (TZ), the photo's EXIF zone is Europe/Paris; the picker shows the photo's wall clock, the PUT
+# carries the chosen zone's offset. Core: the journey of AC-66; the two others double unit tests of
+# the same criteria (AdjustDateViewModelTests).
+immich_stub_adjust_date.py AdjustDateUITests/test_AC_66
+immich_stub_adjust_date.py AdjustDateUITests/test_AC_66_4_editedTimeIsWallClock --release
+immich_stub_adjust_date.py AdjustDateUITests/test_AC_66_6_reopenAfterSave --release
