@@ -298,7 +298,7 @@ private struct OfflineAssetCell: View {
                     token: token,
                     localFileURL: localFileURL
                 )
-                .accessibilityElement(children: .ignore)
+                .imageTileAccessibilityElement()
                 .accessibilityLabel(AssetThumbnailCell.accessibilityLabel(for: asset))
                 .accessibilityAddTraits(.isButton)
                 .accessibilityIdentifier("offlineAsset_\(asset.id)")

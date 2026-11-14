@@ -537,7 +537,7 @@ final class AssetEditsDisplayTests: XCTestCase {
         let before = item().thumbnailURL(base: base, size: .preview)
         XCTAssertEqual(query(before, "c"), "h1")
 
-        ThumbhashSuccession.shared.record(old: "h1", new: "h2")
+        ThumbhashSuccession.shared.record(old: "h1", new: "h2", assetId: "a1")
 
         XCTAssertEqual(query(item().thumbnailURL(base: base, size: .preview), "c"), "h2")
         XCTAssertEqual(query(item().thumbnailURL(base: base), "c"), "h2")
@@ -545,17 +545,17 @@ final class AssetEditsDisplayTests: XCTestCase {
         XCTAssertEqual(query(ZoomableImageView.pageURL(asset: item(), baseURL: base, loadOriginal: true), "c"), "h2")
         XCTAssertNotEqual(item().thumbnailURL(base: base, size: .preview), before, "a different URL is a different cache entry")
 
-        ThumbhashSuccession.shared.record(old: "h2", new: "h3")
+        ThumbhashSuccession.shared.record(old: "h2", new: "h3", assetId: "a1")
         XCTAssertEqual(query(item().thumbnailURL(base: base), "c"), "h3", "a second edit follows the chain")
     }
 
     /// The map is keyed by the OLD value: a thumbhash that is nobody's predecessor is never rewritten,
     /// and an empty or unchanged value records nothing.
     func test_AC_183_aLaterThumbhashIsNeverShadowed() {
-        ThumbhashSuccession.shared.record(old: "h1", new: "h2")
-        ThumbhashSuccession.shared.record(old: nil, new: "x")
-        ThumbhashSuccession.shared.record(old: "", new: "x")
-        ThumbhashSuccession.shared.record(old: "h9", new: "h9")
+        ThumbhashSuccession.shared.record(old: "h1", new: "h2", assetId: "a1")
+        ThumbhashSuccession.shared.record(old: nil, new: "x", assetId: "a1")
+        ThumbhashSuccession.shared.record(old: "", new: "x", assetId: "a1")
+        ThumbhashSuccession.shared.record(old: "h9", new: "h9", assetId: "a1")
 
         XCTAssertEqual(ThumbhashSuccession.shared.current(for: "h2"), "h2")
         XCTAssertEqual(ThumbhashSuccession.shared.current(for: "other"), "other")
@@ -637,7 +637,7 @@ final class AssetEditsDisplayTests: XCTestCase {
         client.getAssetResponse["a1"] = record(thumbhash: "h2")
         let edited = await EditedAssetRefresh.awaitRegeneration(
             assetId: "a1", previousThumbhash: photo.thumbhash, client: client, attempts: 2, interval: .milliseconds(1))
-        ThumbhashSuccession.shared.record(old: photo.thumbhash, new: edited?.thumbhash)
+        ThumbhashSuccession.shared.record(old: photo.thumbhash, new: edited?.thumbhash, assetId: "a1")
         XCTAssertEqual(query(photo.thumbnailURL(base: base), "c"), "h2", "the grid cell shows the edited image")
         XCTAssertEqual(query(photo.thumbnailURL(base: base, size: .preview), "c"), "h2", "so does the viewer")
 
@@ -645,7 +645,7 @@ final class AssetEditsDisplayTests: XCTestCase {
         client.getAssetResponse["a1"] = record(thumbhash: "h3")
         let restored = await EditedAssetRefresh.awaitRegeneration(
             assetId: "a1", previousThumbhash: shown.thumbhash, client: client, attempts: 2, interval: .milliseconds(1))
-        ThumbhashSuccession.shared.record(old: shown.thumbhash, new: restored?.thumbhash)
+        ThumbhashSuccession.shared.record(old: shown.thumbhash, new: restored?.thumbhash, assetId: "a1")
         XCTAssertEqual(query(photo.thumbnailURL(base: base), "c"), "h3", "the original comes back after the removal")
         XCTAssertEqual(query(photo.thumbnailURL(base: base), "edited"), "true")
     }
@@ -673,6 +673,285 @@ final class AssetEditsDisplayTests: XCTestCase {
         XCTAssertEqual(Set(transport.requests.map { $0.url?.path }), ["/api/assets/a1/original"])
         let local = try XCTUnwrap(index.localURL(for: "a1"))
         XCTAssertEqual(try Data(contentsOf: local), Data("edited=false".utf8), "the file at the same path is the new one")
+    }
+
+    // MARK: - Follow-up of the photos saved here (S-3, S-4, S-1, S-2)
+
+    private func makeOffline(client: MockImmichClient) -> (vm: OfflineDownloadViewModel, transport: OfflineEditsTransport) {
+        let folder = FileManager.default.temporaryDirectory
+            .appendingPathComponent("AssetEditsFollowUp-\(UUID().uuidString)", isDirectory: true)
+        addTeardownBlock { try? FileManager.default.removeItem(at: folder) }
+        let transport = OfflineEditsTransport()
+        let store = OfflineAssetStore(rootURL: folder, transport: transport,
+                                      defaults: UserDefaults(suiteName: "assetEdits-followUp-\(UUID().uuidString)")!)
+        _ = store.setActiveAccount("acct", otherAccountsRegistered: false)
+        let vm = OfflineDownloadViewModel(store: store, client: client, index: OfflineAssetIndex(), accountID: "acct")
+        return (vm, transport)
+    }
+
+    private func editedValues(_ transport: OfflineEditsTransport) -> [String?] {
+        transport.requests.map { URLComponents(url: $0.url!, resolvingAgainstBaseURL: false)?.queryItems?.first { $0.name == "edited" }?.value }
+    }
+
+    private func makeFollowUp(_ client: MockImmichClient, widgets: TestBox<Int>) -> EditedAssetFollowUp {
+        EditedAssetFollowUp(client: client, reloadWidgets: { widgets.value += 1 }, attempts: 2, interval: .milliseconds(1))
+    }
+
+    private func album(stamp: String?) throws -> AlbumResponseDto {
+        var json = "{\"id\":\"al1\",\"albumName\":\"A\",\"description\":\"\",\"createdAt\":\"2026-01-01T00:00:00.000Z\","
+            + "\"updatedAt\":\"2026-02-02T00:00:00.000Z\",\"albumThumbnailAssetId\":\"a1\",\"shared\":false,"
+            + "\"hasSharedLink\":false,\"assetCount\":1,\"isActivityEnabled\":false,\"albumUsers\":[]"
+        if let stamp { json += ",\"lastModifiedAssetTimestamp\":\"" + stamp + "\"" }
+        json += "}"
+        return try JSONDecoder().decode(AlbumResponseDto.self, from: Data(json.utf8))
+    }
+
+    /// AC-197: the cover's cache key is the album's stamp (the newest `updatedAt` of its photos), then the
+    /// thumbhash recorded here for the photo: either change gives the image caches a new URL.
+    func test_AC_197_coverFollowsTheAssetAndTheAlbumStamp() throws {
+        let t1 = "2026-03-03T00:00:00.000Z"
+        let t2 = "2026-04-04T00:00:00.000Z"
+        let cover = ImmichAssetURL.albumCover(assetId: "a1", album: try album(stamp: t1), baseURL: base)
+        XCTAssertEqual(cover.path, "/api/assets/a1/thumbnail")
+        XCTAssertEqual(query(cover, "c"), t1)
+        XCTAssertEqual(query(cover, "edited"), "true")
+        let withoutStamp = ImmichAssetURL.albumCover(assetId: "a1", album: try album(stamp: nil), baseURL: base)
+        XCTAssertEqual(query(withoutStamp, "c"), "2026-02-02T00:00:00.000Z", "a server that sends no stamp falls back to updatedAt")
+
+        ThumbhashSuccession.shared.record(old: "h1", new: "h2", assetId: "a1")
+
+        XCTAssertEqual(query(ImmichAssetURL.albumCover(assetId: "a1", album: try album(stamp: t1), baseURL: base), "c"), t1 + "_h2")
+        XCTAssertEqual(query(ImmichAssetURL.albumCover(assetId: "a1", album: try album(stamp: t2), baseURL: base), "c"), t2 + "_h2")
+        let noThumbhash = ImmichAssetURL.thumbnail(assetId: "a1", thumbhash: "", baseURL: base)
+        XCTAssertEqual(query(noThumbhash, "c"), "h2", "a screen without a thumbhash follows an edit made here")
+        XCTAssertEqual(query(noThumbhash, "edited"), "true")
+        XCTAssertEqual(query(ImmichAssetURL.thumbnail(assetId: "other", thumbhash: "", baseURL: base), "c"), "")
+    }
+
+    /// AC-183: a removal that gives back the thumbhash of before the edit does not form a cycle: the screen
+    /// that holds the edited thumbhash comes back to the original, and a new edit goes forward again.
+    func test_AC_183_removalBackToTheFirstThumbhashLeavesNoCycle() {
+        let succession = ThumbhashSuccession.shared
+        succession.record(old: "h0", new: "h1", assetId: "a1")
+        succession.record(old: "h1", new: "h0", assetId: "a1")
+        XCTAssertEqual(succession.current(for: "h1"), "h0")
+        XCTAssertEqual(succession.current(for: "h0"), "h0")
+
+        succession.record(old: "h0", new: "h1", assetId: "a1")
+        XCTAssertEqual(succession.current(for: "h0"), "h1")
+        XCTAssertEqual(succession.current(for: "h1"), "h1")
+    }
+
+    func test_AC_183_latestForAssetNeverShadowsAThumbhashReadFromTheServer() {
+        let succession = ThumbhashSuccession.shared
+        succession.record(old: nil, new: "x", assetId: "a1")
+        XCTAssertEqual(succession.latest(forAsset: "a1"), "x")
+        XCTAssertEqual(succession.current(for: "x"), "x")
+        succession.record(old: "h9", new: "h9", assetId: "a2")
+        XCTAssertEqual(succession.latest(forAsset: "a2"), "h9")
+        XCTAssertEqual(succession.current(for: "h9"), "h9")
+        XCTAssertNil(succession.latest(forAsset: "a3"))
+        XCTAssertEqual(succession.current(for: ""), "")
+    }
+
+    /// AC-183: nothing regenerated in time: no widget reload, no download, and the photo stays pending.
+    func test_AC_183_noRegenerationNoWidgetReloadNoDownload() async {
+        let client = MockImmichClient()
+        client.getAssetResponse["a1"] = record(thumbhash: "h1")
+        let (vm, transport) = makeOffline(client: client)
+        await vm.downloadAsset(item(), baseURL: base, token: "tok")
+        let widgets = TestBox(0)
+        let followUp = makeFollowUp(client, widgets: widgets)
+        let baseline = transport.requests.count
+
+        let fresh = await followUp.afterSave(of: item(), removed: false, offline: vm, baseURL: base, token: "tok")
+
+        XCTAssertNil(fresh)
+        XCTAssertEqual(widgets.value, 0)
+        XCTAssertEqual(transport.requests.count, baseline, "no blind download of the copy")
+        XCTAssertEqual(followUp.pending(for: "a1")?.previousThumbhash, "h1")
+    }
+
+    /// AC-199: a regeneration that takes longer than the wait, seen later with the viewer closed and no
+    /// offline copy: the succession is recorded, the widgets reload once, and nothing is read twice.
+    func test_AC_199_slowRegenerationAdoptedLaterWithTheViewerClosed() async {
+        let client = MockImmichClient()
+        client.getAssetResponse["a1"] = record(thumbhash: "h1")
+        let widgets = TestBox(0)
+        let followUp = makeFollowUp(client, widgets: widgets)
+        let fresh = await followUp.afterSave(of: item(), removed: false, offline: nil, baseURL: base, token: nil)
+        XCTAssertNil(fresh)
+
+        client.getAssetResponse["a1"] = record(thumbhash: "h2")
+        await followUp.resumePending(offline: nil, baseURL: base, token: nil)
+
+        XCTAssertEqual(ThumbhashSuccession.shared.current(for: "h1"), "h2")
+        XCTAssertEqual(ThumbhashSuccession.shared.latest(forAsset: "a1"), "h2")
+        XCTAssertEqual(widgets.value, 1)
+        XCTAssertNil(followUp.pending(for: "a1"))
+
+        let reads = client.getAssetCalls.count
+        await followUp.resumePending(offline: nil, baseURL: base, token: nil)
+        XCTAssertEqual(client.getAssetCalls.count, reads, "nothing is pending any more")
+        XCTAssertEqual(widgets.value, 1)
+    }
+
+    /// AC-198: the copy is not fetched again blindly; it follows the first sighting of the new thumbhash.
+    func test_AC_198_noBlindRedownloadThenResumeOnTheNewThumbhash() async {
+        let client = MockImmichClient()
+        client.getAssetResponse["a1"] = record(thumbhash: "h1")
+        let (vm, transport) = makeOffline(client: client)
+        await vm.downloadAsset(item(), baseURL: base, token: "tok")
+        let followUp = makeFollowUp(client, widgets: TestBox(0))
+        let baseline = transport.requests.count
+        let fresh = await followUp.afterSave(of: item(), removed: false, offline: vm, baseURL: base, token: "tok")
+        XCTAssertNil(fresh)
+        XCTAssertEqual(transport.requests.count, baseline)
+
+        await followUp.resumePending(offline: vm, baseURL: base, token: "tok")
+        XCTAssertEqual(transport.requests.count, baseline, "the record still holds h1")
+        XCTAssertNotNil(followUp.pending(for: "a1"))
+
+        client.getAssetResponse["a1"] = record(thumbhash: "h2")
+        await followUp.resumePending(offline: vm, baseURL: base, token: "tok")
+        XCTAssertEqual(editedValues(transport).dropFirst(baseline).map { $0 }, ["true"])
+        XCTAssertNil(followUp.pending(for: "a1"))
+
+        await followUp.resumePending(offline: vm, baseURL: base, token: "tok")
+        XCTAssertEqual(transport.requests.count, baseline + 1)
+    }
+
+    /// AC-198: a record the viewer read resumes the pending copy, in the version of the last save.
+    func test_AC_198_viewerRecordResumesThePendingCopy() async {
+        let client = MockImmichClient()
+        client.getAssetResponse["a1"] = record(thumbhash: "h1")
+        let (vm, transport) = makeOffline(client: client)
+        await vm.downloadAsset(item(), baseURL: base, token: "tok")
+        let followUp = makeFollowUp(client, widgets: TestBox(0))
+        let baseline = transport.requests.count
+        _ = await followUp.afterSave(of: item(), removed: true, offline: vm, baseURL: base, token: "tok")
+
+        await followUp.resume(with: record(thumbhash: "h2"), offline: vm, baseURL: base, token: "tok")
+        XCTAssertEqual(editedValues(transport).dropFirst(baseline).map { $0 }, ["false"])
+        await followUp.resume(with: record(thumbhash: "h2"), offline: vm, baseURL: base, token: "tok")
+        XCTAssertEqual(transport.requests.count, baseline + 1)
+
+        // A photo removed from the offline storage in the meantime: the succession is recorded, nothing is fetched.
+        client.getAssetResponse["a1"] = record(thumbhash: "h2")
+        _ = await followUp.afterSave(of: item(thumbhash: "h2"), removed: false, offline: vm, baseURL: base, token: "tok")
+        await vm.removeFromOffline("a1")
+        await followUp.resume(with: record(thumbhash: "h3"), offline: vm, baseURL: base, token: "tok")
+        XCTAssertEqual(ThumbhashSuccession.shared.current(for: "h2"), "h3")
+        XCTAssertEqual(transport.requests.count, baseline + 1)
+    }
+
+    /// AC-186: after the regeneration the copy is fetched again (`edited=true`, or `false` after a
+    /// removal) and the widgets reload once.
+    func test_AC_186_followUpRedownloadsAfterTheRegenerationAndReloadsWidgets() async {
+        let client = MockImmichClient()
+        client.getAssetResponse["a1"] = record(thumbhash: "h1")
+        let (vm, transport) = makeOffline(client: client)
+        await vm.downloadAsset(item(), baseURL: base, token: "tok")
+        let widgets = TestBox(0)
+        let followUp = makeFollowUp(client, widgets: widgets)
+        let reads = TestBox(0)
+        client.getAssetGate = { id in
+            reads.value += 1
+            if reads.value == 2 { client.getAssetResponse[id] = self.record(thumbhash: "h2") }
+        }
+
+        let fresh = await followUp.afterSave(of: item(), removed: false, offline: vm, baseURL: base, token: "tok")
+        XCTAssertEqual(fresh?.thumbhash, "h2")
+        XCTAssertEqual(widgets.value, 1)
+        XCTAssertEqual(editedValues(transport), ["true", "true"])
+
+        client.getAssetGate = nil
+        client.getAssetResponse["a1"] = record(thumbhash: "h3")
+        let restored = await followUp.afterSave(of: item(thumbhash: "h2"), removed: true, offline: vm, baseURL: base, token: "tok")
+        XCTAssertEqual(restored?.thumbhash, "h3")
+        XCTAssertEqual(widgets.value, 2)
+        XCTAssertEqual(editedValues(transport), ["true", "true", "false"])
+    }
+
+    /// AC-186: the succession, the widgets and the viewer are up to date before the first byte of the copy.
+    func test_AC_186_adoptionPrecedesTheOfflineDownload() async {
+        let client = MockImmichClient()
+        client.getAssetResponse["a1"] = record(thumbhash: "h1")
+        let (vm, transport) = makeOffline(client: client)
+        await vm.downloadAsset(item(), baseURL: base, token: "tok")
+        let baseline = transport.requests.count
+        let widgets = TestBox(0)
+        let followUp = makeFollowUp(client, widgets: widgets)
+        client.getAssetResponse["a1"] = record(thumbhash: "h2")
+        let latch = TestLatch()
+        let reads = TestBox(0)
+        client.getAssetGate = { _ in
+            reads.value += 1
+            if reads.value >= 2 { try await latch.wait() }
+        }
+        let seen = TestBox<(current: String, widgets: Int, requests: Int)?>(nil)
+
+        let task = Task {
+            await followUp.afterSave(of: item(), removed: false, offline: vm, baseURL: base, token: "tok", onRegenerated: { _ in
+                seen.value = (ThumbhashSuccession.shared.current(for: "h1"), widgets.value, transport.requests.count)
+            })
+        }
+        await pollUntil("the offline download reads the record") { reads.value >= 2 }
+
+        XCTAssertEqual(seen.value?.current, "h2")
+        XCTAssertEqual(seen.value?.widgets, 1)
+        XCTAssertEqual(seen.value?.requests, baseline)
+        XCTAssertEqual(transport.requests.count, baseline, "the copy has not started to download")
+        latch.open()
+        let fresh = await task.value
+        XCTAssertEqual(fresh?.thumbhash, "h2")
+        XCTAssertEqual(editedValues(transport).dropFirst(baseline).map { $0 }, ["true"])
+    }
+
+    /// AC-186: a redownload asked while the photo downloads waits, the last one wins, and runs when the
+    /// first one is over.
+    func test_AC_186_redownloadQueuedBehindARunningDownload() async {
+        let client = MockImmichClient()
+        client.getAssetResponse["a1"] = record(thumbhash: "h1")
+        let (vm, transport) = makeOffline(client: client)
+        let latch = TestLatch()
+        client.getAssetGate = { _ in try await latch.wait() }
+        let first = Task { await vm.downloadAsset(item(), baseURL: base, token: "tok", edited: false) }
+        await pollUntil("the first download starts") { vm.isDownloading("a1") }
+
+        await vm.followEdits(of: item(), edited: false, baseURL: base, token: "tok")
+        await vm.followEdits(of: item(), edited: true, baseURL: base, token: "tok")
+        XCTAssertEqual(vm.queuedRedownload(for: "a1")?.edited, true)
+        XCTAssertTrue(transport.requests.isEmpty)
+
+        latch.open()
+        await first.value
+        XCTAssertEqual(editedValues(transport), ["false", "true"])
+        XCTAssertNil(vm.queuedRedownload(for: "a1"))
+    }
+
+    func test_AC_186_redownloadQueueDroppedWhenTheFirstDownloadFails() async {
+        let client = MockImmichClient()
+        client.getAssetResponse["a1"] = record(thumbhash: "h1")
+        let (vm, transport) = makeOffline(client: client)
+        let latch = TestLatch()
+        let reads = TestBox(0)
+        client.getAssetGate = { _ in
+            reads.value += 1
+            if reads.value == 1 {
+                try await latch.wait()
+                throw URLError(.notConnectedToInternet)
+            }
+        }
+        let first = Task { await vm.downloadAsset(item(), baseURL: base, token: "tok") }
+        await pollUntil("the first download starts") { vm.isDownloading("a1") }
+        await vm.followEdits(of: item(), edited: true, baseURL: base, token: "tok")
+        XCTAssertNotNil(vm.queuedRedownload(for: "a1"))
+
+        latch.open()
+        await first.value
+        XCTAssertTrue(transport.requests.isEmpty, "the photo is not kept: nothing to fetch again")
+        XCTAssertNil(vm.queuedRedownload(for: "a1"))
     }
 }
 

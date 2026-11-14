@@ -202,16 +202,28 @@ final class DownloadQueueViewModelTests: XCTestCase {
         XCTAssertEqual(client.originalRequestEditedLog, [true, true])
     }
 
-    /// AC-187: a batch asks the archive with the user's choice, and without a choice it is the original.
+    /// AC-187: a batch asks the archive with the user's choice, both ways, and without a choice the original.
     func test_AC_187_archiveCarriesTheChoice() async {
         client.downloadInfoResponse = DownloadInfoResponse(
             totalSize: 12_000, archives: [DownloadInfoResponse.Archive(assetIds: ["a", "b"], size: 12_000)])
-        await vm.enqueue(assets: [makeAsset(id: "a"), makeAsset(id: "b")], edited: true)
+        let selection = [makeAsset(id: "a"), makeAsset(id: "b")]
+
+        await vm.enqueue(assets: selection, edited: true)
         await settle()
         XCTAssertEqual(client.lastArchiveEdited, true)
 
         vm.clearCompleted()
-        await vm.enqueue(assets: [makeAsset(id: "a"), makeAsset(id: "b")])
+        await vm.enqueue(assets: selection, edited: false)
+        await settle()
+        XCTAssertEqual(client.lastArchiveEdited, false, "an explicit original follows the previous edited choice")
+
+        vm.clearCompleted()
+        await vm.enqueue(assets: selection, edited: true)
+        await settle()
+        XCTAssertEqual(client.lastArchiveEdited, true)
+
+        vm.clearCompleted()
+        await vm.enqueue(assets: selection)
         await settle()
         XCTAssertEqual(client.lastArchiveEdited, false, "no choice means the original, sent explicitly")
     }

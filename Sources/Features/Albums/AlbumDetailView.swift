@@ -13,6 +13,7 @@ private struct AlbumShareSheetItem: Identifiable {
 private struct ActivityFeedSheetItem: Identifiable {
     let id = UUID()
     let vm: ActivityFeedViewModel
+    let album: AlbumResponseDto
 }
 
 /// Album detail screen (AC-508..AC-513). A Photos-style stretchy parallax hero
@@ -247,7 +248,8 @@ struct AlbumDetailView: View {
                                     client: DependencyContainer.shared.client,
                                     albumId: vm.albumId,
                                     currentUserId: auth.userId ?? ""
-                                )
+                                ),
+                                album: vm.album ?? initialAlbum
                             )
                         } label: {
                             Label("Activity", systemImage: "bubble.left.and.bubble.right")
@@ -339,7 +341,7 @@ struct AlbumDetailView: View {
             AlbumShareSheet(vm: item.vm)
         }
         .sheet(item: $activityFeedItem) { item in
-            ActivityFeedSheet(vm: item.vm)
+            ActivityFeedSheet(vm: item.vm, album: item.album)
                 .presentationDetents([.medium, .large])
                 .presentationDragIndicator(.visible)
         }
@@ -741,9 +743,10 @@ struct AlbumDetailView: View {
                 .overlay {
                     if let coverId = coverAssetId {
                         AuthenticatedAsyncImage(
-                            url: ImmichAssetURL.thumbnail(assetId: coverId, thumbhash: "", baseURL: auth.baseURL ?? URL(string: "https://example.com")!),
+                            url: ImmichAssetURL.albumCover(assetId: coverId, album: album, baseURL: auth.baseURL ?? URL(string: "https://example.com")!),
                             token: auth.accessToken
                         )
+                        .accessibilityIdentifier("albumHeroCover")
                     } else {
                         Image(systemName: "rectangle.stack")
                             .font(.system(size: 48))

@@ -42,10 +42,13 @@ import XCTest
 ///   and put it back afterwards with `xcrun simctl ui booted content_size large`. Like
 ///   `ShareExtensionUITests`, the photo must be the newest one of the Photos library.
 ///
-/// The CI runs every test of this class as a line of its own (`Scripts/ci.sh`, one
-/// line per test in `Scripts/ci-ui-scenarios.txt`), on a reset simulator of its pool
-/// (app uninstalled, keychain emptied), the share extension with the prerequisites
-/// above; a test that skips itself fails it. The long walks are cut
+/// The CI runs the tests of this class listed in `Scripts/ci-ui-scenarios.txt`, each as
+/// a line of its own (`Scripts/ci.sh`), on a reset simulator of its pool (app
+/// uninstalled, keychain emptied), the share extension with the prerequisites above; a
+/// test that skips itself fails it. The German twins and the size-by-size walks are
+/// `--release` lines (once a week and on a release tag): the unit tests of
+/// `DynamicTypeScreenTests` measure their screens hosted (`Tests/HostedScreen.swift`),
+/// without a launched app. The long walks are cut
 /// in several tests so the pool spreads them, and every test that does not measure
 /// the onboarding starts signed in from its launch arguments (`sessionArguments`).
 ///
