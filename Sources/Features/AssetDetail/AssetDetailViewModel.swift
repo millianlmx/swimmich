@@ -251,6 +251,7 @@ final class AssetDetailViewModel {
         do {
             let updated = try await client.updateAsset(id: asset.id, dto: body)
             detail = updated
+            errorMessage = nil
             geocoded = false // FM-3 guard reset: the spot changed, re-geocode allowed.
             await reverseGeocodeIfNeeded()
         } catch let e {
