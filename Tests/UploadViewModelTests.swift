@@ -577,7 +577,7 @@ final class UploadViewModelHapticSignalTests: XCTestCase {
 
     @MainActor
     private func makeRunningVM(
-        readOnly: ReadOnlyModeStore = .ephemeral()
+        readOnly: ReadOnlyModeStore? = nil
     ) -> (UploadViewModel, MockBackupAssetSource) {
         let client = MockImmichClient()
         client.bulkUploadCheckResponse = AssetBulkUploadCheckResponse(results: [.init(id: "c1", action: "accept")])
@@ -590,7 +590,7 @@ final class UploadViewModelHapticSignalTests: XCTestCase {
             client: client, photos: MockPhotoLibraryService(), engine: engine, settings: settings,
             scheduler: MockBackupScheduler(), activityService: MockBackupLiveActivityService(),
             notifications: MockNotificationService(),
-            readOnly: readOnly
+            readOnly: readOnly ?? .ephemeral()
         )
         return (vm, source)
     }
