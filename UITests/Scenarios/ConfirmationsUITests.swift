@@ -157,11 +157,20 @@ final class ConfirmationsUITests: XCTestCase {
         app.staticTexts.allElementsBoundByIndex.map(\.label).joined(separator: " | ")
     }
 
-    /// Scrolls (up first, then down) until `identifier` is published by its
-    /// scroll view: a `Form` only publishes what it rendered.
+    /// Scrolls until `identifier` is published by its scroll view and hittable:
+    /// a `Form` only publishes what it rendered. A target already published but
+    /// stuck in the top band (under the navigation bar, e.g. the Backup screen's
+    /// first rows once the album picker pops back) is brought down by swiping
+    /// down — a swipe up would only push it further out; any other unhittable or
+    /// unpublished target is searched by swiping up first, then down.
     @discardableResult
     private func scrollTo(_ identifier: String, upSwipes: Int = 8, downSwipes: Int = 8) -> XCUIElement {
         let target = element(identifier)
+        let isAboveView = { target.exists && !target.isHittable && target.frame.midY < self.app.frame.height * 0.3 }
+        for _ in 0..<downSwipes where isAboveView() {
+            app.swipeDown()
+            _ = waitUntil(1) { target.exists && target.isHittable }
+        }
         for _ in 0..<upSwipes where !(target.exists && target.isHittable) {
             app.swipeUp()
             _ = target.waitForExistence(timeout: 1)
@@ -171,6 +180,30 @@ final class ConfirmationsUITests: XCTestCase {
             _ = target.waitForExistence(timeout: 1)
         }
         return target
+    }
+
+    /// Taps the row `id` of the current screen (scrolled into the visible area
+    /// and waited on until hittable), then waits for the screen it pushes,
+    /// recognised by `opened` — checked only once the row has been tapped. When
+    /// that screen does not show, the row is scrolled to and tapped again: at
+    /// most 3 attempts. A row that is not hittable never fails an attempt on its
+    /// own: the final verdict says what each attempt saw.
+    @discardableResult
+    private func tapRow(_ id: String, until opened: () -> Bool) -> Bool {
+        var seen: [String] = []
+        var tapped = false
+        for attempt in 1...3 {
+            let row = scrollTo(id)
+            let ready = waitUntil(10) { row.exists && row.isHittable }
+            if ready {
+                row.tap()
+                tapped = true
+            }
+            if tapped, waitUntil(ready ? 15 : 3, opened) { return true }
+            seen.append("attempt \(attempt): row exists=\(row.exists) hittable=\(row.exists && row.isHittable) tapped=\(ready)")
+        }
+        XCTFail("tapping \(id) never opened its screen — \(seen.joined(separator: "; ")) — \(screenText())")
+        return false
     }
 
     /// A row of the "Me" hub (a `Form`), by identifier, scrolled into view. The
@@ -358,10 +391,17 @@ final class ConfirmationsUITests: XCTestCase {
         if onboarding.exists, !photosTab.exists {
             signIn()
         }
-        XCTAssertTrue(app.tabBars.buttons["Photos"].waitForExistence(timeout: 30),
-                      "OAuth did not reach the authenticated shell")
+        let shell = app.tabBars.buttons["Photos"]
+        XCTAssertTrue(shell.waitForExistence(timeout: 30),
+                      "OAuth did not reach the authenticated shell — \(screenText())")
         let whatsNewDone = app.buttons.matching(identifier: "whatsNewDoneButton").firstMatch
         if whatsNewDone.waitForExistence(timeout: 10) { whatsNewDone.tap() }
+        // A signed-in device hands over in seconds: before the test drives the
+        // app, the shell must be settled (its tab hittable, no sheet over it) and
+        // any alert left by an earlier run on this simulator answered.
+        XCTAssertTrue(waitUntil(15) { shell.isHittable },
+                      "the Photos tab never became hittable — \(screenText())")
+        answerPermissionPrompts(window: 4)
         XCTAssertTrue(element("assetTile_\(photo)").waitForExistence(timeout: 30),
                       "the timeline never rendered against \(stub)")
     }
@@ -735,40 +775,43 @@ final class ConfirmationsUITests: XCTestCase {
                        "the Backup screen added a navigation bar: \(app.navigationBars.allElementsBoundByIndex.map(\.identifier))")
         XCTAssertTrue(hasBackButton(), "the Backup screen's bar has no back button")
 
-        // Upload details → back.
-        let detailRow = scrollTo("uploadDetailRow")
-        XCTAssertTrue(detailRow.exists, "no Upload details row")
-        detailRow.tap()
-        XCTAssertTrue(element("uploadDetailEmptyState").waitForExistence(timeout: 20)
-                      || element("uploadDetailUploadedValue").waitForExistence(timeout: 5),
+        // Upload details → back. The details are recognised by any of their
+        // states: empty, a report, or a pass in progress.
+        let detailsOpened = { () -> Bool in
+            ["uploadDetailEmptyState", "uploadDetailUploadedValue", "uploadDetailProgress"]
+                .contains { self.element($0).exists }
+        }
+        XCTAssertTrue(tapRow("uploadDetailRow", until: detailsOpened),
                       "the upload details never opened — \(screenText())")
         sleep(1)
         XCTAssertEqual(app.navigationBars.count, hubBars, "the upload details added a navigation bar")
-        XCTAssertTrue(goBack(), "no way back from the upload details")
+        XCTAssertTrue(goBack(), "no way back from the upload details — \(screenText())")
         sleep(1)
         XCTAssertEqual(app.navigationBars.count, hubBars, "back from the upload details changed the bars")
 
-        // Album picker → back.
-        let mirrorRow = scrollTo("backupMirrorAlbumsRow")
-        XCTAssertTrue(mirrorRow.exists, "no album picker row")
-        mirrorRow.tap()
-        XCTAssertTrue(waitUntil(15) { !self.element("backupMirrorAlbumsRow").isHittable },
-                      "the album picker never opened")
+        // Album picker → back. The picker is recognised by its loading or empty
+        // state, or — its album rows carry no identifier — by the Backup row it
+        // pushed over no longer being hittable.
+        let pickerOpened = { () -> Bool in
+            let row = self.element("backupMirrorAlbumsRow")
+            return self.element("backupAlbumsLoading").exists || self.element("albumPickerEmptyState").exists
+                || !(row.exists && row.isHittable)
+        }
+        XCTAssertTrue(tapRow("backupMirrorAlbumsRow", until: pickerOpened),
+                      "the album picker never opened — \(screenText())")
         sleep(1)
         XCTAssertEqual(app.navigationBars.count, hubBars, "the album picker added a navigation bar")
-        XCTAssertTrue(goBack(), "no way back from the album picker")
+        XCTAssertTrue(goBack(), "no way back from the album picker — \(screenText())")
         sleep(1)
         XCTAssertEqual(app.navigationBars.count, hubBars, "back from the album picker changed the bars")
 
-        // Two backs from the upload details land on the hub.
-        let detailAgain = scrollTo("uploadDetailRow")
-        XCTAssertTrue(detailAgain.exists, "no Upload details row (second time)")
-        detailAgain.tap()
-        XCTAssertTrue(element("uploadDetailEmptyState").waitForExistence(timeout: 20)
-                      || element("uploadDetailUploadedValue").waitForExistence(timeout: 5),
-                      "the upload details never reopened")
-        XCTAssertTrue(goBack(), "first back from the upload details failed")
-        XCTAssertTrue(goBack(), "second back (Backup → Me) failed")
+        // Two backs from the upload details land on the hub. Back from the
+        // picker, the Backup screen keeps its scroll: the row sits under the
+        // navigation bar and `tapRow` brings it down into view first.
+        XCTAssertTrue(tapRow("uploadDetailRow", until: detailsOpened),
+                      "the upload details never reopened — \(screenText())")
+        XCTAssertTrue(goBack(), "first back from the upload details failed — \(screenText())")
+        XCTAssertTrue(goBack(), "second back (Backup → Me) failed — \(screenText())")
         let hubBackupRow = app.buttons.matching(identifier: "backupRow").firstMatch
         XCTAssertTrue(waitUntil(10) { hubBackupRow.exists && hubBackupRow.isHittable },
                       "two backs did not return to the Me hub — \(screenText())")
@@ -938,11 +981,16 @@ final class ConfirmationsUITests: XCTestCase {
         assertProbeUnchanged("lockedFolderPINRefused", "error calls=2")
     }
 
+    /// The session-unlock alert's PIN field.
+    private var sessionPINField: XCUIElement {
+        app.textFields.matching(identifier: "deviceSessionsUnlockField").firstMatch
+    }
+
     /// Types the PIN in the session-unlock alert's field (the number pad is a
     /// software keyboard: the keys are tapped when `typeText` is swallowed).
     private func enterSessionPIN(_ digits: String) {
-        let field = app.textFields["deviceSessionsUnlockField"]
-        XCTAssertTrue(field.waitForExistence(timeout: 10), "the unlock alert has no PIN field")
+        let field = sessionPINField
+        XCTAssertTrue(field.waitForExistence(timeout: 10), "the unlock alert has no PIN field — \(screenText())")
         field.tap()
         field.typeText(digits)
         if !((field.value as? String) ?? "").contains(digits) {
@@ -953,6 +1001,51 @@ final class ConfirmationsUITests: XCTestCase {
         }
     }
 
+    /// Whether the stub holds the session elevated (`GET /api/auth/status`).
+    private func stubSessionElevated() -> Bool? {
+        let body = stubCall("/api/auth/status")
+        let object = (try? JSONSerialization.jsonObject(with: Data(body.utf8))) as? [String: Any]
+        return object?["isElevated"] as? Bool
+    }
+
+    /// Closes whatever alert stands (the app's, by its Cancel/OK; SpringBoard's
+    /// permission prompts, answered).
+    private func dismissStandingAlert() {
+        answerPermissionPrompts(window: 2)
+        let alert = app.alerts.firstMatch
+        guard alert.exists else { return }
+        let close = alert.buttons.matching(labelPredicate(["Cancel", "Annuler", "OK"])).firstMatch
+        (close.exists ? close : alert.buttons.firstMatch).tap()
+        _ = waitUntil(5) { !alert.exists }
+    }
+
+    /// Taps the lock button (waited on until hittable) and waits for the unlock
+    /// alert, then for its PIN field; when either is missing, the standing alert
+    /// is closed and the button tapped again — at most 2 attempts.
+    private func openSessionUnlockAlert(_ what: String) {
+        let button = element("deviceSessionsLockButton")
+        var seen: [String] = []
+        for attempt in 1...2 {
+            let ready = waitUntil(15) { button.exists && button.isHittable }
+            if ready {
+                button.tap()
+                let alert = app.alerts.firstMatch
+                if alert.waitForExistence(timeout: 10), sessionPINField.waitForExistence(timeout: 10) { return }
+            }
+            seen.append("attempt \(attempt): button hittable=\(ready) alert=\(app.alerts.firstMatch.exists) "
+                        + "field=\(sessionPINField.exists) button label='\(button.exists ? button.label : "<missing>")'")
+            dismissStandingAlert()
+        }
+        XCTFail("\(what): the unlock alert with its PIN field never appeared — \(seen.joined(separator: "; ")) — \(screenText())")
+    }
+
+    /// Taps the unlock alert's confirmation, queried inside the alert.
+    private func confirmSessionUnlock() {
+        let confirm = alertButton("deviceSessionsUnlockConfirm")
+        XCTAssertTrue(confirm.waitForExistence(timeout: 5), "the unlock alert has no Unlock button — \(screenText())")
+        confirm.tap()
+    }
+
     /// AC-807: a PIN the server refuses plays one error; one that is too short is
     /// refused on the spot, without a feedback.
     func test_AC_807_sessionElevationWrongPIN() throws {
@@ -961,18 +1054,29 @@ final class ConfirmationsUITests: XCTestCase {
         let row = hubRow("deviceSessionsRow")
         XCTAssertTrue(row.waitForExistence(timeout: 10), "Connected Devices row missing — \(screenText())")
         row.tap()
-        XCTAssertTrue(element("deviceSessionsList").waitForExistence(timeout: 20), "Connected Devices never loaded")
+        XCTAssertTrue(element("deviceSessionsList").waitForExistence(timeout: 20),
+                      "Connected Devices never loaded — \(screenText())")
+        // An elevated session makes the lock button LOCK instead of asking for
+        // the PIN: the scenario starts from a session the stub holds locked.
+        let button = element("deviceSessionsLockButton")
+        XCTAssertTrue(waitUntil(15) { button.exists && button.isHittable },
+                      "the lock button is not hittable — \(screenText())")
+        let elevated = stubSessionElevated()
+        XCTAssertEqual(elevated, false,
+                       "the session is not locked at the start: stub isElevated=\(String(describing: elevated)), "
+                       + "lock button reads '\(button.label)' — the button would lock instead of asking for the PIN")
         assertProbe("sessionPINRefused", "none calls=0")
 
-        element("deviceSessionsLockButton").tap()
+        openSessionUnlockAlert("first PIN")
         enterSessionPIN("111111")
-        app.alerts.firstMatch.buttons["deviceSessionsUnlockConfirm"].tap()
+        confirmSessionUnlock()
         assertProbe("sessionPINRefused", "error calls=1")
         waitUntilNoAlert("session unlock")
+        XCTAssertEqual(stubSessionElevated(), false, "a refused PIN elevated the session")
 
-        element("deviceSessionsLockButton").tap()
+        openSessionUnlockAlert("short PIN")
         enterSessionPIN("123")
-        app.alerts.firstMatch.buttons["deviceSessionsUnlockConfirm"].tap()
+        confirmSessionUnlock()
         let message = element("deviceSessionsActionError")
         XCTAssertTrue(waitUntil(15) { message.exists && message.label.contains("Enter 6 digits") },
                       "a 3-digit PIN did not show 'Enter 6 digits' — \(screenText())")
