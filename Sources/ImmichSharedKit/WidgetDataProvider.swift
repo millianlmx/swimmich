@@ -480,7 +480,8 @@ public struct WidgetDataProvider: Sendable {
         guard var components = URLComponents(string: session.baseURL + "/api/assets/\(photo.id)/thumbnail") else {
             return nil
         }
-        components.queryItems = [URLQueryItem(name: "size", value: size.rawValue)]
+        // `edited=true`, explicit like the app's thumbnails: a widget shows the photo as edited on the server.
+        components.queryItems = [URLQueryItem(name: "size", value: size.rawValue), URLQueryItem(name: "edited", value: "true")]
         guard let url = components.url else { return nil }
         var request = URLRequest(url: url)
         ServerRequestAuthorization.apply(token: session.token, custom: session.customHeaders ?? [], to: &request)

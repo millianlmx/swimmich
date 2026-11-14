@@ -51,6 +51,17 @@ struct EditState: Codable, Equatable, Sendable {
     var contrast: Double = 0       // -1..+1
     var saturation: Double = 0     // -1..+1
     var warmth: Double = 0         // -1..+1
+    /// Left-right flip, in the frame of the oriented, cropped image, applied BEFORE the quarter
+    /// turns (same meaning as the official client's `flipHorizontal`).
+    var mirrorHorizontal: Bool = false
+    /// Top-bottom flip, same frame and order as `mirrorHorizontal`.
+    var mirrorVertical: Bool = false
+
+    private enum CodingKeys: String, CodingKey {
+        case cropRect, orientationSteps, straightenDeg, aspectRatio
+        case exposure, contrast, saturation, warmth
+        case mirrorHorizontal, mirrorVertical
+    }
 
     /// Identity state (no edits). AC-600.
     static let neutral = EditState()
@@ -70,5 +81,30 @@ struct EditState: Codable, Equatable, Sendable {
             || contrast != 0
             || saturation != 0
             || warmth != 0
+            || mirrorHorizontal
+            || mirrorVertical
+    }
+
+    /// True when the server's edit list (crop, quarter turns, mirror) can express the state:
+    /// no free straightening and no colour adjustment.
+    var isServerExpressible: Bool {
+        straightenDeg == 0 && exposure == 0 && contrast == 0 && saturation == 0 && warmth == 0
+    }
+}
+
+extension EditState {
+    /// A draft written before the mirror fields existed reads them as `false`.
+    init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        cropRect = try c.decodeIfPresent(CGRect.self, forKey: .cropRect)
+        orientationSteps = try c.decodeIfPresent(Int.self, forKey: .orientationSteps) ?? 0
+        straightenDeg = try c.decodeIfPresent(Double.self, forKey: .straightenDeg) ?? 0
+        aspectRatio = try c.decodeIfPresent(CropAspectRatio.self, forKey: .aspectRatio)
+        exposure = try c.decodeIfPresent(Double.self, forKey: .exposure) ?? 0
+        contrast = try c.decodeIfPresent(Double.self, forKey: .contrast) ?? 0
+        saturation = try c.decodeIfPresent(Double.self, forKey: .saturation) ?? 0
+        warmth = try c.decodeIfPresent(Double.self, forKey: .warmth) ?? 0
+        mirrorHorizontal = try c.decodeIfPresent(Bool.self, forKey: .mirrorHorizontal) ?? false
+        mirrorVertical = try c.decodeIfPresent(Bool.self, forKey: .mirrorVertical) ?? false
     }
 }

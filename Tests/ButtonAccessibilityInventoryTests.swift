@@ -1144,6 +1144,7 @@ final class ButtonAccessibilityInventoryTests: XCTestCase {
         }
         let identifiers = [
             "deviceSessionsMenuButton", "rotate90CCWButton", "rotate90CWButton", "personBirthdayAction",
+            "mirrorHorizontalButton", "mirrorVerticalButton",
             "assetRatingStar_", "searchFilterStar1", "searchFilterStar2", "searchFilterStar3", "searchFilterStar4", "searchFilterStar5",
             "viewerOcrToggle", "assetTile_", "offlineAsset_", "pickerAsset_", "sharedLinkAsset_",
             "viewerFavoriteButton", "videoPlayerPlayPause", "memoryMomentClose", "shareExtensionItemRow_",

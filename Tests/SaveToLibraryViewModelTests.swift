@@ -71,6 +71,52 @@ final class SaveToLibraryViewModelTests: XCTestCase {
         XCTAssertEqual(captured.value(forHTTPHeaderField: "Authorization"), "Bearer tok")
     }
 
+    // MARK: - Edited version or original (L-21, AC-40, AC-187)
+
+    private func editedFlag(_ request: URLRequest?) -> String? {
+        request?.url.flatMap { URLComponents(url: $0, resolvingAgainstBaseURL: false) }?
+            .queryItems?.first { $0.name == "edited" }?.value
+    }
+
+    /// AC-40: "Save to Photos" asks `edited=true` for the edited version and `edited=false` for the original.
+    func test_AC_40_saveToPhotosAsksTheChosenVersionExplicitly() async {
+        let (vm, _, _, _) = makeVM(asset: makeAsset())
+
+        await vm.saveToPhotos(edited: true)
+        XCTAssertEqual(editedFlag(CapturingURLProtocol.lastRequest), "true")
+
+        await vm.saveToPhotos(edited: false)
+        XCTAssertEqual(editedFlag(CapturingURLProtocol.lastRequest), "false")
+
+        await vm.saveToPhotos()
+        XCTAssertEqual(editedFlag(CapturingURLProtocol.lastRequest), "false", "without a choice: the original")
+    }
+
+    /// AC-187: "Download original" never takes the edited version.
+    func test_AC_187_downloadOriginalAlwaysAsksTheOriginal() async {
+        let (vm, _, _, _) = makeVM(asset: makeAsset())
+
+        await vm.downloadOriginal()
+
+        XCTAssertEqual(editedFlag(CapturingURLProtocol.lastRequest), "false")
+    }
+
+    /// AC-187: the question is asked only for a photo whose record says it is edited.
+    func test_AC_187_choiceIsOfferedOnlyForAnEditedRecord() async throws {
+        let client = MockImmichClient()
+        var dto = try await client.getAsset(id: "p1")
+        dto.isEdited = false
+        client.getAssetResponse["p1"] = dto
+        let (vm, _, _, _) = makeVM(asset: makeAsset(), client: client)
+        let notEdited = await vm.offersEditedChoice()
+        XCTAssertFalse(notEdited, "isEdited false: the original goes without a question")
+
+        dto.isEdited = true
+        client.getAssetResponse["p1"] = dto
+        let edited = await vm.offersEditedChoice()
+        XCTAssertTrue(edited)
+    }
+
     func test_saveVideo_stagesTempFileWithRealExtensionAndCleansUp() async {
         let photoLibrary = MockPhotoLibraryService()
         let (vm, _, _, _) = makeVM(

@@ -98,9 +98,9 @@ final class AssetPixelSizeViewModelTests: XCTestCase {
         XCTAssertEqual(mock.getAssetCalls, ["a1", "a1"], "the link item makes no request")
     }
 
-    /// The viewer and the slideshow display the original, which the EXIF describes:
-    /// an edited record read there keeps its native scale.
-    func test_AC_111_editedAssetReadsOriginalInViewer() async {
+    /// The viewer and the slideshow display the edited version (`edited=true`), which the EXIF no
+    /// longer describes: an edited record read there counts as unknown size (L-21, AC-39).
+    func test_AC_39_editedAssetCountsAsUnknownSizeInViewer() async {
         let mock = MockImmichClient()
         mock.getAssetResponse["a1"] = dto(exif: exif(8000, 6000), isEdited: true)
         let item = AssetReactItem(from: dto(exif: exif(8000, 6000), isEdited: true))
@@ -109,7 +109,9 @@ final class AssetPixelSizeViewModelTests: XCTestCase {
         let vm = AssetPixelSizeViewModel(asset: item, client: mock)
         await vm.load()
 
-        XCTAssertEqual(vm.pixelSize, PixelSize(width: 8000, height: 6000))
+        XCTAssertNil(vm.pixelSize)
+        XCTAssertEqual(maxScale(vm.pixelSize), 4)
+        XCTAssertEqual(mock.getAssetCalls, ["a1"])
     }
 
     // MARK: - AC-114

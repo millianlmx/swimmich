@@ -250,10 +250,55 @@ final class MapViewModel {
     /// never churns to empty mid-refresh (keeps the map photo sheet stable).
     private var lastRect: MKMapRect?
 
+    // MARK: - My Location (L-25, B-29.2)
+
+    /// The device position behind "My Location".
+    let location: any DeviceLocationProviding
+
+    /// A recentering order: `id` changes on every tap, so two taps on the same
+    /// spot are two orders (the user may have panned away in between).
+    struct CenterRequest: Equatable {
+        let id: Int
+        let coordinate: DeviceCoordinate
+    }
+
+    /// The last position the map was asked to center on.
+    private(set) var centerRequest: CenterRequest?
+    /// Whether the map draws the device's position dot: only once the
+    /// permission allows it, never as a side effect of opening the map.
+    private(set) var showsUserLocation = false
+    private(set) var isLocating = false
+    /// Why "My Location" did not move the map; the map shows it as an alert.
+    var locationNotice: MyLocationNotice?
+
+    /// Reads the permission (no prompt) so an already-allowed map shows its
+    /// position dot on open.
+    func refreshLocationAuthorization() async {
+        showsUserLocation = await location.currentStatus().allowsPosition
+    }
+
+    /// "My Location": asks once when never asked, then centers the map. The
+    /// approximate position is enough to center a map. A refusal leaves the map
+    /// where it is and explains itself in `locationNotice`.
+    func centerOnMyLocation() async {
+        guard !isLocating else { return }
+        isLocating = true
+        defer { isLocating = false }
+        let outcome = await location.locate(requiringPreciseAccuracy: false)
+        if case .located(let coordinate) = outcome {
+            locationNotice = nil
+            centerRequest = CenterRequest(id: (centerRequest?.id ?? 0) + 1, coordinate: coordinate)
+        } else {
+            locationNotice = outcome.notice
+        }
+        await refreshLocationAuthorization()
+    }
+
     init(
         client: any ImmichClient,
         cache: MapMarkerCache,
-        settings: MapSettingsStore? = nil
+        settings: MapSettingsStore? = nil,
+        location: (any DeviceLocationProviding)? = nil
     ) {
         self.client = client
         self.baseCache = cache
@@ -261,6 +306,7 @@ final class MapViewModel {
         // MainActor-isolated and default arguments are evaluated outside that
         // context.
         self.settings = settings ?? MapSettingsStore()
+        self.location = location ?? SystemDeviceLocationService()
     }
 
     /// Loads markers once per VM lifetime. Serves the disk cache instantly if
