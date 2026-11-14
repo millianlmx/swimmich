@@ -52,9 +52,19 @@ final class AdjustDateViewModel: Identifiable {
     ) {
         self.detail = detail
 
+        // The system list carries legacy aliases (`Asia/Calcutta`) where Immich writes the
+        // canonical name (`Asia/Kolkata`). Every identifier goes through `canonical`, so the
+        // list shows one row per zone, under the name a server would send. The photo's own
+        // zone and the saved one are added when `TimeZone` resolves them but the list lacks them.
+        let deviceIdentifier = Self.canonical(deviceTimeZone.identifier)
+        let exifTimeZone = detail.detail?.exifInfo?.timeZone?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        var extras = [deviceTimeZone.identifier]
+        if exifTimeZone.contains("/") { extras.append(exifTimeZone) }
+        if let saved = detail.savedDateCorrection?.timeZoneIdentifier { extras.append(saved) }
         var seen = Set<String>()
         var built: [Zone] = []
-        for identifier in knownIdentifiers + ["UTC", deviceTimeZone.identifier] {
+        for raw in knownIdentifiers + ["UTC"] + extras {
+            let identifier = Self.canonical(raw)
             guard seen.insert(identifier).inserted, let tz = TimeZone(identifier: identifier) else { continue }
             built.append(Zone(identifier: identifier, timeZone: tz, reduced: Self.reduce(identifier)))
         }
@@ -63,8 +73,8 @@ final class AdjustDateViewModel: Identifiable {
         zonesByIdentifier = lookup
 
         // 1. Memory of a correction saved on this photo.
-        if let saved = detail.savedDateCorrection, lookup[saved.timeZoneIdentifier] != nil {
-            selectedZoneIdentifier = saved.timeZoneIdentifier
+        if let saved = detail.savedDateCorrection, lookup[Self.canonical(saved.timeZoneIdentifier)] != nil {
+            selectedZoneIdentifier = Self.canonical(saved.timeZoneIdentifier)
             wallClock = saved.wallClock
             return
         }
@@ -77,19 +87,19 @@ final class AdjustDateViewModel: Identifiable {
             ?? now
 
         // 3. Zone: EXIF name, else a named zone with the EXIF fixed offset, else the device's.
-        let exifZone = exif?.timeZone?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        let exifZone = Self.canonical(exifTimeZone)
         let chosen: String
         if !exifZone.isEmpty, lookup[exifZone] != nil {
             chosen = exifZone
         } else if let minutes = Self.fixedOffsetMinutes(exifTimeZone: exifZone) {
             let matching = built.filter { $0.timeZone.secondsFromGMT(for: instant) / 60 == minutes }
-            if matching.contains(where: { $0.identifier == deviceTimeZone.identifier }) {
-                chosen = deviceTimeZone.identifier
+            if matching.contains(where: { $0.identifier == deviceIdentifier }) {
+                chosen = deviceIdentifier
             } else {
-                chosen = matching.map(\.identifier).min() ?? deviceTimeZone.identifier
+                chosen = matching.map(\.identifier).min() ?? deviceIdentifier
             }
         } else {
-            chosen = deviceTimeZone.identifier
+            chosen = deviceIdentifier
         }
         selectedZoneIdentifier = chosen
 
@@ -145,6 +155,7 @@ final class AdjustDateViewModel: Identifiable {
 
     /// Picks a zone from the list. The date and time on screen stay as they are.
     func selectZone(_ identifier: String) {
+        let identifier = Self.canonical(identifier)
         guard zonesByIdentifier[identifier] != nil else { return }
         selectedZoneIdentifier = identifier
         filterText = ""
@@ -168,6 +179,25 @@ final class AdjustDateViewModel: Identifiable {
     }
 
     // MARK: - Pure helpers
+
+    /// Legacy IANA aliases still listed by `TimeZone.knownTimeZoneIdentifiers` on iOS, mapped
+    /// to the canonical name Immich writes (EXIF `timeZone`) and the official client lists.
+    nonisolated private static let canonicalNames: [String: String] = [
+        "Asia/Calcutta": "Asia/Kolkata",
+        "Asia/Katmandu": "Asia/Kathmandu",
+        "Asia/Rangoon": "Asia/Yangon",
+        "Asia/Saigon": "Asia/Ho_Chi_Minh",
+        "Europe/Kiev": "Europe/Kyiv",
+        "America/Godthab": "America/Nuuk",
+        "Atlantic/Faeroe": "Atlantic/Faroe",
+        "Pacific/Enderbury": "Pacific/Kanton",
+    ]
+
+    /// The canonical spelling of `identifier` when the runtime resolves it, else `identifier` itself.
+    nonisolated static func canonical(_ identifier: String) -> String {
+        guard let name = canonicalNames[identifier], TimeZone(identifier: name) != nil else { return identifier }
+        return name
+    }
 
     /// `+09:00`, `-03:30`, `+00:00`.
     nonisolated static func offsetText(minutes: Int) -> String {

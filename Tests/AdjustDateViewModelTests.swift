@@ -129,6 +129,32 @@ final class AdjustDateViewModelTests: XCTestCase {
         XCTAssertEqual(vm.wallClock, wall(2024, 7, 14, 10, 0, 0))
     }
 
+    /// Immich writes canonical names (`Asia/Kolkata`) that iOS's own list only knows as an
+    /// alias (`Asia/Calcutta`): the photo's zone must still be the one proposed.
+    func test_AC_66_2_canonicalExifZoneIsProposed() async {
+        for exifZone in ["Asia/Kolkata", "Asia/Calcutta"] {
+            let (detail, _) = await loadedDetail(timeZone: exifZone)
+            let vm = AdjustDateViewModel(
+                detail: detail, deviceTimeZone: tokyo,
+                knownIdentifiers: ["Asia/Calcutta", "Europe/Paris", "Asia/Tokyo"], now: Date(timeIntervalSince1970: 0)
+            )
+            XCTAssertEqual(vm.selectedEntry.identifier, "Asia/Kolkata", exifZone)
+            XCTAssertEqual(vm.selectedEntry.offsetText, "+05:30", exifZone)
+            XCTAssertEqual(vm.wallClock, wall(2024, 7, 14, 13, 30, 0), exifZone)
+            XCTAssertEqual(vm.zoneEntries.filter { $0.offsetMinutes == 330 }.map(\.identifier), ["Asia/Kolkata"])
+        }
+    }
+
+    /// A zone the system list lacks but `TimeZone` resolves is still offered.
+    func test_AC_66_2_resolvableExifZoneOutsideListIsAdded() async {
+        let (detail, _) = await loadedDetail(timeZone: "Europe/Paris")
+        let vm = AdjustDateViewModel(
+            detail: detail, deviceTimeZone: tokyo, knownIdentifiers: ["Asia/Tokyo"], now: Date(timeIntervalSince1970: 0)
+        )
+        XCTAssertEqual(vm.selectedEntry.identifier, "Europe/Paris")
+        XCTAssertTrue(vm.zoneEntries.contains { $0.identifier == "Europe/Paris" })
+    }
+
     // MARK: - AC-66.3: sorted, labelled, filterable list
 
     func test_AC_66_3() async {

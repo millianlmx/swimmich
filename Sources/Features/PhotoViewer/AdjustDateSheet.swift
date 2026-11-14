@@ -198,7 +198,7 @@ private struct AdjustDateZoneList: View {
         }
         .buttonStyle(.plain)
         .accessibilityElement(children: .ignore)
-        .accessibilityLabel(entry.identifier)
+        .accessibilityLabel(Text(verbatim: entry.identifier))
         .accessibilityValue(entry.offsetText)
         .accessibilityAddTraits(isSelected ? [.isButton, .isSelected] : .isButton)
         .accessibilityIdentifier("adjustDateZoneRow_\(entry.identifier)")
