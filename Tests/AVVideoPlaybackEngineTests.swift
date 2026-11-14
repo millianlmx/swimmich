@@ -60,19 +60,36 @@ final class AVVideoPlaybackEngineReadabilityTests: XCTestCase {
         let engine = AVVideoPlaybackEngine()
         let ready = TestBox(0)
         let failures = TestBox(0)
+        let ended = TestBox(0)
         let failed = expectation(description: "onFailure")
         failed.assertForOverFulfill = false
         engine.onReady = { _ in ready.value += 1 }
+        engine.onEnded = { ended.value += 1 }
         engine.onFailure = { _ in
             failures.value += 1
             failed.fulfill()
         }
+        let player = engine.makePlayerLayer().player
 
         try await engine.prepare(url: url, token: nil)
         XCTAssertEqual(ready.value, 1)
         engine.play()
 
-        await fulfillment(of: [failed], timeout: 10)
+        let outcome = await XCTWaiter().fulfillment(of: [failed], timeout: 10)
+        // What the player did, so a red run says why instead of only timing out.
+        let item = player?.currentItem
+        let facts: [String] = [
+            "item status \(item?.status.rawValue ?? -1)",
+            "error \(String(describing: item?.error))",
+            "timeControlStatus \(player?.timeControlStatus.rawValue ?? -1)",
+            "waiting \(String(describing: player?.reasonForWaitingToPlay))",
+            "rate \(player?.rate ?? -1)",
+            "time \(player?.currentTime().seconds ?? -1)",
+            "ended \(ended.value)",
+            "errorLog \(String(describing: item?.errorLog()?.events.map(\.errorComment)))",
+        ]
+        let state = facts.joined(separator: ", ")
+        XCTAssertEqual(outcome, .completed, "the engine never reported the failure — \(state)")
         try await Task.sleep(for: .seconds(2))
         XCTAssertEqual(failures.value, 1)
     }

@@ -38,7 +38,6 @@ final class ViewerResilienceUITests: XCTestCase {
         app = XCUIApplication()
         app.launchArguments += [
             "-AppleLanguages", "(en)", "-AppleLocale", "en_US",
-            "-authServerURL", "()",
         ]
         try XCTSkipUnless(stubIsReachable(), "Local Immich stub not running on \(stub)")
     }
@@ -107,76 +106,6 @@ final class ViewerResilienceUITests: XCTestCase {
         "screen reads: \(app.staticTexts.allElementsBoundByIndex.map(\.label))"
     }
 
-    private func labelPredicate(_ labels: [String]) -> NSPredicate {
-        NSPredicate(format: labels.map { _ in "label CONTAINS %@" }.joined(separator: " OR "),
-                    argumentArray: labels)
-    }
-
-    private func waitForStaticText(_ labels: [String], timeout: TimeInterval) -> Bool {
-        app.staticTexts.matching(labelPredicate(labels)).firstMatch.waitForExistence(timeout: timeout)
-    }
-
-    @discardableResult
-    private func tapAnyButton(_ labels: [String], timeout: TimeInterval = 20) -> Bool {
-        let predicate = labelPredicate(labels)
-        let direct = app.buttons.matching(predicate).firstMatch
-        let contained = app.buttons.containing(predicate).firstMatch
-        for candidate in [direct, contained] where candidate.waitForExistence(timeout: timeout) {
-            candidate.tap()
-            return true
-        }
-        return false
-    }
-
-    private func dismissSystemSignInAlertIfPresent() {
-        let springboard = XCUIApplication(bundleIdentifier: "com.apple.springboard")
-        for label in ["Continue", "Continuer"] {
-            let button = springboard.alerts.buttons[label]
-            if button.waitForExistence(timeout: 6) { button.tap(); return }
-        }
-        for label in ["Continue", "Continuer"] {
-            let button = app.alerts.buttons[label]
-            if button.waitForExistence(timeout: 2) { button.tap(); return }
-        }
-    }
-
-    @discardableResult
-    private func tapAuthorizeInProvider(timeout: TimeInterval = 20) -> Bool {
-        let safari = XCUIApplication(bundleIdentifier: "com.apple.SafariViewService")
-        let predicate = NSPredicate(format: "label CONTAINS 'Authorize'")
-        for candidate in [safari.links.matching(predicate).firstMatch,
-                          safari.buttons.matching(predicate).firstMatch] {
-            if candidate.waitForExistence(timeout: timeout) { candidate.tap(); return true }
-        }
-        return false
-    }
-
-    private func walkOnboardingToLogin() {
-        XCTAssertTrue(tapAnyButton(["Get Started", "Commencer"], timeout: 30), "Welcome CTA missing")
-        let field = app.textFields.firstMatch
-        XCTAssertTrue(field.waitForExistence(timeout: 20), "Server URL field missing")
-        field.tap()
-        let seeded = (field.value as? String) ?? ""
-        if !seeded.isEmpty && seeded != stub {
-            field.typeText(String(repeating: XCUIKeyboardKey.delete.rawValue, count: seeded.count))
-        }
-        if (field.value as? String) != stub { field.typeText(stub) }
-        XCTAssertTrue(tapAnyButton(["Check connection", "Vérifier la connexion"]), "Check-connection CTA missing")
-        XCTAssertTrue(app.buttons.matching(labelPredicate(["Continue", "Continuer"]))
-            .firstMatch.waitForExistence(timeout: 30), "Server never became reachable")
-        let loginCopy = ["Sign in to Immich", "Connectez-vous à Immich"]
-        var onLogin = false
-        for _ in 0..<3 where !onLogin {
-            app.swipeUp()
-            XCTAssertTrue(tapAnyButton(["Continue", "Continuer"]), "Continue CTA missing")
-            onLogin = waitForStaticText(loginCopy, timeout: 10)
-        }
-        if !onLogin {
-            shot("not-on-login-screen")
-            XCTFail("Login screen did not appear — \(screenText())")
-        }
-    }
-
     private func element(_ identifier: String) -> XCUIElement {
         app.descendants(matching: .any).matching(identifier: identifier).firstMatch
     }
@@ -196,19 +125,55 @@ final class ViewerResilienceUITests: XCTestCase {
 
     // MARK: - Navigation
 
+    /// Starts the app already signed in: the session the stub's SSO sign-in hands out
+    /// (`POST /api/oauth/callback`) goes in as launch arguments, the way `AssetEditsUITests`
+    /// does it. The OAuth walk through `SafariViewService` is not what this class tests, and
+    /// its consent sheet did not always come up on the CI simulators.
     private func launchSignedIn(extraArguments: [String] = []) {
-        app.launchArguments += extraArguments
+        app.launchArguments = ["-AppleLanguages", "(en)", "-AppleLocale", "en_US"]
+            + extraArguments + sessionArguments()
         app.launch()
-        if waitForStaticText(["Your photo library", "Votre photothèque"], timeout: 30) {
-            walkOnboardingToLogin()
-            XCTAssertTrue(tapAnyButton(["Immich SSO"]), "SSO button missing on login screen")
-            dismissSystemSignInAlertIfPresent()
-            XCTAssertTrue(tapAuthorizeInProvider(), "Authorize link not reachable in the auth sheet")
-        }
         XCTAssertTrue(app.tabBars.buttons["Photos"].waitForExistence(timeout: 30),
-                      "OAuth did not reach the authenticated shell")
+                      "the app did not start signed in — \(screenText())")
         let whatsNewDone = element("whatsNewDoneButton")
         if whatsNewDone.waitForExistence(timeout: 10) { whatsNewDone.tap() }
+    }
+
+    private func sessionArguments() -> [String] {
+        var request = URLRequest(url: URL(string: "\(stub)/api/oauth/callback")!)
+        request.httpMethod = "POST"
+        request.timeoutInterval = 5
+        let done = DispatchSemaphore(value: 0)
+        var login: [String: Any] = [:]
+        URLSession.shared.dataTask(with: request) { data, _, _ in
+            login = data.flatMap { try? JSONSerialization.jsonObject(with: $0) as? [String: Any] } ?? [:]
+            done.signal()
+        }.resume()
+        _ = done.wait(timeout: .now() + 6)
+        guard let token = login["accessToken"] as? String else {
+            XCTFail("the stub's /api/oauth/callback gave no session: \(login)")
+            return []
+        }
+        return [
+            "-uiTestSessionToken", token,
+            "-authServerURL", stub,
+            "-authUserId", login["userId"] as? String ?? "",
+            "-authUserName", login["name"] as? String ?? "",
+            "-authUserEmail", login["userEmail"] as? String ?? "",
+            "-authIsAdmin", (login["isAdmin"] as? Bool ?? false) ? "YES" : "NO",
+        ]
+    }
+
+    /// The slideshow hides its chrome 3 s after the play start; a tap brings it back.
+    private func revealSlideshowChrome() {
+        let counter = element("slideshowCounter")
+        if !counter.exists { app.tap() }
+        XCTAssertTrue(counter.waitForExistence(timeout: 5), "the slideshow chrome never came back")
+    }
+
+    private func slideshowCounterLabel() -> String {
+        revealSlideshowChrome()
+        return element("slideshowCounter").label
     }
 
     private func tile(_ id: String) -> XCUIElement { element("assetTile_\(id)") }
@@ -535,15 +500,13 @@ final class ViewerResilienceUITests: XCTestCase {
         // AC-59.4: the slideshow plays it too, instead of skipping it.
         let streamedInSlideshow = playbackRequests()
         viewerAction(id: "viewerSlideshowButton", menu: "viewerMenuSlideshow")
-        let counter = element("slideshowCounter")
-        XCTAssertTrue(counter.waitForExistence(timeout: 15), "the slideshow never opened")
-        let slideBefore = counter.label
+        XCTAssertTrue(element("slideshowCounter").waitForExistence(timeout: 15), "the slideshow never opened")
+        let slideBefore = slideshowCounterLabel()
         Thread.sleep(forTimeInterval: 4)
-        XCTAssertEqual(element("slideshowCounter").label, slideBefore, "the slideshow skipped the video")
+        XCTAssertEqual(slideshowCounterLabel(), slideBefore, "the slideshow skipped the video")
         XCTAssertGreaterThan(playbackRequests(), streamedInSlideshow, "the slideshow never streamed the video")
-        let close = element("slideshowCloseButton")
-        if !close.isHittable { app.tap() }
-        close.tap()
+        revealSlideshowChrome()
+        element("slideshowCloseButton").tap()
         closeViewer()
 
         // AC-59.3: the server fails too — the error state, one switch, no loop.
