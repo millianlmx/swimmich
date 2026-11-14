@@ -17,7 +17,8 @@ import XCTest
 ///
 /// NOT PROVEN here (the unit suite and the stub's Python tests carry them): the
 /// "Domain" and "Initialized" rows of the server card, which have no identifier.
-/// The scenarios are COMPILED by the CI, not run (no simulator there).
+/// The CI runs each test on its own line (`Scripts/ci-ui-scenarios.txt`), on a
+/// simulator whose app was uninstalled first.
 ///
 ///     python3 -u UITests/stubs/immich_stub_route_compat.py 8421 &
 ///     TEST_RUNNER_IMMICH_STUB_URL=http://127.0.0.1:8421 xcodebuild test-without-building \
@@ -27,6 +28,9 @@ final class RouteCompatUITests: XCTestCase {
 
     private let stub = ProcessInfo.processInfo.environment["IMMICH_STUB_URL"] ?? "http://127.0.0.1:8421"
     private var app: XCUIApplication!
+    /// The stub's session the app was started with (`signIn`), reused by a
+    /// relaunch: it lives in the launch arguments only, never in stored defaults.
+    private var session: [String] = []
 
     // The fixture of `immich_stub_route_compat.py`: keep the two in step.
     private let ada = "cccccccc-4444-4444-8444-000000000001"
@@ -38,7 +42,8 @@ final class RouteCompatUITests: XCTestCase {
     private static let welcome = ["Your photo library", "Votre photothèque"]
     /// A fresh launch wipes any session left behind (restore finds no server).
     private let freshLaunch = ["-AppleLanguages", "(en)", "-AppleLocale", "en_US", "-authServerURL", "()"]
-    /// A relaunch that keeps the stored session.
+    /// A relaunch: language only. A session given by `signIn` must be passed again
+    /// (`session`), the argument domain does not survive the process.
     private let relaunch = ["-AppleLanguages", "(en)", "-AppleLocale", "en_US"]
 
     override func setUpWithError() throws {
@@ -127,14 +132,14 @@ final class RouteCompatUITests: XCTestCase {
     // MARK: - AC-176
 
     func test_AC_176() throws {
-        // A session on 3.1.0, relaunched against 3.4.0 without going through the server step.
+        // A session on 3.1.0, relaunched against 3.4.0 without going through the
+        // server step: same token and address, a new process that knows no version.
         try begin(version: "3.1.0")
         try signIn()
         app.terminate()
         stubGet("/stub/version?v=3.4.0")
         let mark = requests().count
-        launch(arguments: relaunch)
-        XCTAssertTrue(element("assetTile_aaaaaaaa-1111-4111-8111-000000000001").waitForExistence(timeout: 40))
+        try signIn()
         mergeAdaAndBenIntoCleo()
         openAdministration()
         XCTAssertTrue(element("adminJob_\(queue)").waitForExistence(timeout: 20))
@@ -150,8 +155,7 @@ final class RouteCompatUITests: XCTestCase {
         app.terminate()
         stubGet("/stub/version?v=2.0.0")
         let legacyMark = requests().count
-        launch(arguments: relaunch)
-        XCTAssertTrue(element("assetTile_aaaaaaaa-1111-4111-8111-000000000001").waitForExistence(timeout: 40))
+        try signIn()
         openAdministration()
         XCTAssertTrue(element("adminJob_\(queue)").waitForExistence(timeout: 20))
         let legacyPaths = requests().dropFirst(legacyMark).map(\.path)
@@ -219,22 +223,29 @@ final class RouteCompatUITests: XCTestCase {
     // MARK: - AC-179
 
     func test_AC_179() throws {
+        // POST reads the screens make on the way (Cleo's photos): not writes.
+        let reads: Set<String> = ["POST /api/search/metadata", "POST /api/search/statistics"]
         for version in ["2.0.0", "3.4.0"] {
             try begin(version: version)
             try signIn()
             setReadOnly(true)
             let mark = requests().count
 
-            mergeAdaAndBenIntoCleo()
+            mergeAdaAndBenIntoCleo(expectMerged: false)
             openAdministration()
             XCTAssertTrue(element("adminJob_\(queue)").waitForExistence(timeout: 20),
                           "the job list is a read: it must stay available")
             runJob("pause")
 
-            let writes = requests().dropFirst(mark).filter { $0.method != "GET" }
-            XCTAssertEqual(writes.map { "\($0.method) \($0.path)" }, [], "a write left the app in read-only mode at \(version)")
+            let writes = requests().dropFirst(mark)
+                .map { "\($0.method) \($0.path)" }
+                .filter { !$0.hasPrefix("GET ") && !reads.contains($0) }
+            XCTAssertEqual(writes, [], "a write left the app in read-only mode at \(version)")
             XCTAssertTrue(requests().dropFirst(mark).contains { $0.path == (version == "2.0.0" ? "/api/jobs" : "/api/queues") })
         }
+        // The mode is a device setting: the next scenario of a local class run starts writable.
+        try signIn()
+        setReadOnly(false)
     }
 
     // MARK: - AC-180
@@ -282,6 +293,7 @@ final class RouteCompatUITests: XCTestCase {
     private func begin(version: String) throws {
         if app.state != .notRunning { app.terminate() }
         stubGet("/__reset")
+        session = []
         XCTAssertEqual(stubGet("/__provider?mode=manual"), "{\"provider\": \"manual\"}")
         XCTAssertTrue(stubGet("/stub/version?v=\(version)").contains(version), "the stub rejected version \(version)")
         launch(arguments: freshLaunch)
@@ -296,10 +308,12 @@ final class RouteCompatUITests: XCTestCase {
     /// (`-uiTestSessionToken`): these scenarios watch the routes of the signed-in
     /// app, not the sign-in, which AC-175 and AC-180 walk for real
     /// (`signInWithSSO`). The SSO sheet (`SafariViewService`) is what failed most
-    /// on a loaded Mac.
+    /// on a loaded Mac. Called again after `begin`, it relaunches with the same
+    /// session: the stored token and address of a relaunch.
     private func signIn() throws {
         app.terminate()
-        launch(arguments: relaunch + sessionArguments())
+        if session.isEmpty { session = sessionArguments() }
+        launch(arguments: relaunch + session)
         XCTAssertTrue(app.tabBars.buttons.matching(labelPredicate(["Photos", "Fotos"]))
             .firstMatch.waitForExistence(timeout: 30), "the app did not start signed in")
         XCTAssertTrue(element("assetTile_aaaaaaaa-1111-4111-8111-000000000001").waitForExistence(timeout: 40),
@@ -384,8 +398,9 @@ final class RouteCompatUITests: XCTestCase {
         done.tap()
     }
 
-    /// Albums tab → People → Cleo → merge Ada, then Ben, into her.
-    private func mergeAdaAndBenIntoCleo() {
+    /// Albums tab → People → Cleo → merge Ada, then Ben, into her. In read-only
+    /// mode (`expectMerged: false`) each merge is refused: both stay offered.
+    private func mergeAdaAndBenIntoCleo(expectMerged: Bool = true) {
         app.tabBars.buttons.matching(labelPredicate(["Albums", "Alben"])).firstMatch.tap()
         XCTAssertTrue(element("albumsLibrarySection").waitForExistence(timeout: 20), "the Albums library never appeared")
         let row = app.buttons.matching(identifier: "peopleRow").firstMatch
@@ -399,8 +414,14 @@ final class RouteCompatUITests: XCTestCase {
             let item = element("personMerge_\(other)")
             XCTAssertTrue(item.waitForExistence(timeout: 10), "\(other) is not offered for a merge")
             item.tap()
-            XCTAssertTrue(waitUntil(timeout: 20) { !self.element("personMerge_\(other)").exists },
-                          "\(other) is still offered after the merge")
+            if expectMerged {
+                XCTAssertTrue(waitUntil(timeout: 20) { !self.element("personMerge_\(other)").exists },
+                              "\(other) is still offered after the merge")
+            } else {
+                Thread.sleep(forTimeInterval: 2)
+                let refusal = app.alerts.firstMatch
+                if refusal.exists { refusal.buttons.firstMatch.tap() }
+            }
         }
         app.navigationBars.firstMatch.buttons.firstMatch.tap()
     }
@@ -425,11 +446,17 @@ final class RouteCompatUITests: XCTestCase {
         }, "Administration never showed its instance statistics")
     }
 
+    /// The switch is tapped on its knob: a tap on the row's centre lands on the
+    /// label, which does not flip a SwiftUI `Toggle`.
     private func setReadOnly(_ enabled: Bool) {
         openProfile()
         reveal("readOnlyModeToggle")
-        let toggle = element("readOnlyModeToggle")
-        if (toggle.value as? String == "1") != enabled { toggle.tap() }
+        let toggle = app.switches.matching(identifier: "readOnlyModeToggle").firstMatch
+        XCTAssertTrue(toggle.waitForExistence(timeout: 10), "no Read-only Mode switch in the Me hub")
+        if (toggle.value as? String == "1") != enabled {
+            toggle.coordinate(withNormalizedOffset: CGVector(dx: 0.92, dy: 0.5)).tap()
+        }
+        XCTAssertEqual(toggle.value as? String, enabled ? "1" : "0", "the Read-only Mode switch did not flip")
         dismissMeSheet()
     }
 
@@ -472,13 +499,16 @@ final class RouteCompatUITests: XCTestCase {
         try completeSSOSignIn()
     }
 
-    private func switchToAccount(containing text: String) {
+    /// A row shows the user's name, not the server: the server is read from the
+    /// row's identifier (`savedAccountRow_<url>|<email>`).
+    private func switchToAccount(containing host: String) {
         openProfile()
         reveal("addAccountButton")
-        let row = app.buttons.matching(NSPredicate(format: "identifier BEGINSWITH 'savedAccountRow_' AND label CONTAINS %@", text)).firstMatch
-        XCTAssertTrue(row.waitForExistence(timeout: 10), "no saved account on \(text)")
+        let row = app.buttons.matching(NSPredicate(format: "identifier BEGINSWITH 'savedAccountRow_' AND identifier CONTAINS %@", host)).firstMatch
+        XCTAssertTrue(row.waitForExistence(timeout: 10), "no saved account on \(host)")
         row.tap()
         XCTAssertTrue(element("assetTile_aaaaaaaa-1111-4111-8111-000000000001").waitForExistence(timeout: 40))
+        dismissMeSheet()
     }
 
     // MARK: - Reading the journal
