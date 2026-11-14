@@ -581,8 +581,6 @@ final class ViewerResilienceUITests: XCTestCase {
         }
         return false
     }
-        waitForViewerProbe(["idle": "off"])
-    }
 
     // MARK: - AC-59: the offline copy that cannot be read
 
