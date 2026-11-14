@@ -351,6 +351,19 @@ final class BackupRemainderUITests: XCTestCase {
         app.navigationBars.buttons.element(boundBy: 0).tap()
     }
 
+    /// One line that says what the screen holds, for an assertion message: the CI
+    /// log keeps a failure's first line only, and no screenshot reaches it.
+    private func diagnostics() -> String {
+        let bars = app.navigationBars.allElementsBoundByIndex.map { bar in
+            "\(bar.identifier)[" + bar.buttons.allElementsBoundByIndex.map(\.label).joined(separator: ",") + "]"
+        }
+        let identifiers = app.descendants(matching: .any).allElementsBoundByIndex
+            .map(\.identifier).filter { !$0.isEmpty }
+        let texts = app.staticTexts.allElementsBoundByIndex.prefix(12).map(\.label)
+        return "bars=\(bars) ids=\(Array(Set(identifiers)).sorted().prefix(40)) texts=\(texts)"
+            .replacingOccurrences(of: "\n", with: " ")
+    }
+
     // MARK: - AC-65
 
     func test_AC_65_remainderFromBackupScreen() throws {
@@ -387,16 +400,35 @@ final class BackupRemainderUITests: XCTestCase {
         waitUntil(120, "the entry to fall to 0") { count.exists && count.label == "0" }
         shot("remainder-03-entry-zero")
 
+        // The count falls as the pass records each photo, while the pass is still
+        // running (album mirror, tracking): the Form re-lays out under a finger
+        // until "Run now" is back. Reopen the list only once the pass is over.
+        // The button sits in the progress section, below the fold: scroll to it.
+        waitUntil(120, "the pass to end (Run now is back)") {
+            let button = row("runBackupButton", swiping: "up", swipes: 4)
+            return button.exists && button.isHittable
+        }
+
         // The list now says everything is backed up.
         let remainderRow = row("backupRemainderRow", swiping: "down")
+        XCTAssertTrue(remainderRow.exists && remainderRow.isHittable, "the entry must be reachable — \(diagnostics())")
         remainderRow.tap()
-        XCTAssertTrue(element("backupRemainderScreen").waitForExistence(timeout: 15), "the list never reopened")
+        // The diagnostic comes BEFORE the assertion: with `continueAfterFailure`
+        // off, nothing after a failed assertion runs.
+        let screen = element("backupRemainderScreen")
+        let reopened = screen.waitForExistence(timeout: 15)
+        if !reopened {
+            shot("remainder-04-not-reopened")
+            print("TREE \(app.debugDescription)")
+        }
+        XCTAssertTrue(reopened, "the list never reopened — \(diagnostics())")
         let emptyState = element("backupRemainderEmptyState")
-        if !emptyState.waitForExistence(timeout: 15) {
+        let explained = emptyState.waitForExistence(timeout: 15)
+        if !explained {
             shot("remainder-04-no-empty-state")
             print("TREE \(app.debugDescription)")
         }
-        XCTAssertTrue(emptyState.exists, "an empty list must explain itself")
+        XCTAssertTrue(explained, "an empty list must explain itself — \(diagnostics())")
         XCTAssertEqual(app.descendants(matching: .any)
             .matching(NSPredicate(format: "identifier BEGINSWITH 'remainderAsset_'")).count, 0)
         shot("remainder-04-empty")
