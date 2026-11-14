@@ -19,6 +19,9 @@ final class AssetEditsUITests: XCTestCase {
 
     private let stub = ProcessInfo.processInfo.environment["IMMICH_STUB_URL"] ?? "http://127.0.0.1:8421"
     private var app: XCUIApplication!
+    /// The last reading of `waitForProbe`, in the failure messages (`describe()`): what the screen
+    /// showed when the wait gave up.
+    private var lastProbeReading = "no probe read"
 
     override func setUpWithError() throws {
         continueAfterFailure = false
@@ -128,8 +131,15 @@ final class AssetEditsUITests: XCTestCase {
 
     private func originals() -> [[String: Any]] { entries("GET") { $0 == "/api/assets/\(self.photo)/original" } }
 
+    /// The downloads of the offline copy: `GET …/original` asking `edited`. The editor's working image is
+    /// an `edited=false` request of the same path, so a copy fetched as the edited version never mixes
+    /// with it.
+    private func copyDownloads(edited: String) -> [[String: Any]] {
+        originals().filter { self.param($0, "edited") == edited }
+    }
+
     private func describe() -> String {
-        journal().map { "\($0["method"] ?? "") \($0["path"] ?? "") \($0["params"] ?? "") \($0["body"] ?? "")" }
+        "probe: \(lastProbeReading)\n" + journal().map { "\($0["method"] ?? "") \($0["path"] ?? "") \($0["params"] ?? "") \($0["body"] ?? "")" }
             .joined(separator: "\n")
     }
 
@@ -314,10 +324,17 @@ final class AssetEditsUITests: XCTestCase {
         let anchor = max(start[key] as? Double ?? now, now)
         let deadline = Date().addingTimeInterval(anchor - now + within)
         while Date() < deadline {
-            if probe(identifier).hasPrefix(prefix) { return true }
+            if reading(identifier).hasPrefix(prefix) { return true }
             Thread.sleep(forTimeInterval: 0.3)
         }
-        return probe(identifier).hasPrefix(prefix)
+        return reading(identifier).hasPrefix(prefix)
+    }
+
+    /// `probe(identifier)`, remembered for the failure messages.
+    private func reading(_ identifier: String) -> String {
+        let value = probe(identifier)
+        lastProbeReading = "\(identifier) = '\(value)'"
+        return value
     }
 
     private func waitForSocket(timeout: TimeInterval = 30) -> Bool {
@@ -513,7 +530,7 @@ final class AssetEditsUITests: XCTestCase {
     /// every thumbnail request; after the removal the original comes back on both.
     func test_AC_39_editedVersionShownThenTheOriginalComesBack() {
         launchSignedIn(config: "regen=5")
-        XCTAssertTrue(waitForProbe("assetTile_\(photo)", prefix: "loaded 8x8"), "the grid never showed the photo — \(describe())")
+        XCTAssertTrue(waitForProbe("assetTile_\(photo)", prefix: "loaded 8x8", within: 30), "the grid never showed the photo — \(describe())")
         openEditor()
         tapEditor("ratioButton.fourByThree")
         tapEditor("rotate90CWButton")
@@ -559,9 +576,9 @@ final class AssetEditsUITests: XCTestCase {
     func test_AC_183_timelineAlbumAndSearchFollowTheEditAndItsRemoval() {
         launchSignedIn(config: "regen=5")
         search("beach")
-        XCTAssertTrue(waitForProbe("assetTile_\(photo)", prefix: "loaded 8x8"), "the search never showed the photo — \(describe())")
+        XCTAssertTrue(waitForProbe("assetTile_\(photo)", prefix: "loaded 8x8", within: 30), "the search never showed the photo — \(describe())")
         openAlbum()
-        XCTAssertTrue(waitForProbe("assetTile_\(photo)", prefix: "loaded 8x8"), "the album never showed the photo — \(describe())")
+        XCTAssertTrue(waitForProbe("assetTile_\(photo)", prefix: "loaded 8x8", within: 30), "the album never showed the photo — \(describe())")
         tab("Photos")
 
         tile(photo).tap()
@@ -622,7 +639,7 @@ final class AssetEditsUITests: XCTestCase {
         XCTAssertTrue(waitUntil(20) { !self.editsEntries("PUT").isEmpty }, "no PUT — \(describe())")
         XCTAssertTrue(waitUntil(30) { self.state()["ready"] as? Bool == true }, "the regeneration never ended")
         let readyAt = stubTime("readyAt")
-        XCTAssertTrue(originals().dropFirst(kept.count).allSatisfy { self.at($0) >= readyAt },
+        XCTAssertTrue(copyDownloads(edited: "true").dropFirst(kept.count).allSatisfy { self.at($0) >= readyAt },
                       "the copy was fetched again before the regeneration — \(describe())")
         XCTAssertTrue(waitUntil(15) { self.hasOriginal(edited: "true", after: readyAt, sha: "originalEdited") },
                       "the copy was never fetched again as the edited version — \(describe())")
@@ -742,7 +759,7 @@ final class AssetEditsUITests: XCTestCase {
         XCTAssertTrue(waitUntil(20) { !self.editsEntries("PUT").isEmpty }, "no PUT — \(describe())")
         XCTAssertTrue(waitForEmission(), "the stub never emitted the event")
         let readyAt = stubTime("readyAt")
-        XCTAssertTrue(originals().dropFirst(kept.count).allSatisfy { self.at($0) >= readyAt },
+        XCTAssertTrue(copyDownloads(edited: "true").dropFirst(kept.count).allSatisfy { self.at($0) >= readyAt },
                       "the copy was fetched again before the regeneration — \(describe())")
         XCTAssertTrue(waitUntil(10) { self.hasOriginal(edited: "true", after: readyAt, sha: "originalEdited") },
                       "the copy was never fetched again after the event — \(describe())")
@@ -758,7 +775,7 @@ final class AssetEditsUITests: XCTestCase {
         launchSignedIn(config: "regen=15")
         XCTAssertTrue(waitForSocket(), "the app never opened the socket — \(describe())")
         search("beach")
-        XCTAssertTrue(waitForProbe("assetTile_\(photo)", prefix: "loaded 8x8"), "the search never showed the photo — \(describe())")
+        XCTAssertTrue(waitForProbe("assetTile_\(photo)", prefix: "loaded 8x8", within: 30), "the search never showed the photo — \(describe())")
         tab("Photos")
         tile(photo).tap()
         cropAndSave()
@@ -787,7 +804,7 @@ final class AssetEditsUITests: XCTestCase {
 
         XCTAssertTrue(waitUntil(40) { self.state()["ready"] as? Bool == true }, "the regeneration never ended")
         let readyAt = stubTime("readyAt")
-        XCTAssertTrue(originals().dropFirst(kept.count).allSatisfy { self.at($0) >= readyAt },
+        XCTAssertTrue(copyDownloads(edited: "true").dropFirst(kept.count).allSatisfy { self.at($0) >= readyAt },
                       "the copy was fetched again before the regeneration — \(describe())")
         tile(photo).tap()
         XCTAssertTrue(waitUntil(10) { self.hasOriginal(edited: "true", after: readyAt, sha: "originalEdited") },
@@ -886,7 +903,7 @@ final class AssetEditsUITests: XCTestCase {
     func test_AC_191_editedPhotoZoomLimitIgnoresTheOriginalExif() throws {
         launchSignedIn(config: try seedConfig([crop(0, 375, 4000, 2250)]))
         tile(photo).tap()
-        XCTAssertTrue(waitForProbe("viewerImage_\(photo)", prefix: "loaded 12x12"),
+        XCTAssertTrue(waitForProbe("viewerImage_\(photo)", prefix: "loaded 12x12", within: 30),
                       "the viewer never showed the edited image — \(describe())")
         XCTAssertTrue(waitUntil(20) { !self.entries("GET") { $0 == "/api/assets/\(self.photo)" }.isEmpty },
                       "the viewer never read the record — \(describe())")
@@ -918,7 +935,7 @@ final class AssetEditsUITests: XCTestCase {
         launchSignedIn(config: try seedConfig([crop(0, 375, 4000, 2250)]),
                        arguments: ["-uiTestMemoryPlaybackProbe", "YES", "-uiTestMemoryAutoplayOff", "YES",
                                    "-uiTestSlideshowAutoplayOff", "YES"])
-        XCTAssertTrue(waitForProbe("assetTile_\(photo)", prefix: "loaded 12x12"),
+        XCTAssertTrue(waitForProbe("assetTile_\(photo)", prefix: "loaded 12x12", within: 30),
                       "the timeline did not show the edited thumbnail — \(describe())")
 
         tab("Memories")
@@ -935,7 +952,7 @@ final class AssetEditsUITests: XCTestCase {
 
         tab("Photos")
         tile(photo).tap()
-        XCTAssertTrue(waitForProbe("viewerImage_\(photo)", prefix: "loaded 12x12"),
+        XCTAssertTrue(waitForProbe("viewerImage_\(photo)", prefix: "loaded 12x12", within: 30),
                       "the viewer did not show the edited image — \(describe())")
         XCTAssertTrue(element("viewerFilmstripCell_1").waitForExistence(timeout: 15), "the viewer has no filmstrip")
         openSlideshow()
@@ -960,7 +977,7 @@ final class AssetEditsUITests: XCTestCase {
     func test_AC_194_shareAndEditorStayOnTheOriginal() throws {
         launchSignedIn(config: try seedConfig([crop(0, 375, 4000, 2250), rotate(90)]))
         tile(photo).tap()
-        XCTAssertTrue(waitForProbe("viewerImage_\(photo)", prefix: "loaded 12x12"),
+        XCTAssertTrue(waitForProbe("viewerImage_\(photo)", prefix: "loaded 12x12", within: 30),
                       "the viewer must show the edited version before sharing — \(describe())")
 
         shareWithQuality("original")
@@ -999,7 +1016,7 @@ final class AssetEditsUITests: XCTestCase {
     /// they always did, with no error, and nothing asks for `/edits`.
     func test_AC_195_oldServerShowsPhotosAsBefore() {
         launchSignedIn(config: "version=2.0.0")
-        XCTAssertTrue(waitForProbe("assetTile_\(photo)", prefix: "loaded 8x8"), "the grid never showed the photo — \(describe())")
+        XCTAssertTrue(waitForProbe("assetTile_\(photo)", prefix: "loaded 8x8", within: 30), "the grid never showed the photo — \(describe())")
         tile(photo).tap()
         XCTAssertTrue(waitForProbe("viewerImage_\(photo)", prefix: "loaded 8x8"), "the viewer never showed the photo — \(describe())")
         XCTAssertTrue(element("viewerFilmstripCell_1").waitForExistence(timeout: 15), "the viewer has no filmstrip")
