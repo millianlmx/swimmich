@@ -49,6 +49,10 @@ final class ReadOnlyGuardClient: ImmichClient {
         inner.configure(baseURL: baseURL, token: token)
     }
 
+    func retarget(baseURL: URL) {
+        inner.retarget(baseURL: baseURL)
+    }
+
     var authDelegate: (any AuthSessionDelegate)? {
         get { inner.authDelegate }
         set { inner.authDelegate = newValue }

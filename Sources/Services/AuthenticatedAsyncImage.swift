@@ -233,6 +233,15 @@ struct AuthenticatedAsyncImage: View {
         // Read before the network await: a purge that lands while the request is
         // in flight bumps the epoch and `store` then drops this stale image.
         let epoch = await ImageCache.shared.epoch
+        // L-26: the other address of the server may have served this image before;
+        // it then sits on disk under the address the account was connected with.
+        if let onDisk = Self.canonicalDiskImage(for: url, cache: Self.imageDiskCache) {
+            await ImageCache.shared.store(onDisk, for: url, epoch: epoch)
+            self.image = onDisk
+            loadState = ImageLoadState(loaded: onDisk)
+            onImageSize?(onDisk.size)
+            return
+        }
         do {
             var request = URLRequest(url: url)
             ServerRequestAuthorization.apply(
@@ -248,6 +257,7 @@ struct AuthenticatedAsyncImage: View {
                 if self.image == nil { didFail = true; loadState = .failed }
                 return
             }
+            Self.storeCanonicalDiskCopy(data: data, response: response, for: url, cache: Self.imageDiskCache)
             // Populate both tiers for subsequent hits.
             await ImageCache.shared.store(img, for: url, epoch: epoch)
             self.image = img
@@ -256,6 +266,31 @@ struct AuthenticatedAsyncImage: View {
         } catch {
             if self.image == nil { didFail = true; loadState = .failed }
         }
+    }
+
+    /// L-26 disk tier under the canonical key. `URLCache` keys by the address a
+    /// request was sent to, so an image fetched from the local address would not
+    /// be found after a switch to the external one. A request to an alias of the
+    /// server is therefore also answered from, and copied to, the entry of the
+    /// connection address. Both stay on disk (the duplicate is accepted).
+    static func canonicalDiskImage(
+        for url: URL, cache: URLCache, addressBook: ServerAddressBook = .shared
+    ) -> UIImage? {
+        let canonical = addressBook.canonicalURL(for: url)
+        guard canonical != url, let cached = cache.cachedResponse(for: URLRequest(url: canonical)) else { return nil }
+        return UIImage(data: cached.data)
+    }
+
+    static func storeCanonicalDiskCopy(
+        data: Data, response: URLResponse, for url: URL, cache: URLCache, addressBook: ServerAddressBook = .shared
+    ) {
+        let canonical = addressBook.canonicalURL(for: url)
+        guard canonical != url, let http = response as? HTTPURLResponse,
+              !(http.value(forHTTPHeaderField: "Cache-Control") ?? "").lowercased().contains("no-store"),
+              let fields = http.allHeaderFields as? [String: String],
+              let copy = HTTPURLResponse(url: canonical, statusCode: http.statusCode, httpVersion: "HTTP/1.1", headerFields: fields)
+        else { return }
+        cache.storeCachedResponse(CachedURLResponse(response: copy, data: data), for: URLRequest(url: canonical))
     }
 
     /// Disk tier of the image pipeline. Exposed so the voluntary-logout purge can

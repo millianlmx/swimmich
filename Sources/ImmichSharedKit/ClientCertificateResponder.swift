@@ -11,10 +11,17 @@ import Foundation
 public struct ClientCertificateResponder: Sendable {
     private let store: any ClientIdentityStoring
     private let log: TLSChallengeLog
+    private let canonicalKey: @Sendable (ServerKey) -> ServerKey
 
-    public init(store: any ClientIdentityStoring, log: TLSChallengeLog) {
+    /// `canonicalKey` maps an alias of the server (its local address) to the key
+    /// the identity was saved under (L-26); the log keeps the key of the request.
+    public init(
+        store: any ClientIdentityStoring, log: TLSChallengeLog,
+        canonicalKey: @escaping @Sendable (ServerKey) -> ServerKey = { $0 }
+    ) {
         self.store = store
         self.log = log
+        self.canonicalKey = canonicalKey
     }
 
     public static let live = ClientCertificateResponder(store: KeychainClientIdentityStore(), log: .shared)
@@ -27,7 +34,7 @@ public struct ClientCertificateResponder: Sendable {
             return nil
         }
         let key = ServerKey(protectionSpace: challenge.protectionSpace)
-        guard let identity = store.identity(for: key) else {
+        guard let identity = store.identity(for: canonicalKey(key)) else {
             log.noteClientCertificateMissing(key)
             return (.performDefaultHandling, nil)
         }

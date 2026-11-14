@@ -217,7 +217,8 @@ private struct AuthenticatedRoot: View {
         _freeUpSpace = State(initialValue: container.makeFreeUpSpaceViewModel())
         _folders = State(initialValue: container.makeFolderViewModel())
         _profilePicture = State(initialValue: container.makeProfilePictureViewModel(
-            baseURL: session.baseURL,
+            // Read at every use: the avatar follows the address in use (L-26).
+            baseURL: { [session] in session.baseURL },
             token: session.accessToken
         ))
         _downloads = State(initialValue: container.makeDownloadQueueViewModel())
@@ -230,7 +231,7 @@ private struct AuthenticatedRoot: View {
         _appLog = State(initialValue: container.makeAppLogViewModel())
         _mediaStats = State(initialValue: container.makeMediaStatsViewModel(offline: container.makeOfflineDownloadViewModel(accountID: accountID)))
         _downloadInfo = State(initialValue: container.makeDownloadInfoViewModel(offline: container.makeOfflineDownloadViewModel(accountID: accountID)))
-        _clientCertificate = State(initialValue: container.makeClientCertificateViewModel(serverURL: session.baseURL))
+        _clientCertificate = State(initialValue: container.makeClientCertificateViewModel(serverURL: session.accountURL))
     }
 
     var body: some View {
@@ -339,6 +340,13 @@ private struct AuthenticatedRoot: View {
                 // it (stable presenter — AuthenticatedRoot — so no teardown trap).
                 map.isPhotoSheetPresented = false
             }
+        }
+        // An evaluation of the server address ended (L-26): the tab on screen
+        // reloads from the address now in use. Pushed screens are left alone;
+        // their images follow the address by themselves.
+        .onChange(of: container.serverEndpoints.lastOutcome) { _, outcome in
+            guard let outcome else { return }
+            Task { await reloadVisibleTab(after: outcome) }
         }
         // The locked folder closes when the app leaves the foreground, whichever
         // tab is up and whether or not its screen is on display: the elevation
@@ -458,6 +466,27 @@ private struct AuthenticatedRoot: View {
         switch selection {
         case .photos, .memories, .search: "magnifyingglass"
         case .albums, .shared: "plus"
+        }
+    }
+
+    /// Reloads the root screen of the tab on display after an evaluation of the
+    /// server address (L-26). The search tab has nothing to reload.
+    @MainActor
+    private func reloadVisibleTab(after outcome: EvaluationOutcome) async {
+        func should(_ loadError: String?) -> Bool {
+            ReloadAfterEvaluation.shouldReload(changedAddress: outcome.changedAddress, hasLoadError: loadError != nil)
+        }
+        switch selection {
+        case .photos:
+            if should(timeline.loadErrorMessage) { await timeline.refresh() }
+        case .memories:
+            if should(memories.loadErrorMessage) { await memories.refresh() }
+        case .albums:
+            if should(albums.loadErrorMessage) { await albums.refresh() }
+        case .shared:
+            if should(sharedLinks.loadErrorMessage) { await sharedLinks.refresh() }
+        case .search:
+            break
         }
     }
 

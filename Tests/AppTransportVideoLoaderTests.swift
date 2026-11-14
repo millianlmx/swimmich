@@ -78,4 +78,24 @@ final class AppTransportVideoLoaderTests: XCTestCase {
         XCTAssertEqual(result.url, file)
         XCTAssertFalse(result.usesLoader)
     }
+
+    func test_AC_241_localVideoUsesAccountCertificate() throws {
+        let store = InMemoryClientIdentityStore()
+        try store.save(try ClientCertificateTestSupport.identityA(), for: ClientCertificateTestSupport.key("https://photos.example.org"))
+        let book = ServerAddressBook()
+        book.update(
+            accountURL: URL(string: "https://photos.example.org"), addresses: [URL(string: "https://photos.example.org")!, URL(string: "http://192.168.1.10:2283")!],
+            activeURL: nil
+        )
+        let transport = VideoAppTransport(session: { .shared }, identities: store, canonicalKey: { book.canonicalKey(for: $0) })
+
+        let local = AVVideoPlaybackEngine.assetURL(
+            for: URL(string: "http://192.168.1.10:2283/api/assets/a/video/playback")!, transport: transport
+        )
+        XCTAssertTrue(local.usesLoader)
+        let foreign = AVVideoPlaybackEngine.assetURL(
+            for: URL(string: "http://192.168.1.99:2283/api/assets/a/video/playback")!, transport: transport
+        )
+        XCTAssertFalse(foreign.usesLoader)
+    }
 }

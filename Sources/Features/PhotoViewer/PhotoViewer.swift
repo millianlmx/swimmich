@@ -1997,7 +1997,8 @@ private struct PhotoShareSheet: View {
                 client: client,
                 baseURL: baseURL,
                 externalDomain: auth.serverConfig?.externalDomain ?? "",
-                currentUserId: auth.userId
+                currentUserId: auth.userId,
+                publicServerURL: auth.publicServerURL
             )
             vm = new
             await new.load()
