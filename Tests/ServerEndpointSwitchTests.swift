@@ -207,18 +207,20 @@ final class ServerEndpointSwitchTests: XCTestCase {
     /// The Network screen starts an evaluation when it opens. Clearing the local
     /// address while that probe is still out must not let its answer write the
     /// state of an address that no longer exists.
+    /// `activate` already starts the `.launch` evaluation (switch on, local address
+    /// declared): that is the one left suspended on its 500 ms probe. No second
+    /// evaluation is started, so the probe count and `isEvaluating` are deterministic.
     func test_AC_235_clearingLocalDuringAProbeLeavesNoStaleState() async {
         let rig = makeRig(deadline: .seconds(2))
         rig.probe.answer(account, .immich(version: version))
         rig.probe.script(local, .init(result: .immich(version: version), delay: .milliseconds(500)))
         activate(rig)
 
-        let running = Task { await rig.sut.evaluate(.settingsChanged) }
-        await waitUntil { rig.probe.callCount(for: self.local) == 1 }
+        await waitUntil { rig.probe.callCount(for: self.local) >= 1 }
+        XCTAssertEqual(rig.probe.callCount(for: local), 1)
         XCTAssertTrue(rig.sut.isEvaluating)
 
         await rig.sut.save(ServerAddressSettings(localURL: nil, autoSwitch: true))
-        await running.value
         try? await Task.sleep(for: .milliseconds(700))
 
         XCTAssertEqual(rig.sut.localStatus, .notConfigured, "no state row under an empty local field")
