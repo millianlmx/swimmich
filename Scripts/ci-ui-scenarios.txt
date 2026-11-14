@@ -48,7 +48,7 @@
 # does not fit replaces a line or is `--release`, and its detailed criteria go to
 # the unit tests.
 
-# L-21 server-side edits (AC-39, AC-40, AC-181, AC-182, AC-188, AC-189): the editor, the edited
+# L-21 server-side edits (AC-39, AC-40, AC-181, AC-182, AC-187, AC-188, AC-189): the editor, the edited
 # version shown by the viewer, and the choice of the file to download.
 immich_stub_asset_edits.py AssetEditsUITests/test_AC_182_reopenChangeRotationThenRevert --release
 immich_stub_asset_edits.py AssetEditsUITests/test_AC_181_cropRotateMirrorSavesEdits --smoke
@@ -56,6 +56,9 @@ immich_stub_asset_edits.py AssetEditsUITests/test_AC_188_oldServerSavesCopy --re
 immich_stub_asset_edits.py AssetEditsUITests/test_AC_189_putErrorShowsMessage --release
 immich_stub_asset_edits.py AssetEditsUITests/test_AC_39_editedVersionShownThenTheOriginalComesBack
 immich_stub_asset_edits.py AssetEditsUITests/test_AC_40_downloadEditedThenOriginalAsksTwiceWithDifferentFiles
+immich_stub_asset_edits.py AssetEditsUITests/test_AC_187_selectionAsksOnceAndCarriesEachAnswer
+immich_stub_asset_edits.py AssetEditsUITests/test_AC_187_viewerAsksOnlyForAnEditedRecord
+immich_stub_asset_edits.py AssetEditsUITests/test_AC_187_oldServerSelectionDownloadsOriginalWithoutQuestion --release
 
 # L-32 "Remaining to back up": the entry and the list over the real Photos library of the simulator
 # (3 seeded media, plus the sample photos of an erased simulator) → a pass against a server that accepts
