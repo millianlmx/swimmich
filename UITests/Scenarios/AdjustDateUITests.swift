@@ -234,106 +234,44 @@ final class AdjustDateUITests: XCTestCase {
         field.typeText(text)
     }
 
-    private func labelPredicate(_ labels: [String]) -> NSPredicate {
-        NSPredicate(format: labels.map { _ in "label CONTAINS %@" }.joined(separator: " OR "),
-                    argumentArray: labels)
+    /// The session the stub's SSO sign-in hands out (`POST /api/oauth/callback`), as the launch
+    /// arguments of `AuthViewModel`'s keys: the app starts signed in without the onboarding and the
+    /// SSO sheet (SafariViewService), a walk this scenario does not test and that fails on a loaded
+    /// CI Mac (same approach as `AssetEditsUITests.sessionArguments`).
+    private func sessionArguments() -> [String] {
+        var request = URLRequest(url: URL(string: "\(stub)/api/oauth/callback")!)
+        request.httpMethod = "POST"
+        request.timeoutInterval = 5
+        let done = DispatchSemaphore(value: 0)
+        var login: [String: Any] = [:]
+        URLSession.shared.dataTask(with: request) { data, _, _ in
+            login = data.flatMap { try? JSONSerialization.jsonObject(with: $0) as? [String: Any] } ?? [:]
+            done.signal()
+        }.resume()
+        _ = done.wait(timeout: .now() + 6)
+        guard let token = login["accessToken"] as? String else {
+            XCTFail("the stub's /api/oauth/callback gave no session: \(login)")
+            return []
+        }
+        return [
+            "-uiTestSessionToken", token,
+            "-authServerURL", stub,
+            "-authUserId", login["userId"] as? String ?? "",
+            "-authUserName", login["name"] as? String ?? "",
+            "-authUserEmail", login["userEmail"] as? String ?? "",
+            "-authIsAdmin", (login["isAdmin"] as? Bool ?? false) ? "YES" : "NO",
+        ]
     }
 
-    private func waitForStaticText(_ labels: [String], timeout: TimeInterval) -> Bool {
-        app.staticTexts.matching(labelPredicate(labels)).firstMatch.waitForExistence(timeout: timeout)
-    }
-
-    @discardableResult
-    private func tapAnyButton(_ labels: [String], timeout: TimeInterval = 20) -> Bool {
-        let predicate = labelPredicate(labels)
-        let direct = app.buttons.matching(predicate).firstMatch
-        let contained = app.buttons.containing(predicate).firstMatch
-        for candidate in [direct, contained] where candidate.waitForExistence(timeout: timeout) {
-            candidate.tap()
-            return true
-        }
-        return false
-    }
-
-    private func dismissSystemSignInAlertIfPresent() {
-        let springboard = XCUIApplication(bundleIdentifier: "com.apple.springboard")
-        for label in ["Continue", "Continuer"] {
-            let button = springboard.alerts.buttons[label]
-            if button.waitForExistence(timeout: 6) {
-                button.tap()
-                return
-            }
-        }
-        for label in ["Continue", "Continuer"] {
-            let button = app.alerts.buttons[label]
-            if button.waitForExistence(timeout: 2) {
-                button.tap()
-                return
-            }
-        }
-    }
-
-    @discardableResult
-    private func tapAuthorizeInProvider(timeout: TimeInterval = 60) -> Bool {
-        let safari = XCUIApplication(bundleIdentifier: "com.apple.SafariViewService")
-        let springboard = XCUIApplication(bundleIdentifier: "com.apple.springboard")
-        let predicate = NSPredicate(format: "label CONTAINS 'Authorize'")
-        let consent = NSPredicate(format: "label IN %@", ["Continue", "Continuer"])
-        let candidates = [safari.links.matching(predicate).firstMatch, safari.buttons.matching(predicate).firstMatch]
-        let deadline = Date().addingTimeInterval(timeout)
-        while Date() < deadline {
-            if let authorize = candidates.first(where: { $0.exists }) {
-                authorize.tap()
-                return true
-            }
-            for button in [springboard.alerts.buttons.matching(consent).firstMatch,
-                           app.alerts.buttons.matching(consent).firstMatch] where button.exists {
-                button.tap()
-            }
-            Thread.sleep(forTimeInterval: 0.5)
-        }
-        return false
-    }
-
-    private func walkOnboardingToLogin() {
-        XCTAssertTrue(tapAnyButton(["Get Started", "Commencer"], timeout: 30), "Welcome CTA missing")
-        let field = app.textFields.firstMatch
-        XCTAssertTrue(field.waitForExistence(timeout: 20), "Server URL field missing")
-        field.tap()
-        let seeded = (field.value as? String) ?? ""
-        if !seeded.isEmpty && seeded != stub {
-            field.typeText(String(repeating: XCUIKeyboardKey.delete.rawValue, count: seeded.count))
-        }
-        if (field.value as? String) != stub {
-            field.typeText(stub)
-        }
-        XCTAssertTrue(tapAnyButton(["Check connection", "Vérifier la connexion"]), "Check-connection CTA missing")
-        XCTAssertTrue(app.buttons.matching(labelPredicate(["Continue", "Continuer"]))
-            .firstMatch.waitForExistence(timeout: 30), "Server never became reachable")
-        let loginCopy = ["Sign in to Immich", "Connectez-vous à Immich"]
-        var onLogin = false
-        for _ in 0..<3 where !onLogin {
-            app.swipeUp()
-            XCTAssertTrue(tapAnyButton(["Continue", "Continuer"]), "Continue CTA missing")
-            onLogin = waitForStaticText(loginCopy, timeout: 10)
-        }
-        XCTAssertTrue(onLogin, "Login screen did not appear")
-    }
-
+    /// Reset, launch already signed in (device in Tokyo, English, 24 h `en_GB`), wait for the timeline.
     private func signIn() {
         reset()
         setProvider("manual")
-        app.launchArguments += ["-AppleLanguages", "(en)", "-AppleLocale", "en_GB"]
+        app.launchArguments = ["-AppleLanguages", "(en)", "-AppleLocale", "en_GB"] + sessionArguments()
         app.launchEnvironment["TZ"] = "Asia/Tokyo"
         app.launch()
-        if waitForStaticText(["Your photo library", "Votre photothèque"], timeout: 30) {
-            walkOnboardingToLogin()
-            XCTAssertTrue(tapAnyButton(["Immich SSO"]), "SSO button missing on login screen")
-            dismissSystemSignInAlertIfPresent()
-            XCTAssertTrue(tapAuthorizeInProvider(), "Authorize link not reachable in the auth sheet")
-        }
         XCTAssertTrue(app.tabBars.buttons["Photos"].waitForExistence(timeout: 30),
-                      "OAuth did not reach the authenticated shell")
+                      "the app did not start signed in")
         let whatsNewDone = app.buttons.matching(identifier: "whatsNewDoneButton").firstMatch
         if whatsNewDone.waitForExistence(timeout: 10) { whatsNewDone.tap() }
     }
