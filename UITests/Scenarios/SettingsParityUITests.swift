@@ -640,8 +640,9 @@ final class SettingsParityUITests: XCTestCase {
         }
         reset.tap()
         // Destructive and confirmed: the confirmation is an alert (a
-        // confirmationDialog would drop Cancel on iOS 26), found by identifier.
-        let confirm = app.buttons["preferencesResetConfirm"]
+        // confirmationDialog would drop Cancel on iOS 26). iOS 26 lists an
+        // identified alert button twice, so it is queried inside the alert.
+        let confirm = app.alerts.firstMatch.buttons.matching(identifier: "preferencesResetConfirm").firstMatch
         if !confirm.waitForExistence(timeout: 10) {
             shot("p13c-reset-sans-bouton")
             XCTFail("Reset did not raise a confirmation with a Reset button")

@@ -260,27 +260,60 @@ final class ConfirmationsUITests: XCTestCase {
         }
     }
 
-    private func dismissSystemSignInAlertIfPresent() {
-        let springboard = XCUIApplication(bundleIdentifier: "com.apple.springboard")
-        for label in ["Continue", "Continuer"] {
-            let button = springboard.alerts.buttons[label]
-            if button.waitForExistence(timeout: 6) { button.tap(); return }
-        }
-        for label in ["Continue", "Continuer"] {
-            let button = app.alerts.buttons[label]
-            if button.waitForExistence(timeout: 2) { button.tap(); return }
-        }
-    }
-
-    private func tapAuthorizeInProvider(timeout: TimeInterval = 20) -> Bool {
+    /// Waits for the OAuth provider's "Authorize" link and taps it, answering on
+    /// the way every system alert that can stand in front of it: the sign-in
+    /// question ("Continue"), and the Photos access and notification prompts a
+    /// freshly erased device raises while the app starts (full access, or an
+    /// EXACT "Allow"). A fixed wait for each, in a fixed order, missed a late
+    /// alert and left the Safari sheet unreachable (CI, 1f2f95b).
+    private func tapAuthorizeInProvider(timeout: TimeInterval) -> Bool {
         let safari = XCUIApplication(bundleIdentifier: "com.apple.SafariViewService")
-        let predicate = NSPredicate(format: "label CONTAINS 'Authorize'")
-        for candidate in [safari.links.matching(predicate).firstMatch, safari.buttons.matching(predicate).firstMatch]
-        where candidate.waitForExistence(timeout: timeout) {
-            candidate.tap()
-            return true
+        let springboard = XCUIApplication(bundleIdentifier: "com.apple.springboard")
+        let authorize = NSPredicate(format: "label CONTAINS 'Authorize'")
+        let signInQuestion = NSPredicate(format: "label IN %@", ["Continue", "Continuer"])
+        let fullAccess = labelPredicate(fullAccessLabels)
+        let allow = NSPredicate(format: "label IN %@", allowLabels)
+        let deadline = Date().addingTimeInterval(timeout)
+        while Date() < deadline {
+            for candidate in [safari.links.matching(authorize).firstMatch, safari.buttons.matching(authorize).firstMatch]
+            where candidate.exists {
+                candidate.tap()
+                return true
+            }
+            for alerts in [springboard.alerts, app.alerts] {
+                let alert = alerts.firstMatch
+                guard alert.exists else { continue }
+                let answer = [alert.buttons.matching(signInQuestion).firstMatch,
+                              alert.buttons.matching(fullAccess).firstMatch,
+                              alert.buttons.matching(allow).firstMatch].first(where: \.exists)
+                if let answer {
+                    answer.tap()
+                    break
+                }
+            }
+            Thread.sleep(forTimeInterval: 0.5)
         }
         return false
+    }
+
+    /// Onboarding → SSO → "Authorize". The first system sign-in of a freshly
+    /// erased simulator is slow (the alert, then a cold `SafariViewService`): a
+    /// stuck attempt is restarted from the onboarding, never failed on the first
+    /// miss (the pattern of `ShareAndCachesUITests.signIn`).
+    private func signIn() {
+        for attempt in 0..<3 {
+            if attempt > 0 {
+                app.terminate()
+                setProvider("manual")
+                app.launch()
+                XCTAssertTrue(waitForStaticText(["Your photo library", "Votre photothèque"], timeout: 30),
+                              "the onboarding did not come back for a new sign-in attempt")
+            }
+            walkOnboardingToLogin()
+            XCTAssertTrue(tapAnyButton(["Immich SSO"]), "SSO button missing on login screen")
+            if tapAuthorizeInProvider(timeout: 45) { return }
+        }
+        XCTFail("Authorize link not reachable in the auth sheet after 3 attempts")
     }
 
     private func walkOnboardingToLogin() {
@@ -314,10 +347,7 @@ final class ConfirmationsUITests: XCTestCase {
         app.launchArguments = ["-AppleLanguages", "(en)", "-AppleLocale", "en_US", "-uiTestHapticProbe", "YES"]
         app.launch()
         if waitForStaticText(["Your photo library", "Votre photothèque"], timeout: 30) {
-            walkOnboardingToLogin()
-            XCTAssertTrue(tapAnyButton(["Immich SSO"]), "SSO button missing on login screen")
-            dismissSystemSignInAlertIfPresent()
-            XCTAssertTrue(tapAuthorizeInProvider(), "Authorize link not reachable in the auth sheet")
+            signIn()
         }
         XCTAssertTrue(app.tabBars.buttons["Photos"].waitForExistence(timeout: 30),
                       "OAuth did not reach the authenticated shell")
@@ -398,12 +428,21 @@ final class ConfirmationsUITests: XCTestCase {
 
     // MARK: - Alerts
 
+    /// A button of the frontmost alert, by identifier. iOS 26 lists an
+    /// identified alert button twice in the tree (`alert.buttons[id]` and
+    /// `app.buttons[id]` then fail with "Multiple matching elements"), so it is
+    /// always queried inside the alert and narrowed to its first match.
+    private func alertButton(_ identifier: String) -> XCUIElement {
+        app.alerts.firstMatch.buttons.matching(identifier: identifier).firstMatch
+    }
+
     /// The alert a destructive button raised, with its two buttons.
+    @discardableResult
     private func alertWithButtons(_ confirm: String, _ cancel: String, _ what: String) -> XCUIElement {
         let alert = app.alerts.firstMatch
         XCTAssertTrue(alert.waitForExistence(timeout: 15), "\(what): no alert was presented — \(screenText())")
-        XCTAssertTrue(alert.buttons[confirm].waitForExistence(timeout: 5), "\(what): the alert has no \(confirm) button")
-        XCTAssertTrue(alert.buttons[cancel].exists, "\(what): the alert has no \(cancel) button")
+        XCTAssertTrue(alertButton(confirm).waitForExistence(timeout: 5), "\(what): the alert has no \(confirm) button")
+        XCTAssertTrue(alertButton(cancel).exists, "\(what): the alert has no \(cancel) button")
         return alert
     }
 
@@ -456,7 +495,7 @@ final class ConfirmationsUITests: XCTestCase {
 
     /// Swipes a link's row and presents the revoke alert (a full swipe may raise
     /// it on its own; a partial one reveals the button, which is tapped).
-    private func startRevoke(_ linkId: String) -> XCUIElement {
+    private func startRevoke(_ linkId: String) {
         let row = element("sharedLinkRow_\(linkId)")
         XCTAssertTrue(row.waitForExistence(timeout: 20), "no row for link \(linkId) — \(screenText())")
         _ = waitUntil(8) { row.isHittable }
@@ -471,18 +510,18 @@ final class ConfirmationsUITests: XCTestCase {
             }
             Thread.sleep(forTimeInterval: 0.3)
         }
-        return alertWithButtons("sharedLinkRevokeConfirm", "sharedLinkRevokeCancel", "revoking \(linkId)")
+        alertWithButtons("sharedLinkRevokeConfirm", "sharedLinkRevokeCancel", "revoking \(linkId)")
     }
 
     private func revokeLink(_ linkId: String, confirm: Bool) {
-        let alert = startRevoke(linkId)
-        alert.buttons[confirm ? "sharedLinkRevokeConfirm" : "sharedLinkRevokeCancel"].tap()
+        startRevoke(linkId)
+        alertButton(confirm ? "sharedLinkRevokeConfirm" : "sharedLinkRevokeCancel").tap()
     }
 
     /// The server refused the revocation: an error alert (no revoke button) is up.
     private func dismissErrorAlert() {
         let alert = app.alerts.firstMatch
-        XCTAssertTrue(waitUntil(20) { alert.exists && !alert.buttons["sharedLinkRevokeConfirm"].exists },
+        XCTAssertTrue(waitUntil(20) { alert.exists && !self.alertButton("sharedLinkRevokeConfirm").exists },
                       "the refused revocation showed no error alert — \(screenText())")
         alert.buttons.firstMatch.tap()
         waitUntilNoAlert("error alert")
@@ -510,15 +549,15 @@ final class ConfirmationsUITests: XCTestCase {
         let reset = scrollTo("preferencesResetButton")
         XCTAssertTrue(reset.exists, "the Preferences form has no Reset button")
         reset.tap()
-        var alert = alertWithButtons("preferencesResetConfirm", "preferencesResetCancel", "Preferences reset")
-        alert.buttons["preferencesResetCancel"].tap()
+        alertWithButtons("preferencesResetConfirm", "preferencesResetCancel", "Preferences reset")
+        alertButton("preferencesResetCancel").tap()
         waitUntilNoAlert("Preferences reset (Cancel)")
         scrollTo("preferencesSmoothScrubbingToggle")
         XCTAssertEqual(toggle.value as? String, changed, "Cancel changed the preference")
 
         scrollTo("preferencesResetButton").tap()
-        alert = alertWithButtons("preferencesResetConfirm", "preferencesResetCancel", "Preferences reset")
-        alert.buttons["preferencesResetConfirm"].tap()
+        alertWithButtons("preferencesResetConfirm", "preferencesResetCancel", "Preferences reset")
+        alertButton("preferencesResetConfirm").tap()
         waitUntilNoAlert("Preferences reset (Reset)")
         scrollTo("preferencesSmoothScrubbingToggle")
         XCTAssertTrue(waitUntil(10) { (toggle.value as? String) == initial },
@@ -537,8 +576,8 @@ final class ConfirmationsUITests: XCTestCase {
         assertProbe("partnerStopSharing", "none calls=0")
 
         remove.tap()
-        var alert = alertWithButtons("confirmStopSharing", "cancelStopSharing", "stopping a share")
-        alert.buttons["cancelStopSharing"].tap()
+        alertWithButtons("confirmStopSharing", "cancelStopSharing", "stopping a share")
+        alertButton("cancelStopSharing").tap()
         waitUntilNoAlert("stopping a share (Cancel)")
         XCTAssertTrue(element("partnerRemove-\(partner)").exists, "Cancel removed the partner")
         XCTAssertTrue(requests("DELETE", pathPrefix: "/api/partners/").isEmpty,
@@ -546,8 +585,8 @@ final class ConfirmationsUITests: XCTestCase {
         assertProbeUnchanged("partnerStopSharing", "none calls=0")
 
         remove.tap()
-        alert = alertWithButtons("confirmStopSharing", "cancelStopSharing", "stopping a share")
-        alert.buttons["confirmStopSharing"].tap()
+        alertWithButtons("confirmStopSharing", "cancelStopSharing", "stopping a share")
+        alertButton("confirmStopSharing").tap()
         XCTAssertTrue(waitUntil(20) { !self.element("partnerRemove-\(self.partner)").exists },
                       "the partner is still listed after Stop sharing")
         XCTAssertEqual(requests("DELETE", pathPrefix: "/api/partners/\(partner)").count, 1,
@@ -572,8 +611,8 @@ final class ConfirmationsUITests: XCTestCase {
         XCTAssertGreaterThanOrEqual(tracked, 1)
 
         scrollTo("resetTrackingButton").tap()
-        var alert = alertWithButtons("resetTrackingConfirm", "resetTrackingCancel", "resetting the tracking")
-        alert.buttons["resetTrackingCancel"].tap()
+        alertWithButtons("resetTrackingConfirm", "resetTrackingCancel", "resetting the tracking")
+        alertButton("resetTrackingCancel").tap()
         waitUntilNoAlert("resetting the tracking (Cancel)")
         XCTAssertEqual(count("backupTrackedPhotos"), tracked, "Cancel changed the tracked count (Backup screen)")
 
@@ -586,14 +625,14 @@ final class ConfirmationsUITests: XCTestCase {
         XCTAssertEqual(count("syncStatusTrackedValue"), tracked, "the sync status sheet disagrees with the Backup screen")
 
         scrollTo("syncStatusResetLedger").tap()
-        alert = alertWithButtons("syncStatusResetLedgerConfirm", "syncStatusResetLedgerCancel", "resetting the ledger")
-        alert.buttons["syncStatusResetLedgerCancel"].tap()
+        alertWithButtons("syncStatusResetLedgerConfirm", "syncStatusResetLedgerCancel", "resetting the ledger")
+        alertButton("syncStatusResetLedgerCancel").tap()
         waitUntilNoAlert("resetting the ledger (Cancel)")
         XCTAssertEqual(count("syncStatusTrackedValue"), tracked, "Cancel changed the tracked count (sync status)")
 
         scrollTo("syncStatusResetLedger").tap()
-        alert = alertWithButtons("syncStatusResetLedgerConfirm", "syncStatusResetLedgerCancel", "resetting the ledger")
-        alert.buttons["syncStatusResetLedgerConfirm"].tap()
+        alertWithButtons("syncStatusResetLedgerConfirm", "syncStatusResetLedgerCancel", "resetting the ledger")
+        alertButton("syncStatusResetLedgerConfirm").tap()
         waitUntilNoAlert("resetting the ledger (confirm)")
         // At zero the sheet may swap its counters for its empty state.
         XCTAssertTrue(waitUntil(15) {
@@ -609,8 +648,8 @@ final class ConfirmationsUITests: XCTestCase {
         let delete = element("viewerDeleteButton")
         XCTAssertTrue(delete.waitForExistence(timeout: 20), "the viewer has no Delete button — \(screenText())")
         delete.tap()
-        let alert = alertWithButtons("viewerDeleteConfirm", "viewerDeleteCancel", "deleting from the viewer")
-        alert.buttons["viewerDeleteCancel"].tap()
+        alertWithButtons("viewerDeleteConfirm", "viewerDeleteCancel", "deleting from the viewer")
+        alertButton("viewerDeleteCancel").tap()
         waitUntilNoAlert("deleting from the viewer (Cancel)")
         XCTAssertTrue(element("viewerDeleteButton").waitForExistence(timeout: 10), "the viewer closed after Cancel")
         XCTAssertTrue(element("viewerBackButton").exists, "the photo is no longer displayed after Cancel")
@@ -744,17 +783,24 @@ final class ConfirmationsUITests: XCTestCase {
         assertProbe("albumSharedLinkRevoke", "warning calls=1")
     }
 
-    /// AC-806: with the Haptic Feedback setting off, revoking a link and stopping
-    /// a share play nothing (the probe still counts the call, as "none").
-    func test_AC_806_hapticsOffPlaysNothing() throws {
+    /// Signs in with the Haptic Feedback setting off. The setting survives the
+    /// test on a device that is not erased between runs: the teardown turns it
+    /// back on.
+    private func launchSignedInWithHapticsOff() {
         launchSignedIn()
-        // The setting survives the test on a device that is not erased between runs.
         addTeardownBlock { [self] in
             app.terminate()
             launchSignedIn()
             setHaptics(on: true)
         }
         setHaptics(on: false)
+    }
+
+    /// AC-806: with the Haptic Feedback setting off, revoking a link plays
+    /// nothing (the probe still counts the call, as "none"). One action per test:
+    /// both in one test ran past the 180 s CI budget.
+    func test_AC_806_hapticsOffRevokePlaysNothing() throws {
+        launchSignedInWithHapticsOff()
 
         openSharedTab()
         assertProbe("sharedLinkRevoke", "none calls=0")
@@ -762,6 +808,12 @@ final class ConfirmationsUITests: XCTestCase {
         XCTAssertTrue(waitUntil(20) { !self.element("sharedLinkRow_\(self.photosLink)").exists },
                       "the revoked link is still listed")
         assertProbe("sharedLinkRevoke", "none calls=1")
+    }
+
+    /// AC-806: with the Haptic Feedback setting off, stopping a share plays
+    /// nothing (the probe still counts the call, as "none").
+    func test_AC_806_hapticsOffStopSharingPlaysNothing() throws {
+        launchSignedInWithHapticsOff()
 
         openPartners()
         assertProbe("partnerStopSharing", "none calls=0")
@@ -769,7 +821,7 @@ final class ConfirmationsUITests: XCTestCase {
         XCTAssertTrue(remove.waitForExistence(timeout: 20), "the partner is not listed — \(screenText())")
         remove.tap()
         alertWithButtons("confirmStopSharing", "cancelStopSharing", "stopping a share")
-            .buttons["confirmStopSharing"].tap()
+        alertButton("confirmStopSharing").tap()
         XCTAssertTrue(waitUntil(20) { !self.element("partnerRemove-\(self.partner)").exists },
                       "the partner is still listed after Stop sharing")
         assertProbe("partnerStopSharing", "none calls=1")
@@ -900,11 +952,30 @@ final class ConfirmationsUITests: XCTestCase {
         resume.tap()
         assertProbe("backupStart.settings", "start calls=2", timeout: 30)
 
-        let detailRow = scrollTo("uploadDetailRow")
-        XCTAssertTrue(detailRow.exists, "no Upload details row")
+        // The resumed pass runs: the stub holds every upload (`longUploadSeconds`,
+        // cut at the client's 60 s request timeout, for each of the seeded photo
+        // and the device's six sample photos), so it lasts minutes.
+        XCTAssertTrue(element("cancelBackupButton").waitForExistence(timeout: 30),
+                      "the resumed pass is not running on the Backup screen — \(screenText())")
+
+        // Upload details, reached from the TOP of the Backup screen. Scrolled back
+        // up from the Progress section, the row only got published at the edge of
+        // the bar and the tap pushed nothing (CI, 1f2f95b). Leaving for the hub and
+        // coming back opens the screen at its top, where test_AC_64 taps the row.
+        XCTAssertTrue(goBack(), "no way back from the Backup screen to the hub")
+        let backupRow = hubRow("backupRow")
+        XCTAssertTrue(waitUntil(10) { backupRow.exists && backupRow.isHittable },
+                      "the Me hub did not come back — \(screenText())")
+        backupRow.tap()
+        let detailRow = element("uploadDetailRow")
+        XCTAssertTrue(waitUntil(20) { detailRow.exists && detailRow.isHittable },
+                      "no hittable Upload details row at the top of the Backup screen — \(screenText())")
         detailRow.tap()
+        // The details follow the same engine: a running pass shows its progress bar.
+        XCTAssertTrue(element("uploadDetailProgress").waitForExistence(timeout: 20),
+                      "the upload details did not open on a running pass — \(screenText())")
         let stop = element("uploadDetailCancelButton")
-        XCTAssertTrue(stop.waitForExistence(timeout: 30), "the upload details offer no Stop — \(screenText())")
+        XCTAssertTrue(stop.waitForExistence(timeout: 10), "the upload details offer no Stop — \(screenText())")
         stop.tap()
         assertProbe("backupStop.uploadDetail", "stop calls=1")
     }

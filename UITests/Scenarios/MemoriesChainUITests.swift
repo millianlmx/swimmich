@@ -626,7 +626,9 @@ final class MemoriesChainUITests: XCTestCase {
         let delete = app.buttons["memoryMomentDelete"]
         XCTAssertTrue(delete.waitForExistence(timeout: 15), "no delete action")
         delete.tap()
-        let confirm = app.buttons["Delete Memory"]
+        // The confirmation is an alert: its button is queried inside it.
+        let confirm = app.alerts.firstMatch.buttons
+            .matching(NSPredicate(format: "label == %@", "Delete Memory")).firstMatch
         XCTAssertTrue(confirm.waitForExistence(timeout: 10), "no confirmation for the delete")
         confirm.tap()
         waitForProbe(["page": otd2022, "photo": "0"])

@@ -616,7 +616,8 @@ final class TimelineScrubberUITests: XCTestCase {
             XCTFail("the Preferences form has no Reset row:\n\(app.debugDescription)")
         }
         resetRow.tap()
-        let confirm = app.buttons["preferencesResetConfirm"]
+        // iOS 26 lists an identified alert button twice: query inside the alert.
+        let confirm = app.alerts.firstMatch.buttons.matching(identifier: "preferencesResetConfirm").firstMatch
         if !confirm.waitForExistence(timeout: 10) {
             XCTFail("Reset did not raise a confirmation with a Reset button")
         }

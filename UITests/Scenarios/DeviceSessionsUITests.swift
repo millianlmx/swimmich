@@ -305,25 +305,23 @@ final class DeviceSessionsUITests: XCTestCase {
             timeout: timeout) == .completed
     }
 
-    /// The action of the confirmation the app raised — found by IDENTIFIER first.
+    /// The action of the confirmation alert the app raised — found by
+    /// IDENTIFIER first, always inside the alert.
     ///
     /// The confirmation and the swipe that raised it carry the SAME label ("Log
     /// Out" on both), so a label query that is not scoped can reach the swipe
-    /// action instead, which only re-arms the dialog. The identifier removes the
-    /// ambiguity; the label query stays as a fallback, with the swipe action
-    /// explicitly excluded.
+    /// action instead, which only re-arms the confirmation. And iOS 26 lists an
+    /// identified alert button twice in the tree, so an unscoped identifier query
+    /// fails with "Multiple matching elements". The query is scoped to the alert
+    /// and narrowed to its first match; the label query stays as a fallback.
     private func confirmButton(_ identifier: String, _ labels: [String],
                                timeout: TimeInterval = 10) -> XCUIElement? {
-        let byIdentifier = element(identifier)
+        let alert = app.alerts.firstMatch
+        let byIdentifier = alert.buttons.matching(identifier: identifier).firstMatch
         if byIdentifier.waitForExistence(timeout: timeout) { return byIdentifier }
         let labelClause = labels.map { _ in "label == %@" }.joined(separator: " OR ")
-        let predicate = NSPredicate(format: "(\(labelClause)) AND NOT (identifier BEGINSWITH %@)",
-                                    argumentArray: labels + ["deviceSessionRevokeButton_"])
-        for candidate in [app.alerts.buttons.matching(predicate).firstMatch,
-                          app.buttons.matching(predicate).firstMatch] {
-            if candidate.waitForExistence(timeout: timeout) { return candidate }
-        }
-        return nil
+        let byLabel = alert.buttons.matching(NSPredicate(format: labelClause, argumentArray: labels)).firstMatch
+        return byLabel.waitForExistence(timeout: timeout) ? byLabel : nil
     }
 
     /// The confirmation of the bulk revoke is labelled with the number of

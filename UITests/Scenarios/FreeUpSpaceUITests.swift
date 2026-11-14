@@ -583,7 +583,9 @@ final class FreeUpSpaceUITests: XCTestCase {
         XCTAssertTrue(freeButton.waitForExistence(timeout: 10), "no destructive button on the review")
         freeButton.tap()
 
-        let confirm = app.buttons.matching(identifier: "cleanupReviewConfirm").firstMatch
+        // An alert: iOS 26 lists an identified alert button twice, so it is
+        // queried inside the alert.
+        let confirm = app.alerts.firstMatch.buttons.matching(identifier: "cleanupReviewConfirm").firstMatch
         XCTAssertTrue(confirm.waitForExistence(timeout: 10),
                       "the app did not ask for confirmation before deleting:\n\(app.debugDescription)")
         shot("f12-confirm-dialog")
