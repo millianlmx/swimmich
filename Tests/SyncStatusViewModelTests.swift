@@ -259,6 +259,30 @@ final class SyncStatusViewModelTests: XCTestCase {
         XCTAssertFalse(harness.index.isCached("pinned-1"), "the timeline badge forgets it too")
     }
 
+    /// AC-278: the sync-status screen shows what the cache view model recorded
+    /// — a success, then a refusal — and clears it on dismissal.
+    func test_AC_278_syncStatusProjectsThePurgeResult() async {
+        let (client, source) = library(["c1"])
+        let harness = makeHarness(client: client, source: source)
+        transport.payload = Data(repeating: 0x02, count: 128)
+        await harness.offline.downloadAsset(reactItem("pinned-1"), baseURL: baseURL, token: "tok")
+
+        await harness.sut.clearOfflineCache()
+        XCTAssertEqual(harness.sut.offlinePurgeResult, .succeeded)
+        harness.sut.dismissOfflinePurgeResult()
+        XCTAssertNil(harness.sut.offlinePurgeResult)
+
+        await harness.offline.downloadAsset(reactItem("pinned-2"), baseURL: baseURL, token: "tok")
+        harness.store.setActiveAccount(OfflineAssetStoreTests.accountB, otherAccountsRegistered: false)
+        await harness.sut.clearOfflineCache()
+
+        guard case .failed? = harness.sut.offlinePurgeResult else {
+            return XCTFail("expected a failure, got \(String(describing: harness.sut.offlinePurgeResult))")
+        }
+        harness.sut.dismissOfflinePurgeResult()
+        XCTAssertNil(harness.sut.offlinePurgeResult)
+    }
+
     /// "Run now" is the manual path: it goes even with auto-backup off and no
     /// Wi-Fi, waits for the run to settle, and lands in the history — the three
     /// things the button promises.

@@ -16,7 +16,8 @@ import Observation
 ///   `groupBy = .day`, `loadOriginal = false`, `autoPlayVideo = true`,
 ///   `loopVideo = false`, `loadOriginalVideo = false`, slideshow wrapping and
 ///   dissolving at 3 s, `theme = .system`, `accent = .immich`,
-///   `hapticsEnabled = true`, `smoothScrubbing = false`), so the feature is purely additive for anyone who
+///   `hapticsEnabled = true`, `smoothScrubbing = false`, `shareQuality = .preview`),
+///   so the feature is purely additive for anyone who
 ///   never opens the screen.
 /// - **A stored value that cannot be decoded falls back to the default** rather
 ///   than wedging a screen into a state the user cannot see the origin of.
@@ -51,6 +52,7 @@ final class AppSettingsStore {
     static let accentColorKey = "themePrimaryColor"
     static let hapticsEnabledKey = "hapticFeedbackEnabled"
     static let timelineSmoothScrubbingKey = "timelineSmoothScrubbing"
+    static let shareFileTypeKey = "shareFileType"
 
     private let defaults: UserDefaults
 
@@ -77,6 +79,7 @@ final class AppSettingsStore {
     private var storedAccent: AppAccent
     private var storedHapticsEnabled: Bool
     private var storedSmoothScrubbing: Bool
+    private var storedShareQuality: ShareQuality
 
     init(defaults: UserDefaults = .standard) {
         self.defaults = defaults
@@ -103,6 +106,8 @@ final class AppSettingsStore {
             .flatMap(AppAccent.init(rawValue:)) ?? .immich
         storedHapticsEnabled = defaults.object(forKey: Self.hapticsEnabledKey) as? Bool ?? true
         storedSmoothScrubbing = defaults.object(forKey: Self.timelineSmoothScrubbingKey) as? Bool ?? false
+        storedShareQuality = defaults.string(forKey: Self.shareFileTypeKey)
+            .flatMap(ShareQuality.init(rawValue:)) ?? .preview
     }
 
     // MARK: - Photos (timeline)
@@ -150,6 +155,18 @@ final class AppSettingsStore {
             guard newValue != storedLoadOriginal else { return }
             storedLoadOriginal = newValue
             defaults.set(newValue, forKey: Self.imageLoadOriginalKey)
+        }
+    }
+
+    /// Quality the viewer's share button hands to the iOS share sheet
+    /// (upstream's `SettingsKey.shareFileType`). A video is always shared in
+    /// its original quality, whatever this says.
+    var shareQuality: ShareQuality {
+        get { storedShareQuality }
+        set {
+            guard newValue != storedShareQuality else { return }
+            storedShareQuality = newValue
+            defaults.set(newValue.rawValue, forKey: Self.shareFileTypeKey)
         }
     }
 
@@ -279,7 +296,8 @@ final class AppSettingsStore {
             Self.tapToNavigateKey, Self.autoPlayVideoKey, Self.loopVideoKey,
             Self.loadOriginalVideoKey, Self.slideshowRepeatKey, Self.slideshowSpeedKey,
             Self.slideshowLookKey, Self.slideshowReverseKey, Self.themeModeKey,
-            Self.accentColorKey, Self.hapticsEnabledKey, Self.timelineSmoothScrubbingKey
+            Self.accentColorKey, Self.hapticsEnabledKey, Self.timelineSmoothScrubbingKey,
+            Self.shareFileTypeKey
         ].forEach(defaults.removeObject(forKey:))
 
         storedGroupBy = .day
@@ -297,5 +315,6 @@ final class AppSettingsStore {
         storedAccent = .immich
         storedHapticsEnabled = true
         storedSmoothScrubbing = false
+        storedShareQuality = .preview
     }
 }

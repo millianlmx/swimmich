@@ -52,6 +52,13 @@ final class PreferencesViewModel {
         set { store.tapToNavigate = newValue }
     }
 
+    // MARK: - Sharing
+
+    var shareQuality: ShareQuality {
+        get { store.shareQuality }
+        set { store.shareQuality = newValue }
+    }
+
     // MARK: - Video
 
     var autoPlayVideo: Bool {

@@ -40,14 +40,14 @@ struct FavoritesTimelineProvider: TimelineProvider {
     /// fetch never worked (issue #19 follow-up). `placeholder(in:)` still serves
     /// the redacted first render.
         Task {
-            let wall = await provider.favoritePhotos(limit: context.family.photoLimit)
+            let wall = await provider.favoritePhotos(limit: context.family.photoLimit, target: context.renderTarget)
             completion(FavoritesEntry(date: .now, wall: wall))
         }
     }
 
     func getTimeline(in context: Context, completion: @escaping (Timeline<FavoritesEntry>) -> Void) {
         Task {
-            let wall = await provider.favoritePhotos(limit: context.family.photoLimit)
+            let wall = await provider.favoritePhotos(limit: context.family.photoLimit, target: context.renderTarget)
             completion(Timeline(
                 entries: [FavoritesEntry(date: .now, wall: wall)],
                 policy: .after(.now.addingTimeInterval(wall.availability == .ready ? 60 * 60 : 5 * 60))

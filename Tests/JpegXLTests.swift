@@ -40,7 +40,7 @@ final class JpegXLDecodingTests: XCTestCase {
         XCTAssertEqual(down.cgImage?.width, 200)
         XCTAssertEqual(down.cgImage?.height, 200)
 
-        let encoded = try XCTUnwrap(WidgetImageEncoder.encode(JpegXLFixture.thumbnail, at: .cell))
+        let encoded = try XCTUnwrap(WidgetImageEncoder.encode(JpegXLFixture.thumbnail, toCover: WidgetPixelSize(width: 320, height: 320)))
         XCTAssertEqual(Array(encoded.prefix(2)), [0xFF, 0xD8], "widget re-encode is not a JPEG")
     }
 }
@@ -51,7 +51,7 @@ extension JpegXLDecodingTests {
     /// can be decoded — the grid and the widget must see a failure, not an image.
     func test_AC_97_truncatedJpegXLIsNotDecoded() {
         XCTAssertNil(UIImage(data: JpegXLFixture.truncated))
-        XCTAssertNil(WidgetImageEncoder.encode(JpegXLFixture.truncated, at: .cell))
+        XCTAssertNil(WidgetImageEncoder.encode(JpegXLFixture.truncated, toCover: WidgetPixelSize(width: 320, height: 320)))
     }
 
     func test_AC_97_fixtureIsTheConformanceFileUnmodified() {

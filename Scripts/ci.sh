@@ -3,28 +3,40 @@
 #
 #   Scripts/ci.sh
 #
-# 0. Runs the Python tests of the i18n audit (Scripts/test_*.py), then, after
-#    XcodeGen, the audit itself (R1-R4) in the background, at the lowest priority;
-#    its verdict is applied at the end, so one pass judges the audit and the tests.
+# 0. Runs the Python tests of the CI's own scripts (Scripts/test_*.py: the i18n
+#    audit, the selection of the UI scenarios), then, after XcodeGen, the audit
+#    itself (R1-R4) in the background, at the lowest priority; its verdict is
+#    applied at the end, so one pass judges the audit and the tests.
 # 1. Regenerates the project from project.yml: the committed .xcodeproj drifts,
 #    and a Tests/*.swift file missing from it would pass "green" by omission.
 # 2. Builds the app, its extensions and BOTH test bundles.
-# 3. Runs the unit tests (ImmichSwiftUITests) and the UI scenarios listed in
-#    Scripts/ci-ui-scenarios.txt side by side, on a pool of simulators of their
-#    own (`SWIMMICH_CI_UI_WORKERS`, 3 by default), created on first use so the CI
-#    never boots the developer's. Each scenario runs against its own Python stub
-#    from UITests/stubs/ (the scenarios not listed there are compiled, not run).
-#    A scenario that skips itself fails the CI: a skip only means its stub was
-#    unreachable, which proves nothing. A line's `--stub-version <X.Y.Z>` starts
-#    its stub with `IMMICH_STUB_VERSION=<X.Y.Z>`, the server version the stub
-#    shell announces.
+# 3. Runs the unit tests (ImmichSwiftUITests) and the UI scenarios of
+#    Scripts/ci-ui-scenarios.txt that `SWIMMICH_CI_UI_SCOPE` selects (the gate
+#    of a push, the night's core suite, or all of them) side by side, on a pool
+#    of simulators of their own (`SWIMMICH_CI_UI_WORKERS`, 3 by default), created
+#    on first use so the CI never boots the developer's. Each scenario runs
+#    against its own Python stub from UITests/stubs/ (the scenarios not listed
+#    are compiled, not run). A scenario that skips itself fails the CI: a skip
+#    only means its stub was unreachable, which proves nothing. A line's
+#    `--stub-version <X.Y.Z>` starts its stub with `IMMICH_STUB_VERSION=<X.Y.Z>`,
+#    the server version the stub shell announces.
 #
 # DerivedData and SwiftPM checkouts live in a persistent cache: on the
 # self-hosted runner, a run only rebuilds what the commit changed.
 set -euo pipefail
 cd "$(dirname "$0")/.."
 
-# The Python tests of the audit script (R4) come first: no build, a few seconds.
+# Where the run's time goes, printed at the end (`ci.sh: timings: …`): the gate of
+# a push has a budget (`SWIMMICH_CI_GATE_BUDGET`, 300 s), and a run over it gets a
+# `::warning` that names the phase to shorten.
+phase_started=$SECONDS
+phase_times=()
+phase_done() {
+  phase_times+=("$1 $((SECONDS - phase_started)) s")
+  phase_started=$SECONDS
+}
+
+# The Python tests of the scripts come first: no build, a few seconds.
 # Each failed test becomes a public `::error` annotation (see report_errors).
 python_log="$(mktemp)"
 if ! python3 -m unittest discover -s Scripts -p 'test_*.py' >"$python_log" 2>&1; then
@@ -38,6 +50,7 @@ if ! python3 -m unittest discover -s Scripts -p 'test_*.py' >"$python_log" 2>&1;
   exit 1
 fi
 rm -f "$python_log"
+phase_done "script tests"
 
 CACHE="${SWIMMICH_CI_CACHE:-$HOME/Library/Caches/swimmich-ci}"
 SIM_NAME="${SWIMMICH_CI_SIM:-swimmich-ci}"
@@ -112,76 +125,58 @@ print(ios[-1]["identifier"] if ios else "")
   printf '%s\n' "$found"
 }
 
-# The scenario lines of Scripts/ci-ui-scenarios.txt (see "UI scenarios" below).
+# The scenario lines this run executes: Scripts/ci_ui_select.py reads
+# Scripts/ci-ui-scenarios.txt (see "UI scenarios" below), checks its budgets and
+# selects by `SWIMMICH_CI_UI_SCOPE`:
+#
+# * `gate`, the default on GitHub Actions: the lines the push can have broken
+#   (a line new or edited, a line whose test function or stub changed), then the
+#   `--smoke` lines, one line per simulator the unit tests leave free. The gate
+#   of every push: under five minutes, build included.
+# * `core`: every line but the `--release` ones. The night's suite.
+# * `all`, the default on a developer's Mac: every line. The release suite, once
+#   a week and on a release tag.
+#
+# The base the gate reads a push against (`SWIMMICH_CI_UI_BASE`, `main` by
+# default) is a branch or a commit: the workflow gives a push to `main` the
+# commit `main` pointed at before it. What the gate lets through, the night's
+# suite catches: the price of a gate that does not grow with every feature.
 UI_LIST="Scripts/ci-ui-scenarios.txt"
-ui_lines=()
-while IFS= read -r line <&3; do
-  line="${line%%#*}"
-  read -ra words <<<"$line"
-  (( ${#words[@]} )) || continue
-  ui_lines+=("${words[*]}")
-done 3<"$UI_LIST"
-
-# Which lines run (`SWIMMICH_CI_UI_SCOPE`): `all`, or `changed`, the lines this
-# branch can have broken: a line new or edited against `main`, or whose test
-# class (UITests/**/<Class>.swift) or stub changed. A change anywhere else in
-# UITests/ or UITests/stubs/ (shared helpers, `immich_stub_base.py`), or in this
-# script, selects every line. The default is `changed` for a branch run on GitHub
-# Actions and `all` on `main`, on a tag and on a developer's Mac: every line
-# still runs on `main` once the branch is merged. A branch whose code changes
-# break another feature's scenario is caught there, not on the branch: the price
-# of a branch CI that does not grow with every feature's scenarios.
 UI_SCOPE="${SWIMMICH_CI_UI_SCOPE:-}"
 if [[ -z "$UI_SCOPE" ]]; then
-  if [[ -n "${GITHUB_ACTIONS:-}" && "${GITHUB_REF:-}" == refs/heads/* && "${GITHUB_REF:-}" != refs/heads/main ]]; then
-    UI_SCOPE=changed
-  else
-    UI_SCOPE=all
-  fi
+  if [[ -n "${GITHUB_ACTIONS:-}" ]]; then UI_SCOPE=gate; else UI_SCOPE=all; fi
 fi
-case "$UI_SCOPE" in
-  all) ;;
-  changed)
-    # A tree diff against main's tip: a branch behind main also selects what main
-    # changed since, never less than its own changes. Main's tip alone is enough
-    # (no merge base), so the shallow checkout of the runner only fetches it; a
-    # developer's clone uses its own `origin/main`.
-    # Forced (`+`): the runner's work directory outlives a run, and the
-    # `origin/main` an earlier run left there is not an ancestor that a shallow
-    # clone can prove, so a plain fetch is rejected as non-fast-forward (and
-    # `--quiet` hides why).
-    if [[ -n "${GITHUB_ACTIONS:-}" ]]; then
-      git fetch --quiet --no-tags --depth=1 origin +main:refs/remotes/origin/main
-    fi
-    git rev-parse --quiet --verify refs/remotes/origin/main >/dev/null ||
-      { echo "ci.sh: no origin/main to compare with: SWIMMICH_CI_UI_SCOPE=changed needs it" >&2; exit 2; }
-    selected=$(git diff --name-only refs/remotes/origin/main HEAD | python3 -c '
-import subprocess, sys
-changed = [path for path in sys.stdin.read().split("\n") if path]
-base = subprocess.run(["git", "show", "refs/remotes/origin/main:" + sys.argv[1]],
-                      capture_output=True, text=True).stdout.split("\n")
-base_lines = {" ".join(line.split("#", 1)[0].split()) for line in base}
-everything = any(
-    path == "Scripts/ci.sh"
-    or (path.startswith("UITests/") and not path.startswith("UITests/Scenarios/")
-        and not (path.startswith("UITests/stubs/immich_stub_") and path != "UITests/stubs/immich_stub_base.py"))
-    for path in changed
-)
-classes = {path.rsplit("/", 1)[1][:-len(".swift")] for path in changed
-           if path.startswith("UITests/Scenarios/") and path.endswith(".swift")}
-stubs = {path.rsplit("/", 1)[1] for path in changed if path.startswith("UITests/stubs/immich_stub_")}
-for index, line in enumerate(sys.argv[2:]):
-    words = line.split()
-    if everything or line not in base_lines or words[0] in stubs or words[1].split("/")[0] in classes:
-        print(index)
-' "$UI_LIST" ${ui_lines[@]+"${ui_lines[@]}"})
-    kept=()
-    for index in $selected; do kept+=("${ui_lines[index]}"); done
-    echo "ci.sh: UI scope 'changed': ${#kept[@]} of ${#ui_lines[@]} line(s) can be affected by this branch"
-    ui_lines=(${kept[@]+"${kept[@]}"})
-    ;;
-  *) echo "ci.sh: SWIMMICH_CI_UI_SCOPE must be 'all' or 'changed'" >&2; exit 2 ;;
-esac
+# The pool's size is known before the selection: the gate runs one line per
+# simulator the unit tests leave free, so no scenario waits behind another.
+UI_WORKERS="${SWIMMICH_CI_UI_WORKERS:-3}"
+(( UI_WORKERS >= 1 )) || { echo "ci.sh: SWIMMICH_CI_UI_WORKERS must be at least 1" >&2; exit 2; }
+select_arguments=(--scope "$UI_SCOPE" --list "$UI_LIST")
+if [[ "$UI_SCOPE" == gate ]]; then
+  select_arguments+=(--capacity "$(( UI_WORKERS > 1 ? UI_WORKERS - 1 : 1 ))")
+  # A tree diff against the base's tip: a branch behind main also selects what
+  # main changed since, never less than its own changes. The tip alone is enough
+  # (no merge base), so the shallow checkout of the runner only fetches it; a
+  # developer's clone uses its own `origin/main`.
+  # Forced (`+`): the runner's work directory outlives a run, and the ref an
+  # earlier run left there is not an ancestor that a shallow clone can prove,
+  # so a plain fetch is rejected as non-fast-forward (and `--quiet` hides why).
+  UI_BASE="${SWIMMICH_CI_UI_BASE:-main}"
+  if [[ -n "${GITHUB_ACTIONS:-}" ]]; then
+    base_ref=refs/ci/ui-base
+    git fetch --quiet --no-tags --depth=1 origin "+$UI_BASE:$base_ref" ||
+      { echo "ci.sh: could not fetch the base '$UI_BASE' of SWIMMICH_CI_UI_SCOPE=gate" >&2; exit 2; }
+  else
+    base_ref="refs/remotes/origin/$UI_BASE"
+  fi
+  git rev-parse --quiet --verify "$base_ref^{commit}" >/dev/null ||
+    { echo "ci.sh: no $base_ref to compare with: SWIMMICH_CI_UI_SCOPE=gate needs it" >&2; exit 2; }
+  select_arguments+=(--base "$base_ref")
+fi
+selected_lines=$(python3 Scripts/ci_ui_select.py "${select_arguments[@]}") || exit 2
+ui_lines=()
+while IFS= read -r line; do
+  [[ -z "$line" ]] || ui_lines+=("$line")
+done <<<"$selected_lines"
 
 # The pool: `SWIMMICH_CI_UI_WORKERS` simulators (3 by default), worker k being
 # `$SIM_NAME-ui-k`, created on first use. A worker runs one job at a time: the
@@ -189,8 +184,6 @@ esac
 # so they run beside the UI scenarios and a runner never holds more simulators
 # than its workers. The app is built for the first worker: a destination of this
 # exact kind keeps the build to the Mac's own architecture.
-UI_WORKERS="${SWIMMICH_CI_UI_WORKERS:-3}"
-(( UI_WORKERS >= 1 )) || { echo "ci.sh: SWIMMICH_CI_UI_WORKERS must be at least 1" >&2; exit 2; }
 (( UI_WORKERS <= ${#ui_lines[@]} + 1 )) || UI_WORKERS=$(( ${#ui_lines[@]} + 1 ))
 worker_udids=()
 for (( worker = 1; worker <= UI_WORKERS; worker++ )); do
@@ -204,6 +197,8 @@ common=(
   -clonedSourcePackagesDirPath "$CACHE/SourcePackages"
   -destination "platform=iOS Simulator,id=${worker_udids[0]}"
 )
+
+phase_done "project and selection"
 
 # Signed for the simulator on purpose: CODE_SIGNING_ALLOWED=NO drops the
 # keychain-sharing entitlements, and the session-store tests then read nil.
@@ -288,9 +283,12 @@ fi
 xctestrun=$(ls -t "$CACHE"/DerivedData/Build/Products/*.xctestrun 2>/dev/null | head -1)
 [[ -n "$xctestrun" ]] || { echo "ci.sh: the build wrote no .xctestrun" >&2; exit 65; }
 
+phase_done "build"
+
 # The pool's boots end before its first job: a job's own `bootstatus -b` would
 # otherwise boot a simulator stock while simslim is still writing its profile.
 for pid in "${boot_pids[@]}"; do wait "$pid" || true; done
+phase_done "simulators' boot after the build"
 
 # A test failure leaves nothing readable in the public log either (the log is
 # admin-only), so the failed tests are read back from the result bundle and
@@ -346,6 +344,35 @@ prepare_simulator() {
   xcrun simctl ui "$sim" content_size large
 }
 
+# The unit tests that take a second or more, slowest first: they are the floor of
+# the gate (the unit tests run beside the scenarios, on one simulator).
+report_slow_unit_tests() {
+  xcrun xcresulttool get test-results tests --path "$1" 2>/dev/null | python3 -c '
+import json, sys
+found = []
+def walk(node, suite):
+    kind = node.get("nodeType")
+    if kind == "Test Case":
+        found.append((node.get("durationInSeconds") or 0, suite + "/" + (node.get("name") or "?")))
+    if kind == "Test Suite":
+        suite = node.get("name") or suite
+    for child in node.get("children") or []:
+        walk(child, suite)
+try:
+    for node in json.load(sys.stdin).get("testNodes") or []:
+        walk(node, "")
+except Exception as error:
+    print("ci.sh: unit test durations unreadable: %s" % error)
+    raise SystemExit
+found.sort(reverse=True)
+slow = [item for item in found if item[0] >= 1]
+print("ci.sh: unit tests: %d tests, %.0f s in the tests themselves, %d of a second or more (%.0f s)"
+      % (len(found), sum(item[0] for item in found), len(slow), sum(item[0] for item in slow)))
+for seconds, name in slow[:25]:
+    print("ci.sh:   %5.1f s  %s" % (seconds, name))
+' || true
+}
+
 # The unit tests, as a job of the pool: run_unit_tests <udid>.
 run_unit_tests() {
   local sim="$1"
@@ -359,8 +386,10 @@ run_unit_tests() {
   if ! xcodebuild test-without-building -xctestrun "$xctestrun" -destination "platform=iOS Simulator,id=$sim" -quiet \
     -only-testing:ImmichSwiftUITests -resultBundlePath "$RESULT" </dev/null; then
     report_failed_tests "$RESULT"
+    report_slow_unit_tests "$RESULT"
     return 1
   fi
+  report_slow_unit_tests "$RESULT"
 }
 
 # UI scenarios. One line of Scripts/ci-ui-scenarios.txt per xcodebuild run:
@@ -368,8 +397,10 @@ run_unit_tests() {
 #   <stub.py> <Class>[/<test>] [--content-size <simctl category>]
 #             [--media <file name>]... [--skip <test>]... [--erase]
 #             [--stub-version <X.Y.Z>]
+#             [--smoke | --release]
 #
-# A line runs on a worker's simulator, reset by `prepare_simulator` (`--erase`
+# `--smoke` and `--release` are the line's tier (see `SWIMMICH_CI_UI_SCOPE`
+# above and the head of the list). A line runs on a worker's simulator, reset by `prepare_simulator` (`--erase`
 # for a freshly erased device), and against its own stub on the
 # worker's port, `SWIMMICH_CI_STUB_PORT` (8421 by default) + k - 1, which must
 # answer `/__whoami` with its own pid (an orphan stub squatting the port would
@@ -448,6 +479,7 @@ run_scenario() {
       --skip) skips+=("-skip-testing:ImmichSwiftUIUITests/${selector%%/*}/$2"); shift ;;
       --erase) erase=1 ;;
       --stub-version) stub_version="$2"; shift ;;
+      --smoke | --release) ;;
       *) echo "::error::$UI_LIST: unknown option $1"; return 2 ;;
     esac
     shift
@@ -578,8 +610,16 @@ done
 
 # The i18n audit ran beside the build and the tests (it only reads the catalog and
 # the sources); its verdict is applied last so one pass judges the audit AND the tests.
+phase_done "tests"
 audit_ok=1
 apply_audit_verdict || audit_ok=0
+phase_done "i18n audit after the tests"
+timings=$(IFS=,; echo "${phase_times[*]}")
+echo "ci.sh: timings: ${timings//,/, }, total $SECONDS s"
+GATE_BUDGET="${SWIMMICH_CI_GATE_BUDGET:-300}"
+if [[ "$UI_SCOPE" == gate ]] && (( SECONDS > GATE_BUDGET )); then
+  echo "::warning::the gate took $SECONDS s, over its budget of $GATE_BUDGET s: ${timings//,/, }"
+fi
 if (( unit_failed )); then echo "ci.sh: the unit tests failed" >&2; fi
 if (( ui_failures )); then echo "ci.sh: $ui_failures UI scenario line(s) failed" >&2; fi
 (( ! unit_failed && ! ui_failures )) || exit 65

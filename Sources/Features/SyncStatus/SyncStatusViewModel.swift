@@ -107,6 +107,11 @@ final class SyncStatusViewModel {
 
     func clearOfflineCache() async { await offline.clearAll() }
 
+    /// How the last offline purge ended (success or why it failed), for the alert.
+    var offlinePurgeResult: OfflinePurgeResult? { offline.purgeResult }
+
+    func dismissOfflinePurgeResult() { offline.dismissPurgeResult() }
+
     func clearOfflineError() { offline.clearError() }
 
     /// Re-reads the offline index from disk. The run counters need no reload:

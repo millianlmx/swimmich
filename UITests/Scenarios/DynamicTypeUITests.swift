@@ -42,10 +42,13 @@ import XCTest
 ///   and put it back afterwards with `xcrun simctl ui booted content_size large`. Like
 ///   `ShareExtensionUITests`, the photo must be the newest one of the Photos library.
 ///
-/// The CI runs every test of this class as a line of its own (`Scripts/ci.sh`, one
-/// line per test in `Scripts/ci-ui-scenarios.txt`), on a reset simulator of its pool
-/// (app uninstalled, keychain emptied), the share extension with the prerequisites
-/// above; a test that skips itself fails it. The long walks are cut
+/// The CI runs the tests of this class listed in `Scripts/ci-ui-scenarios.txt`, each as
+/// a line of its own (`Scripts/ci.sh`), on a reset simulator of its pool (app
+/// uninstalled, keychain emptied), the share extension with the prerequisites above; a
+/// test that skips itself fails it. The German twins and the size-by-size walks are
+/// `--release` lines (once a week and on a release tag): the unit tests of
+/// `DynamicTypeScreenTests` measure their screens hosted (`Tests/HostedScreen.swift`),
+/// without a launched app. The long walks are cut
 /// in several tests so the pool spreads them, and every test that does not measure
 /// the onboarding starts signed in from its launch arguments (`sessionArguments`).
 ///
@@ -591,12 +594,35 @@ final class DynamicTypeUITests: XCTestCase {
         let toggle = element(identifier)
         XCTAssertTrue(reveal(identifier), "no '\(identifier)' — \(screenText())")
         scrollToHittable(identifier)
+        centerFully(identifier)
         let before = toggle.value as? String
         for point in [CGVector(dx: 0.5, dy: 0.5), CGVector(dx: 0.13, dy: 0.85), CGVector(dx: 0.95, dy: 0.5)] {
             toggle.coordinate(withNormalizedOffset: point).tap()
             if waitUntil(3, { (toggle.value as? String) != before || done() }) { return }
         }
         XCTFail("\(identifier) did not flip — \(screenText())")
+    }
+
+    /// Moves the row `identifier` so that it sits entirely inside the window, away
+    /// from both edges. `scrollToHittable` stops as soon as the row's CENTRE is
+    /// hittable; at AX5 a switch row is tall (label, then the switch under it), so
+    /// the switch can still be below the fold, where the tap points of `flipSwitch`
+    /// land outside the screen. Where that stop falls depends on the height of the
+    /// rows above, so any change to the Me hub moves it.
+    private func centerFully(_ identifier: String) {
+        let target = element(identifier)
+        let window = app.windows.firstMatch.frame
+        let low = window.minY + window.height * 0.18
+        let high = window.maxY - window.height * 0.22
+        for _ in 0..<8 {
+            let frame = target.frame
+            if frame.minY >= low && frame.maxY <= high { return }
+            let upward = frame.maxY > high
+            let start = app.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: upward ? 0.62 : 0.4))
+            let end = app.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: upward ? 0.5 : 0.52))
+            start.press(forDuration: 0.05, thenDragTo: end)
+            Thread.sleep(forTimeInterval: 0.6)
+        }
     }
 
     private func openMe() {
@@ -1138,15 +1164,26 @@ final class DynamicTypeUITests: XCTestCase {
         let springboard = XCUIApplication(bundleIdentifier: "com.apple.springboard")
         let cancel = springboard.buttons.matching(labelPredicate(["Cancel", "Annuler", "Abbrechen"])).firstMatch
         flipSwitch("appLockToggle", orUntil: { cancel.exists })
-        Thread.sleep(forTimeInterval: 2)
+        // The prompt can show late on a loaded Mac: the face is matched once it is up.
+        _ = cancel.waitForExistence(timeout: 15)
+        Thread.sleep(forTimeInterval: 1)
         FaceID.match()
         XCTAssertTrue(cancel.waitForNonExistence(timeout: 10), "the activation prompt did not close")
         XCTAssertTrue(waitUntil(10) { (self.element("appLockToggle").value as? String) == "1" },
                       "Require Face ID did not turn on — \(screenText())")
 
         // Background, foreground: the lock shows, the system prompt is cancelled.
+        // The lock follows the `.background` scene phase, not `.inactive`: the app is
+        // brought back only once it is really in the background (a fixed 2 s was too
+        // short on a loaded Mac, and the app came back unlocked).
+        // The Home button alone sometimes left the app in the foreground (state 4):
+        // bringing SpringBoard forward is what puts it in the background.
         XCUIDevice.shared.press(.home)
-        sleep(2)
+        let backgrounded = { [.runningBackground, .runningBackgroundSuspended].contains(self.app.state) }
+        if !waitUntil(5, backgrounded) { springboard.activate() }
+        XCTAssertTrue(waitUntil(20, backgrounded),
+                      "the app never went to the background (state \(app.state.rawValue))")
+        sleep(1)
         app.activate()
         XCTAssertTrue(element("AppLockOverlay").waitForExistence(timeout: 30), "the lock did not show — \(screenText())")
         sleep(2)

@@ -132,8 +132,8 @@ final class PublicLogTextTests: XCTestCase {
             publicLog: { recorder.append($0) }
         )
 
-        _ = await provider.memories(limit: 3, offset: 0)
-        _ = await provider.recentPhotos(limit: 3)
+        _ = await provider.memories(limit: 3, offset: 0, target: .medium)
+        _ = await provider.recentPhotos(limit: 3, target: .medium)
 
         let lines = recorder.lines
         XCTAssertEqual(lines.count, 2)

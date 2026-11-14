@@ -65,7 +65,7 @@ enum ImmichAssetURL {
     ///
     /// Every display asks for the edited rendering, explicitly (L-21: `edited` defaults to `true`): the
     /// server's default differs between versions, and `edited=true` serves the original of a photo
-    /// without edits. Only the share sheet asks `edited=false`: it shares the photo as uploaded.
+    /// without edits. Only sharing (`ViewerShareViewModel`) asks `edited=false`: it shares the photo as uploaded.
     /// A photo edited elsewhere therefore shows edited on every surface; the `c` thumbhash
     /// changes once the server has regenerated the thumbnails, which is what busts the image cache.
     ///

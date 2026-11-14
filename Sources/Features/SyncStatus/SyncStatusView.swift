@@ -76,10 +76,12 @@ struct SyncStatusView: View {
             Button("Purge offline cache", role: .destructive) {
                 Task { await vm.clearOfflineCache() }
             }
+            .accessibilityIdentifier("syncStatusClearOfflineConfirm")
             Button("Cancel", role: .cancel) {}
         } message: {
             Text("Downloaded files will need to be downloaded again.")
         }
+        .offlinePurgeResultAlert(vm.offlinePurgeResult, dismiss: { vm.dismissOfflinePurgeResult() })
     }
 
     // MARK: - Counters

@@ -85,10 +85,12 @@ struct OfflineAssetsView: View {
             Button("Clear All Offline Photos", role: .destructive) {
                 Task { await vm.clearAll() }
             }
+            .accessibilityIdentifier("clearAllOfflineConfirm")
             Button("Cancel", role: .cancel) {}
         } message: {
             Text("\(vm.formattedUsage(vm.cacheUsage)) will be freed. Downloaded files will need to be downloaded again.")
         }
+        .offlinePurgeResultAlert(vm.purgeResult, dismiss: { vm.dismissPurgeResult() })
         .pvFullScreenCover(item: $page) { page in
             PhotoViewer(
                 assets: assets,
@@ -352,5 +354,38 @@ private struct OfflineAssetCell: View {
             .background(Color.black.opacity(0.4), in: Capsule())
             .padding(5)
         }
+    }
+}
+
+extension View {
+    /// The result of an offline-cache purge: an alert for a success and one for
+    /// a failure (with the reason), so a purge never ends in silence. Shared by
+    /// the three screens that offer the purge.
+    func offlinePurgeResultAlert(
+        _ result: OfflinePurgeResult?,
+        dismiss: @escaping () -> Void
+    ) -> some View {
+        let succeeded = result == .succeeded
+        let failure: String? = {
+            if case .failed(let message)? = result { return message }
+            return nil
+        }()
+        return self
+            .alert(
+                "Offline Cache Purged",
+                isPresented: Binding(get: { succeeded }, set: { if !$0 { dismiss() } })
+            ) {
+                Button("OK", action: dismiss)
+                    .accessibilityIdentifier("offlinePurgeSucceededDismiss")
+            }
+            .alert(
+                "Couldn't Purge the Offline Cache",
+                isPresented: Binding(get: { failure != nil }, set: { if !$0 { dismiss() } })
+            ) {
+                Button("OK", action: dismiss)
+                    .accessibilityIdentifier("offlinePurgeFailedDismiss")
+            } message: {
+                Text(failure ?? "")
+            }
     }
 }

@@ -67,4 +67,9 @@ final class DownloadInfoViewModel {
     func refresh() async { await offline.refresh() }
 
     func clearAll() async { await offline.clearAll() }
+
+    /// How the last purge ended (success or why it failed), for the alert.
+    var purgeResult: OfflinePurgeResult? { offline.purgeResult }
+
+    func dismissPurgeResult() { offline.dismissPurgeResult() }
 }

@@ -147,6 +147,62 @@ final class OfflineDownloadViewModelTests: XCTestCase {
         XCTAssertTrue(index.isEmpty)
     }
 
+    // MARK: - Purge result (B-31.5)
+
+    func test_AC_277_purgeAnnouncesSuccess() async {
+        transport.payload = Data(repeating: 0x01, count: 64)
+        await vm.downloadAsset(makeAsset(id: "asset-1"), baseURL: baseURL, token: "tok")
+        XCTAssertNil(vm.purgeResult)
+
+        await vm.clearAll()
+
+        XCTAssertEqual(vm.purgeResult, .succeeded)
+        XCTAssertTrue(vm.cachedAssets.isEmpty)
+        vm.dismissPurgeResult()
+        XCTAssertNil(vm.purgeResult)
+    }
+
+    /// A copy the disk refuses to delete is neither announced as purged nor
+    /// dropped from the list: it is still there, and the message says so.
+    func test_AC_278_incompletePurgeKeepsRemainingListedAndSaysSo() async {
+        let failingStore = OfflineAssetStore(
+            rootURL: root, transport: transport,
+            fileManager: ScriptedFileManager(failingRemovals: ["asset-1.jpg"]), defaults: defaults
+        )
+        failingStore.setActiveAccount(Self.accountA, otherAccountsRegistered: false)
+        let failingIndex = OfflineAssetIndex()
+        let failing = OfflineDownloadViewModel(
+            store: failingStore, client: client, index: failingIndex, accountID: Self.accountA
+        )
+        transport.payload = Data(repeating: 0x01, count: 64)
+        await failing.downloadAsset(makeAsset(id: "asset-1"), baseURL: baseURL, token: "tok")
+        await failing.downloadAsset(makeAsset(id: "asset-2"), baseURL: baseURL, token: "tok")
+
+        await failing.clearAll()
+
+        guard case .failed(let message)? = failing.purgeResult else {
+            return XCTFail("expected a failure, got \(String(describing: failing.purgeResult))")
+        }
+        XCTAssertFalse(message.isEmpty)
+        XCTAssertEqual(failing.cachedAssets.map(\.id), ["asset-1"])
+        XCTAssertTrue(failingIndex.isCached("asset-1"), "the remaining photo stays readable")
+        XCTAssertFalse(failingIndex.isCached("asset-2"))
+    }
+
+    /// Another account's storage is refused: the shared mirror is left alone.
+    func test_AC_278_refusedPurgeSaysSoAndLeavesTheIndex() async {
+        transport.payload = Data(repeating: 0x01, count: 64)
+        await vm.downloadAsset(makeAsset(id: "asset-1"), baseURL: baseURL, token: "tok")
+        store.setActiveAccount(Self.accountB, otherAccountsRegistered: false)
+
+        await vm.clearAll()
+
+        guard case .failed? = vm.purgeResult else {
+            return XCTFail("expected a failure, got \(String(describing: vm.purgeResult))")
+        }
+        XCTAssertTrue(index.isCached("asset-1"), "a refused purge touches nothing")
+    }
+
     // MARK: - Derived state
 
     func test_searchFiltersCachedAssetsByFileName() async {
@@ -814,5 +870,25 @@ final class DownloadInfoViewModelTests: XCTestCase {
         await vm.refresh()
         XCTAssertEqual(vm.renderState, .data(.idle))
         XCTAssertEqual(vm.files.map(\.id), ["asset-1"])
+    }
+
+    /// AC-278: the Download Info screen shows what the cache view model
+    /// recorded — a success, then a failure — and clears it on dismissal.
+    func test_AC_278_downloadInfoProjectsThePurgeResult() async {
+        await download("asset-1")
+        await vm.clearAll()
+        XCTAssertEqual(vm.purgeResult, .succeeded)
+        vm.dismissPurgeResult()
+        XCTAssertNil(vm.purgeResult)
+
+        await download("asset-2")
+        store.setActiveAccount(Self.accountB, otherAccountsRegistered: false)
+        await vm.clearAll()
+
+        guard case .failed? = vm.purgeResult else {
+            return XCTFail("expected a failure, got \(String(describing: vm.purgeResult))")
+        }
+        vm.dismissPurgeResult()
+        XCTAssertNil(vm.purgeResult)
     }
 }

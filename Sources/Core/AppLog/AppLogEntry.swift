@@ -11,6 +11,20 @@ enum AppLogLevel: String, Codable, Sendable, CaseIterable, Identifiable {
     case severe
 
     var id: String { rawValue }
+
+    /// Severity rank: `info` < `warning` < `severe`. Private so the order is
+    /// not tied to the raw strings or to `allCases`.
+    private var rank: Int {
+        switch self {
+        case .info: 0
+        case .warning: 1
+        case .severe: 2
+        }
+    }
+}
+
+extension AppLogLevel: Comparable {
+    static func < (lhs: AppLogLevel, rhs: AppLogLevel) -> Bool { lhs.rank < rhs.rank }
 }
 
 /// One line of the transport log.
