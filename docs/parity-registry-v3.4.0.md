@@ -489,7 +489,7 @@ Chaque écran principal a une ligne par aspect. « États » regroupe le chargem
 | L-26 | Adresse locale et adresse externe du serveur | B-30 | planifié | — | — |
 | L-27 | Réglages : qualité de partage, niveau du journal et caches | B-31 | planifié | — | — |
 | L-28 | Connexion et démarrage comme le client officiel | B-32 | planifié | — | — |
-| L-29 | Visionneuse : relance des erreurs, haptique, diaporama éveillé et repli vidéo | B-33 | livré | a3a2b8ad2656 | AC-57, AC-57.1, AC-57.2, AC-57.3, AC-57.4 (non vérifié à l'exécution), AC-57.5, AC-57.6, AC-57.7, AC-58, AC-58.1, AC-58.2 (non vérifié à l'exécution), AC-58.3 (non vérifié à l'exécution), AC-58.4 (non vérifié à l'exécution), AC-58.5 (non vérifié à l'exécution), AC-59, AC-59.1, AC-59.2, AC-59.3, AC-59.4, AC-59.5 (non vérifié à l'exécution), AC-59.6 |
+| L-29 | Visionneuse : relance des erreurs, haptique, diaporama éveillé et repli vidéo | B-33 | livré | ededbbe87cd0 | AC-57, AC-57.1, AC-57.2, AC-57.3, AC-57.4 (non vérifié à l'exécution), AC-57.5, AC-57.6, AC-57.7, AC-58, AC-58.1, AC-58.2 (non vérifié à l'exécution), AC-58.3 (non vérifié à l'exécution), AC-58.4 (non vérifié à l'exécution), AC-58.5 (non vérifié à l'exécution), AC-59, AC-59.1, AC-59.2, AC-59.3, AC-59.4, AC-59.5 (non vérifié à l'exécution), AC-59.6 |
 | L-30 | Widgets photo nets à leur taille réelle | B-35 | planifié | — | — |
 | L-31 | Confirmations avec Annuler, échec Face ID, barre unique et retours haptiques | B-36 | planifié | — | — |
 | L-32 | Sauvegarde : liste des photos qui restent à sauvegarder | B-37 | planifié | — | — |
