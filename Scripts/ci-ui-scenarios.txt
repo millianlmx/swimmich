@@ -4,70 +4,126 @@
 #
 #   <stub.py> <Class>[/<test>] [--content-size <simctl category>]
 #             [--media <file name>]... [--skip <test>]... [--erase]
+#             [--smoke | --release]
 #
 # A test that fails or skips itself fails the CI. Scenarios not listed here are
 # compiled by the CI, not run. The lines run several at a time and a free
 # simulator takes the next one: one test per line, the longest first. The run
 # lasts at least as long as its longest line: a test over 3 minutes gets a CI
-# warning and is cut in several (a feature brings one or two end-to-end
-# scenarios; its detailed criteria belong to the unit tests).
+# warning and is cut in several.
+#
+# Where a criterion is proven, from the cheapest up:
+#
+# 1. a unit test (a view model, a request, a mapping, a label): milliseconds;
+# 2. a hosted screen (Tests/HostedScreen.swift: the real view on a mock client,
+#    read through its accessibility tree at any text size and language): a
+#    second for a whole screen, where a scenario takes minutes;
+# 3. a scenario of this list, for what only a launched app shows: a journey
+#    across screens, another process (share extension, widgets, Photos, the
+#    provider's sign-in page), the system (Face ID, SpringBoard), a relaunch.
+#
+# A line has a tier, which says when it runs (Scripts/ci_ui_select.py):
+#
+# * `--smoke`: every push (the gate), after the lines the push changed. The
+#   gate has five minutes in all (`SWIMMICH_CI_GATE_BUDGET`), build and unit
+#   tests included, so it runs one line per simulator the unit tests leave free
+#   (one on a pool of two, two on a pool of three) and no line waits behind
+#   another: the first smoke line of this file always runs, the next ones where
+#   there is room. Two short lines: the editor (timeline to viewer to editor to
+#   saved edits), then the search (filters to request to results). The longer
+#   journeys (sign-in, three minutes) are core lines. A changed line that finds
+#   no room gets a CI warning and is left to the night's suite.
+# * no flag, the core suite: every night with the smoke lines. A journey of a
+#   feature, or the only execution proof of a criterion (no unit test proves it).
+# * `--release`: once a week and on a release tag, with all the others. A second
+#   proof of a criterion a unit test of the same name already proves.
+#
+# Budgets, checked by the CI: at most 5 smoke lines, at most 40 lines in the
+# night's suite (smoke and core). A feature brings one or two scenarios; one that
+# does not fit replaces a line or is `--release`, and its detailed criteria go to
+# the unit tests.
+
+# L-21 server-side edits (AC-39, AC-40, AC-181, AC-182, AC-187, AC-188, AC-189): the editor, the edited
+# version shown by the viewer, and the choice of the file to download.
+immich_stub_asset_edits.py AssetEditsUITests/test_AC_182_reopenChangeRotationThenRevert --release
+immich_stub_asset_edits.py AssetEditsUITests/test_AC_181_cropRotateMirrorSavesEdits --smoke
+immich_stub_asset_edits.py AssetEditsUITests/test_AC_188_oldServerSavesCopy --release
+immich_stub_asset_edits.py AssetEditsUITests/test_AC_189_putErrorShowsMessage --release
+immich_stub_asset_edits.py AssetEditsUITests/test_AC_39_editedVersionShownThenTheOriginalComesBack
+immich_stub_asset_edits.py AssetEditsUITests/test_AC_40_downloadEditedThenOriginalAsksTwiceWithDifferentFiles
+immich_stub_asset_edits.py AssetEditsUITests/test_AC_187_selectionAsksOnceAndCarriesEachAnswer
+immich_stub_asset_edits.py AssetEditsUITests/test_AC_187_viewerAsksOnlyForAnEditedRecord
+immich_stub_asset_edits.py AssetEditsUITests/test_AC_187_oldServerSelectionDownloadsOriginalWithoutQuestion --release
+
+# L-32 "Remaining to back up": the entry and the list over the real Photos library of the simulator
+# (3 seeded media, plus the sample photos of an erased simulator) → a pass against a server that accepts
+# everything empties both. The AX5 line reads a row at the largest text size: whole file name, no overflow.
+immich_stub_backup_remainder.py BackupRemainderUITests/test_AC_65_remainderFromBackupScreen --media L32-a.png --media L32-b.png --media L32-c.png --erase
+immich_stub_backup_remainder.py BackupRemainderUITests/test_AC_65_9_rowsReadableAtAX5 --content-size accessibility-extra-extra-extra-large --media L32-ax5.png --erase
 
 # L-13 Dynamic Type (AC-26 to AC-26.9). The long walks are cut in several tests
 # (one line each) so the pool spreads them. The share extension follows the
 # SYSTEM text size (AX5) and needs a long-named photo in Photos.
-immich_stub_dynamic_type.py DynamicTypeUITests/test_AC_26_8_albums
+# Core: the walks in English, the German onboarding, and what only a launched app
+# shows (the share extension, the app lock, the viewer, the lists). Release: the
+# German twins and the size-by-size walks, whose screens `DynamicTypeScreenTests`
+# measures hosted and whose tokens `DynamicTypeTests` measures (unit tests).
+immich_stub_dynamic_type.py DynamicTypeUITests/test_AC_26_8_albums --release
 immich_stub_dynamic_type.py DynamicTypeUITests/test_AC_26_3_albums
 immich_stub_dynamic_type.py DynamicTypeUITests/test_AC_26_3
 immich_stub_dynamic_type.py DynamicTypeUITests/test_AC_26_8
 immich_stub_dynamic_type.py DynamicTypeUITests/test_AC_26_9
-immich_stub_dynamic_type.py DynamicTypeUITests/test_AC_26_1_signedIn
-immich_stub_dynamic_type.py DynamicTypeUITests/test_AC_26_1_albums
+immich_stub_dynamic_type.py DynamicTypeUITests/test_AC_26_1_signedIn --release
+immich_stub_dynamic_type.py DynamicTypeUITests/test_AC_26_1_albums --release
 immich_stub_dynamic_type.py DynamicTypeUITests/test_AC_26_3_links
-immich_stub_dynamic_type.py DynamicTypeUITests/test_AC_26_8_links
+immich_stub_dynamic_type.py DynamicTypeUITests/test_AC_26_8_links --release
 immich_stub_dynamic_type.py DynamicTypeUITests/test_AC_26_4_panels
-immich_stub_dynamic_type.py DynamicTypeUITests/test_AC_26_4
-immich_stub_dynamic_type.py DynamicTypeUITests/test_AC_26_4_ax5
-immich_stub_dynamic_type.py DynamicTypeUITests/test_AC_26_ax5
-immich_stub_dynamic_type.py DynamicTypeUITests/test_AC_26_1
+immich_stub_dynamic_type.py DynamicTypeUITests/test_AC_26_4 --release
+immich_stub_dynamic_type.py DynamicTypeUITests/test_AC_26_4_ax5 --release
+immich_stub_dynamic_type.py DynamicTypeUITests/test_AC_26_ax5 --release
+immich_stub_dynamic_type.py DynamicTypeUITests/test_AC_26_1 --release
 immich_stub_dynamic_type.py DynamicTypeUITests/test_AC_26_4_appLock
 immich_stub_dynamic_type.py DynamicTypeUITests/test_AC_26_4_lists
 immich_stub_dynamic_type.py DynamicTypeUITests/test_AC_26_6
-immich_stub_dynamic_type.py DynamicTypeUITests/test_AC_26
+immich_stub_dynamic_type.py DynamicTypeUITests/test_AC_26 --release
 immich_stub_dynamic_type.py DynamicTypeUITests/test_AC_26_4_shareExtension --content-size accessibility-extra-extra-extra-large --media Summer-holidays-in-the-Gorges-du-Verdon-with-the-whole-family.png
 immich_stub_dynamic_type.py DynamicTypeUITests/test_AC_26_7
-immich_stub_dynamic_type.py DynamicTypeUITests/test_AC_26_5
-immich_stub_search_filters.py SearchCriteriaUITests/test_AC_42
-immich_stub_search_filters.py SearchCriteriaUITests/test_AC_209
-immich_stub_search_filters.py SearchCriteriaUITests/test_AC_210
-immich_stub_search_filters.py SearchCriteriaUITests/test_AC_211
-immich_stub_search_filters.py SearchCriteriaUITests/test_AC_212
-immich_stub_search_filters.py SearchCriteriaUITests/test_AC_213
+immich_stub_dynamic_type.py DynamicTypeUITests/test_AC_26_5 --release
+# L-23 Search criteria and selection. Core: one filter journey, the two server generations of
+# AC-43, AC-215 (no unit test proves it), the selection of AC-44, and the shared selection bar
+# (AC-44.1 download choice, AC-44.2 the bar read on the timeline and on the results).
+immich_stub_search_filters.py SearchCriteriaUITests/test_AC_42 --smoke
+immich_stub_search_filters.py SearchCriteriaUITests/test_AC_209 --release
+immich_stub_search_filters.py SearchCriteriaUITests/test_AC_210 --release
+immich_stub_search_filters.py SearchCriteriaUITests/test_AC_211 --release
+immich_stub_search_filters.py SearchCriteriaUITests/test_AC_212 --release
+immich_stub_search_filters.py SearchCriteriaUITests/test_AC_213 --release
 immich_stub_search_filters.py SearchCriteriaUITests/test_AC_43
 immich_stub_search_filters.py SearchCriteriaUITests/test_AC_215
-immich_stub_search_filters.py SearchCriteriaUITests/test_AC_218
-immich_stub_search_filters.py SearchCriteriaUITests/test_AC_216
+immich_stub_search_filters.py SearchCriteriaUITests/test_AC_218 --release
+immich_stub_search_filters.py SearchCriteriaUITests/test_AC_216 --release
 immich_stub_search_filters.py SearchCriteriaUITests/test_AC_44
-immich_stub_search_filters.py SearchCriteriaUITests/test_AC_217
+immich_stub_search_filters.py SearchCriteriaUITests/test_AC_217 --release
+immich_stub_search_filters.py SearchCriteriaUITests/test_AC_44_1
+immich_stub_search_filters.py SearchCriteriaUITests/test_AC_44_2
 
-# L-27 Share quality, log level and caches (AC-50, AC-52, AC-270 to AC-280).
-immich_stub_share_caches.py ShareAndCachesUITests/test_AC_280
-immich_stub_share_caches.py ShareAndCachesUITests/test_AC_52
-immich_stub_share_caches.py ShareAndCachesUITests/test_AC_277
-immich_stub_share_caches.py ShareAndCachesUITests/test_AC_279
+# L-23b: the timeline's selection bar after its factorisation (AC-44.3). Release: second proofs of
+# the shared bar, beside the search lines above.
+immich_stub_archive.py ArchiveUITests/test_AC5_AC6_archivedSelectionUnarchives --release
+immich_stub_read_only_mode.py ReadOnlyModeUITests/test_readOnlyMode --media media-a.png --media media-b.png --erase --release
+immich_stub_plurals.py PluralsUITests/test_AC_32_1_timelineSelectionTitle --erase --release
+
+# L-27 Share quality, log level and caches (AC-50, AC-52, AC-270 to AC-280). Core: AC-50 and
+# AC-275, which no unit test proves, and the long press of AC-272.
+immich_stub_share_caches.py ShareAndCachesUITests/test_AC_280 --release
+immich_stub_share_caches.py ShareAndCachesUITests/test_AC_52 --release
+immich_stub_share_caches.py ShareAndCachesUITests/test_AC_277 --release
+immich_stub_share_caches.py ShareAndCachesUITests/test_AC_279 --release
 immich_stub_share_caches.py ShareAndCachesUITests/test_AC_272
 immich_stub_share_caches.py ShareAndCachesUITests/test_AC_275
 immich_stub_share_caches.py ShareAndCachesUITests/test_AC_50
-immich_stub_share_caches.py ShareAndCachesUITests/test_AC_270
-immich_stub_share_caches.py ShareAndCachesUITests/test_AC_273
-
-# L-21 server-side edits (AC-39, AC-40, AC-181, AC-182, AC-188, AC-189): the editor, the edited
-# version shown by the viewer, and the choice of the file to download.
-immich_stub_asset_edits.py AssetEditsUITests/test_AC_182_reopenChangeRotationThenRevert
-immich_stub_asset_edits.py AssetEditsUITests/test_AC_181_cropRotateMirrorSavesEdits
-immich_stub_asset_edits.py AssetEditsUITests/test_AC_188_oldServerSavesCopy
-immich_stub_asset_edits.py AssetEditsUITests/test_AC_189_putErrorShowsMessage
-immich_stub_asset_edits.py AssetEditsUITests/test_AC_39_editedVersionShownThenTheOriginalComesBack
-immich_stub_asset_edits.py AssetEditsUITests/test_AC_40_downloadEditedThenOriginalAsksTwiceWithDifferentFiles
+immich_stub_share_caches.py ShareAndCachesUITests/test_AC_270 --release
+immich_stub_share_caches.py ShareAndCachesUITests/test_AC_273 --release
 
 # L-30 widgets photo à leur taille (AC-61.6): the large Photos and Favorites widgets, posed on the Home
 # Screen through SpringBoard, are archived and drawn at the new image sizes (a wall of 4 previews; one
@@ -76,9 +132,10 @@ immich_stub_widgets.py WidgetDisplaySizeUITests/test_AC_61_6_photosLarge --erase
 immich_stub_widgets.py WidgetDisplaySizeUITests/test_AC_61_6_favoritesLargeOneFavorite --erase
 
 immich_stub_edit_stacks.py EditStacksUITests/test_AC_41_editStackedOnOriginal --media L22-edit-on.png --erase
-immich_stub_edit_stacks.py EditStacksUITests/test_AC_41_settingOffSendsNothing --media L22-edit-off.png --erase
-immich_stub_edit_stacks.py EditStacksUITests/test_AC_200_settingOffByDefaultAndPersisted
+immich_stub_edit_stacks.py EditStacksUITests/test_AC_41_settingOffSendsNothing --media L22-edit-off.png --erase --release
+immich_stub_edit_stacks.py EditStacksUITests/test_AC_200_settingOffByDefaultAndPersisted --release
 
+<<<<<<< HEAD
 # L-26 adresse locale et externe (AC-49, AC-235, AC-236, AC-238 to AC-240, AC-242,
 # AC-246, AC-248, AC-250): one stub serves the external address on the worker's
 # port P and the local one on a port the system picks (`bind` on 0, reported as
@@ -102,3 +159,39 @@ immich_stub_server_addresses.py ServerAddressesUITests/test_AC_239 --erase
 # everything empties both. The AX5 line reads a row at the largest text size: whole file name, no overflow.
 immich_stub_backup_remainder.py BackupRemainderUITests/test_AC_65_remainderFromBackupScreen --media L32-a.png --media L32-b.png --media L32-c.png --erase
 immich_stub_backup_remainder.py BackupRemainderUITests/test_AC_65_9_rowsReadableAtAX5 --content-size accessibility-extra-extra-extra-large --media L32-ax5.png --erase
+=======
+# L-33 date correction with a time zone (AC-66, AC-66.4, AC-66.6): the device is set to Asia/Tokyo by the
+# scenario (TZ), the photo's EXIF zone is Europe/Paris; the picker shows the photo's wall clock, the PUT
+# carries the chosen zone's offset. Core: the journey of AC-66; the two others double unit tests of
+# the same criteria (AdjustDateViewModelTests).
+immich_stub_adjust_date.py AdjustDateUITests/test_AC_66
+immich_stub_adjust_date.py AdjustDateUITests/test_AC_66_4_editedTimeIsWallClock --release
+immich_stub_adjust_date.py AdjustDateUITests/test_AC_66_6_reopenAfterSave --release
+
+# L-25 "My Location" (AC-231): "Open Settings" in the refusal alert brings the Settings app (another
+# process) to the foreground, which no unit test can show. The other AdjustLocationUITests are compiled,
+# not run: their criteria have unit tests of the same name (AdjustLocationViewModelTests, DeviceLocationTests).
+immich_stub_adjust_location.py AdjustLocationUITests/test_AC_231
+
+# Tiers of the lines below: `--release` where a unit test of the same criterion exists
+# (func test_AC_<n> under Tests/); core for the others, as far as the night's budget of
+# 40 lines allows (27 taken by `main`).
+# The edited version follows everywhere after the regeneration (AC-183, AC-186, AC-196 to AC-199): a stub
+# that serves the old rendering for 5 s or 15 s, then the new one and the `AssetEditReadyV2` event.
+immich_stub_asset_edits.py AssetEditsUITests/test_AC_183_timelineAlbumAndSearchFollowTheEditAndItsRemoval --release
+immich_stub_asset_edits.py AssetEditsUITests/test_AC_186_offlineCopyFollowsAfterTheRegeneration --release
+immich_stub_asset_edits.py AssetEditsUITests/test_AC_196_editMadeElsewhereReachesOpenScreens
+immich_stub_asset_edits.py AssetEditsUITests/test_AC_197_albumCoverFollowsTheEdit --release
+immich_stub_asset_edits.py AssetEditsUITests/test_AC_198_slowRegenerationRedownloadsOnTheEvent --release
+immich_stub_asset_edits.py AssetEditsUITests/test_AC_199_slowRegenerationReachesTheSearchGridAfterTheViewerClosed --release
+immich_stub_asset_edits.py AssetEditsUITests/test_AC_199_withoutTheEventTheReopenedViewerResumesTheCopy --release
+# The proofs of the display (AC-190 to AC-195): published app without a hidden switch, the zoom limit of an
+# edited photo, an edit made before the launch on every surface, share and editor on the original, an old
+# server. The widget on the Home Screen is erased like the other widget scenarios.
+immich_stub_asset_edits.py AssetEditsUITests/test_AC_190_serverSaveIsOnWithoutAnyHiddenSwitch
+immich_stub_asset_edits.py AssetEditsUITests/test_AC_191_editedPhotoZoomLimitIgnoresTheOriginalExif --release
+immich_stub_asset_edits.py AssetEditsUITests/test_AC_192_editMadeBeforeShowsOnEverySurface
+immich_stub_asset_edits.py EditedWidgetUITests/test_AC_193_widgetShowsTheEditedImageAfterTheEdit --erase
+immich_stub_asset_edits.py AssetEditsUITests/test_AC_194_shareAndEditorStayOnTheOriginal --release
+immich_stub_asset_edits.py AssetEditsUITests/test_AC_195_oldServerShowsPhotosAsBefore
+>>>>>>> 2886428df51d0867f28fde47723cf523ac9742d3

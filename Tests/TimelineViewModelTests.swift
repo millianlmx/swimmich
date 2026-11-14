@@ -1129,6 +1129,23 @@ final class TimelineViewModelTests: XCTestCase {
         XCTAssertFalse(vm.selectionMode)
     }
 
+    /// What the shared selection bar downloads: the grid's order, not the `Set`'s.
+    @MainActor
+    func test_AC_44_3_timelineSelectedItemsFollowGridOrder() async {
+        let mock = MockImmichClient()
+        mock.bucketsResponse = [TimeBucketsResponseDto(timeBucket: "2024-07-01", count: 3)]
+        mock.bucketResponses = [
+            "2024-07-01": columnar(ids: ["a1", "a2", "a3"], ratios: [1, 1, 1], thumbhashes: [nil, nil, nil], favorites: [false, false, false])
+        ]
+        let vm = TimelineViewModel(client: mock)
+        await vm.load()
+        vm.enterSelectionMode()
+        vm.toggleSelection(id: "a3")
+        vm.toggleSelection(id: "a1")
+
+        XCTAssertEqual(vm.selectedItems.map(\.id), ["a1", "a3"])
+    }
+
     // MARK: - AC-10 / AC-1 / AC-2: a cancelled load is silent and keeps what is shown (SP-1, SP-7)
 
     /// Refreshed VM holding one non-empty bucket: the starting point of every cancelled-load test.

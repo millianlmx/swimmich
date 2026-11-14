@@ -752,7 +752,7 @@ final class TimelineViewModel {
     ///   (the search results): the caller re-reads its own list, and this
     ///   view model must not replace its `items` with timeline buckets.
     @MainActor
-    func stackSelected(currentUserId: String?, refreshing: Bool = true) async {
+    func stackSelected(currentUserId: String?, refreshing: Bool) async {
         let selected = items.filter { selectedIds.contains($0.id) }
         let owned = selected.filter { $0.allowsOwnerActions(currentUserId: currentUserId) }.map(\.id)
         let skipped = selected.count - owned.count
@@ -769,6 +769,19 @@ final class TimelineViewModel {
             actionErrorMessage = e.userFacingMessage
         }
     }
+
+    /// The shared selection bar's stack action: the timeline re-reads itself
+    /// afterwards. A defaulted `refreshing` would not satisfy the protocol's
+    /// requirement, hence this explicit overload.
+    @MainActor
+    func stackSelected(currentUserId: String?) async {
+        await stackSelected(currentUserId: currentUserId, refreshing: true)
+    }
+}
+
+extension TimelineViewModel: BatchSelectionModel {
+    /// The selection in grid order, not `Set` order (a download's file order).
+    var selectedItems: [AssetReactItem] { items.filter { selectedIds.contains($0.id) } }
 }
 
 /// Filters of the main timeline, in menu order. The network parameters are

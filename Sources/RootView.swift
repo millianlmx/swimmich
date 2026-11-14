@@ -303,8 +303,16 @@ private struct AuthenticatedRoot: View {
         // reads the mode see the same store, and it survives a re-render.
         .environment(readOnly)
         .environment(offline)
-        .onReceive(NotificationCenter.default.publisher(for: .immichAssetsChanged)) { _ in
+        .onReceive(NotificationCenter.default.publisher(for: .immichAssetsChanged)) { note in
+            let regenerated = RealtimeBatch(notification: note).touchesEditedAssets
             Task {
+                // A thumbnail regeneration: the photos saved here are adopted first, so the lists read below
+                // and every URL built from now on carry the new thumbhash.
+                if regenerated, let baseURL = auth.baseURL {
+                    await container.editedAssetFollowUp.resumePending(
+                        offline: offline, baseURL: baseURL, token: auth.accessToken
+                    )
+                }
                 await timeline.refresh()
                 await albums.refresh()
                 await people.load(force: true)
@@ -361,7 +369,17 @@ private struct AuthenticatedRoot: View {
         // is the session's, and the view that used to carry this rule is only
         // alive while it is pushed.
         .onChange(of: scenePhase) { _, phase in
-            guard phase != .active else { return }
+            guard phase != .active else {
+                // Back in the foreground: a regeneration finished while the app slept is adopted (L-21).
+                if let baseURL = auth.baseURL {
+                    Task {
+                        await container.editedAssetFollowUp.resumePending(
+                            offline: offline, baseURL: baseURL, token: auth.accessToken
+                        )
+                    }
+                }
+                return
+            }
             Task { await lockedFolder.relockIfUnlocked() }
         }
         // Download queue (gap G10): the capsule rides above the tab bar from

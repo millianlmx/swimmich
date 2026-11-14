@@ -28,15 +28,21 @@ struct AlbumResponseDto: Codable, Equatable {
     /// v2.x sends the owner as a full user (v3+ omits it: the owner is an
     /// `albumUsers` entry with role `owner`).
     var owner: UserResponseDto? = nil
+    /// Newest `updatedAt` of the album's photos (sent by the server for the mobile app, absent otherwise):
+    /// an edit of any photo changes it, which is what busts the cover's image cache (L-21).
+    var lastModifiedAssetTimestamp: String? = nil
 
     enum CodingKeys: String, CodingKey {
         case id, albumName, description, createdAt, updatedAt
         case albumThumbnailAssetId, shared, hasSharedLink, assetCount
-        case isActivityEnabled, order, albumUsers, ownerId, owner
+        case isActivityEnabled, order, albumUsers, ownerId, owner, lastModifiedAssetTimestamp
     }
 }
 
 extension AlbumResponseDto {
+    /// Cache key of the album's images: changes when any photo of the album does.
+    var coverCacheStamp: String { lastModifiedAssetTimestamp ?? updatedAt }
+
     /// The only valid album-role rule. `ownerId` (v2.x) designates the owner;
     /// otherwise the user's own `albumUsers` entry decides, at any position
     /// (never `albumUsers.first`: v2 sorts editors first, v3 lists the owner
