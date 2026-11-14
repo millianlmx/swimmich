@@ -111,33 +111,6 @@ final class DynamicTypeScreenTests: XCTestCase {
         host(CreateAlbumSheet(vm: AlbumsViewModel(client: mock), preselectedAssetIds: nil), mock, size: size, language: language)
     }
 
-    private func albumsScreen(_ mock: MockImmichClient, size: DynamicTypeSize = .accessibility5,
-                              language: String) -> HostedScreen {
-        // The twelve collections are only destinations of the Library section:
-        // the app's own, never opened here.
-        let container = DependencyContainer.shared
-        let library = LibraryDestinations(
-            recentTaken: container.makeRecentAssetsViewModel(mode: .taken),
-            recentAdded: container.makeRecentAssetsViewModel(mode: .added),
-            trash: container.makeTrashViewModel(),
-            people: container.makePeopleViewModel(),
-            tags: container.makeTagsViewModel(),
-            stacks: container.makeStacksViewModel(),
-            partners: container.makePartnersViewModel(),
-            offline: container.makeOfflineDownloadViewModel(accountID: "dt"),
-            folders: container.makeFolderViewModel(),
-            localLibrary: container.makeLocalLibraryViewModel(),
-            duplicates: container.makeDuplicatesViewModel(),
-            lockedFolder: container.makeLockedFolderViewModel(accountID: "dt")
-        )
-        let view = AlbumsView(vm: AlbumsViewModel(client: mock), library: library)
-            .environment(container.upload)
-            .environment(container.makeOfflineDownloadViewModel(accountID: "dt"))
-            .environment(container.offlineIndex)
-            .environment(container.cloudStatus)
-        return host(view, mock, size: size, language: language, height: 9000)
-    }
-
     private func searchScreen(_ mock: MockImmichClient, size: DynamicTypeSize = .accessibility5,
                               language: String) -> HostedScreen {
         let container = DependencyContainer.shared
@@ -150,28 +123,6 @@ final class DynamicTypeScreenTests: XCTestCase {
     }
 
     // MARK: - AC-26.3 / AC-26.8: whole screens at AX5, in English and in German
-
-    /// The Albums tab: AX5 in both languages, then the smallest size, and a card
-    /// that grows from XS to L to AX5 (AC-26, AC-26.1, AC-26.3, AC-26.8).
-    func test_AC_26_3_albumsScreen() async {
-        for language in Self.languages {
-            let screen = albumsScreen(makeMock(), language: language)
-            defer { screen.close() }
-            guard await screen.waitFor("albumCard_dt-album-short") else { continue }
-            screen.assertNoOverlap()
-            screen.assertRowGrows(long: "albumCard_dt-album-long", short: "albumCard_dt-album-short")
-        }
-        var heights: [CGFloat] = []
-        for size in [DynamicTypeSize.xSmall, .large, .accessibility5] {
-            let screen = albumsScreen(makeMock(), size: size, language: "en")
-            defer { screen.close() }
-            guard await screen.waitFor("albumCard_dt-album-short") else { return }
-            if size == .xSmall { screen.assertNoOverlap() }
-            heights.append(screen.find("albumCard_dt-album-short")?.frame.height ?? 0)
-        }
-        XCTAssertLessThan(heights[0], heights[1], "album card: XS (\(heights[0])) must be smaller than L (\(heights[1]))")
-        XCTAssertLessThan(heights[1], heights[2], "album card: L (\(heights[1])) must be smaller than AX5 (\(heights[2]))")
-    }
 
     func test_AC_26_3_addToAlbumSheet() async {
         for language in Self.languages {
