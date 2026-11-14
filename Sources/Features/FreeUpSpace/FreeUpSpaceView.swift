@@ -203,6 +203,7 @@ struct FreeUpSpaceView: View {
                 byteRow("Reclaimable", bytes: vm.reclaimableBytes, identifier: "cleanupReclaimableValue")
                 numberRow("Already gone from the server", value: vm.skippedNotOnServer, identifier: "cleanupNotOnServerValue")
                 numberRow("Kept in iCloud Shared Albums", value: vm.skippedInSharedAlbum, identifier: "cleanupSharedAlbumValue")
+                numberRow("Edits not backed up yet", value: vm.skippedEditNotBackedUp, identifier: "cleanupEditNotBackedUpValue")
 
                 if vm.hasNothingToFreeUp {
                     ContentUnavailableView {
