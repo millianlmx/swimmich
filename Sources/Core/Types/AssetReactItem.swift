@@ -140,8 +140,8 @@ struct AssetReactItem: Identifiable, Equatable, Hashable, Sendable {
     /// travels in the query instead of a bearer header, so a visitor's grid can
     /// load the same thumbnails the owner sees.
     ///
-    /// `edited` (L-21) is `true` for every display; only the share sheet, which shares the photo as
-    /// uploaded, passes `false`.
+    /// `edited` (L-21) is `true` for every display; only sharing (`ViewerShareViewModel`), which shares
+    /// the photo as uploaded, passes `false`.
     func thumbnailURL(base: URL, size: AssetMediaSize = .thumbnail, sharedLink: SharedLinkCredential? = nil,
                       edited: Bool = true) -> URL {
         ImmichAssetURL.thumbnail(
