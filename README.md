@@ -33,7 +33,7 @@ Feature parity with the Flutter client is tracked in [`docs/mobile-features-vs-f
 |---|---|---|
 | **Timeline** | daily buckets, grid zoom, thumbnails | `Sources/Features/Timeline/` |
 | **Viewer** | full-screen pager, zoom, filmstrip, video, slideshow, EXIF panel, stacks, faces; "Try Again" on a photo that fails to load and on the details panel; haptic on favorite and delete (follows the Haptic Feedback setting); the screen stays on while the slideshow is displayed; a video whose offline copy cannot be read plays from the server's transcoded stream | `Sources/Features/PhotoViewer/` |
-| **Search** | semantic (CLIP), faces, locations (map), tags, advanced filters | `Sources/Features/Search/` |
+| **Search** | semantic (CLIP), locations (map), filters by people, tags, "not in album", favourites and archive, file-name and description text search, grid density from Preferences, multi-selection of results with the timeline's batch actions | `Sources/Features/Search/` |
 | **Albums** | CRUD, sharing, activity feed | `Sources/Features/Albums/` |
 | **People, Tags, Duplicates, Trash** | face management, tags, duplicate detection, restore | `Sources/Features/People/`, `Tags/`, `Duplicates/`, `Trash/` |
 | **Shared Links** | CRUD, password, expiration, **public viewer** (open a received link, unlock it, browse it, guest upload) | `Sources/Features/SharedLinks/` |
@@ -55,8 +55,8 @@ Strict MVVM in 4 layers. Protocols in `Core/Protocols/` are **immutable** and fo
 | Layer | Role | Content |
 |---|---|---|
 | `Sources/Core/Types/` | API DTOs | `DTOs*.swift`, `SearchDTOs.swift`, `APIError.swift`, … |
-| `Sources/Core/Protocols/` | Contracts (sole injection point) | `ImmichClient`, `PhotoLibraryService`, `BackupAssetSource`, `BackupLedgerStoring`, `KeychainStore`, `TrustedServerStore`, `AppLockService`, `VideoPlaybackEngine`, `IdleTimerControlling` |
-| `Sources/Services/` | Implementations | `ImmichAPIClient`, `PhotoLibraryServiceImpl`, `BackupEngine`, `BackupLedger`, `MultipartBody`, `ImageCache`, `AuthenticatedAsyncImage`, `RealtimeService` (Socket.IO), `KeychainStoreImpl`, … |
+| `Sources/Core/Protocols/` | Contracts (sole injection point) | `ImmichClient`, `PhotoLibraryService`, `BackupAssetSource`, `BackupLedgerStoring`, `BackupEditLedgerStoring`, `KeychainStore`, `TrustedServerStore`, `AppLockService`, `VideoPlaybackEngine`, `IdleTimerControlling` |
+| `Sources/Services/` | Implementations | `ImmichAPIClient`, `PhotoLibraryServiceImpl`, `BackupEngine`, `BackupLedger`, `BackupEditLedger`, `MultipartBody`, `ImageCache`, `AuthenticatedAsyncImage`, `RealtimeService` (Socket.IO), `KeychainStoreImpl`, … |
 | `Sources/Features/<Feature>/` | Per-feature MVVM | `<Feature>ViewModel.swift` (`@Observable`, `@MainActor`) + `<Feature>View.swift` (stateless) |
 
 Composition points:
@@ -115,6 +115,7 @@ flowchart TD
 4. **Pass 2 — upload:** re-export to disk → multipart written to disk → `URLSession.upload(fromFile:)`. Bounded RAM, large videos are backed up instead of skipped.
 5. **`BackupLedger`:** already-backuped assets are not re-exported — avoids re-downloading the entire "Optimize Storage" iCloud library on every run.
 6. **iCloud assets:** dedicated states (downloading, retry) with status messages in the UI.
+7. **Also back up edits (opt-in, off by default):** an asset edited in place in Photos (or by an app that edits through PhotoKit — `hasAdjustments`) has its edited rendering (`.fullSizePhoto` / `.fullSizeVideo`, plus a Live Photo's `.fullSizePairedVideo`) exported to disk, hashed and uploaded under the same `deviceAssetId`, then stacked on top of its original with `POST /api/stacks` (`[edit, previous head, original]`, the server makes the first id the primary). The edits already sent live in their own file, `BackupEditLedger` (`immich-backup-edits.json`, version 1), beside the untouched original ledger: a pass without a new edit exports, hashes and checks nothing. A stack that fails is a warning in the backup detail, retried next pass without sending the file again; a purged edit is re-sent like a purged original; Free Up Space keeps an edited asset until its current edit is confirmed on the server. A copy another app saves as a *new* Photos item is just another new asset (never stacked).
 
 Reliable progress: total fixed after filtering, bar = `processed / total` (each asset counts: uploaded, deduplicated, or failed).
 

@@ -223,6 +223,25 @@ final class AppSettingsStoreTests: XCTestCase {
         XCTAssertEqual(defaults.string(forKey: AppSettingsStore.accentColorKey), "immich")
     }
 
+    /// AC-270: a fresh install shares the preview (today's behavior), "Original"
+    /// survives a relaunch, Reset puts the preview back — key removed, as on a
+    /// fresh install — and an unreadable stored value falls back to the preview.
+    func test_AC_270_shareQualityDefaultsPersistsAndResets() {
+        let store = AppSettingsStore(defaults: defaults)
+        XCTAssertEqual(store.shareQuality, .preview)
+
+        store.shareQuality = .original
+        XCTAssertEqual(defaults.string(forKey: AppSettingsStore.shareFileTypeKey), "original")
+        XCTAssertEqual(AppSettingsStore(defaults: defaults).shareQuality, .original, "survives a relaunch")
+
+        store.resetToDefaults()
+        XCTAssertEqual(store.shareQuality, .preview)
+        XCTAssertNil(defaults.object(forKey: AppSettingsStore.shareFileTypeKey))
+
+        defaults.set("fullsize", forKey: AppSettingsStore.shareFileTypeKey)
+        XCTAssertEqual(AppSettingsStore(defaults: defaults).shareQuality, .preview)
+    }
+
     private func components(of color: Color, style: UIUserInterfaceStyle) -> [CGFloat] {
         let traits = UITraitCollection(userInterfaceStyle: style)
         return UIColor(color).resolvedColor(with: traits).cgColor.components ?? []

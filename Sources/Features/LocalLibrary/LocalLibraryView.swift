@@ -180,6 +180,12 @@ struct LocalLibraryView: View {
                             .font(.pvCaption)
                             .foregroundStyle(Color.immichWarning)
                             .accessibilityIdentifier("localOnlyValue")
+                        if vm.pendingEditCount > 0 {
+                            Text("\(vm.pendingEditCount) edits not backed up")
+                                .font(.pvCaption)
+                                .foregroundStyle(Color.immichWarning)
+                                .accessibilityIdentifier("localEditPendingValue")
+                        }
                         Text("\(vm.savedCount) on server")
                             .font(.pvCaption)
                             .foregroundStyle(Color.immichSuccess)
@@ -224,7 +230,7 @@ struct LocalLibraryView: View {
                         }
                     }
                     .buttonStyle(PVPrimaryButtonStyle())
-                    .disabled(vm.localOnlyIDs.isEmpty || vm.phase != .idle)
+                    .disabled(!vm.canUpload || vm.phase != .idle)
                     .accessibilityIdentifier("uploadSelectionButton")
                 }
             }

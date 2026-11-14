@@ -27,6 +27,12 @@ final class FreeUpSpaceViewModel {
     let source: any LocalCleanupSource
     let albumSource: any BackupAssetSource
     let ledger: any BackupLedgerStoring
+    /// The edited versions the backup sent, beside `ledger`. Read only when
+    /// `includesEdits()` is true.
+    let editLedger: any BackupEditLedgerStoring
+    /// Whether "Also back up edits" is on, read per scan: on, an edited asset
+    /// is deleted only once its current edit is confirmed on the server.
+    let includesEdits: @MainActor () -> Bool
     var settings: CleanupSettingsStore
 
     /// Mirrors `BackupEngine.checkChunkSize`. The dedup check is chunked the
@@ -41,6 +47,9 @@ final class FreeUpSpaceViewModel {
     var scannedCount = 0
     var skippedNotOnServer = 0
     var skippedInSharedAlbum = 0
+    /// Edited assets kept on the device because their edit is not (yet)
+    /// confirmed on the server for the current modification date.
+    var skippedEditNotBackedUp = 0
     /// Set once a deletion succeeds; drives the success alert. The view clears
     /// it (`acknowledgeDeletion`) so the next deletion is a fresh transition.
     var lastDeletedCount: Int?
@@ -56,12 +65,16 @@ final class FreeUpSpaceViewModel {
         source: any LocalCleanupSource,
         albumSource: any BackupAssetSource,
         ledger: any BackupLedgerStoring,
+        editLedger: any BackupEditLedgerStoring,
+        includesEdits: @escaping @MainActor () -> Bool,
         settings: CleanupSettingsStore
     ) {
         self.client = client
         self.source = source
         self.albumSource = albumSource
         self.ledger = ledger
+        self.editLedger = editLedger
+        self.includesEdits = includesEdits
         self.settings = settings
     }
 
@@ -133,6 +146,7 @@ final class FreeUpSpaceViewModel {
         scannedCount = 0
         skippedNotOnServer = 0
         skippedInSharedAlbum = 0
+        skippedEditNotBackedUp = 0
         scanGeneration += 1
     }
 
@@ -142,6 +156,7 @@ final class FreeUpSpaceViewModel {
         scannedCount = 0
         skippedNotOnServer = 0
         skippedInSharedAlbum = 0
+        skippedEditNotBackedUp = 0
         scanGeneration += 1
     }
 
@@ -151,6 +166,7 @@ final class FreeUpSpaceViewModel {
         scannedCount = 0
         skippedNotOnServer = 0
         skippedInSharedAlbum = 0
+        skippedEditNotBackedUp = 0
         scanGeneration += 1
     }
 
@@ -175,6 +191,7 @@ final class FreeUpSpaceViewModel {
         scannedCount = 0
         skippedNotOnServer = 0
         skippedInSharedAlbum = 0
+        skippedEditNotBackedUp = 0
         scanGeneration += 1
     }
 
@@ -192,6 +209,7 @@ final class FreeUpSpaceViewModel {
         scannedCount = 0
         skippedNotOnServer = 0
         skippedInSharedAlbum = 0
+        skippedEditNotBackedUp = 0
         defer { isScanning = false }
 
         let entries = ledger.entriesForReconciliation()
@@ -222,6 +240,39 @@ final class FreeUpSpaceViewModel {
             return
         }
 
+        // Edited assets (setting on): the edit's own checksum is checked the
+        // same way, and only a stacked edit confirmed by the server — trash
+        // included — lets its asset be offered. An edit waiting for its stack,
+        // or purged from the server, keeps the asset on the device.
+        var confirmedEdits: [String: String]?
+        if includesEdits() {
+            let records = editLedger.allRecords()
+            let recordIDs = Array(records.keys)
+            var confirmed: [String: String] = [:]
+            do {
+                var index = 0
+                while index < recordIDs.count {
+                    let chunk = Array(recordIDs[index..<min(index + Self.serverCheckChunkSize, recordIDs.count)])
+                    index += Self.serverCheckChunkSize
+                    let response = try await client.bulkUploadCheck(
+                        AssetBulkUploadCheckRequest(assets: chunk.compactMap { id in
+                            records[id].map { AssetBulkUploadCheckRequest.Item(id: id, checksum: $0.checksum) }
+                        })
+                    )
+                    for result in response.results where result.action == "reject" {
+                        if let record = records[result.id], record.isStacked {
+                            confirmed[result.id] = record.signature
+                        }
+                    }
+                    guard generation == scanGeneration else { return }
+                }
+            } catch {
+                errorMessage = error.userFacingMessage
+                return
+            }
+            confirmedEdits = confirmed
+        }
+
         // The library walk is heavy (identifier resolution plus one metadata
         // read per asset) and runs off the main actor for the same reason
         // `BackupEngine.fetchCandidates` does — a whole-library scan on the main
@@ -230,13 +281,15 @@ final class FreeUpSpaceViewModel {
         let keepMediaType = settings.keepMediaType
         let keepAlbumIDs = settings.keepAlbumIDs
         let source = self.source
+        let confirmedEditsForScan = confirmedEdits
         let result = await Task.detached(priority: .utility) {
             source.cleanupCandidates(
                 cutoff: cutoff,
                 keepFavorites: keepFavorites,
                 keepMediaType: keepMediaType,
                 keepAlbumIDs: keepAlbumIDs,
-                backedUpIDs: backedUpIDs
+                backedUpIDs: backedUpIDs,
+                confirmedEdits: confirmedEditsForScan
             )
         }.value
 
@@ -244,6 +297,7 @@ final class FreeUpSpaceViewModel {
         candidates = result.candidates
         scannedCount = result.scannedCount
         skippedInSharedAlbum = result.skippedInSharedAlbum
+        skippedEditNotBackedUp = result.skippedEditNotBackedUp
         // Tracked entries the server did not confirm. The source cannot know
         // this — it never sees the ledger.
         skippedNotOnServer = entries.count - backedUpIDs.count
@@ -275,6 +329,7 @@ final class FreeUpSpaceViewModel {
             scannedCount = 0
             skippedNotOnServer = 0
             skippedInSharedAlbum = 0
+            skippedEditNotBackedUp = 0
             scanGeneration += 1
             return deleted
         } catch {
@@ -294,6 +349,7 @@ final class FreeUpSpaceViewModel {
         scannedCount = 0
         skippedNotOnServer = 0
         skippedInSharedAlbum = 0
+        skippedEditNotBackedUp = 0
         scanGeneration += 1
     }
 

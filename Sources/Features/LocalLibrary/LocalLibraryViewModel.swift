@@ -74,6 +74,11 @@ final class LocalLibraryViewModel {
     var localOnlyIDs: Set<String> = []
     /// Assets the server already holds (`bulk-upload-check` → `reject`).
     var savedIDs: Set<String> = []
+    /// With "Also back up edits" on: selected assets whose current edit is not
+    /// on the server yet, `localIdentifier → fileModifiedAt` read at the Check.
+    /// The verdict above stays about the original; these ride along when the
+    /// selection is sent.
+    private(set) var pendingEditSignatures: [String: String] = [:]
     /// True once a check ran: before that, "no verdict" and "saved" are two
     /// different things and the screen must not show the second for the first.
     private(set) var hasVerdict = false
@@ -117,6 +122,12 @@ final class LocalLibraryViewModel {
     var hasSelection: Bool { !selectedIDs.isEmpty }
     var localOnlyCount: Int { localOnlyIDs.count }
     var savedCount: Int { savedIDs.count }
+    var pendingEditCount: Int { pendingEditSignatures.count }
+    /// Something worth sending: an original the server lacks, or — setting on —
+    /// an edit it lacks.
+    var canUpload: Bool {
+        !localOnlyIDs.isEmpty || (backup.settings.backUpEdits && !pendingEditSignatures.isEmpty)
+    }
     /// The name of the album the grid shows, or nil for the whole library —
     /// gives the tile count a subject.
     var selectedAlbumName: String? {
@@ -147,6 +158,7 @@ final class LocalLibraryViewModel {
         selectedAlbumID = albumID
         selectedIDs = []
         localOnlyIDs = []
+        pendingEditSignatures = [:]
         savedIDs = []
         hasVerdict = false
         uploadProgress = nil
@@ -248,12 +260,21 @@ final class LocalLibraryViewModel {
         phase = .checking
         defer { phase = .idle }
         localOnlyIDs = []
+        pendingEditSignatures = [:]
         savedIDs = []
         hasVerdict = false
         errorMessage = nil
         let ids = assets.map(\.localIdentifier).filter { selectedIDs.contains($0) }
         await purgeCheckDirectory()
         let candidates = await readCandidates(ids: ids)
+        if backup.settings.backUpEdits {
+            let editLedger = backup.engine.editLedger
+            for id in ids {
+                guard let candidate = candidates[id], candidate.hasAdjustments,
+                      editLedger.record(id: id)?.signature != candidate.fileModifiedAt else { continue }
+                pendingEditSignatures[id] = candidate.fileModifiedAt
+            }
+        }
         var problems: [String: String] = [:]
         var index = 0
         while index < ids.count {
@@ -341,8 +362,11 @@ final class LocalLibraryViewModel {
     /// on the server", with the reason of the first one as the message. A refusal
     /// (read-only mode, engine busy) sends nothing and says why.
     func uploadSelection() async {
-        let pending = assets.map(\.localIdentifier).filter { localOnlyIDs.contains($0) }
-        guard !pending.isEmpty, phase == .idle else { return }
+        let editsOn = backup.settings.backUpEdits
+        let pending = assets.map(\.localIdentifier).filter {
+            localOnlyIDs.contains($0) || (editsOn && pendingEditSignatures[$0] != nil)
+        }
+        guard canUpload, !pending.isEmpty, phase == .idle else { return }
         phase = .uploading
         errorMessage = nil
         let total = pending.count
@@ -356,13 +380,25 @@ final class LocalLibraryViewModel {
         case .refused(let message):
             errorMessage = message
         case .completed(let outcome):
-            let sent = Set(pending).intersection(outcome.backedUpIDs)
-            savedIDs.formUnion(sent)
-            localOnlyIDs.subtract(sent)
-            errorMessage = pending.first { !sent.contains($0) }.map { problem(for: $0, in: outcome) }
+            let editLedger = backup.engine.editLedger
+            let sentOriginals = Set(pending).intersection(outcome.backedUpIDs).intersection(localOnlyIDs)
+            // An asset is done once each thing it was missing is: its original
+            // in the ledger, its edit in the edit ledger at the date noted at
+            // the Check (stacked, or waiting for a stack the detail lists).
+            var done = Set<String>()
+            for id in pending {
+                let originalDone = !localOnlyIDs.contains(id) || outcome.backedUpIDs.contains(id)
+                let noted = editsOn ? pendingEditSignatures[id] : nil
+                let editDone = noted == nil || editLedger.record(id: id)?.signature == noted
+                if originalDone && editDone { done.insert(id) }
+            }
+            savedIDs.formUnion(sentOriginals)
+            localOnlyIDs.subtract(sentOriginals)
+            for id in done { pendingEditSignatures[id] = nil }
+            errorMessage = pending.first { !done.contains($0) }.map { problem(for: $0, in: outcome) }
             // The server now holds more: re-read the account's usage and counts
             // once the selection bar is idle again (nothing sent → nothing read).
-            if !sent.isEmpty { await storage.load() }
+            if !done.isEmpty { await storage.load() }
         }
     }
 
