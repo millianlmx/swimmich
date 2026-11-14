@@ -527,6 +527,9 @@ final class AuthViewModel: AuthSessionDelegate {
     @MainActor
     func logout() async {
         isLoading = true
+        // The switch stops before the first wait: no evaluation in flight retargets the client or reopens
+        // the socket while the sign-out request and the purge run.
+        endpoints.stop()
         _ = try? await client.logout()
         // The trusted-servers list is emptied first, so a connection opened
         // while the purge runs, and the final connection reset, leave no
