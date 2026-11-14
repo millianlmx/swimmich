@@ -41,13 +41,13 @@ final class ShareViewController: UIViewController {
         // external one otherwise (L-26), measured while the files are staged.
         async let resolved = WidgetEndpointResolver.live().resolve(session)
         let items = await stageAttachments()
-        let target = await resolved
         guard !items.isEmpty else {
             // Nothing image/movie in this share (a URL, a text snippet): the
-            // request is over, hand it straight back.
+            // request is over, hand it straight back (the check is cancelled).
             finish()
             return
         }
+        let target = await resolved
 
         let client = SharedUploadClient(
             baseURL: target.baseURL,
