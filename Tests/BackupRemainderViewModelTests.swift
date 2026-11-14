@@ -43,18 +43,24 @@ final class BackupRemainderViewModelTests: XCTestCase {
 
         func open() { lock.lock(); isOpen = true; lock.unlock() }
 
+        /// True for the first call only.
+        private func isFirstCall() -> Bool {
+            lock.lock()
+            defer { lock.unlock() }
+            calls += 1
+            return calls == 1
+        }
+
+        private var isOpenNow: Bool {
+            lock.lock()
+            defer { lock.unlock() }
+            return isOpen
+        }
+
         /// The first call passes, the others wait for `open()`.
         func holdAfterFirst() async throws {
-            lock.lock()
-            calls += 1
-            let passes = calls == 1
-            lock.unlock()
-            if passes { return }
-            while true {
-                lock.lock()
-                let open = isOpen
-                lock.unlock()
-                if open { return }
+            if isFirstCall() { return }
+            while !isOpenNow {
                 try await Task.sleep(for: .milliseconds(10))
             }
         }
