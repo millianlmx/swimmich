@@ -540,6 +540,9 @@ struct TimelineView: View {
                         .accessibilityIdentifier("timelineRetryButton")
                 }
                 .padding(.top, 80)
+                // A container: the identifier names the state without merging its
+                // children, so "Try Again" keeps `timelineRetryButton`.
+                .accessibilityElement(children: .contain)
                 .accessibilityIdentifier("timelineLoadErrorState")
             } else {
                 ContentUnavailableView {

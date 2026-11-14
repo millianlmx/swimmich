@@ -421,6 +421,20 @@ final class LoginStartupUITests: XCTestCase {
         XCTAssertTrue(waitUntil(10) { (toggle.value as? String) == "1" }, "Require Face ID did not turn on")
     }
 
+    /// Me → Preferences → "Haptic Feedback" set to `on`; the value is stored at once.
+    private func setHaptics(on: Bool) {
+        openMe(scrollingTo: "preferencesRow").tap()
+        let toggle = element("preferencesHapticsToggle")
+        XCTAssertTrue(toggle.waitForExistence(timeout: 15), "the Haptic Feedback toggle is missing — \(screenText())")
+        let wanted = on ? "1" : "0"
+        for _ in 0..<3 where (toggle.value as? String) != wanted {
+            // The element is the whole row: its own control sits at the trailing edge.
+            toggle.coordinate(withNormalizedOffset: CGVector(dx: 0.93, dy: 0.5)).tap()
+            waitUntil(4) { (toggle.value as? String) == wanted }
+        }
+        XCTAssertEqual(toggle.value as? String, wanted, "Haptic Feedback never reached \(wanted)")
+    }
+
     // MARK: - System alerts (Photos access, notifications)
 
     private static func fullAccessButton(in alert: XCUIElement) -> XCUIElement? {
@@ -584,7 +598,8 @@ final class LoginStartupUITests: XCTestCase {
         launchStored()
         XCTAssertTrue(element("timelineLoadErrorState").waitForExistence(timeout: 3),
                       "no error state within 3 s — \(screenText())")
-        XCTAssertTrue(element("timelineRetryButton").exists, "no retry button on the error state")
+        XCTAssertTrue(element("timelineRetryButton").exists,
+                      "no retry button on the error state — \(app.debugDescription)")
 
         mute("off")
         openCold(link(3))
@@ -843,8 +858,26 @@ final class LoginStartupUITests: XCTestCase {
         XCTAssertTrue(waitUntil(10) { self.probeValue().contains("haptic=error#2") },
                       "no failure haptic for the unreachable server (probe: \(probeValue()))")
 
+        // Haptics off through the interface (Me → Preferences), like
+        // MemoriesChainUITests.test_AC_60_4: a `-hapticFeedbackEnabled NO`
+        // launch argument arrives as a string and is read as the default (on).
         mute("off")
-        launchFresh(extra: ["-hapticFeedbackEnabled", "NO"])
+        launchFresh()
+        reachLogin()
+        signIn()
+        reachShell()
+        // Registered BEFORE the setting is touched, and run even when this test
+        // fails on the way: no later scenario may read a haptics-off setting.
+        addTeardownBlock { [self] in
+            _ = get("/__reset")
+            launchFresh()
+            reachLogin()
+            signIn()
+            reachShell()
+            setHaptics(on: true)
+        }
+        setHaptics(on: false)
+        launchFresh()
         openServerStep()
         enterServer(stub)
         checkServer()
@@ -867,7 +900,7 @@ final class LoginStartupUITests: XCTestCase {
                       "no error state within 3 s — \(screenText())")
         XCTAssertFalse(element("timelineLoadingSkeleton").exists, "the skeleton shows next to the error state")
         let retry = element("timelineRetryButton")
-        XCTAssertTrue(retry.exists, "no retry button on the error state — \(screenText())")
+        XCTAssertTrue(retry.exists, "no retry button on the error state — \(app.debugDescription)")
         mute("off")
         XCTAssertTrue(retry.waitForExistence(timeout: 5), "the retry button went away once the server came back — \(screenText())")
         retry.tap()
