@@ -57,6 +57,8 @@ jobs:
     timeout-minutes: 45
     env:
       SWIMMICH_CI_UI_SCOPE: gate
+      # TEMPORARY, one measurement: the gate on two simulators, the smallest pool.
+      SWIMMICH_CI_UI_WORKERS: 2
       # What the changed scenarios are read against: `main` for a branch, and for
       # a push to `main` the commit it pointed at before the push.
       SWIMMICH_CI_UI_BASE: ${{ github.event_name == 'push' && github.ref == 'refs/heads/main' && github.event.before || 'main' }}

@@ -24,10 +24,13 @@
 #
 # A line has a tier, which says when it runs (Scripts/ci_ui_select.py):
 #
-# * `--smoke`: every push (the gate), after the lines the push changed. One per
-#   critical journey, each under two minutes: timeline and viewer, search,
-#   editor. The gate has five minutes in all (`SWIMMICH_CI_GATE_BUDGET`), on a
-#   runner with two simulators: the sign-in walk (three minutes) is a core line.
+# * `--smoke`: every push (the gate), after the lines the push changed. The
+#   gate has five minutes in all (`SWIMMICH_CI_GATE_BUDGET`), build and unit
+#   tests included, on a runner with two simulators: two short lines, the search
+#   (filters to request to results) and the editor (timeline to viewer to
+#   editor to saved edits). Measured: a smoke line costs the gate its own
+#   length, a minute to a minute and a half. The longer journeys (sign-in,
+#   three minutes) are core lines.
 # * no flag, the core suite: every night with the smoke lines. A journey of a
 #   feature, or the only execution proof of a criterion (no unit test proves it).
 # * `--release`: once a week and on a release tag, with all the others. A second
@@ -70,7 +73,7 @@ immich_stub_dynamic_type.py DynamicTypeUITests/test_AC_26_4_lists
 immich_stub_dynamic_type.py DynamicTypeUITests/test_AC_26_6
 immich_stub_dynamic_type.py DynamicTypeUITests/test_AC_26 --release
 immich_stub_dynamic_type.py DynamicTypeUITests/test_AC_26_4_shareExtension --content-size accessibility-extra-extra-extra-large --media Summer-holidays-in-the-Gorges-du-Verdon-with-the-whole-family.png
-immich_stub_dynamic_type.py DynamicTypeUITests/test_AC_26_7 --smoke
+immich_stub_dynamic_type.py DynamicTypeUITests/test_AC_26_7
 immich_stub_dynamic_type.py DynamicTypeUITests/test_AC_26_5 --release
 # L-23 Search criteria and selection. Core: one filter journey, the two server generations of
 # AC-43, AC-215 (no unit test proves it) and the selection of AC-44.
