@@ -363,8 +363,11 @@ final class RouteCompatUITests: XCTestCase {
         app.navigationBars.firstMatch.buttons.firstMatch.tap()
     }
 
+    /// The Me sheet, from the Photos tab: the merge leaves the Albums tab on a
+    /// pushed screen (People), whose bar has no avatar.
     private func openProfile() {
         dismissWhatsNewIfPresent()
+        app.tabBars.buttons.matching(labelPredicate(["Photos", "Fotos"])).firstMatch.tap()
         let avatar = app.buttons.matching(identifier: "profileAvatar").firstMatch
         XCTAssertTrue(avatar.waitForExistence(timeout: 15), "Profile avatar missing")
         avatar.tap()
