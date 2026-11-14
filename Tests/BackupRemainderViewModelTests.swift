@@ -523,10 +523,13 @@ final class BackupRemainderViewModelTests: XCTestCase {
                 entry.code
             )
         }
+        // `.main` follows the language of the process (French on the CI host): the marks
+        // are resolved through the same catalog, the date and the order stay pinned.
         let english = Locale(identifier: "en_US")
         XCTAssertEqual(
             BackupRemainderViewModel.accessibilityLabel(for: item, bundle: .main, locale: english),
-            "clip.MOV, \(BackupRemainderViewModel.dateText(date, locale: english)), Zoo, Video, Edited version"
+            "clip.MOV, \(BackupRemainderViewModel.dateText(date, locale: english)), Zoo, "
+                + "\(localizedString("Video")), \(localizedString("Edited version"))"
         )
         let plain = BackupRemainderItem(
             id: "y", fileName: "a.jpg", createdAt: nil, kind: .image, albumNames: [], isEditOnly: false

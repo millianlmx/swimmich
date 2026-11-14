@@ -245,13 +245,19 @@ final class BackupRemainderUITests: XCTestCase {
     }
 
     /// A row of a pushed screen, by IDENTIFIER (labels are localized five ways).
-    /// A `Form` only publishes what it rendered, so it is scrolled into view.
+    /// A `Form` only publishes what it rendered, so it is scrolled into view:
+    /// first the requested way, then back the other way — at AX5 the entry sits
+    /// far below the fold, at the default size it is already on screen.
     private func row(_ identifier: String, swiping direction: String = "up",
                      swipes: Int = 10) -> XCUIElement {
         let element = app.buttons.matching(identifier: identifier).firstMatch
-        for _ in 0..<swipes where !(element.exists && element.isHittable) {
-            if direction == "down" { app.swipeDown() } else { app.swipeUp() }
-            _ = element.waitForExistence(timeout: 1)
+        func reachable() -> Bool { element.exists && element.isHittable }
+        for way in [direction, direction == "down" ? "up" : "down"] {
+            for _ in 0..<swipes where !reachable() {
+                if way == "down" { app.swipeDown() } else { app.swipeUp() }
+                _ = element.waitForExistence(timeout: 1)
+            }
+            if reachable() { break }
         }
         return element
     }
@@ -322,7 +328,7 @@ final class BackupRemainderUITests: XCTestCase {
 
     /// Opens the list from the Backup screen and grants Photos access from it.
     private func openRemainderList() {
-        let remainderRow = row("backupRemainderRow", swiping: "down", swipes: 4)
+        let remainderRow = row("backupRemainderRow", swiping: "up", swipes: 12)
         XCTAssertTrue(remainderRow.waitForExistence(timeout: 20), "no \"Remaining to back up\" row")
         remainderRow.tap()
         XCTAssertTrue(element("backupRemainderScreen").waitForExistence(timeout: 15), "the list never opened")
@@ -384,8 +390,13 @@ final class BackupRemainderUITests: XCTestCase {
         // The list now says everything is backed up.
         let remainderRow = row("backupRemainderRow", swiping: "down")
         remainderRow.tap()
-        XCTAssertTrue(element("backupRemainderEmptyState").waitForExistence(timeout: 15),
-                      "an empty list must explain itself")
+        XCTAssertTrue(element("backupRemainderScreen").waitForExistence(timeout: 15), "the list never reopened")
+        let emptyState = element("backupRemainderEmptyState")
+        if !emptyState.waitForExistence(timeout: 15) {
+            shot("remainder-04-no-empty-state")
+            print("TREE \(app.debugDescription)")
+        }
+        XCTAssertTrue(emptyState.exists, "an empty list must explain itself")
         XCTAssertEqual(app.descendants(matching: .any)
             .matching(NSPredicate(format: "identifier BEGINSWITH 'remainderAsset_'")).count, 0)
         shot("remainder-04-empty")

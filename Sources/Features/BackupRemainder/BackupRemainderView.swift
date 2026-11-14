@@ -30,6 +30,7 @@ struct BackupRemainderView: View {
                     } description: {
                         Text("Every photo and video in your backup selection is on the server.")
                     }
+                    .accessibilityElement(children: .contain)
                     .accessibilityIdentifier("backupRemainderEmptyState")
                 }
             case .emptyScope:
@@ -39,6 +40,7 @@ struct BackupRemainderView: View {
                     } description: {
                         Text("Your backup selection holds no photo or video.")
                     }
+                    .accessibilityElement(children: .contain)
                     .accessibilityIdentifier("backupRemainderEmptyScopeState")
                 }
             case .list:
@@ -105,6 +107,7 @@ struct BackupRemainderView: View {
                 .accessibilityIdentifier("backupRemainderOpenSettingsButton")
             }
         }
+        .accessibilityElement(children: .contain)
         .accessibilityIdentifier("backupRemainderAccessState")
     }
 }
