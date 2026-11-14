@@ -91,6 +91,28 @@ struct BackupRunOutcome: Equatable, Sendable {
     let wasCancelled: Bool
 }
 
+/// What one candidate needs from a pass: its original sent, its edited
+/// rendering sent, or both. Produced by `BackupEngine.plan(for:…)`, the one
+/// rule of "already backed up".
+struct BackupItemPlan: Equatable, Sendable {
+    var needsOriginal: Bool
+    var needsEdit: Bool
+    var isPending: Bool { needsOriginal || needsEdit }
+}
+
+/// A candidate a complete pass would still send, with what it would send.
+struct BackupPendingCandidate: Equatable, Sendable {
+    let candidate: BackupCandidate
+    let plan: BackupItemPlan
+}
+
+/// Result of `BackupEngine.remainder(settings:)`: how many assets the backup
+/// scope holds, and which of them a pass would still send (scan order).
+struct BackupRemainderScan: Equatable, Sendable {
+    let scopeCount: Int
+    let pending: [BackupPendingCandidate]
+}
+
 /// Background backup state machine. Pure orchestration over the injected
 /// seams: `ImmichClient` (dedup + upload), `BackupAssetSource` (library),
 /// `BackupEnvironment` (wifi/charging gates).
@@ -102,15 +124,15 @@ final class BackupEngine {
     }
 
     let client: any ImmichClient
-    let source: any BackupAssetSource
+    nonisolated let source: any BackupAssetSource
     let environment: any BackupEnvironment
     /// Persistent record of assets already backed up — lets a run skip them
     /// before export, so an iCloud library isn't re-downloaded every run.
-    let ledger: any BackupLedgerStoring
+    nonisolated let ledger: any BackupLedgerStoring
     /// The edited versions already sent, beside the original ledger. Only
     /// read and written when `BackupSettings.backUpEdits` is on (and by the
     /// full reset).
-    let editLedger: any BackupEditLedgerStoring
+    nonisolated let editLedger: any BackupEditLedgerStoring
 
     private(set) var phase: Phase = .idle
     /// Total assets to process this run — the full filtered candidate count,
@@ -306,12 +328,6 @@ final class BackupEngine {
         let duration: Int
     }
 
-    /// What one candidate needs this run (`BackupSettings.backUpEdits` on).
-    private struct ItemPlan {
-        var needsOriginal: Bool
-        var needsEdit: Bool
-    }
-
     init(
         client: any ImmichClient,
         source: any BackupAssetSource,
@@ -488,14 +504,22 @@ final class BackupEngine {
         // With "Also back up edits" on, each candidate is planned once: does it
         // need its original exported, its edited rendering exported, or both?
         // Off, every candidate is just an original, as before.
-        var plans: [String: ItemPlan] = [:]
+        var plans: [String: BackupItemPlan] = [:]
         if settings.backUpEdits {
-            for candidate in remaining { plans[candidate.id] = editPlan(for: candidate, restricted: restricted) }
+            for candidate in remaining {
+                plans[candidate.id] = Self.plan(
+                    for: candidate, restricted: restricted, backUpEdits: true,
+                    ledger: ledger, editLedger: editLedger
+                )
+            }
         }
         if !restricted {
             remaining = remaining.filter {
-                if let plan = plans[$0.id] { return plan.needsOriginal || plan.needsEdit }
-                return !ledger.isBackedUp(id: $0.id, signature: $0.fileModifiedAt)
+                if let plan = plans[$0.id] { return plan.isPending }
+                return Self.plan(
+                    for: $0, restricted: false, backUpEdits: false,
+                    ledger: ledger, editLedger: editLedger
+                ).isPending
             }
         }
 
@@ -539,7 +563,7 @@ final class BackupEngine {
                 continue
             }
 
-            let plan = plans[candidate.id] ?? ItemPlan(needsOriginal: true, needsEdit: false)
+            let plan = plans[candidate.id] ?? BackupItemPlan(needsOriginal: true, needsEdit: false)
 
             // The edited rendering is exported before the original: an iCloud
             // rendering that is not local yet defers the whole element, and
@@ -725,7 +749,15 @@ final class BackupEngine {
         return true
     }
 
-    /// What one candidate needs, with the edit setting on.
+    /// What one candidate needs this run. The single rule of "already backed
+    /// up": the pass (`runPipeline`) and the read-only remainder
+    /// (`remainder(settings:)`) both ask it.
+    ///
+    /// With `backUpEdits` off, only the original matters: it is needed when
+    /// the run is restricted (the user named it) or the ledger lacks it at its
+    /// current modification date.
+    ///
+    /// With `backUpEdits` on:
     /// - `needsEdit`: adjusted in Photos, and the edit ledger lacks a rendering
     ///   for its current modification date.
     /// - `needsOriginal`: a restricted run (the user named it), or the original
@@ -733,7 +765,20 @@ final class BackupEngine {
     ///   the ledger knows neither the original's server id nor its checksum
     ///   (entries of the v1 and v2 files) — the original is then exported and
     ///   checked once, and the server's `reject` hands over the id.
-    private func editPlan(for candidate: BackupCandidate, restricted: Bool) -> ItemPlan {
+    nonisolated static func plan(
+        for candidate: BackupCandidate,
+        restricted: Bool,
+        backUpEdits: Bool,
+        ledger: any BackupLedgerStoring,
+        editLedger: any BackupEditLedgerStoring
+    ) -> BackupItemPlan {
+        guard backUpEdits else {
+            return BackupItemPlan(
+                needsOriginal: restricted
+                    || !ledger.isBackedUp(id: candidate.id, signature: candidate.fileModifiedAt),
+                needsEdit: false
+            )
+        }
         let record = editLedger.record(id: candidate.id)
         let needsEdit = candidate.hasAdjustments && record?.signature != candidate.fileModifiedAt
         let tracked = ledger.trackedEntry(id: candidate.id)
@@ -742,7 +787,27 @@ final class BackupEngine {
         let needsOriginal = restricted
             || !ledger.isBackedUp(id: candidate.id, signature: candidate.fileModifiedAt)
             || (editPending && originalUnknown)
-        return ItemPlan(needsOriginal: needsOriginal, needsEdit: needsEdit)
+        return BackupItemPlan(needsOriginal: needsOriginal, needsEdit: needsEdit)
+    }
+
+    /// What a complete pass would send right now, without running it: the
+    /// scope scan plus the ledger rule, minus the server reconciliation of
+    /// `runPipeline` (a photo deleted server-side only shows up once a
+    /// reconciliation has forgotten it). Synchronous and heavy: call it off
+    /// the main actor. Never exports, hashes, writes a ledger or talks to the
+    /// server.
+    nonisolated func remainder(settings: BackupSettings) -> BackupRemainderScan {
+        let candidates = source.fetchCandidates(
+            in: settings.selectedAlbumIDs, excluding: settings.excludedAlbumIDs
+        )
+        let pending = candidates.compactMap { candidate -> BackupPendingCandidate? in
+            let plan = Self.plan(
+                for: candidate, restricted: false, backUpEdits: settings.backUpEdits,
+                ledger: ledger, editLedger: editLedger
+            )
+            return plan.isPending ? BackupPendingCandidate(candidate: candidate, plan: plan) : nil
+        }
+        return BackupRemainderScan(scopeCount: candidates.count, pending: pending)
     }
 
     /// Exports the candidate's edited rendering (and a Live Photo's video) and

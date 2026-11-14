@@ -49,15 +49,36 @@ final class MockBackupAssetSource: BackupAssetSource, @unchecked Sendable {
 
     func fetchAlbums() -> [BackupAlbum] { albums }
 
+    /// Candidates by album: when non-empty and a scan names albums, the scan
+    /// answers the union of the named albums' candidates (ids sorted, no
+    /// duplicate) before the exclusion filter — the real source's contract.
+    nonisolated(unsafe) var candidatesByAlbum: [String: [BackupCandidate]] = [:]
+    /// Where the scan and the membership lookup ran: the remainder must read
+    /// Photos off the main thread.
+    nonisolated(unsafe) var fetchCandidatesRanOnMainThread: Bool?
+    nonisolated(unsafe) var albumMembershipRanOnMainThread: Bool?
+    nonisolated(unsafe) var fetchCandidatesCount = 0
+    /// When set, a scan waits on it before answering — holds a load in flight.
+    nonisolated(unsafe) var fetchCandidatesGate: DispatchSemaphore?
+
     func fetchCandidates(in albumIDs: Set<String>, excluding excludedAlbumIDs: Set<String>) -> [BackupCandidate] {
         fetchLock.lock()
         lastAlbumIDs = albumIDs
         lastExcludedAlbumIDs = excludedAlbumIDs
+        fetchCandidatesRanOnMainThread = Thread.isMainThread
+        fetchCandidatesCount += 1
+        let gate = fetchCandidatesGate
         fetchLock.unlock()
+        gate?.wait()
+        var pool = candidates
+        if !candidatesByAlbum.isEmpty, !albumIDs.isEmpty {
+            var seen = Set<String>()
+            pool = albumIDs.sorted().flatMap { candidatesByAlbum[$0] ?? [] }.filter { seen.insert($0.id).inserted }
+        }
         // The exclusion contract lives in the source, so the mock honors it the
         // same way: assets the excluded albums contain are not candidates.
-        guard !excludedAlbumIDs.isEmpty, !excludedAssetIDs.isEmpty else { return candidates }
-        return candidates.filter { !excludedAssetIDs.contains($0.id) }
+        guard !excludedAlbumIDs.isEmpty, !excludedAssetIDs.isEmpty else { return pool }
+        return pool.filter { !excludedAssetIDs.contains($0.id) }
     }
 
     /// Order follows the request, so a restricted run touches exactly the ids
@@ -158,6 +179,7 @@ final class MockBackupAssetSource: BackupAssetSource, @unchecked Sendable {
     func purgeStaleExports() { purgeCount += 1 }
 
     func albumMembership(deviceAlbumIDs: Set<String>) -> [String: [String]] {
+        albumMembershipRanOnMainThread = Thread.isMainThread
         guard !deviceAlbumIDs.isEmpty else { return [:] }
         return albumMembershipByDeviceAlbum.compactMapValues { albumIDs in
             let kept = albumIDs.filter { deviceAlbumIDs.contains($0) }
