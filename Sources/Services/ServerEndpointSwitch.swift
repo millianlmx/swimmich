@@ -104,14 +104,22 @@ final class ServerEndpointSwitch: ServerEndpointSwitching {
         if probing { Task { await evaluate(.launch) } }
     }
 
-    /// The session ended. The client and the socket are reset by the caller.
-    func deactivate() {
+    /// The session is ending. Freezes the switch before any wait of the sign-out: no evaluation in flight
+    /// retargets the client or reopens the socket afterwards. Keeps the address in use and the address book
+    /// (aliases of the sign-out request). The client and the socket are reset by the caller.
+    func stop() {
         generation += 1
         evaluationTask = nil
+        isEvaluating = false
         accountID = nil
         accountURL = nil
         token = nil
         socketURL = nil
+    }
+
+    /// The session ended. The client and the socket are reset by the caller.
+    func deactivate() {
+        stop()
         activeURL = nil
         externalURL = nil
         localURL = nil
