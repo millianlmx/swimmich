@@ -221,4 +221,39 @@ final class DeviceLocationTests: XCTestCase {
         XCTAssertEqual(vm.centerRequest?.coordinate, paris)
         XCTAssertNil(vm.locationNotice)
     }
+
+    // MARK: - AC-290 (Debug-only fake)
+
+    func test_AC_290_launchArgumentsPickTheFakeOnlyWhenAsked() async throws {
+        let suite = "DeviceLocationTests-\(UUID().uuidString)"
+        let defaults = UserDefaults(suiteName: suite)!
+        addTeardownBlock { UserDefaults().removePersistentDomain(forName: suite) }
+        let status = ScriptedDeviceLocationService.statusKey
+
+        XCTAssertTrue(DependencyContainer.makeDeviceLocation(defaults: defaults) is SystemDeviceLocationService)
+
+        defaults.set("bogus", forKey: status)
+        XCTAssertTrue(DependencyContainer.makeDeviceLocation(defaults: defaults) is SystemDeviceLocationService)
+
+        defaults.set("denied", forKey: status)
+        defaults.set("48.8584,2.2945", forKey: ScriptedDeviceLocationService.fixKey)
+        let denied = try XCTUnwrap(DependencyContainer.makeDeviceLocation(defaults: defaults) as? ScriptedDeviceLocationService)
+        let deniedStatus = await denied.currentStatus()
+        XCTAssertEqual(deniedStatus, .denied)
+        let fix = try await denied.currentCoordinate()
+        XCTAssertEqual(fix, paris)
+
+        defaults.set("notDetermined", forKey: status)
+        defaults.set("deny", forKey: ScriptedDeviceLocationService.promptKey)
+        let prompted = try XCTUnwrap(DependencyContainer.makeDeviceLocation(defaults: defaults) as? ScriptedDeviceLocationService)
+        let answer = await prompted.requestAuthorization()
+        XCTAssertEqual(answer, .denied)
+        XCTAssertEqual(prompted.authorizationPromptCount, 1)
+
+        defaults.set("authorizedReduced", forKey: status)
+        defaults.set("refuse", forKey: ScriptedDeviceLocationService.preciseKey)
+        let reduced = try XCTUnwrap(DependencyContainer.makeDeviceLocation(defaults: defaults) as? ScriptedDeviceLocationService)
+        let precise = await reduced.requestPreciseAccuracy()
+        XCTAssertEqual(precise, .authorizedReduced)
+    }
 }
