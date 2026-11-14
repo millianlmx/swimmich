@@ -205,6 +205,51 @@ final class OfflineAssetStoreTests: XCTestCase {
         XCTAssertEqual(leftovers, ["index.json"], "Only the (empty) index may remain")
     }
 
+    // MARK: - Purge outcome (B-31.5)
+
+    func test_AC_277_clearAllReportsCleared() async throws {
+        try await download("asset-1", fileName: "a.jpg")
+        try await download("asset-2", fileName: "b.jpg")
+
+        let outcome = await store.clearAll(accountID: Self.accountA)
+
+        XCTAssertEqual(outcome, .cleared)
+    }
+
+    /// A copy the disk will not delete stays listed and readable, and the
+    /// outcome counts it: the purge must not announce an emptiness that is not
+    /// there (the old code dropped the entry first and ignored the failure).
+    func test_AC_278_undeletableFileKeepsItsEntry() async throws {
+        transport.payload = Data(repeating: 0x07, count: 32)
+        try await download("asset-1", fileName: "a.jpg")
+        try await download("asset-2", fileName: "b.jpg")
+        let scripted = OfflineAssetStore(
+            rootURL: root, transport: transport,
+            fileManager: ScriptedFileManager(failingRemovals: ["asset-1.jpg"]), defaults: defaults
+        )
+        scripted.setActiveAccount(Self.accountA, otherAccountsRegistered: false)
+
+        let outcome = await scripted.clearAll(accountID: Self.accountA)
+
+        XCTAssertEqual(outcome, .incomplete(remaining: 1))
+        let cached = await scripted.allCached()
+        XCTAssertEqual(cached.map(\.id), ["asset-1"], "only the undeletable copy is still listed")
+        let stillThere = folder.appendingPathComponent("asset-1.jpg")
+        XCTAssertEqual(FileManager.default.contents(atPath: stillThere.path)?.count, 32, "and still readable")
+        XCTAssertFalse(FileManager.default.fileExists(atPath: folder.appendingPathComponent("asset-2.jpg").path))
+    }
+
+    func test_AC_278_inactiveAccountIsRefused() async throws {
+        try await download("asset-1", fileName: "a.jpg")
+
+        let outcome = await store.clearAll(accountID: Self.accountB)
+
+        XCTAssertEqual(outcome, .refused)
+        let cached = await store.allCached()
+        XCTAssertEqual(cached.map(\.id), ["asset-1"], "nothing was touched")
+        XCTAssertTrue(FileManager.default.fileExists(atPath: folder.appendingPathComponent("asset-1.jpg").path))
+    }
+
     // MARK: - Budget
 
     func test_download_refusesAnOversizedAssetBeforeAnyByteIsPulled() async throws {
@@ -844,16 +889,29 @@ extension OfflineAssetStoreTests {
 /// order in which `adoptLegacyContent` meets the items.
 final class ScriptedFileManager: FileManager {
     private let failingMoves: Set<String>
+    private let failingRemovals: Set<String>
     private let root: URL?
     private let firstAtRoot: String?
     private(set) var attempts: [URL] = []
     private(set) var rootListings = 0
 
-    init(failingMoves: Set<String> = [], root: URL? = nil, firstAtRoot: String? = nil) {
+    init(
+        failingMoves: Set<String> = [], failingRemovals: Set<String> = [],
+        root: URL? = nil, firstAtRoot: String? = nil
+    ) {
         self.failingMoves = failingMoves
+        self.failingRemovals = failingRemovals
         self.root = root
         self.firstAtRoot = firstAtRoot
         super.init()
+    }
+
+    /// A file the disk "refuses" to delete: it stays where it is.
+    override func removeItem(at url: URL) throws {
+        if failingRemovals.contains(url.lastPathComponent) {
+            throw CocoaError(.fileWriteNoPermission)
+        }
+        try super.removeItem(at: url)
     }
 
     override func moveItem(at srcURL: URL, to dstURL: URL) throws {

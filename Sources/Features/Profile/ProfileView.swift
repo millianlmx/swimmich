@@ -47,6 +47,8 @@ struct ProfileView: View {
     @State var downloadInfo: DownloadInfoViewModel
     /// The client certificate of the active server (L-10), pushed from Advanced.
     @State var clientCertificate: ClientCertificateViewModel
+    /// Log level and image cache of the Advanced section (B-31).
+    @State var advanced: AdvancedSettingsViewModel
     /// Drives the logout confirmation dialog (SP-4).
     @State private var showLogoutConfirm = false
     /// An activation prompt is on screen: the toggle shows "on" and ignores taps.
@@ -54,6 +56,9 @@ struct ProfileView: View {
     /// The last activation was refused because the device cannot authenticate.
     /// Lives with the sheet: never persisted.
     @State private var appLockUnavailable = false
+    /// Drives the "Clear image cache?" confirmation.
+    @State private var showClearImageCacheConfirm = false
+    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
 
     private func setAppLock(_ on: Bool) {
         guard !isActivatingAppLock else { return }
@@ -215,6 +220,20 @@ struct ProfileView: View {
                     }
                     .accessibilityIdentifier("appLogsRow")
 
+                    logLevelPicker
+                        .accessibilityIdentifier("advancedLogLevelPicker")
+
+                    LabeledContent("Image Cache") {
+                        Text(advanced.formattedImageCacheSize)
+                            .accessibilityIdentifier("imageCacheSizeValue")
+                    }
+
+                    Button("Clear Image Cache", role: .destructive) {
+                        showClearImageCacheConfirm = true
+                    }
+                    .disabled(advanced.isClearingImageCache)
+                    .accessibilityIdentifier("clearImageCacheButton")
+
                     NavigationLink {
                         MediaStatsView(vm: mediaStats)
                     } label: {
@@ -237,6 +256,8 @@ struct ProfileView: View {
                     .accessibilityIdentifier("clientCertificateRow")
                 } header: {
                     Text("Advanced")
+                } footer: {
+                    Text("Log Level: from now on, only lines at the chosen level or more severe are recorded.")
                 }
 
                 // App lock lives here rather than on the Backup screen: it
@@ -343,8 +364,43 @@ struct ProfileView: View {
             } message: {
                 Text("Photos downloaded for offline use and the cache will be deleted from this device, along with saved servers and accounts.")
             }
+            .alert("Clear image cache?", isPresented: $showClearImageCacheConfirm) {
+                Button("Clear", role: .destructive) {
+                    Task { await advanced.clearImageCache() }
+                }
+                .accessibilityIdentifier("clearImageCacheConfirm")
+                Button("Cancel", role: .cancel) {}
+                    .accessibilityIdentifier("clearImageCacheCancel")
+            } message: {
+                Text("Thumbnails and previews will be downloaded again. Offline photos are kept.")
+            }
+            .alert(
+                "Image Cache Cleared",
+                isPresented: Binding(
+                    get: { advanced.imageCacheResult == .cleared },
+                    set: { if !$0 { advanced.dismissImageCacheResult() } }
+                )
+            ) {
+                Button("OK") { advanced.dismissImageCacheResult() }
+                    .accessibilityIdentifier("imageCacheClearedDismiss")
+            }
+            .alert(
+                "Couldn't Clear the Image Cache",
+                isPresented: Binding(
+                    get: { advanced.imageCacheFailureMessage != nil },
+                    set: { if !$0 { advanced.dismissImageCacheResult() } }
+                )
+            ) {
+                Button("OK") { advanced.dismissImageCacheResult() }
+                    .accessibilityIdentifier("imageCacheClearFailedDismiss")
+            } message: {
+                Text(advanced.imageCacheFailureMessage ?? "")
+            }
             .navigationBarTitleDisplayMode(.inline)
             .task { await storage.load() }
+            // Measured each time the hub opens; the work runs off the main
+            // actor, the row shows "Unavailable" until it lands.
+            .task { await advanced.loadImageCacheSize() }
             // The flag is a server fact, not a login-only event: re-read it
             // here so a password reset that happened mid-session still shows.
             .task { await auth.refreshShouldChangePassword() }
@@ -352,6 +408,23 @@ struct ProfileView: View {
             // known before the screen that publishes the photo is opened.
             .task { await profilePicture.load() }
             .refreshable { await storage.load() }
+        }
+    }
+
+    /// Three segments fit side by side except at accessibility sizes, where the
+    /// picker becomes a menu so "Warnings" is never truncated.
+    @ViewBuilder
+    private var logLevelPicker: some View {
+        if dynamicTypeSize.isAccessibilitySize {
+            Picker("Log Level", selection: $advanced.logLevel) {
+                ForEach(AppLogLevel.allCases) { Text(AdvancedSettingsViewModel.logLevelLabel($0)).tag($0) }
+            }
+            .pickerStyle(.menu)
+        } else {
+            Picker("Log Level", selection: $advanced.logLevel) {
+                ForEach(AppLogLevel.allCases) { Text(AdvancedSettingsViewModel.logLevelLabel($0)).tag($0) }
+            }
+            .pickerStyle(.segmented)
         }
     }
 

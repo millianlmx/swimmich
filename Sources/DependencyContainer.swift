@@ -12,6 +12,9 @@ final class DependencyContainer {
     /// could not be given one afterwards. One store per process — a second
     /// instance would show a log the client never wrote to.
     let appLog = AppLogStore()
+    /// Thumbnail and preview caches (memory and disk) the "Advanced" section
+    /// measures and empties; not the offline copies, the map or the widgets.
+    let imageCache: any ImageCacheManaging = ImageCacheService()
 
     let client: ImmichAPIClient
     let keychain: KeychainStore
@@ -388,6 +391,21 @@ final class DependencyContainer {
     /// writes into — a fresh store would show an empty log.
     func makeAppLogViewModel() -> AppLogViewModel {
         AppLogViewModel(store: appLog)
+    }
+
+    /// "Advanced" section of the Me hub: log level and image cache. Shares the
+    /// process-wide log store and image cache.
+    func makeAdvancedSettingsViewModel() -> AdvancedSettingsViewModel {
+        AdvancedSettingsViewModel(log: appLog, imageCache: imageCache)
+    }
+
+    /// Viewer share (B-31): downloads the photo in the chosen quality to a file
+    /// and hands it to the iOS share sheet. One instance per viewer.
+    func makeViewerShareViewModel(baseURL: URL, token: String?) -> ViewerShareViewModel {
+        ViewerShareViewModel(
+            client: libraryClient, baseURL: baseURL, token: token,
+            transport: serverSessions.makeDownloadTransport(), customHeaders: customHeaders
+        )
     }
 
     /// Inventory of the offline cache (gap G24). Takes the caller's offline

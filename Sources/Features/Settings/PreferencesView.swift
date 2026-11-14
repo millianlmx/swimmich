@@ -16,6 +16,7 @@ struct PreferencesView: View {
     @Bindable var vm: PreferencesViewModel
 
     @State private var showResetConfirm = false
+    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
     /// The accent swatch grows with the row's text (16 pt by default).
     @ScaledMetric(relativeTo: .body) private var swatch: CGFloat = 16
 
@@ -52,6 +53,15 @@ struct PreferencesView: View {
 
                 Toggle("Tap to Navigate", isOn: $vm.tapToNavigate)
                     .accessibilityIdentifier("preferencesTapToNavigateToggle")
+            }
+
+            Section {
+                sharePicker
+                    .accessibilityIdentifier("preferencesShareQualityPicker")
+            } header: {
+                Text("Sharing")
+            } footer: {
+                Text("Used when you share from the viewer. Press and hold the Share button to choose for a single share. Videos are always shared in their original quality.")
             }
 
             Section("Video") {
@@ -135,6 +145,23 @@ struct PreferencesView: View {
         .confirmationDialog("Reset Preferences?", isPresented: $showResetConfirm) {
             Button("Reset", role: .destructive) { vm.resetToDefaults() }
             Button("Cancel", role: .cancel) {}
+        }
+    }
+
+    /// Two segments fit everywhere except at accessibility sizes, where the
+    /// picker becomes a menu so no label is truncated (`MapSettingsSheet`).
+    @ViewBuilder
+    private var sharePicker: some View {
+        if dynamicTypeSize.isAccessibilitySize {
+            Picker("Share Quality", selection: $vm.shareQuality) {
+                ForEach(ShareQuality.allCases) { Text($0.label).tag($0) }
+            }
+            .pickerStyle(.menu)
+        } else {
+            Picker("Share Quality", selection: $vm.shareQuality) {
+                ForEach(ShareQuality.allCases) { Text($0.label).tag($0) }
+            }
+            .pickerStyle(.segmented)
         }
     }
 }

@@ -52,6 +52,24 @@ enum AssetFileTransfer {
         return fileURL
     }
 
+    /// Moves a file a transport streamed to disk into a UNIQUE temp directory,
+    /// under its real name, for the share sheet. The body is never loaded in
+    /// memory. On failure the directory is removed and the source is left where
+    /// it was (the caller deletes it).
+    static func moveToShareFile(_ source: URL, name: String, fileManager: FileManager = .default) throws -> URL {
+        let dir = URL(fileURLWithPath: NSTemporaryDirectory())
+            .appendingPathComponent("immich-share-\(UUID().uuidString)", isDirectory: true)
+        try fileManager.createDirectory(at: dir, withIntermediateDirectories: true)
+        let fileURL = dir.appendingPathComponent(name)
+        do {
+            try fileManager.moveItem(at: source, to: fileURL)
+        } catch {
+            try? fileManager.removeItem(at: dir)
+            throw error
+        }
+        return fileURL
+    }
+
     /// Downloads URL-requested bytes with an optional session token and the
     /// server's custom headers, verifying a 2xx status and non-empty payload.
     /// Returns bytes + Content-Type.

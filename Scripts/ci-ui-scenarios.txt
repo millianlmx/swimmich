@@ -49,6 +49,17 @@ immich_stub_search_filters.py SearchCriteriaUITests/test_AC_216
 immich_stub_search_filters.py SearchCriteriaUITests/test_AC_44
 immich_stub_search_filters.py SearchCriteriaUITests/test_AC_217
 
+# L-27 Share quality, log level and caches (AC-50, AC-52, AC-270 to AC-280).
+immich_stub_share_caches.py ShareAndCachesUITests/test_AC_280
+immich_stub_share_caches.py ShareAndCachesUITests/test_AC_52
+immich_stub_share_caches.py ShareAndCachesUITests/test_AC_277
+immich_stub_share_caches.py ShareAndCachesUITests/test_AC_279
+immich_stub_share_caches.py ShareAndCachesUITests/test_AC_272
+immich_stub_share_caches.py ShareAndCachesUITests/test_AC_275
+immich_stub_share_caches.py ShareAndCachesUITests/test_AC_50
+immich_stub_share_caches.py ShareAndCachesUITests/test_AC_270
+immich_stub_share_caches.py ShareAndCachesUITests/test_AC_273
+
 # L-21 server-side edits (AC-39, AC-40, AC-181, AC-182, AC-188, AC-189): the editor, the edited
 # version shown by the viewer, and the choice of the file to download.
 immich_stub_asset_edits.py AssetEditsUITests/test_AC_182_reopenChangeRotationThenRevert
