@@ -24,6 +24,16 @@
 set -euo pipefail
 cd "$(dirname "$0")/.."
 
+# Where the run's time goes, printed at the end (`ci.sh: timings: …`): the gate of
+# a push has a budget (`SWIMMICH_CI_GATE_BUDGET`, 300 s), and a run over it gets a
+# `::warning` that names the phase to shorten.
+phase_started=$SECONDS
+phase_times=()
+phase_done() {
+  phase_times+=("$1 $((SECONDS - phase_started)) s")
+  phase_started=$SECONDS
+}
+
 # The Python tests of the scripts come first: no build, a few seconds.
 # Each failed test becomes a public `::error` annotation (see report_errors).
 python_log="$(mktemp)"
@@ -38,6 +48,7 @@ if ! python3 -m unittest discover -s Scripts -p 'test_*.py' >"$python_log" 2>&1;
   exit 1
 fi
 rm -f "$python_log"
+phase_done "script tests"
 
 CACHE="${SWIMMICH_CI_CACHE:-$HOME/Library/Caches/swimmich-ci}"
 SIM_NAME="${SWIMMICH_CI_SIM:-swimmich-ci}"
@@ -181,6 +192,8 @@ common=(
   -destination "platform=iOS Simulator,id=${worker_udids[0]}"
 )
 
+phase_done "project and selection"
+
 # Signed for the simulator on purpose: CODE_SIGNING_ALLOWED=NO drops the
 # keychain-sharing entitlements, and the session-store tests then read nil.
 # The persistent DerivedData can be left inconsistent by an earlier run (the
@@ -264,9 +277,12 @@ fi
 xctestrun=$(ls -t "$CACHE"/DerivedData/Build/Products/*.xctestrun 2>/dev/null | head -1)
 [[ -n "$xctestrun" ]] || { echo "ci.sh: the build wrote no .xctestrun" >&2; exit 65; }
 
+phase_done "build"
+
 # The pool's boots end before its first job: a job's own `bootstatus -b` would
 # otherwise boot a simulator stock while simslim is still writing its profile.
 for pid in "${boot_pids[@]}"; do wait "$pid" || true; done
+phase_done "simulators' boot after the build"
 
 # A test failure leaves nothing readable in the public log either (the log is
 # admin-only), so the failed tests are read back from the result bundle and
@@ -322,6 +338,35 @@ prepare_simulator() {
   xcrun simctl ui "$sim" content_size large
 }
 
+# The unit tests that take a second or more, slowest first: they are the floor of
+# the gate (the unit tests run beside the scenarios, on one simulator).
+report_slow_unit_tests() {
+  xcrun xcresulttool get test-results tests --path "$1" 2>/dev/null | python3 -c '
+import json, sys
+found = []
+def walk(node, suite):
+    kind = node.get("nodeType")
+    if kind == "Test Case":
+        found.append((node.get("durationInSeconds") or 0, suite + "/" + (node.get("name") or "?")))
+    if kind == "Test Suite":
+        suite = node.get("name") or suite
+    for child in node.get("children") or []:
+        walk(child, suite)
+try:
+    for node in json.load(sys.stdin).get("testNodes") or []:
+        walk(node, "")
+except Exception as error:
+    print("ci.sh: unit test durations unreadable: %s" % error)
+    raise SystemExit
+found.sort(reverse=True)
+slow = [item for item in found if item[0] >= 1]
+print("ci.sh: unit tests: %d tests, %.0f s in the tests themselves, %d of a second or more (%.0f s)"
+      % (len(found), sum(item[0] for item in found), len(slow), sum(item[0] for item in slow)))
+for seconds, name in slow[:25]:
+    print("ci.sh:   %5.1f s  %s" % (seconds, name))
+' || true
+}
+
 # The unit tests, as a job of the pool: run_unit_tests <udid>.
 run_unit_tests() {
   local sim="$1"
@@ -335,8 +380,10 @@ run_unit_tests() {
   if ! xcodebuild test-without-building -xctestrun "$xctestrun" -destination "platform=iOS Simulator,id=$sim" -quiet \
     -only-testing:ImmichSwiftUITests -resultBundlePath "$RESULT" </dev/null; then
     report_failed_tests "$RESULT"
+    report_slow_unit_tests "$RESULT"
     return 1
   fi
+  report_slow_unit_tests "$RESULT"
 }
 
 # UI scenarios. One line of Scripts/ci-ui-scenarios.txt per xcodebuild run:
@@ -550,8 +597,16 @@ done
 
 # The i18n audit ran beside the build and the tests (it only reads the catalog and
 # the sources); its verdict is applied last so one pass judges the audit AND the tests.
+phase_done "tests"
 audit_ok=1
 apply_audit_verdict || audit_ok=0
+phase_done "i18n audit after the tests"
+timings=$(IFS=,; echo "${phase_times[*]}")
+echo "ci.sh: timings: ${timings//,/, }, total $SECONDS s"
+GATE_BUDGET="${SWIMMICH_CI_GATE_BUDGET:-300}"
+if [[ "$UI_SCOPE" == gate ]] && (( SECONDS > GATE_BUDGET )); then
+  echo "::warning::the gate took $SECONDS s, over its budget of $GATE_BUDGET s: ${timings//,/, }"
+fi
 if (( unit_failed )); then echo "ci.sh: the unit tests failed" >&2; fi
 if (( ui_failures )); then echo "ci.sh: $ui_failures UI scenario line(s) failed" >&2; fi
 (( ! unit_failed && ! ui_failures )) || exit 65

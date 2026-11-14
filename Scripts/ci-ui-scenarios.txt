@@ -25,7 +25,9 @@
 # A line has a tier, which says when it runs (Scripts/ci_ui_select.py):
 #
 # * `--smoke`: every push (the gate), after the lines the push changed. One per
-#   critical journey: sign-in, timeline and viewer, search, editor.
+#   critical journey, each under two minutes: timeline and viewer, search,
+#   editor. The gate has five minutes in all (`SWIMMICH_CI_GATE_BUDGET`), on a
+#   runner with two simulators: the sign-in walk (three minutes) is a core line.
 # * no flag, the core suite: every night with the smoke lines. A journey of a
 #   feature, or the only execution proof of a criterion (no unit test proves it).
 # * `--release`: once a week and on a release tag, with all the others. A second
@@ -51,7 +53,7 @@ immich_stub_backup_remainder.py BackupRemainderUITests/test_AC_65_9_rowsReadable
 # measures hosted and whose tokens `DynamicTypeTests` measures (unit tests).
 immich_stub_dynamic_type.py DynamicTypeUITests/test_AC_26_8_albums --release
 immich_stub_dynamic_type.py DynamicTypeUITests/test_AC_26_3_albums
-immich_stub_dynamic_type.py DynamicTypeUITests/test_AC_26_3 --smoke
+immich_stub_dynamic_type.py DynamicTypeUITests/test_AC_26_3
 immich_stub_dynamic_type.py DynamicTypeUITests/test_AC_26_8
 immich_stub_dynamic_type.py DynamicTypeUITests/test_AC_26_9
 immich_stub_dynamic_type.py DynamicTypeUITests/test_AC_26_1_signedIn --release
