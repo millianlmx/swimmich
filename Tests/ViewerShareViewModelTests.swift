@@ -118,6 +118,10 @@ final class ViewerShareViewModelTests: XCTestCase {
         XCTAssertTrue(condition(), "condition not reached in 5 s")
     }
 
+    private func queryValue(_ name: String, in url: URL?) -> String? {
+        url.flatMap { URLComponents(url: $0, resolvingAgainstBaseURL: false)?.queryItems?.first { $0.name == name }?.value }
+    }
+
     private func shareDirectories() -> Set<String> {
         let names = (try? FileManager.default.contentsOfDirectory(atPath: NSTemporaryDirectory())) ?? []
         return Set(names.filter { $0.hasPrefix("immich-share-") })
@@ -134,6 +138,7 @@ final class ViewerShareViewModelTests: XCTestCase {
         XCTAssertEqual(transport.downloadCount, 1, "one request, no preview alongside")
         let request = try XCTUnwrap(transport.lastRequest)
         XCTAssertEqual(request.url?.path, "/api/assets/p1/original")
+        XCTAssertEqual(queryValue("edited", in: request.url), "false", "L-21: the photo as uploaded, never the server default")
         XCTAssertEqual(request.value(forHTTPHeaderField: "Authorization"), "Bearer tok")
 
         let file = try XCTUnwrap(presenter.urls.first)
@@ -158,6 +163,7 @@ final class ViewerShareViewModelTests: XCTestCase {
         let size = URLComponents(url: url, resolvingAgainstBaseURL: false)?
             .queryItems?.first { $0.name == "size" }?.value
         XCTAssertEqual(size, "preview")
+        XCTAssertEqual(queryValue("edited", in: url), "false", "L-21: the preview of the photo as uploaded, not its edited rendering")
         XCTAssertEqual(presenter.urls.first?.lastPathComponent, "IMG_0001.jpg", "the extension follows the bytes sent")
         try XCTUnwrap(presenter.completions.first ?? nil)()
     }
@@ -170,6 +176,7 @@ final class ViewerShareViewModelTests: XCTestCase {
         await vm.waitForCompletion()
 
         XCTAssertEqual(transport.lastRequest?.url?.path, "/api/assets/v1/original")
+        XCTAssertEqual(queryValue("edited", in: transport.lastRequest?.url), "false")
         XCTAssertEqual(presenter.urls.first?.lastPathComponent, "IMG_0002.MOV")
         try XCTUnwrap(presenter.completions.first ?? nil)()
     }

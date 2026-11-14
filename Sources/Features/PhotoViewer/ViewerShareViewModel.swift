@@ -115,9 +115,11 @@ final class ViewerShareViewModel {
             let info = try? await client.getAsset(id: asset.id)
             try Task.checkCancellation()
 
+            // The photo as uploaded, never its edited rendering (L-21 #4: sharing keeps the original),
+            // sent explicitly in both qualities since the server's default differs between versions.
             let url = resolved == .original
-                ? ImmichAssetURL.original(assetId: asset.id, baseURL: baseURL)
-                : asset.thumbnailURL(base: baseURL, size: .preview)
+                ? ImmichAssetURL.original(assetId: asset.id, baseURL: baseURL, edited: false)
+                : asset.thumbnailURL(base: baseURL, size: .preview, edited: false)
             var request = URLRequest(url: url)
             ServerRequestAuthorization.apply(token: token, custom: customHeaders.headers(for: url), to: &request)
 
