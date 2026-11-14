@@ -120,6 +120,7 @@ private struct AuthenticatedRoot: View {
     @State private var storage: StorageStatsViewModel
     @State private var upload: UploadViewModel
     @State private var uploadDetail: UploadDetailViewModel
+    @State private var backupRemainder: BackupRemainderViewModel
     @State private var people: PeopleViewModel
     @State private var memories: MemoriesViewModel
     @State private var duplicates: DuplicatesViewModel
@@ -175,6 +176,8 @@ private struct AuthenticatedRoot: View {
     /// The client certificate screen of the Me hub (L-10), for the active
     /// account's server.
     @State private var clientCertificate: ClientCertificateViewModel
+    /// Log level and image cache of the Advanced section (B-31).
+    @State private var advanced: AdvancedSettingsViewModel
     @State private var selection: RootTab = .photos
     @State private var lastContentTab: RootTab = .photos
     @State private var pendingTimelineScrollID: String?
@@ -199,6 +202,7 @@ private struct AuthenticatedRoot: View {
         _storage = State(initialValue: container.makeStorageStatsViewModel())
         _upload = State(initialValue: container.upload)
         _uploadDetail = State(initialValue: container.makeUploadDetailViewModel(upload: container.upload))
+        _backupRemainder = State(initialValue: container.makeBackupRemainderViewModel(upload: container.upload))
         _people = State(initialValue: container.makePeopleViewModel())
         _memories = State(initialValue: container.makeMemoriesViewModel())
         _duplicates = State(initialValue: container.makeDuplicatesViewModel())
@@ -235,6 +239,7 @@ private struct AuthenticatedRoot: View {
         _mediaStats = State(initialValue: container.makeMediaStatsViewModel(offline: container.makeOfflineDownloadViewModel(accountID: accountID)))
         _downloadInfo = State(initialValue: container.makeDownloadInfoViewModel(offline: container.makeOfflineDownloadViewModel(accountID: accountID)))
         _clientCertificate = State(initialValue: container.makeClientCertificateViewModel(serverURL: session.accountURL))
+        _advanced = State(initialValue: container.makeAdvancedSettingsViewModel())
     }
 
     var body: some View {
@@ -395,6 +400,7 @@ private struct AuthenticatedRoot: View {
                 storage: storage,
                 upload: upload,
                 uploadDetail: uploadDetail,
+                backupRemainder: backupRemainder,
                 admin: admin,
                 notifications: notifications,
                 language: language,
@@ -409,7 +415,8 @@ private struct AuthenticatedRoot: View {
                 appLog: appLog,
                 mediaStats: mediaStats,
                 downloadInfo: downloadInfo,
-                clientCertificate: clientCertificate
+                clientCertificate: clientCertificate,
+                advanced: advanced
             )
             // The Me hub re-states everything its own subtree needs. Measured
             // on 2026-09-15: what is injected on THIS view's modifier chain (the

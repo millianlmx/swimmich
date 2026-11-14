@@ -47,14 +47,14 @@ struct PhotosTimelineProvider: TimelineProvider {
     /// fetch never worked (issue #19 follow-up). `placeholder(in:)` still serves
     /// the redacted first render.
         Task {
-            let wall = await provider.recentPhotos(limit: context.family.photoLimit)
+            let wall = await provider.recentPhotos(limit: context.family.photoLimit, target: context.renderTarget)
             completion(PhotosEntry(date: .now, wall: wall))
         }
     }
 
     func getTimeline(in context: Context, completion: @escaping (Timeline<PhotosEntry>) -> Void) {
         Task {
-            let wall = await provider.recentPhotos(limit: context.family.photoLimit)
+            let wall = await provider.recentPhotos(limit: context.family.photoLimit, target: context.renderTarget)
             completion(Timeline(
                 entries: [PhotosEntry(date: .now, wall: wall)],
                 // A failed fetch (offline, locked, server down) retries soon:

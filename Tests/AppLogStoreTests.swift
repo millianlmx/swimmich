@@ -62,4 +62,54 @@ final class AppLogStoreTests: XCTestCase {
 
         XCTAssertEqual(store.count(), 100)
     }
+
+    // MARK: - Minimum level (B-31)
+
+    private static func entry(_ level: AppLogLevel, path: String) -> AppLogEntry {
+        AppLogEntry(level: level, method: "GET", path: path, status: 200, durationMS: 1, category: "HTTP", message: path)
+    }
+
+    private func isolatedDefaults() -> (UserDefaults, String) {
+        let name = "AppLogStoreTests-\(UUID().uuidString)"
+        return (UserDefaults(suiteName: name)!, name)
+    }
+
+    /// Raising the level only filters what comes next: the lines already kept
+    /// stay on screen.
+    func test_AC_273_raisingTheLevelKeepsLinesAlreadyRecorded() {
+        let (defaults, name) = isolatedDefaults()
+        defer { defaults.removePersistentDomain(forName: name) }
+        let store = AppLogStore(defaults: defaults)
+        store.record(Self.entry(.info, path: "/before"))
+
+        store.setMinimumLevel(.severe)
+        store.record(Self.entry(.info, path: "/after-info"))
+        store.record(Self.entry(.warning, path: "/after-warning"))
+        store.record(Self.entry(.severe, path: "/after-severe"))
+
+        XCTAssertEqual(store.snapshot().map(\.path), ["/after-severe", "/before"])
+    }
+
+    func test_AC_273_levelSurvivesANewStore() {
+        let (defaults, name) = isolatedDefaults()
+        defer { defaults.removePersistentDomain(forName: name) }
+        AppLogStore(defaults: defaults).setMinimumLevel(.severe)
+
+        XCTAssertEqual(AppLogStore(defaults: defaults).currentMinimumLevel(), .severe)
+    }
+
+    func test_AC_273_unreadableLevelFallsBackToAll() {
+        let (defaults, name) = isolatedDefaults()
+        defer { defaults.removePersistentDomain(forName: name) }
+        XCTAssertEqual(AppLogStore(defaults: defaults).currentMinimumLevel(), .info, "nothing stored")
+
+        defaults.set("verbose", forKey: AppLogStore.minimumLevelKey)
+        XCTAssertEqual(AppLogStore(defaults: defaults).currentMinimumLevel(), .info)
+    }
+
+    func test_AC_273_levelsAreOrdered() {
+        XCTAssertLessThan(AppLogLevel.info, .warning)
+        XCTAssertLessThan(AppLogLevel.warning, .severe)
+        XCTAssertFalse(AppLogLevel.severe < .info)
+    }
 }

@@ -81,4 +81,59 @@ final class ImmichAPIClientLogTests: XCTestCase {
         XCTAssertEqual(entry.path, "/api/server/version")
         XCTAssertEqual(entry.category, "HTTP")
     }
+
+    // MARK: - Minimum level (B-31)
+
+    private func makeFilteringClient(level: AppLogLevel) -> (ImmichAPIClient, UserDefaults, String) {
+        let name = "ImmichAPIClientLogTests-\(UUID().uuidString)"
+        let defaults = UserDefaults(suiteName: name)!
+        store = AppLogStore(defaults: defaults)
+        store.setMinimumLevel(level)
+        let client = makeClient()
+        client.configure(baseURL: URL(string: "https://example.test")!, token: "tok")
+        return (client, defaults, name)
+    }
+
+    private func callServerVersion(_ client: ImmichAPIClient, status: Int) async {
+        CapturingURLProtocol.nextStatus = status
+        CapturingURLProtocol.nextData = #"{"major":2,"minor":0,"patch":0}"#.data(using: .utf8)!
+        _ = try? await client.serverVersion()
+    }
+
+    /// AC-51: at "Warnings", a request that succeeds and then one that fails in
+    /// 404 leave only the second one in the log.
+    func test_AC_51_warningsKeepsOnlyThe404() async throws {
+        let (client, defaults, name) = makeFilteringClient(level: .warning)
+        defer { defaults.removePersistentDomain(forName: name) }
+
+        await callServerVersion(client, status: 200)
+        await callServerVersion(client, status: 404)
+
+        let lines = store.snapshot()
+        XCTAssertEqual(lines.count, 1)
+        XCTAssertEqual(lines.first?.status, 404)
+    }
+
+    func test_AC_273_errorsKeepsOnlyThe500() async throws {
+        let (client, defaults, name) = makeFilteringClient(level: .severe)
+        defer { defaults.removePersistentDomain(forName: name) }
+
+        await callServerVersion(client, status: 404)
+        await callServerVersion(client, status: 500)
+
+        let lines = store.snapshot()
+        XCTAssertEqual(lines.count, 1)
+        XCTAssertEqual(lines.first?.status, 500)
+    }
+
+    func test_AC_273_allKeepsSuccess() async throws {
+        let (client, defaults, name) = makeFilteringClient(level: .info)
+        defer { defaults.removePersistentDomain(forName: name) }
+
+        await callServerVersion(client, status: 200)
+
+        let lines = store.snapshot()
+        XCTAssertEqual(lines.count, 1)
+        XCTAssertEqual(lines.first?.status, 200)
+    }
 }

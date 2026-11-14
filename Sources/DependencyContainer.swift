@@ -12,6 +12,9 @@ final class DependencyContainer {
     /// could not be given one afterwards. One store per process — a second
     /// instance would show a log the client never wrote to.
     let appLog = AppLogStore()
+    /// Thumbnail and preview caches (memory and disk) the "Advanced" section
+    /// measures and empties; not the offline copies, the map or the widgets.
+    let imageCache: any ImageCacheManaging = ImageCacheService()
 
     let client: ImmichAPIClient
     let keychain: KeychainStore
@@ -418,6 +421,21 @@ final class DependencyContainer {
         AppLogViewModel(store: appLog)
     }
 
+    /// "Advanced" section of the Me hub: log level and image cache. Shares the
+    /// process-wide log store and image cache.
+    func makeAdvancedSettingsViewModel() -> AdvancedSettingsViewModel {
+        AdvancedSettingsViewModel(log: appLog, imageCache: imageCache)
+    }
+
+    /// Viewer share (B-31): downloads the photo in the chosen quality to a file
+    /// and hands it to the iOS share sheet. One instance per viewer.
+    func makeViewerShareViewModel(baseURL: URL, token: String?) -> ViewerShareViewModel {
+        ViewerShareViewModel(
+            client: libraryClient, baseURL: baseURL, token: token,
+            transport: serverSessions.makeDownloadTransport(), customHeaders: customHeaders
+        )
+    }
+
     /// Inventory of the offline cache (gap G24). Takes the caller's offline
     /// view model rather than choosing one, like `makeSyncStatusViewModel`: the
     /// container must not decide which instance of the process is observed.
@@ -636,6 +654,14 @@ final class DependencyContainer {
     /// (`self.upload`, "One VM, one run, one island").
     func makeUploadDetailViewModel(upload: UploadViewModel) -> UploadDetailViewModel {
         UploadDetailViewModel(upload: upload)
+    }
+
+    /// "Remaining to back up": what a complete pass would still send. Takes the
+    /// caller's `UploadViewModel` for the same reason as the upload report
+    /// above: the engine it projects is the one the process runs, and its
+    /// settings and ledger are the ones the Backup screen edits.
+    func makeBackupRemainderViewModel(upload: UploadViewModel) -> BackupRemainderViewModel {
+        BackupRemainderViewModel(upload: upload)
     }
 
     /// "On this device" (local library). Reads the same Photos instance the

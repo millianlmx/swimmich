@@ -310,6 +310,12 @@ struct PhotoViewer: View {
     @State private var editedNoticeKind = ""
     @State private var editedCopyTick = 0
     @State private var presentShare = false
+    /// Streams the photo to a file in the chosen quality and hands it to the
+    /// iOS share sheet (B-31). One per viewer.
+    @State private var share: ViewerShareViewModel
+    /// The sheet's header button asked for the iOS share: it runs once the
+    /// actions sheet is gone, so the progress card is not hidden behind it.
+    @State private var pendingNativeShare = false
     @State private var showCastSheet = false
     @State private var showInfo = false
     @State private var infoVM: AssetDetailViewModel?
@@ -410,6 +416,7 @@ struct PhotoViewer: View {
         _favoriteIDs = State(initialValue: Set(assets.filter(\.isFavorite).map(\.id)))
         _timeline = State(initialValue: TimelineViewModel(client: client))
         _trash = State(initialValue: TrashViewModel(client: client))
+        _share = State(initialValue: DependencyContainer.shared.makeViewerShareViewModel(baseURL: baseURL, token: token))
         self.zoomSource = zoomSource
         self.closeInstantly = closeInstantly
         let opened = assets.isEmpty ? nil : assets[min(max(index, 0), assets.count - 1)]
@@ -496,6 +503,16 @@ struct PhotoViewer: View {
                     }
                     .transition(.opacity)
                 }
+
+                if case .downloading(let fraction) = share.phase {
+                    VStack {
+                        Spacer()
+                        shareProgressCard(fraction: fraction)
+                            .padding(.horizontal, PVSpacing.s16)
+                            .padding(.bottom, PVSpacing.s8)
+                    }
+                    .transition(PVMotion.appearance(.opacityAndMove(.bottom), reduceMotion: reduceMotion).anyTransition)
+                }
             }
             .task(id: editedCopyNotice) {
                 guard editedCopyNotice != nil else { return }
@@ -503,6 +520,7 @@ struct PhotoViewer: View {
                 guard !Task.isCancelled else { return }
                 withAnimation(PVMotion.movement(.default, reduceMotion: reduceMotion)) { editedCopyNotice = nil }
             }
+            .animation(PVMotion.movement(PVMotion.standard, reduceMotion: reduceMotion), value: share.isDownloading)
             .appSensoryFeedback(.success, trigger: editedCopyTick)
             // The chrome RESERVES layout space (not an overlay): the top bar and
             // the filmstrip+bottom bar inset the pager, so the photo fits the box
@@ -577,6 +595,18 @@ struct PhotoViewer: View {
                      ? "This photo will be permanently removed. Action cannot be undone."
                      : "This removes the photo from your library.")
             }
+            .alert(
+                "Couldn't Share",
+                isPresented: Binding(
+                    get: { share.failureMessage != nil },
+                    set: { if !$0 { share.dismissError() } }
+                )
+            ) {
+                Button("OK") { share.dismissError() }
+                    .accessibilityIdentifier("shareFailedDismiss")
+            } message: {
+                Text(share.failureMessage ?? "")
+            }
             .sheet(isPresented: $presentEdit, onDismiss: { editorVM = nil }) {
                 if let editorVM {
                     PhotoEditorView(vm: editorVM, onSaved: { reason in
@@ -598,9 +628,19 @@ struct PhotoViewer: View {
                     })
                 }
             }
-            .sheet(isPresented: $presentShare) {
+            .sheet(isPresented: $presentShare, onDismiss: {
+                guard pendingNativeShare else { return }
+                pendingNativeShare = false
+                if let asset = currentAsset { share.share(asset, quality: appSettings.shareQuality) }
+            }) {
                 if let asset = currentAsset {
-                    PhotoShareSheet(asset: asset, baseURL: baseURL, token: token, client: client, downloads: downloads)
+                    PhotoShareSheet(
+                        asset: asset, baseURL: baseURL, token: token, client: client, downloads: downloads,
+                        onNativeShare: {
+                            pendingNativeShare = true
+                            presentShare = false
+                        }
+                    )
                         .presentationDetents([.fraction(1.0 / 2.0)])
                         .presentationDragIndicator(.visible)
                 }
@@ -687,7 +727,13 @@ struct PhotoViewer: View {
         .task { await runOpeningTransition() }
         // Whatever removes the viewer (a close, a delete that emptied the list, the
         // host), the thumbnail it hid comes back.
-        .onDisappear { zoomSource?.hiddenID = nil }
+        .onDisappear {
+            zoomSource?.hiddenID = nil
+            // Closing the viewer (or losing it to a session change) stops a
+            // download in flight, like its Cancel button: nothing is presented
+            // over the next screen.
+            share.cancel()
+        }
     }
 
     // MARK: - Pager
@@ -1078,6 +1124,32 @@ struct PhotoViewer: View {
         return String(localized: "Photo \(position) of \(count)", bundle: bundle, locale: locale)
     }
 
+    // MARK: - Share progress (B-31)
+
+    /// The download of a share in flight: determinate once the server tells the
+    /// size, cancellable. Floats above the bottom bar, controls shown or not.
+    private func shareProgressCard(fraction: Double?) -> some View {
+        VStack(spacing: PVSpacing.s8) {
+            Text("Preparing to share…")
+                .font(.pvSubhead)
+            if let fraction {
+                ProgressView(value: fraction)
+                    .accessibilityValue(Text(fraction, format: .percent.precision(.fractionLength(0))))
+            } else {
+                ProgressView()
+            }
+            Button("Cancel") { share.cancel() }
+                .font(.pvHeadline)
+                .frame(minHeight: 44)
+                .accessibilityIdentifier("shareDownloadCancelButton")
+        }
+        .padding(PVSpacing.s16)
+        .frame(maxWidth: .infinity)
+        .pvFloating(.bar)
+        .accessibilityElement(children: .contain)
+        .accessibilityIdentifier("shareDownloadProgress")
+    }
+
     // MARK: - Bottom bar (share · favorite/edit glass · delete)
 
     private func bottomBar(_ asset: AssetReactItem) -> some View {
@@ -1095,6 +1167,20 @@ struct PhotoViewer: View {
                             .pvFloating(.circle)
                     }
                     .buttonStyle(.plain)
+                    // A tap opens the actions sheet; a long press chooses the
+                    // quality for this one share and shares at once, leaving the
+                    // default setting alone.
+                    .contextMenu {
+                        ForEach(ViewerShareViewModel.choices(for: asset)) { quality in
+                            Button {
+                                share.share(asset, quality: quality)
+                            } label: {
+                                Text(quality.label)
+                            }
+                            .accessibilityIdentifier("shareQualityChoice_\(quality.rawValue)")
+                        }
+                    }
+                    .disabled(share.isDownloading)
                     .accessibilityLabel("Share")
                     .accessibilityIdentifier("viewerShareButton")
                 }
@@ -1972,6 +2058,8 @@ private struct PhotoShareSheet: View {
     /// The process-wide download queue: this sheet only hands assets to it, so
     /// the transfer outlives the sheet (gap G10).
     let downloads: DownloadQueueViewModel
+    /// Runs the iOS share in the default quality (the viewer owns the transfer).
+    let onNativeShare: () -> Void
 
     @Environment(AuthViewModel.self) private var auth
     @Environment(OfflineDownloadViewModel.self) private var offlineVM: OfflineDownloadViewModel?
@@ -2042,7 +2130,7 @@ private struct PhotoShareSheet: View {
         GlassEffectContainer {
             HStack(spacing: PVSpacing.s16) {
                 Button {
-                    Task { await presentNativeShare() }
+                    onNativeShare()
                 } label: {
                     Image(systemName: "square.and.arrow.up")
                         .font(.pvHeadline)
@@ -2051,6 +2139,7 @@ private struct PhotoShareSheet: View {
                 }
                 .buttonStyle(.plain)
                 .accessibilityLabel("Share")
+                .accessibilityIdentifier("shareSheetNativeShareButton")
 
                 Spacer()
 
@@ -2200,42 +2289,6 @@ private struct PhotoShareSheet: View {
             }
         }
         .listStyle(.insetGrouped)
-    }
-
-    /// Downloads the `.fullsize` image and shares it via the system sheet
-    /// (UIActivityViewController). The sheet gets a real FILE URL — not a bare
-    /// `UIImage` — so it shows the preview (QuickLook), the original base name
-    /// and the file size. The extension comes from the ACTUAL downloaded bytes
-    /// (fullsize is often transcoded, e.g. HEIC → JPEG), so the preview matches.
-    @MainActor
-    private func presentNativeShare() async {
-        // Prefer the server-side original base name for a rich share sheet.
-        var originalName: String?
-        var originalMime: String?
-        do {
-            let detail = try await client.getAsset(id: asset.id)
-            originalName = detail.originalFileName
-            originalMime = detail.originalMimeType
-        } catch {}
-
-        // The photo as uploaded, not its edited rendering (decision #4: the share sheet keeps the original).
-        let url = asset.thumbnailURL(base: baseURL, size: .preview, edited: false)
-        do {
-            let (data, contentType) = try await AssetFileTransfer.fetchData(from: url, token: token, session: DependencyContainer.shared.serverSessions.transfers)
-
-            // The bytes actually being shared win for the extension (preview
-            // accuracy); fall back to the original mime, then jpg.
-            let ext = AssetFileTransfer.sharedFileExtension(sharedContentType: contentType, originalMime: originalMime)
-            let base = AssetFileTransfer.baseName(
-                originalName: originalName,
-                datePrefix: String(asset.fileCreatedAt.prefix(10))
-            )
-            let fileURL = try AssetFileTransfer.writeTempFile(data: data, name: "\(base).\(ext)")
-            ActivityPresenter.present(items: [fileURL]) {
-                // Remove the whole unique temp directory.
-                try? FileManager.default.removeItem(at: fileURL.deletingLastPathComponent())
-            }
-        } catch {}
     }
 }
 

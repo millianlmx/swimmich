@@ -83,10 +83,12 @@ struct DownloadInventoryView: View {
             titleVisibility: .visible
         ) {
             Button("Clear all", role: .destructive) { Task { await vm.clearAll() } }
+                .accessibilityIdentifier("downloadInfoPurgeConfirm")
             Button("Cancel", role: .cancel) {}
         } message: {
             Text("The files will need to be downloaded again.")
         }
+        .offlinePurgeResultAlert(vm.purgeResult, dismiss: { vm.dismissPurgeResult() })
         .task { await vm.load() }
         .refreshable { await vm.refresh() }
     }
