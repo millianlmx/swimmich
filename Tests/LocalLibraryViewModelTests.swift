@@ -441,6 +441,120 @@ final class LocalLibraryViewModelTests: XCTestCase {
         XCTAssertGreaterThanOrEqual(changes, 1)
     }
 
+    // MARK: - Edits ride along with the selection (AC-205)
+
+    private func adjusted(_ id: String) -> BackupCandidate {
+        var item = candidate(id)
+        item.hasAdjustments = true
+        return item
+    }
+
+    /// The server holds the original of `id` (as `srv-<id>`) but not its edit.
+    private func serverHoldsOriginalOnly(_ id: String) {
+        client.bulkUploadCheckResponder = { items in
+            AssetBulkUploadCheckResponse(results: items.map {
+                $0.id.hasSuffix("#edit")
+                    ? AssetBulkUploadCheckResponse.Result(id: $0.id, action: "accept")
+                    : AssetBulkUploadCheckResponse.Result(id: $0.id, action: "reject", assetId: "srv-\(id)")
+            })
+        }
+    }
+
+    func test_AC_205_check_notesTheEditAndKeepsTheOriginalVerdict() async {
+        settings.backUpEdits = true
+        source.editedIDs = ["A"]
+        await arrange([adjusted("A")])
+        serverHoldsOriginalOnly("A")
+
+        await vm.checkSelection()
+
+        XCTAssertEqual(vm.savedIDs, ["A"], "the verdict stays about the original")
+        XCTAssertTrue(vm.localOnlyIDs.isEmpty)
+        XCTAssertEqual(vm.pendingEditCount, 1)
+        XCTAssertTrue(vm.canUpload, "the Upload button is active for an edit alone")
+        XCTAssertEqual(client.bulkUploadCheckChunks.flatMap { $0.map(\.id) }, ["A"], "the Check hashes the original only")
+    }
+
+    func test_AC_205_upload_sendsTheEditOfASavedPhotoAndStacksIt() async {
+        settings.backUpEdits = true
+        source.editedIDs = ["A"]
+        client.uploadResponsesByFilename = ["A.edited.jpg": AssetMediaResponseDto(id: "edit-A", status: "created")]
+        await arrange([adjusted("A")])
+        serverHoldsOriginalOnly("A")
+        await vm.checkSelection()
+
+        await vm.uploadSelection()
+
+        XCTAssertEqual(client.uploads.map(\.filename), ["A.edited.jpg"], "the original is not sent again")
+        XCTAssertEqual(client.createStackCalls, [["edit-A", "srv-A"]])
+        XCTAssertEqual(vm.pendingEditCount, 0)
+        XCTAssertNil(vm.errorMessage)
+        XCTAssertEqual(upload.engine.editLedger.record(id: "A")?.isStacked, true)
+    }
+
+    func test_AC_205_upload_sendsOriginalAndEditWhenTheOriginalIsMissing() async {
+        settings.backUpEdits = true
+        source.editedIDs = ["A"]
+        client.uploadResponsesByFilename = [
+            "A.jpg": AssetMediaResponseDto(id: "orig-A", status: "created"),
+            "A.edited.jpg": AssetMediaResponseDto(id: "edit-A", status: "created"),
+        ]
+        await arrange([adjusted("A")])
+        answer(accept: ["A"])
+        await vm.checkSelection()
+        XCTAssertEqual(vm.localOnlyIDs, ["A"])
+        client.bulkUploadCheckResponder = { items in
+            AssetBulkUploadCheckResponse(results: items.map {
+                AssetBulkUploadCheckResponse.Result(id: $0.id, action: "accept")
+            })
+        }
+
+        await vm.uploadSelection()
+
+        XCTAssertEqual(client.uploads.map(\.filename), ["A.jpg", "A.edited.jpg"])
+        XCTAssertEqual(client.createStackCalls, [["edit-A", "orig-A"]])
+        XCTAssertEqual(vm.savedIDs, ["A"])
+        XCTAssertTrue(vm.localOnlyIDs.isEmpty)
+        XCTAssertEqual(vm.pendingEditCount, 0)
+    }
+
+    func test_AC_205_upload_keepsTheEditPendingWhenItFails() async {
+        settings.backUpEdits = true
+        source.editedIDs = ["A"]
+        source.editFailIDs = ["A"]
+        await arrange([adjusted("A")])
+        serverHoldsOriginalOnly("A")
+        await vm.checkSelection()
+
+        await vm.uploadSelection()
+
+        XCTAssertEqual(vm.pendingEditCount, 1, "the edit is still to send")
+        XCTAssertEqual(vm.errorMessage, BackupEngine.editFailedReason)
+        XCTAssertTrue(client.uploads.isEmpty)
+
+        source.editFailIDs = []
+        client.uploadResponsesByFilename = ["A.edited.jpg": AssetMediaResponseDto(id: "edit-A", status: "created")]
+        await vm.uploadSelection()
+
+        XCTAssertEqual(vm.pendingEditCount, 0)
+        XCTAssertEqual(client.createStackCalls, [["edit-A", "srv-A"]])
+    }
+
+    func test_AC_205_settingOff_sendsNothingForAnEditedSavedPhoto() async {
+        source.editedIDs = ["A"]
+        await arrange([adjusted("A")])
+        serverHoldsOriginalOnly("A")
+        await vm.checkSelection()
+
+        XCTAssertEqual(vm.pendingEditCount, 0)
+        XCTAssertFalse(vm.canUpload)
+
+        await vm.uploadSelection()
+
+        XCTAssertTrue(client.uploads.isEmpty)
+        XCTAssertTrue(client.createStackCalls.isEmpty)
+    }
+
     func test_AC10_upload_failedOrUnlinked_leavesNoLedgerEntry() async {
         // 1. accepted, the still fails to upload
         await arrange([candidate("A")])

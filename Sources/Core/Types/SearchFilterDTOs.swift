@@ -69,13 +69,46 @@ struct BoolFilterDto: Codable, Equatable {
     var eq: Bool
 }
 
+/// `IdsFilter` — `personIds` and `tagIds` of `SearchFilter`. `all` means every
+/// id must match (tags: descendants included server-side); `any` and `none`
+/// complete the schema's operator set.
+struct IdsFilterDto: Codable, Equatable {
+    var any: [String]?
+    var all: [String]?
+    var none: [String]?
+}
+
+/// `StringPatternFilter` — the operator set of `originalFileName` and
+/// `description`. The app writes `like`, a case- and accent-insensitive
+/// "contains" server-side, the same match the flat fields perform.
+struct StringPatternFilterDto: Codable, Equatable {
+    var eq: String?
+    var ne: String?
+    var `in`: [String]?
+    var notIn: [String]?
+    var like: String?
+    var notLike: String?
+    var startsWith: String?
+    var endsWith: String?
+}
+
+/// `EnumFilterAssetVisibility` — the operator set of `SearchFilter.visibility`,
+/// whose values are `AssetVisibility`'s raw values.
+struct EnumFilterAssetVisibilityDto: Codable, Equatable {
+    var eq: String?
+    var ne: String?
+    var `in`: [String]?
+    var notIn: [String]?
+}
+
 /// `SearchFilter` — the v3.2.0 replacement of the deprecated scalar fields of
 /// `MetadataSearchDto` (`city`, `rating`, `ocr` among them).
 ///
 /// Stays a strict subset of `SearchFilter` (the server rejects additional
-/// properties at this level) and carries **what the Filters sheet can set** —
-/// the sheet has no picker for `personIds`, `tagIds`, `albumIds`, `visibility`,
-/// `hasPeople`… so this type does not declare them. The sub-filters are
+/// properties at this level) and carries **what the Search tab can set**: the
+/// Filters sheet's constraints, the people and tag pickers, the display
+/// options and the file name / description text modes. Album and path filters
+/// are not declared: the official mobile client has none. The sub-filters are
 /// optional so an undone constraint leaves the body instead of sending `null`.
 struct SearchFilterDto: Codable, Equatable {
     var ocr: StringSimilarityFilterDto?
@@ -93,4 +126,11 @@ struct SearchFilterDto: Codable, Equatable {
     /// `asset.fileCreatedAt`, the same column the flat bounds filter on, so the
     /// two routes answer the same question.
     var takenAt: DateFilterDto?
+    var personIds: IdsFilterDto?
+    var tagIds: IdsFilterDto?
+    /// `hasAlbums.eq == false` is "not in any album".
+    var hasAlbums: BoolFilterDto?
+    var visibility: EnumFilterAssetVisibilityDto?
+    var originalFileName: StringPatternFilterDto?
+    var description: StringPatternFilterDto?
 }

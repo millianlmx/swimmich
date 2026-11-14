@@ -25,25 +25,45 @@ final class MockCleanupSource: LocalCleanupSource, @unchecked Sendable {
     nonisolated(unsafe) var lastKeepAlbumIDs: Set<String>?
     nonisolated(unsafe) var lastBackedUpIDs: Set<String>?
     nonisolated(unsafe) var deletedIDs: [String] = []
+    /// Assets Photos reports as edited, with their current modification date.
+    /// Decided by the production rule (`keepsForUnconfirmedEdit`), not a copy.
+    nonisolated(unsafe) var editedSignatures: [String: String] = [:]
+    nonisolated(unsafe) var lastConfirmedEdits: [String: String]?
 
     func cleanupCandidates(
         cutoff: Date,
         keepFavorites: Bool,
         keepMediaType: CleanupKeepMediaType,
         keepAlbumIDs: Set<String>,
-        backedUpIDs: Set<String>
+        backedUpIDs: Set<String>,
+        confirmedEdits: [String: String]?
     ) -> CleanupScanResult {
         lastCutoff = cutoff
         lastKeepFavorites = keepFavorites
         lastKeepMediaType = keepMediaType
         lastKeepAlbumIDs = keepAlbumIDs
         lastBackedUpIDs = backedUpIDs
-        let offered = candidates.filter { backedUpIDs.contains($0.id) }
+        lastConfirmedEdits = confirmedEdits
+        var skippedEdit = 0
+        var offered: [CleanupCandidate] = []
+        for candidate in candidates where backedUpIDs.contains(candidate.id) {
+            if PhotoLibraryServiceImpl.keepsForUnconfirmedEdit(
+                id: candidate.id,
+                hasAdjustments: editedSignatures[candidate.id] != nil,
+                signature: editedSignatures[candidate.id] ?? "",
+                confirmedEdits: confirmedEdits
+            ) {
+                skippedEdit += 1
+            } else {
+                offered.append(candidate)
+            }
+        }
         return CleanupScanResult(
             candidates: offered,
             skippedNotOnServer: 0,
             skippedInSharedAlbum: skippedInSharedAlbum,
-            scannedCount: scannedCountOverride ?? offered.count
+            scannedCount: scannedCountOverride ?? offered.count,
+            skippedEditNotBackedUp: skippedEdit
         )
     }
 
@@ -84,7 +104,9 @@ final class FreeUpSpaceViewModelTests: XCTestCase {
         client: MockImmichClient,
         ledger: BackupLedger,
         source: MockCleanupSource = MockCleanupSource(),
-        albums: [BackupAlbum] = []
+        albums: [BackupAlbum] = [],
+        editLedger: BackupEditLedger = BackupEditLedger.inMemory(),
+        includesEdits: Bool = false
     ) -> FreeUpSpaceViewModel {
         let albumSource = MockBackupAssetSource()
         albumSource.albums = albums
@@ -93,6 +115,8 @@ final class FreeUpSpaceViewModelTests: XCTestCase {
             source: source,
             albumSource: albumSource,
             ledger: ledger,
+            editLedger: editLedger,
+            includesEdits: { includesEdits },
             settings: makeSettings()
         )
     }
@@ -304,5 +328,88 @@ final class FreeUpSpaceViewModelTests: XCTestCase {
 
         XCTAssertNil(deleted)
         XCTAssertTrue(source.deletedIDs.isEmpty)
+    }
+
+    // MARK: - Edited assets (AC-207)
+
+    private func editRecord(signature: String = "t1", checksum: String = "e-sum", stacked: Bool = true) -> BackupEditRecord {
+        BackupEditRecord(
+            signature: signature, checksum: checksum, serverAssetId: "edit-a", originalServerAssetId: "srv-a",
+            previousServerAssetId: nil, isStacked: stacked, fileName: "a.jpg"
+        )
+    }
+
+    /// The server holds every checksum except the ones named.
+    private func serverHolding(_ client: MockImmichClient, except gone: Set<String> = []) {
+        client.bulkUploadCheckResponder = { items in
+            AssetBulkUploadCheckResponse(results: items.map {
+                AssetBulkUploadCheckResponse.Result(id: $0.id, action: gone.contains($0.checksum) ? "accept" : "reject")
+            })
+        }
+    }
+
+    /// One edited photo whose original is on the server, scanned with the setting on.
+    private func scanEdited(
+        record: BackupEditRecord?, gone: Set<String> = [], includesEdits: Bool = true
+    ) async -> (vm: FreeUpSpaceViewModel, source: MockCleanupSource, client: MockImmichClient) {
+        let client = MockImmichClient()
+        serverHolding(client, except: gone)
+        let source = MockCleanupSource()
+        source.candidates = [candidate("a")]
+        source.editedSignatures = ["a": "t1"]
+        let editLedger = BackupEditLedger.inMemory()
+        if let record { editLedger.upsert(id: "a", record) }
+        let vm = makeViewModel(
+            client: client, ledger: ledger(["a"]), source: source,
+            editLedger: editLedger, includesEdits: includesEdits
+        )
+        vm.setCutoff(Date())
+        await vm.scan()
+        return (vm, source, client)
+    }
+
+    func test_AC_207_editedPhotoWhoseEditIsNotSentStaysOnTheDevice() async {
+        let result = await scanEdited(record: nil)
+
+        XCTAssertTrue(result.vm.candidates.isEmpty, "the original alone is on the server")
+        XCTAssertEqual(result.vm.skippedEditNotBackedUp, 1)
+    }
+
+    func test_AC_207_confirmedEditLetsThePhotoBeOffered() async {
+        let result = await scanEdited(record: editRecord())
+
+        XCTAssertEqual(result.vm.candidates.map(\.id), ["a"])
+        XCTAssertEqual(result.vm.skippedEditNotBackedUp, 0)
+        XCTAssertEqual(result.source.lastConfirmedEdits, ["a": "t1"])
+    }
+
+    func test_AC_207_purgedEditKeepsThePhoto() async {
+        let result = await scanEdited(record: editRecord(), gone: ["e-sum"])
+
+        XCTAssertTrue(result.vm.candidates.isEmpty, "the server answered accept: it no longer holds the edit")
+        XCTAssertEqual(result.vm.skippedEditNotBackedUp, 1)
+    }
+
+    func test_AC_207_editWaitingForItsStackIsNotConfirmed() async {
+        let result = await scanEdited(record: editRecord(stacked: false))
+
+        XCTAssertTrue(result.vm.candidates.isEmpty)
+        XCTAssertEqual(result.vm.skippedEditNotBackedUp, 1)
+    }
+
+    func test_AC_207_aNewerEditThanTheSentOneKeepsThePhoto() async {
+        let result = await scanEdited(record: editRecord(signature: "t0"))
+
+        XCTAssertTrue(result.vm.candidates.isEmpty)
+        XCTAssertEqual(result.vm.skippedEditNotBackedUp, 1)
+    }
+
+    func test_AC_207_settingOffKeepsTodaysCriterionAndAsksNothingMore() async {
+        let result = await scanEdited(record: nil, includesEdits: false)
+
+        XCTAssertEqual(result.vm.candidates.map(\.id), ["a"], "the original on the server is enough")
+        XCTAssertEqual(result.vm.skippedEditNotBackedUp, 0)
+        XCTAssertNil(result.source.lastConfirmedEdits)
+        XCTAssertEqual(result.client.bulkUploadCheckChunks.count, 1, "no request for edits")
     }
 }
