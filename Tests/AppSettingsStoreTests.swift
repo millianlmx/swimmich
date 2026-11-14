@@ -227,4 +227,12 @@ final class AppSettingsStoreTests: XCTestCase {
         let traits = UITraitCollection(userInterfaceStyle: style)
         return UIColor(color).resolvedColor(with: traits).cgColor.components ?? []
     }
+
+    /// A launch argument (`-hapticFeedbackEnabled NO`, how a UI scenario turns
+    /// haptics off) reaches the defaults as a string, not a Bool: it must still
+    /// read as off.
+    func test_hapticsOffFromALaunchArgumentString() {
+        defaults.set("NO", forKey: AppSettingsStore.hapticsEnabledKey)
+        XCTAssertFalse(AppSettingsStore(defaults: defaults).hapticsEnabled)
+    }
 }

@@ -426,35 +426,6 @@ final class LoginStartupUITests: XCTestCase {
         XCTAssertTrue(waitUntil(10) { (toggle.value as? String) == "1" }, "Require Face ID did not turn on")
     }
 
-    /// Me → Preferences → "Haptic Feedback" set to `on`; the value is stored at once.
-    private func setHaptics(on: Bool) {
-        openMe(scrollingTo: "preferencesRow").tap()
-        let toggle = element("preferencesHapticsToggle")
-        // Feedback is the last section of the form: below the fold, its row is
-        // not drawn, so it has no element until the form is scrolled to it.
-        XCTAssertTrue(element("preferencesGroupPicker").waitForExistence(timeout: 15),
-                      "the Preferences form never appeared — \(screenText())")
-        for _ in 0..<10 where !(toggle.exists && toggle.isHittable) {
-            app.swipeUp()
-            Thread.sleep(forTimeInterval: 0.8)
-        }
-        XCTAssertTrue(toggle.waitForExistence(timeout: 5) && toggle.isHittable,
-                      "the Haptic Feedback toggle is missing — \(screenText())")
-        let wanted = on ? "1" : "0"
-        for _ in 0..<3 where (toggle.value as? String) != wanted {
-            // The element may be the whole row: its own switch, when exposed,
-            // is the control; otherwise it sits at the row's trailing edge.
-            let control = toggle.switches.firstMatch
-            if control.exists && control.isHittable {
-                control.tap()
-            } else {
-                toggle.coordinate(withNormalizedOffset: CGVector(dx: 0.93, dy: 0.5)).tap()
-            }
-            waitUntil(4) { (toggle.value as? String) == wanted }
-        }
-        XCTAssertEqual(toggle.value as? String, wanted, "Haptic Feedback never reached \(wanted)")
-    }
-
     // MARK: - System alerts (Photos access, notifications)
 
     private static func fullAccessButton(in alert: XCUIElement) -> XCUIElement? {
@@ -878,26 +849,10 @@ final class LoginStartupUITests: XCTestCase {
         XCTAssertTrue(waitUntil(10) { self.probeValue().contains("haptic=error#2") },
                       "no failure haptic for the unreachable server (probe: \(probeValue()))")
 
-        // Haptics off through the interface (Me → Preferences), like
-        // MemoriesChainUITests.test_AC_60_4: a `-hapticFeedbackEnabled NO`
-        // launch argument arrives as a string and is read as the default (on).
+        // Haptics off from the launch arguments: AppSettingsStore reads the
+        // argument's "NO" string as off (bool(forKey:)).
         mute("off")
-        launchFresh()
-        reachLogin()
-        signIn()
-        reachShell()
-        // Registered BEFORE the setting is touched, and run even when this test
-        // fails on the way: no later scenario may read a haptics-off setting.
-        addTeardownBlock { [self] in
-            _ = get("/__reset")
-            launchFresh()
-            reachLogin()
-            signIn()
-            reachShell()
-            setHaptics(on: true)
-        }
-        setHaptics(on: false)
-        launchFresh()
+        launchFresh(extra: ["-hapticFeedbackEnabled", "NO"])
         openServerStep()
         enterServer(stub)
         checkServer()
