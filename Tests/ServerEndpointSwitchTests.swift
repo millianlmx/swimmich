@@ -108,6 +108,25 @@ final class ServerEndpointSwitchTests: XCTestCase {
 
         XCTAssertEqual(rig.store.settings(for: accountID).lastKnownVersion, "1.119.0")
         XCTAssertEqual(rig.sut.settings.lastKnownVersion, "1.119.0")
+
+        // The account changes while the version is being read: nothing is written, for either account.
+        let other = makeRig(settings: ServerAddressSettings())
+        let otherID = "https://other.example.org|me"
+        let sut = other.sut
+        other.client.serverVersionGate = {
+            await MainActor.run {
+                sut.activate(
+                    accountID: otherID, accountURL: URL(string: "https://other.example.org")!,
+                    token: "tok2", connectRealtime: false
+                )
+            }
+        }
+        activate(other)
+
+        await other.sut.refreshKnownVersion()
+
+        XCTAssertNil(other.store.settings(for: accountID).lastKnownVersion)
+        XCTAssertNil(other.store.settings(for: otherID).lastKnownVersion)
     }
 
     func test_AC_49_aFailedVersionReadWritesNothing() async {
@@ -268,24 +287,58 @@ final class ServerEndpointSwitchTests: XCTestCase {
             monitor: nil, addressBook: ServerAddressBook(), customHeaders: NoCustomHeaders(), appLog: NoopAppLogSink(),
             probeDeadline: .milliseconds(200)
         )
+        let file = FileManager.default.temporaryDirectory.appendingPathComponent("\(UUID().uuidString).jpg")
+        try Data("bytes".utf8).write(to: file)
+        defer { try? FileManager.default.removeItem(at: file) }
+        func upload() async throws {
+            CapturingURLProtocol.reset()
+            CapturingURLProtocol.nextData = Data(#"{"id":"new","status":"created"}"#.utf8)
+            _ = try await api.uploadAsset(
+                fileURL: file, fileCreatedAt: "2024-07-01T00:00:00.000Z", fileModifiedAt: "2024-07-01T00:00:00.000Z",
+                filename: "p.jpg", duration: nil, isFavorite: false, visibility: .timeline, livePhotoVideoId: nil,
+                checksum: "Y2hlY2tzdW0=", deviceAssetId: "local://1", deviceId: "dev"
+            )
+        }
         probe.answer(account, .immich(version: version))
         probe.answer(local, .immich(version: version))
         sut.activate(accountID: accountID, accountURL: account, token: "tok", connectRealtime: true)
         XCTAssertEqual(transport.connects.last?.baseURL, account)
 
         await sut.evaluate(.networkChange)
-        CapturingURLProtocol.reset()
-        _ = try? await api.validateToken()
+        try await upload()
         XCTAssertEqual(CapturingURLProtocol.lastRequest?.url?.host, "192.168.1.10")
+        XCTAssertEqual(CapturingURLProtocol.lastRequest?.url?.port, 2283)
+        XCTAssertEqual(CapturingURLProtocol.lastRequest?.url?.path, "/api/assets")
+        XCTAssertEqual(CapturingURLProtocol.lastRequest?.httpMethod, "POST")
+        XCTAssertEqual(CapturingURLProtocol.lastRequest?.value(forHTTPHeaderField: "Authorization"), "Bearer tok")
         XCTAssertEqual(transport.connects.last?.baseURL, local, "the socket follows the address")
 
         probe.answer(local, .unreachable)
         await sut.evaluate(.networkChange)
-        CapturingURLProtocol.reset()
-        _ = try? await api.validateToken()
+        try await upload()
         XCTAssertEqual(CapturingURLProtocol.lastRequest?.url?.host, "photos.example.org")
+        XCTAssertEqual(CapturingURLProtocol.lastRequest?.url?.path, "/api/assets")
         XCTAssertEqual(transport.connects.last?.baseURL, account)
         XCTAssertEqual(transport.connects.last?.token, "tok")
+    }
+
+    func test_AC_238_socketStaysWhenTheAddressInUseStays() async {
+        let rig = makeRig()
+        bothAnswer(rig)
+        activate(rig)
+        XCTAssertEqual(rig.transport.connects.count, 1)
+
+        await rig.sut.evaluate(.networkChange)
+        XCTAssertEqual(rig.sut.activeURL, local)
+        XCTAssertEqual(rig.transport.connects.count, 2)
+        XCTAssertEqual(rig.transport.connects.last?.baseURL, local)
+
+        await rig.sut.evaluate(.networkChange)
+        await rig.sut.evaluate(.foreground)
+
+        XCTAssertEqual(rig.sut.activeURL, local)
+        XCTAssertEqual(rig.transport.connects.count, 2, "the address in use did not change: no reconnection")
+        XCTAssertEqual(rig.client.retargetedURLs.last, local)
     }
 
     // MARK: - AC-243
@@ -312,6 +365,8 @@ final class ServerEndpointSwitchTests: XCTestCase {
 
         XCTAssertTrue(rig.probe.calls.isEmpty)
         XCTAssertEqual(rig.sut.activeURL, account)
+        XCTAssertEqual(rig.client.configuredBaseURL, account)
+        XCTAssertEqual(rig.client.configureCount, 1)
     }
 
     func test_AC_243_turningTheSwitchOffReturnsToExternalWithoutSigningOut() async {
@@ -330,6 +385,8 @@ final class ServerEndpointSwitchTests: XCTestCase {
         XCTAssertFalse(rig.sut.usesLocal)
         XCTAssertEqual(rig.transport.connects.last?.baseURL, account, "the socket leaves the local address too")
         XCTAssertEqual(rig.client.configuredToken, "tok")
+        XCTAssertEqual(rig.client.configureCount, 1, "only `activate` configures the client")
+        XCTAssertEqual(rig.client.retargetedURLs.last, account, "the external address arrives by retarget")
     }
 
     func test_AC_243_modifiedExternalAddressIsTheAddressInUse() async {
@@ -390,6 +447,23 @@ final class ServerEndpointSwitchTests: XCTestCase {
 
         let text = store.snapshot().map { [$0.message, $0.details ?? ""].joined(separator: " ") }.joined(separator: "\n")
         for secret in ["192.168.1.10", "2283", "vpn.example.net", "8443"] {
+            XCTAssertFalse(text.contains(secret), "\(secret) leaked into the log")
+        }
+    }
+
+    func test_AC_245_addressesSavedInNetworkAreRedacted() async {
+        let log = AppLogStore()
+        let rig = makeRig(settings: ServerAddressSettings(), log: log)
+        activate(rig)
+
+        await rig.sut.save(ServerAddressSettings(localURL: "http://10.0.0.7:2299", autoSwitch: true))
+
+        log.record(AppLogEntry(
+            level: .warning, method: "GET", path: "/api/server/ping", category: "HTTP",
+            message: "GET http://10.0.0.7:2299/api/server/ping failed", details: nil
+        ))
+        let text = log.snapshot().map { [$0.message, $0.details ?? ""].joined(separator: " ") }.joined(separator: "\n")
+        for secret in ["10.0.0.7", "2299"] {
             XCTAssertFalse(text.contains(secret), "\(secret) leaked into the log")
         }
     }
@@ -487,9 +561,20 @@ final class ServerEndpointSwitchTests: XCTestCase {
 
         XCTAssertEqual(rig.probe.calls.map(\.url), [vpn])
         XCTAssertEqual(rig.client.configuredBaseURL, vpn)
+        XCTAssertEqual(rig.client.configureCount, 1, "only `activate` configured the client")
+        XCTAssertEqual(rig.client.retargetedURLs.last, vpn, "the modified address arrives by retarget")
         XCTAssertEqual(rig.sut.externalStatus, .reachable)
         XCTAssertEqual(rig.store.settings(for: accountID).lastKnownVersion, version)
         XCTAssertFalse(rig.sut.isEvaluating)
+
+        activate(rig)
+        await rig.sut.evaluate(.foreground)
+        await rig.sut.evaluate(.networkChange)
+        await rig.sut.evaluate(.backgroundPass)
+
+        XCTAssertEqual(rig.probe.calls.map(\.url), [vpn], "still the single probe of the user's gesture")
+        XCTAssertEqual(rig.client.configuredBaseURL, vpn)
+        XCTAssertEqual(rig.client.configureCount, 2, "the two activations only")
     }
 
     func test_AC_235_unreachableExternalSavedWithState() async {
@@ -535,4 +620,59 @@ final class ServerEndpointSwitchTests: XCTestCase {
         XCTAssertEqual(rig.sut.localStatus, .reachable)
         XCTAssertEqual(rig.sut.activeURL, account)
     }
+
+    // MARK: - Evaluation concurrency and timing
+
+    /// An evaluation already running is enough: `reason` waits for it and probes nothing more.
+    private func assertJoinsRunningEvaluation(_ reason: EvaluationReason) async {
+        let rig = makeRig(deadline: .seconds(2))
+        rig.probe.answer(account, .immich(version: version))
+        rig.probe.script(local, .init(result: .immich(version: version), delay: .milliseconds(300)))
+        activate(rig)
+        await waitUntil { rig.probe.callCount(for: self.local) >= 1 }
+        XCTAssertTrue(rig.sut.isEvaluating)
+
+        await rig.sut.evaluate(reason)
+
+        XCTAssertFalse(rig.sut.isEvaluating)
+        XCTAssertEqual(rig.sut.localStatus, .reachable)
+        XCTAssertEqual(rig.sut.activeURL, local)
+        XCTAssertNotNil(rig.sut.lastOutcome)
+        XCTAssertEqual(rig.probe.callCount(for: local), 1)
+        XCTAssertEqual(rig.probe.callCount(for: account), 1)
+    }
+
+    func test_AC_236_foregroundJoinsTheRunningEvaluation() async {
+        await assertJoinsRunningEvaluation(.foreground)
+    }
+
+    func test_AC_247_backgroundPassJoinsTheRunningEvaluation() async {
+        await assertJoinsRunningEvaluation(.backgroundPass)
+    }
+
+    func test_AC_236_requestsGoExternalWhileProbing() async {
+        let rig = makeRig()
+        bothAnswer(rig)
+        activate(rig)
+        await rig.sut.evaluate(.networkChange)
+        XCTAssertEqual(rig.client.configuredBaseURL, local)
+
+        let seen = URLBox()
+        let localURL = local
+        let client = rig.client
+        rig.probe.onProbe = { url in if url == localURL { seen.set(client.configuredBaseURL) } }
+        await rig.sut.evaluate(.foreground)
+
+        XCTAssertEqual(seen.value, account, "during the local probe the requests go to the external address")
+        XCTAssertEqual(rig.client.configuredBaseURL, local)
+        XCTAssertEqual(rig.sut.activeURL, local)
+    }
+}
+
+/// A value written from a probe callback and read by the test.
+private final class URLBox: @unchecked Sendable {
+    private let lock = NSLock()
+    private var stored: URL?
+    var value: URL? { lock.lock(); defer { lock.unlock() }; return stored }
+    func set(_ url: URL?) { lock.lock(); stored = url; lock.unlock() }
 }
