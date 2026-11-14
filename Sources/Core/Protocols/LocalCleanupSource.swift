@@ -49,6 +49,10 @@ struct CleanupScanResult: Equatable, Sendable {
     /// Assets actually inspected: resolved on device and not in a shared album,
     /// before the cutoff and keep filters narrow the list down.
     let scannedCount: Int
+    /// Assets left out because their edited version (`hasAdjustments`) is not
+    /// confirmed on the server for the current modification date — only counted
+    /// when the "Also back up edits" setting is on (`confirmedEdits != nil`).
+    var skippedEditNotBackedUp: Int = 0
 
     var reclaimableBytes: Int64 {
         candidates.reduce(0) { $0 + $1.byteSize }
@@ -68,12 +72,17 @@ protocol LocalCleanupSource: Sendable {
     /// `backedUpIDs` is the *server's* answer (`bulk-upload-check` rejects),
     /// never the ledger's: a stale ledger entry would let this delete the last
     /// remaining copy.
+    /// `confirmedEdits` is `localIdentifier → signature` of the edited
+    /// renderings the server confirmed; `nil` means the setting is off and an
+    /// edited asset is judged by its original alone. When set, an edited asset
+    /// whose current modification date is not confirmed is kept on the device.
     func cleanupCandidates(
         cutoff: Date,
         keepFavorites: Bool,
         keepMediaType: CleanupKeepMediaType,
         keepAlbumIDs: Set<String>,
-        backedUpIDs: Set<String>
+        backedUpIDs: Set<String>,
+        confirmedEdits: [String: String]?
     ) -> CleanupScanResult
 
     /// Deletes the given assets from the photo library, in batches, and returns

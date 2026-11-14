@@ -38704,90 +38704,544 @@
     },
     "Display" : {
       "localizations" : {
-        "de" : { "stringUnit" : { "state" : "translated", "value" : "Anzeige" } },
-        "es" : { "stringUnit" : { "state" : "translated", "value" : "Visualización" } },
-        "fr" : { "stringUnit" : { "state" : "translated", "value" : "Affichage" } },
-        "it" : { "stringUnit" : { "state" : "translated", "value" : "Visualizzazione" } }
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Anzeige"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Visualización"
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Affichage"
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Visualizzazione"
+          }
+        }
       }
     },
     "Not in album" : {
       "localizations" : {
-        "de" : { "stringUnit" : { "state" : "translated", "value" : "Nicht in einem Album" } },
-        "es" : { "stringUnit" : { "state" : "translated", "value" : "Sin álbum" } },
-        "fr" : { "stringUnit" : { "state" : "translated", "value" : "Hors album" } },
-        "it" : { "stringUnit" : { "state" : "translated", "value" : "Non in un album" } }
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Nicht in einem Album"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Sin álbum"
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hors album"
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Non in un album"
+          }
+        }
       }
     },
     "People & Tags" : {
       "localizations" : {
-        "de" : { "stringUnit" : { "state" : "translated", "value" : "Personen & Tags" } },
-        "es" : { "stringUnit" : { "state" : "translated", "value" : "Personas y etiquetas" } },
-        "fr" : { "stringUnit" : { "state" : "translated", "value" : "Personnes et étiquettes" } },
-        "it" : { "stringUnit" : { "state" : "translated", "value" : "Persone ed etichette" } }
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Personen & Tags"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Personas y etiquetas"
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Personnes et étiquettes"
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Persone ed etichette"
+          }
+        }
       }
     },
     "Filter people" : {
       "localizations" : {
-        "de" : { "stringUnit" : { "state" : "translated", "value" : "Personen filtern" } },
-        "es" : { "stringUnit" : { "state" : "translated", "value" : "Filtrar personas" } },
-        "fr" : { "stringUnit" : { "state" : "translated", "value" : "Filtrer les personnes" } },
-        "it" : { "stringUnit" : { "state" : "translated", "value" : "Filtra persone" } }
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Personen filtern"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Filtrar personas"
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Filtrer les personnes"
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Filtra persone"
+          }
+        }
       }
     },
     "No people" : {
       "localizations" : {
-        "de" : { "stringUnit" : { "state" : "translated", "value" : "Keine Personen" } },
-        "es" : { "stringUnit" : { "state" : "translated", "value" : "Sin personas" } },
-        "fr" : { "stringUnit" : { "state" : "translated", "value" : "Aucune personne" } },
-        "it" : { "stringUnit" : { "state" : "translated", "value" : "Nessuna persona" } }
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Keine Personen"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Sin personas"
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Aucune personne"
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Nessuna persona"
+          }
+        }
       }
     },
     "Search by file name" : {
       "localizations" : {
-        "de" : { "stringUnit" : { "state" : "translated", "value" : "Nach Dateiname suchen" } },
-        "es" : { "stringUnit" : { "state" : "translated", "value" : "Buscar por nombre de archivo" } },
-        "fr" : { "stringUnit" : { "state" : "translated", "value" : "Rechercher par nom de fichier" } },
-        "it" : { "stringUnit" : { "state" : "translated", "value" : "Cerca per nome file" } }
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Nach Dateiname suchen"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Buscar por nombre de archivo"
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Rechercher par nom de fichier"
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Cerca per nome file"
+          }
+        }
       }
     },
     "Search descriptions" : {
       "localizations" : {
-        "de" : { "stringUnit" : { "state" : "translated", "value" : "Beschreibungen durchsuchen" } },
-        "es" : { "stringUnit" : { "state" : "translated", "value" : "Buscar en descripciones" } },
-        "fr" : { "stringUnit" : { "state" : "translated", "value" : "Rechercher dans les descriptions" } },
-        "it" : { "stringUnit" : { "state" : "translated", "value" : "Cerca nelle descrizioni" } }
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Beschreibungen durchsuchen"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Buscar en descripciones"
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Rechercher dans les descriptions"
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Cerca nelle descrizioni"
+          }
+        }
       }
     },
     "People, %@" : {
       "localizations" : {
-        "de" : { "stringUnit" : { "state" : "translated", "value" : "Personen, %@" } },
-        "es" : { "stringUnit" : { "state" : "translated", "value" : "Personas, %@" } },
-        "fr" : { "stringUnit" : { "state" : "translated", "value" : "Personnes, %@" } },
-        "it" : { "stringUnit" : { "state" : "translated", "value" : "Persone, %@" } }
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Personen, %@"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Personas, %@"
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Personnes, %@"
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Persone, %@"
+          }
+        }
       }
     },
     "Tags, %@" : {
       "localizations" : {
-        "de" : { "stringUnit" : { "state" : "translated", "value" : "Tags, %@" } },
-        "es" : { "stringUnit" : { "state" : "translated", "value" : "Etiquetas, %@" } },
-        "fr" : { "stringUnit" : { "state" : "translated", "value" : "Étiquettes, %@" } },
-        "it" : { "stringUnit" : { "state" : "translated", "value" : "Etichette, %@" } }
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Tags, %@"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Etiquetas, %@"
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Étiquettes, %@"
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Etichette, %@"
+          }
+        }
       }
     },
     "File name, %@" : {
       "localizations" : {
-        "de" : { "stringUnit" : { "state" : "translated", "value" : "Dateiname, %@" } },
-        "es" : { "stringUnit" : { "state" : "translated", "value" : "Nombre del archivo, %@" } },
-        "fr" : { "stringUnit" : { "state" : "translated", "value" : "Nom du fichier, %@" } },
-        "it" : { "stringUnit" : { "state" : "translated", "value" : "Nome file, %@" } }
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Dateiname, %@"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Nombre del archivo, %@"
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Nom du fichier, %@"
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Nome file, %@"
+          }
+        }
       }
     },
     "Description, %@" : {
       "localizations" : {
-        "de" : { "stringUnit" : { "state" : "translated", "value" : "Beschreibung, %@" } },
-        "es" : { "stringUnit" : { "state" : "translated", "value" : "Descripción, %@" } },
-        "fr" : { "stringUnit" : { "state" : "translated", "value" : "Description, %@" } },
-        "it" : { "stringUnit" : { "state" : "translated", "value" : "Descrizione, %@" } }
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Beschreibung, %@"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Descripción, %@"
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Description, %@"
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Descrizione, %@"
+          }
+        }
+      }
+    },
+    "Also back up edits" : {
+      "localizations" : {
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Sauvegarder aussi les retouches"
+          }
+        },
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Bearbeitungen ebenfalls sichern"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Copiar también las ediciones"
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Esegui il backup anche delle modifiche"
+          }
+        }
+      }
+    },
+    "Edits made in Photos or another app are uploaded too, stacked on top of their original." : {
+      "localizations" : {
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Les retouches faites dans Photos ou une autre app sont aussi envoyées, empilées au-dessus de l'original."
+          }
+        },
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "In Fotos oder einer anderen App vorgenommene Bearbeitungen werden ebenfalls hochgeladen und über dem Original gestapelt."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Las ediciones hechas en Fotos u otra app también se suben, apiladas sobre el original."
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Anche le modifiche fatte in Foto o in un'altra app vengono caricate, impilate sopra l'originale."
+          }
+        }
+      }
+    },
+    "The edited version could not be backed up." : {
+      "localizations" : {
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "La version retouchée n'a pas pu être sauvegardée."
+          }
+        },
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Die bearbeitete Version konnte nicht gesichert werden."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "No se pudo hacer copia de seguridad de la versión editada."
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Impossibile eseguire il backup della versione modificata."
+          }
+        }
+      }
+    },
+    "The edited version was backed up but could not be stacked on the original." : {
+      "localizations" : {
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "La version retouchée a été sauvegardée mais n'a pas pu être empilée sur l'original."
+          }
+        },
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Die bearbeitete Version wurde gesichert, konnte aber nicht über dem Original gestapelt werden."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "La versión editada se guardó, pero no se pudo apilar sobre el original."
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "La versione modificata è stata salvata, ma non è stato possibile impilarla sull'originale."
+          }
+        }
+      }
+    },
+    "Edits not backed up yet" : {
+      "localizations" : {
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Retouches pas encore sauvegardées"
+          }
+        },
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Noch nicht gesicherte Bearbeitungen"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Ediciones aún sin copia de seguridad"
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Modifiche non ancora salvate"
+          }
+        }
+      }
+    },
+    "%lld edits not backed up" : {
+      "localizations" : {
+        "en" : {
+          "variations" : {
+            "plural" : {
+              "one" : {
+                "stringUnit" : {
+                  "state" : "translated",
+                  "value" : "%lld edit not backed up"
+                }
+              },
+              "other" : {
+                "stringUnit" : {
+                  "state" : "translated",
+                  "value" : "%lld edits not backed up"
+                }
+              }
+            }
+          }
+        },
+        "fr" : {
+          "variations" : {
+            "plural" : {
+              "one" : {
+                "stringUnit" : {
+                  "state" : "translated",
+                  "value" : "%lld retouche pas encore sauvegardée"
+                }
+              },
+              "other" : {
+                "stringUnit" : {
+                  "state" : "translated",
+                  "value" : "%lld retouches pas encore sauvegardées"
+                }
+              }
+            }
+          }
+        },
+        "de" : {
+          "variations" : {
+            "plural" : {
+              "one" : {
+                "stringUnit" : {
+                  "state" : "translated",
+                  "value" : "%lld Bearbeitung nicht gesichert"
+                }
+              },
+              "other" : {
+                "stringUnit" : {
+                  "state" : "translated",
+                  "value" : "%lld Bearbeitungen nicht gesichert"
+                }
+              }
+            }
+          }
+        },
+        "es" : {
+          "variations" : {
+            "plural" : {
+              "one" : {
+                "stringUnit" : {
+                  "state" : "translated",
+                  "value" : "%lld edición sin copia de seguridad"
+                }
+              },
+              "other" : {
+                "stringUnit" : {
+                  "state" : "translated",
+                  "value" : "%lld ediciones sin copia de seguridad"
+                }
+              }
+            }
+          }
+        },
+        "it" : {
+          "variations" : {
+            "plural" : {
+              "one" : {
+                "stringUnit" : {
+                  "state" : "translated",
+                  "value" : "%lld modifica non salvata"
+                }
+              },
+              "other" : {
+                "stringUnit" : {
+                  "state" : "translated",
+                  "value" : "%lld modifiche non salvate"
+                }
+              }
+            }
+          }
+        }
       }
     }
   },
