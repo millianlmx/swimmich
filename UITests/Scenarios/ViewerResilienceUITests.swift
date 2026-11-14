@@ -652,13 +652,32 @@ final class ViewerResilienceUITests: XCTestCase {
 
     // MARK: - AC-59: the offline copy that cannot be read
 
+    /// What the video page shows and what reached the stub for the video: the CI
+    /// log is admin-only, so a failure message is the only place a cause can be read.
+    private func videoDiagnostics() -> String {
+        let requests = stubRequests()
+        let forVideo = requests.filter { $0.path.contains(video) }.map { "\($0.method) \($0.path)" }
+        let error = element("videoPlayerError")
+        let pages = elements(withPrefix: "viewerImage_").allElementsBoundByIndex.map(\.identifier)
+        return "player: retry=\(element("videoPlayerRetry").exists) "
+            + "error=\(error.exists ? error.label : "-") "
+            + "transport=\(element("videoPlayerPlayPause").exists); "
+            + "photo pages: \(pages); \(requests.count) stub request(s), for the video: \(forVideo)"
+    }
+
     func test_AC_59_offlineCopyFallsBack() throws {
         reset()
         launchSignedIn()
 
         // An offline copy of the video, made from bytes that are not a movie.
+        // The line runs on a freshly erased simulator (`--erase`) of a runner
+        // shared with other jobs: the first stream gets a minute, not 30 s.
         openViewer(on: video)
-        XCTAssertTrue(waitUntil(timeout: 30) { self.playbackRequests() >= 1 }, "the video never streamed")
+        if !waitUntil(timeout: 60, { self.playbackRequests() >= 1 }) {
+            shot("video-never-streamed")
+            XCTFail("the video never streamed — \(videoDiagnostics())")
+            return
+        }
         element("viewerShareButton").tap()
         let remove = element("removeFromOfflineButton")
         let download = element("downloadForOfflineButton")
@@ -675,9 +694,10 @@ final class ViewerResilienceUITests: XCTestCase {
         let streamedBefore = playbackRequests()
         openViewer(on: video)
         XCTAssertTrue(waitUntil(timeout: 40) { self.playbackRequests() > streamedBefore },
-                      "the player never fell back to the server")
-        XCTAssertTrue(element("videoPlayerPlayPause").waitForExistence(timeout: 20), "the video page shows no transport")
-        XCTAssertFalse(element("videoPlayerRetry").exists, "the video stayed in error")
+                      "the player never fell back to the server — \(videoDiagnostics())")
+        XCTAssertTrue(element("videoPlayerPlayPause").waitForExistence(timeout: 20),
+                      "the video page shows no transport — \(videoDiagnostics())")
+        XCTAssertFalse(element("videoPlayerRetry").exists, "the video stayed in error — \(videoDiagnostics())")
 
         // AC-59.4: the slideshow plays it too, instead of skipping it.
         let streamedInSlideshow = playbackRequests()
@@ -694,7 +714,8 @@ final class ViewerResilienceUITests: XCTestCase {
         // AC-59.3: the server fails too — the error state, one switch, no loop.
         flip("playback=fail")
         openViewer(on: video)
-        XCTAssertTrue(element("videoPlayerRetry").waitForExistence(timeout: 40), "no Retry when the server fails too")
+        XCTAssertTrue(element("videoPlayerRetry").waitForExistence(timeout: 40),
+                      "no Retry when the server fails too — \(videoDiagnostics())")
         let settled = playbackRequests()
         Thread.sleep(forTimeInterval: 5)
         XCTAssertEqual(playbackRequests(), settled, "the player kept retrying on its own")
