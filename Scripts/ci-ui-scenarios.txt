@@ -122,53 +122,40 @@ immich_stub_share_caches.py ShareAndCachesUITests/test_AC_279 --release
 immich_stub_share_caches.py ShareAndCachesUITests/test_AC_272
 immich_stub_share_caches.py ShareAndCachesUITests/test_AC_275
 immich_stub_share_caches.py ShareAndCachesUITests/test_AC_50
-<<<<<<< HEAD
-immich_stub_share_caches.py ShareAndCachesUITests/test_AC_270
-immich_stub_share_caches.py ShareAndCachesUITests/test_AC_273
+immich_stub_share_caches.py ShareAndCachesUITests/test_AC_270 --release
+immich_stub_share_caches.py ShareAndCachesUITests/test_AC_273 --release
 
 # L-28 Connexion et démarrage (AC-53 to AC-56, AC-330 to AC-348), against
 # immich_stub_login.py. The widget backup pass needs a photo in the library.
-immich_stub_login.py LoginStartupUITests/test_AC_53
-immich_stub_login.py LoginStartupUITests/test_AC_339
-immich_stub_login.py LoginStartupUITests/test_AC_336
-immich_stub_login.py LoginStartupUITests/test_AC_345
-immich_stub_login.py LoginStartupUITests/test_AC_346
-immich_stub_login.py LoginStartupUITests/test_AC_344
-immich_stub_login.py LoginStartupUITests/test_AC_344_widgetBackup --media Widget-backup-photo.png
-immich_stub_login.py LoginStartupUITests/test_AC_344_whatsNewCold
-immich_stub_login.py LoginStartupUITests/test_AC_344_coverOpenWarm
-immich_stub_login.py LoginStartupUITests/test_AC_343
-immich_stub_login.py LoginStartupUITests/test_AC_337
-immich_stub_login.py LoginStartupUITests/test_AC_341
-immich_stub_login.py LoginStartupUITests/test_AC_341_slowServerKeepsSkeleton
-immich_stub_login.py LoginStartupUITests/test_AC_341_lateFirstPageReplacesError
-immich_stub_login.py LoginStartupUITests/test_AC_342
-immich_stub_login.py LoginStartupUITests/test_AC_333
-immich_stub_login.py LoginStartupUITests/test_AC_334
-immich_stub_login.py LoginStartupUITests/test_AC_338
-immich_stub_login.py LoginStartupUITests/test_AC_340
-immich_stub_login.py LoginStartupUITests/test_AC_56
-immich_stub_login.py LoginStartupUITests/test_AC_55
-immich_stub_login.py LoginStartupUITests/test_AC_54
-immich_stub_login.py LoginStartupUITests/test_AC_330
-immich_stub_login.py LoginStartupUITests/test_AC_331
-immich_stub_login.py LoginStartupUITests/test_AC_332
-immich_stub_login.py LoginStartupUITests/test_AC_335
-immich_stub_login.py LoginStartupUITests/test_AC_347
-immich_stub_login.py LoginStartupUITests/test_AC_348
-
-# L-21 server-side edits (AC-39, AC-40, AC-181, AC-182, AC-188, AC-189): the editor, the edited
-# version shown by the viewer, and the choice of the file to download.
-immich_stub_asset_edits.py AssetEditsUITests/test_AC_182_reopenChangeRotationThenRevert
-immich_stub_asset_edits.py AssetEditsUITests/test_AC_181_cropRotateMirrorSavesEdits
-immich_stub_asset_edits.py AssetEditsUITests/test_AC_188_oldServerSavesCopy
-immich_stub_asset_edits.py AssetEditsUITests/test_AC_189_putErrorShowsMessage
-immich_stub_asset_edits.py AssetEditsUITests/test_AC_39_editedVersionShownThenTheOriginalComesBack
-immich_stub_asset_edits.py AssetEditsUITests/test_AC_40_downloadEditedThenOriginalAsksTwiceWithDifferentFiles
-=======
-immich_stub_share_caches.py ShareAndCachesUITests/test_AC_270 --release
-immich_stub_share_caches.py ShareAndCachesUITests/test_AC_273 --release
->>>>>>> b5e855ca5e00062429bab1aba81422ba81eaab55
+# Release: the night's suite is at its budget of 40 lines.
+immich_stub_login.py LoginStartupUITests/test_AC_53 --release
+immich_stub_login.py LoginStartupUITests/test_AC_339 --release
+immich_stub_login.py LoginStartupUITests/test_AC_336 --release
+immich_stub_login.py LoginStartupUITests/test_AC_345 --release
+immich_stub_login.py LoginStartupUITests/test_AC_346 --release
+immich_stub_login.py LoginStartupUITests/test_AC_344 --release
+immich_stub_login.py LoginStartupUITests/test_AC_344_widgetBackup --media Widget-backup-photo.png --release
+immich_stub_login.py LoginStartupUITests/test_AC_344_whatsNewCold --release
+immich_stub_login.py LoginStartupUITests/test_AC_344_coverOpenWarm --release
+immich_stub_login.py LoginStartupUITests/test_AC_343 --release
+immich_stub_login.py LoginStartupUITests/test_AC_337 --release
+immich_stub_login.py LoginStartupUITests/test_AC_341 --release
+immich_stub_login.py LoginStartupUITests/test_AC_341_slowServerKeepsSkeleton --release
+immich_stub_login.py LoginStartupUITests/test_AC_341_lateFirstPageReplacesError --release
+immich_stub_login.py LoginStartupUITests/test_AC_342 --release
+immich_stub_login.py LoginStartupUITests/test_AC_333 --release
+immich_stub_login.py LoginStartupUITests/test_AC_334 --release
+immich_stub_login.py LoginStartupUITests/test_AC_338 --release
+immich_stub_login.py LoginStartupUITests/test_AC_340 --release
+immich_stub_login.py LoginStartupUITests/test_AC_56 --release
+immich_stub_login.py LoginStartupUITests/test_AC_55 --release
+immich_stub_login.py LoginStartupUITests/test_AC_54 --release
+immich_stub_login.py LoginStartupUITests/test_AC_330 --release
+immich_stub_login.py LoginStartupUITests/test_AC_331 --release
+immich_stub_login.py LoginStartupUITests/test_AC_332 --release
+immich_stub_login.py LoginStartupUITests/test_AC_335 --release
+immich_stub_login.py LoginStartupUITests/test_AC_347 --release
+immich_stub_login.py LoginStartupUITests/test_AC_348 --release
 
 # L-30 widgets photo à leur taille (AC-61.6): the large Photos and Favorites widgets, posed on the Home
 # Screen through SpringBoard, are archived and drawn at the new image sizes (a wall of 4 previews; one
