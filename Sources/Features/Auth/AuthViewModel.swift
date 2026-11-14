@@ -60,7 +60,7 @@ final class AuthViewModel: AuthSessionDelegate {
     /// the end of `connectServer()` and by `clientCertificateDidChange()`.
     private(set) var serverHasClientCertificate = false
     var serverStatus: ServerStatus = .idle
-    var serverConfig: ServerConfigDto?
+    var serverConfig: ServerConfig?
 
     // Session
     var accessToken: String?
@@ -172,9 +172,9 @@ final class AuthViewModel: AuthSessionDelegate {
     func restoreSession() async {
         guard !isRestoringSession else { return }
         isRestoringSession = true
-        defer { isRestoringSession = false }
 
         guard let token = accessToken, let url = baseURL else {
+            isRestoringSession = false
             resetSession()
             return
         }
@@ -187,17 +187,22 @@ final class AuthViewModel: AuthSessionDelegate {
         } catch {
             // Network / decode: keep the session; don't wipe on transient offline.
         }
-        // `serverConfig` is otherwise only fetched by `connectServer()`, i.e.
-        // while walking onboarding. A relaunch with a stored session would
-        // therefore leave `externalDomain` unknown — and the public URL of a
-        // shared link would fall back to the server's internal address.
+        // Home appears as soon as the token is validated: the configuration
+        // read below never holds it back (L-20).
+        isRestoringSession = false
+        // `serverConfig` is otherwise only read by `connectServer()` (public
+        // config), i.e. while walking onboarding. A relaunch with a stored
+        // session would therefore leave `externalDomain` unknown — and the
+        // public URL of a shared link would fall back to the server's
+        // internal address. `sessionConfig()` carries it from v3.2.0.
         if isAuthenticated {
             // The token/URL pair that was just validated; a switch of account
             // during the await must not reconnect with the old token.
             if accessToken == token, baseURL == url {
                 realtime.connect(baseURL: url, token: token)
             }
-            serverConfig = try? await client.serverConfig()
+            let config = try? await client.sessionConfig()
+            if accessToken == token, baseURL == url { serverConfig = config }
             publishWidgetSession()
         }
     }
@@ -290,7 +295,7 @@ final class AuthViewModel: AuthSessionDelegate {
             if ping.res == "pong" {
                 let version = try? await client.serverVersion()
                 serverStatus = .reachable(version: version)
-                serverConfig = try? await client.serverConfig()
+                serverConfig = try? await client.publicConfig()
                 defaults.set(url.absoluteString, forKey: Self.serverURLDefaultsKey)
             } else {
                 serverStatus = .unreachable
@@ -387,6 +392,7 @@ final class AuthViewModel: AuthSessionDelegate {
                 isAdmin: response.isAdmin,
                 shouldChangePassword: response.shouldChangePassword
             )
+            await readSessionConfigIfDomainUnknown()
         } catch let e {
             errorMessage = e.userFacingMessage
         }
@@ -443,9 +449,21 @@ final class AuthViewModel: AuthSessionDelegate {
                 isAdmin: response.isAdmin,
                 shouldChangePassword: response.shouldChangePassword
             )
+            await readSessionConfigIfDomainUnknown()
         } catch let e {
             errorMessage = e.userFacingMessage
         }
+    }
+
+    /// From v3.2.0 the public config no longer carries the external domain
+    /// (nil here): once a session exists, the authenticated config does. A
+    /// failed read keeps what is known, so the SSO button and the shared-link
+    /// fallback stay right. Older servers already gave the domain: no call.
+    private func readSessionConfigIfDomainUnknown() async {
+        guard serverConfig?.externalDomain == nil else { return }
+        let token = accessToken, url = baseURL
+        guard let config = try? await client.sessionConfig() else { return }
+        if accessToken == token, baseURL == url { serverConfig = config }
     }
 
     /// Applies a successful auth response: state + Keychain + UserDefaults +
@@ -634,12 +652,20 @@ final class AuthViewModel: AuthSessionDelegate {
         client.configure(baseURL: url, token: token)
         realtime.connect(baseURL: url, token: token)
         publishWidgetSession()
+        var sessionRejected = false
         do {
             _ = try await client.validateToken()
         } catch APIError.unauthorized {
+            sessionRejected = true
             resetSession()
         } catch {
             // Network / decode: keep the session (offline-safe).
+        }
+        if !sessionRejected {
+            // The new account's server answers, never the previous one's:
+            // a failed read leaves nil, and a switch superseded meanwhile drops it.
+            let config = try? await client.sessionConfig()
+            if accessToken == token, baseURL == url { serverConfig = config }
         }
         isLoading = false
     }

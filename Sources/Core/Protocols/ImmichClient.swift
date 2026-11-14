@@ -16,7 +16,10 @@ protocol ImmichClient: AnyObject, Sendable {
 
     func ping() async throws -> ServerPingResponse
     func serverVersion() async throws -> ServerVersionResponseDto
-    func serverConfig() async throws -> ServerConfigDto
+    /// `GET /api/public/config` from v3.2.0, `GET /api/server/config` before (or when the version is unreadable). No auth.
+    func publicConfig() async throws -> ServerConfig
+    /// `GET /api/config` from v3.2.0, `GET /api/server/config` before. Needs a session token.
+    func sessionConfig() async throws -> ServerConfig
 
     func login(email: String, password: String) async throws -> LoginResponseDto
     func logout() async throws -> LogoutResponseDto
@@ -238,7 +241,7 @@ protocol ImmichClient: AnyObject, Sendable {
     /// `PersonBirthdayClearDto` body that sends the explicit `null` an erase
     /// needs — `PersonUpdateDto(birthDate: nil)` omits the key entirely.
     func clearPersonBirthday(id: String) async throws -> PersonResponseDto
-    /// `POST /api/people/{id}/merge` — merge persons; returns bulk results.
+    /// Merge persons: `POST /api/people/merge` (target first) from v3.2.1, `POST /api/people/{id}/merge` before.
     func mergePeople(ids: [String], into id: String) async throws -> [BulkIdResponseDto]
     func getPersonStatistics(id: String) async throws -> PersonStatisticsResponseDto
     /// GET /api/search/person?name=&withHidden= — bare array, ≤100, name-similarity order.
@@ -320,7 +323,8 @@ protocol ImmichClient: AnyObject, Sendable {
     func deleteAdminUser(id: String, force: Bool) async throws -> UserAdminResponseDto
     func restoreAdminUser(id: String) async throws -> UserAdminResponseDto
     func getJobsStatus() async throws -> [String: QueueResponseLegacyDto]
-    func sendJobCommand(name: String, command: String, force: Bool?) async throws -> QueueResponseLegacyDto
+    /// Pause/resume/empty go to `/api/queues` from v2.4.0; start and clear-failed stay on `PUT /api/jobs/{name}`.
+    func sendJobCommand(name: String, command: String, force: Bool?) async throws
     func getLibraries() async throws -> [LibraryResponseDto]
     func scanLibrary(id: String) async throws
     func deleteLibrary(id: String) async throws

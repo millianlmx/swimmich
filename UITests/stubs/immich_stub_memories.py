@@ -42,6 +42,8 @@ import time
 import zlib
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
+import immich_stub_base as base  # SERVER_VERSION, serves, config payloads (L-20)
+
 PORT = int(sys.argv[1]) if len(sys.argv) > 1 else 8421
 BASE = f"http://127.0.0.1:{PORT}"
 
@@ -392,8 +394,10 @@ class Handler(BaseHTTPRequestHandler):
 
         routes = {
             "/api/server/ping": {"res": "pong"},
-            "/api/server/version": {"major": 1, "minor": 119, "patch": 0, "prerelease": None},
+            "/api/server/version": base.version_payload(),
             "/api/server/config": CONFIG,
+            "/api/public/config": base.public_config_payload(CONFIG),
+            "/api/config": base.user_config_payload(CONFIG),
             "/api/users/me": ME_USER,
             "/api/users": [ME_USER],
             "/api/albums": [ALBUM_DTO],
@@ -403,6 +407,9 @@ class Handler(BaseHTTPRequestHandler):
             "/api/stacks": [],
             "/api/tags": [],
         }
+        if not base.serves("GET", path, base.parse_version(base.SERVER_VERSION)):
+            self._log({"method": "GET", "path": path})
+            return self._send({"message": f"Cannot GET {path}", "statusCode": 404}, status=404)
         if path in routes:
             return self._send(routes[path])
         if path.startswith("/api/"):

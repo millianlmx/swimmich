@@ -26,6 +26,9 @@ final class ImmichAPIClient: ImmichClient, SessionRenewing, @unchecked Sendable 
 
     private var _token: String?
     private var _baseURL: URL?
+    /// Server version learnt for one address (L-20, decision #7). Dropped when
+    /// the address changes; a failed read never poisons it.
+    private var _routingVersion: (baseURL: URL, version: ServerVersionResponseDto)?
     private var _requestCount: Int = 0
 
     /// Session cookie returned by `POST /api/shared-links/login`
@@ -117,6 +120,7 @@ final class ImmichAPIClient: ImmichClient, SessionRenewing, @unchecked Sendable 
     func configure(baseURL: URL?, token: String?) {
         lock.lock()
         let changed = baseURL != _baseURL || token != _token
+        if baseURL != _baseURL { _routingVersion = nil }
         _baseURL = baseURL
         _token = token
         if changed { _sharedLinkCookie = nil }
@@ -155,11 +159,70 @@ final class ImmichAPIClient: ImmichClient, SessionRenewing, @unchecked Sendable 
     }
 
     func serverVersion() async throws -> ServerVersionResponseDto {
-        try await sendNoAuth(.GET, path: ImmichAPI.server.path("/version"))
+        let target = try currentTarget()
+        let version: ServerVersionResponseDto = try await sendNoAuth(.GET, path: ImmichAPI.server.path("/version"), target: target)
+        remember(version, for: target.baseURL)
+        return version
     }
 
-    func serverConfig() async throws -> ServerConfigDto {
-        try await sendNoAuth(.GET, path: ImmichAPI.server.path("/config"))
+    func publicConfig() async throws -> ServerConfig {
+        let target = try currentTarget()
+        if await routingVersion(for: target).serves(ImmichRouteThreshold.config) {
+            let dto: PublicConfigDto = try await sendNoAuth(.GET, path: ImmichAPI.publicConfig.path(""), target: target)
+            return ServerConfig(oauthButtonText: dto.oauth.buttonText, externalDomain: nil, isInitialized: nil)
+        }
+        return try await legacyServerConfig(target: target)
+    }
+
+    func sessionConfig() async throws -> ServerConfig {
+        let target = try currentTarget()
+        if await routingVersion(for: target).serves(ImmichRouteThreshold.config) {
+            let dto: UserConfigDto = try await sendAuthed(.GET, path: ImmichAPI.userConfig.path(""), target: target)
+            return ServerConfig(oauthButtonText: dto.oauth.buttonText, externalDomain: dto.server.externalDomain, isInitialized: nil)
+        }
+        return try await legacyServerConfig(target: target)
+    }
+
+    /// `GET /api/server/config`, deprecated from v3.2.0 but served by every older server.
+    private func legacyServerConfig(target: RouteTarget) async throws -> ServerConfig {
+        let dto: ServerConfigDto = try await sendNoAuth(.GET, path: ImmichAPI.server.path("/config"), target: target)
+        return dto.asServerConfig
+    }
+
+    // MARK: - Route selection (L-20)
+
+    /// Address and token of one routed call, read once before any await: the
+    /// version probe and the request both go to this target, whatever
+    /// `configure` does meanwhile (decision #10).
+    private struct RouteTarget {
+        let baseURL: URL
+        let token: String?
+    }
+
+    private func currentTarget() throws -> RouteTarget {
+        lock.lock(); defer { lock.unlock() }
+        guard let base = _baseURL else { throw APIError.invalidURL }
+        return RouteTarget(baseURL: base, token: _token)
+    }
+
+    /// Keeps a version only while `base` is still the configured address.
+    private func remember(_ version: ServerVersionResponseDto, for base: URL) {
+        lock.lock(); defer { lock.unlock() }
+        if _baseURL == base { _routingVersion = (base, version) }
+    }
+
+    /// Cached version of the target's address, else a probe of
+    /// `GET /api/server/version` on it. nil when unreadable (no negative cache).
+    private func routingVersion(for target: RouteTarget) async -> ServerVersionResponseDto? {
+        lock.lock()
+        let cached = _routingVersion
+        lock.unlock()
+        if let cached, cached.baseURL == target.baseURL { return cached.version }
+        guard let version: ServerVersionResponseDto = try? await sendNoAuth(
+            .GET, path: ImmichAPI.server.path("/version"), target: target
+        ) else { return nil }
+        remember(version, for: target.baseURL)
+        return version
     }
 
     // MARK: - Auth
@@ -605,9 +668,14 @@ final class ImmichAPIClient: ImmichClient, SessionRenewing, @unchecked Sendable 
         try await sendAuthed(.POST, path: ImmichAPI.people.path(""), body: AnyEncodable(PersonCreateDto(name: name)))
     }
 
-    /// `POST /api/people/{id}/merge` — note: merge is POST, not PUT.
+    /// `POST /api/people/merge` (target first) from v3.2.1, `POST /api/people/{id}/merge` before.
     func mergePeople(ids: [String], into id: String) async throws -> [BulkIdResponseDto] {
-        try await sendAuthed(.POST, path: ImmichAPI.people.path("/\(id)/merge"), body: AnyEncodable(MergePersonDto(ids: ids)))
+        let target = try currentTarget()
+        if await routingVersion(for: target).serves(ImmichRouteThreshold.peopleMerge) {
+            let ordered = [id] + ids.filter { $0 != id }
+            return try await sendAuthed(.POST, path: ImmichAPI.people.path("/merge"), body: AnyEncodable(MergePersonDto(ids: ordered)), target: target)
+        }
+        return try await sendAuthed(.POST, path: ImmichAPI.people.path("/\(id)/merge"), body: AnyEncodable(MergePersonDto(ids: ids)), target: target)
     }
 
     func getPersonStatistics(id: String) async throws -> PersonStatisticsResponseDto {
@@ -775,11 +843,44 @@ final class ImmichAPIClient: ImmichClient, SessionRenewing, @unchecked Sendable 
     }
 
     func getJobsStatus() async throws -> [String: QueueResponseLegacyDto] {
-        try await sendAuthed(.GET, path: ImmichAPI.jobs.path(""))
+        let target = try currentTarget()
+        guard await routingVersion(for: target).serves(ImmichRouteThreshold.queues) else {
+            return try await sendAuthed(.GET, path: ImmichAPI.jobs.path(""), target: target)
+        }
+        let queues: [QueueResponseDto] = try await sendAuthed(.GET, path: ImmichAPI.queues.path(""), target: target)
+        // The server's own `mapQueueLegacy`: active when any job runs.
+        return Dictionary(
+            queues.map { queue in
+                (queue.name, QueueResponseLegacyDto(
+                    queueStatus: QueueStatusLegacyDto(isActive: queue.statistics.active > 0, isPaused: queue.isPaused),
+                    jobCounts: queue.statistics
+                ))
+            },
+            uniquingKeysWith: { _, last in last }
+        )
     }
 
-    func sendJobCommand(name: String, command: String, force: Bool?) async throws -> QueueResponseLegacyDto {
-        try await sendAuthed(.PUT, path: ImmichAPI.jobs.path("/\(name)"), body: AnyEncodable(QueueCommandDto(command: command, force: force)))
+    /// Only a replacement with the very same effect is used (decision #1):
+    /// `start` and `clear-failed` have none, and `PUT /queues/backgroundTask`
+    /// refuses the pause the legacy route accepts.
+    func sendJobCommand(name: String, command: String, force: Bool?) async throws {
+        let target = try currentTarget()
+        if await routingVersion(for: target).serves(ImmichRouteThreshold.queues) {
+            switch command {
+            case "pause" where name != "backgroundTask":
+                _ = try await sendAuthedRaw(.PUT, path: ImmichAPI.queues.path("/\(name)"), body: AnyEncodable(QueueUpdateDto(isPaused: true)), target: target)
+                return
+            case "resume":
+                _ = try await sendAuthedRaw(.PUT, path: ImmichAPI.queues.path("/\(name)"), body: AnyEncodable(QueueUpdateDto(isPaused: false)), target: target)
+                return
+            case "empty":
+                _ = try await sendAuthedRaw(.DELETE, path: ImmichAPI.queues.path("/\(name)/jobs"), body: AnyEncodable(QueueDeleteDto()), target: target)
+                return
+            default:
+                break
+            }
+        }
+        _ = try await sendAuthedRaw(.PUT, path: ImmichAPI.jobs.path("/\(name)"), body: AnyEncodable(QueueCommandDto(command: command, force: force)), target: target)
     }
 
     func getLibraries() async throws -> [LibraryResponseDto] {
@@ -1071,23 +1172,24 @@ final class ImmichAPIClient: ImmichClient, SessionRenewing, @unchecked Sendable 
 
     // MARK: - Core dispatch
 
-    private func sendNoAuth<T: Decodable>(_ method: HTTPMethod, path: String, query: [URLQueryItem] = [], body: AnyEncodable? = nil) async throws -> T {
-        let data = try await sendRaw(method, path: path, query: query, auth: false, body: body)
+    private func sendNoAuth<T: Decodable>(_ method: HTTPMethod, path: String, query: [URLQueryItem] = [], body: AnyEncodable? = nil, target: RouteTarget? = nil) async throws -> T {
+        let data = try await sendRaw(method, path: path, query: query, auth: false, body: body, target: target)
         return try Self.decode(T.self, from: data)
     }
 
-    private func sendAuthed<T: Decodable>(_ method: HTTPMethod, path: String, query: [URLQueryItem] = [], body: AnyEncodable? = nil) async throws -> T {
-        let data = try await sendAuthedRaw(method, path: path, query: query, body: body)
+    private func sendAuthed<T: Decodable>(_ method: HTTPMethod, path: String, query: [URLQueryItem] = [], body: AnyEncodable? = nil, target: RouteTarget? = nil) async throws -> T {
+        let data = try await sendAuthedRaw(method, path: path, query: query, body: body, target: target)
         return try Self.decode(T.self, from: data)
     }
 
-    private func sendAuthedRaw(_ method: HTTPMethod, path: String, query: [URLQueryItem] = [], body: AnyEncodable?) async throws -> Data {
-        guard let token = token else { throw APIError.unauthorized }
-        return try await sendRaw(method, path: path, query: query, auth: true, token: token, body: body)
+    private func sendAuthedRaw(_ method: HTTPMethod, path: String, query: [URLQueryItem] = [], body: AnyEncodable?, target: RouteTarget? = nil) async throws -> Data {
+        // A routed call carries the token captured with its address.
+        guard let token = target != nil ? target?.token : token else { throw APIError.unauthorized }
+        return try await sendRaw(method, path: path, query: query, auth: true, token: token, body: body, target: target)
     }
 
-    private func sendRaw(_ method: HTTPMethod, path: String, query: [URLQueryItem] = [], auth: Bool, token: String? = nil, body: AnyEncodable?) async throws -> Data {
-        var request = try baseRequest(method, path: path, query: query, auth: auth, token: token)
+    private func sendRaw(_ method: HTTPMethod, path: String, query: [URLQueryItem] = [], auth: Bool, token: String? = nil, body: AnyEncodable?, target: RouteTarget? = nil) async throws -> Data {
+        var request = try baseRequest(method, path: path, query: query, auth: auth, token: token, target: target)
         if let body {
             request.setValue("application/json", forHTTPHeaderField: ImmichHeader.contentType)
             request.httpBody = try JSONEncoder.immich.encode(body)
@@ -1186,8 +1288,8 @@ final class ImmichAPIClient: ImmichClient, SessionRenewing, @unchecked Sendable 
     /// the JSON callers and the multipart upload both start from here. The
     /// custom headers are the ones of THIS request's URL, so a request never
     /// carries another server's list.
-    private func baseRequest(_ method: HTTPMethod, path: String, query: [URLQueryItem], auth: Bool, token: String? = nil) throws -> URLRequest {
-        guard let url = resolvedURL(path: path, query: query) else { throw APIError.invalidURL }
+    private func baseRequest(_ method: HTTPMethod, path: String, query: [URLQueryItem], auth: Bool, token: String? = nil, target: RouteTarget? = nil) throws -> URLRequest {
+        guard let url = resolvedURL(path: path, query: query, base: target?.baseURL) else { throw APIError.invalidURL }
         var request = URLRequest(url: url)
         request.httpMethod = method.rawValue
         request.setValue(ImmichAPI.acceptJSON, forHTTPHeaderField: ImmichHeader.accept)
@@ -1313,8 +1415,8 @@ final class ImmichAPIClient: ImmichClient, SessionRenewing, @unchecked Sendable 
         }
     }
 
-    private func resolvedURL(path: String, query: [URLQueryItem] = []) -> URL? {
-        guard let base = baseURL else { return nil }
+    private func resolvedURL(path: String, query: [URLQueryItem] = [], base explicitBase: URL? = nil) -> URL? {
+        guard let base = explicitBase ?? baseURL else { return nil }
         let url = base.appendingPathComponent(path)
         guard !query.isEmpty else { return url }
         var components = URLComponents(url: url, resolvingAgainstBaseURL: false)

@@ -43,9 +43,15 @@ final class MockImmichClient: ImmichClient, @unchecked Sendable {
     }
     var authDelegate: (any AuthSessionDelegate)?
 
-    /// Overrides `GET /api/server/config` (its `externalDomain` decides the base
-    /// of a public shared-link URL).
-    var serverConfigResponse: ServerConfigDto?
+    /// Overrides `publicConfig()` / `sessionConfig()` (the session one carries
+    /// the `externalDomain` that decides the base of a public shared-link URL).
+    var publicConfigResponse: ServerConfig?
+    var sessionConfigResponse: ServerConfig?
+    /// Calls to `publicConfig()` / `sessionConfig()`, recorded before the gate and the error check.
+    private(set) var publicConfigCalls = 0
+    private(set) var sessionConfigCalls = 0
+    /// Awaited by `sessionConfig()` after the call is recorded: holds the read open.
+    var sessionConfigGate: (() async throws -> Void)?
 
     var lastLoginBody: LoginCredentialDto?
     var loginResponse: LoginResponseDto?
@@ -484,16 +490,22 @@ final class MockImmichClient: ImmichClient, @unchecked Sendable {
         return serverVersionResponse ?? ServerVersionResponseDto(major: 1, minor: 120, patch: 0, prerelease: nil)
     }
 
-    func serverConfig() async throws -> ServerConfigDto {
+    func publicConfig() async throws -> ServerConfig {
         bump()
+        lock.lock(); publicConfigCalls += 1; lock.unlock()
         if let e = globalError { throw e }
-        if let r = serverConfigResponse { return r }
-        return ServerConfigDto(
-            oauthButtonText: "", loginPageMessage: "", trashDays: 30, userDeleteDelay: 7,
-            isInitialized: true, isOnboarded: true, externalDomain: "", publicUsers: false,
-            mapDarkStyleUrl: "", mapLightStyleUrl: "", maintenanceMode: false, minFaces: 3
-        )
+        return publicConfigResponse ?? Self.defaultServerConfig
     }
+
+    func sessionConfig() async throws -> ServerConfig {
+        bump()
+        lock.lock(); sessionConfigCalls += 1; lock.unlock()
+        if let gate = sessionConfigGate { try await gate() }
+        if let e = globalError { throw e }
+        return sessionConfigResponse ?? Self.defaultServerConfig
+    }
+
+    static let defaultServerConfig = ServerConfig(oauthButtonText: "", externalDomain: "", isInitialized: true)
 
     func login(email: String, password: String) async throws -> LoginResponseDto {
         bump()
@@ -1686,15 +1698,11 @@ final class MockImmichClient: ImmichClient, @unchecked Sendable {
         return jobsStatusResponse ?? [:]
     }
 
-    func sendJobCommand(name: String, command: String, force: Bool?) async throws -> QueueResponseLegacyDto {
+    func sendJobCommand(name: String, command: String, force: Bool?) async throws {
         bump()
         lastJobCommandName = name
         lastJobCommand = command
         if let e = globalError ?? adminError { throw e }
-        return QueueResponseLegacyDto(
-            queueStatus: QueueStatusLegacyDto(isActive: false, isPaused: false),
-            jobCounts: QueueStatisticsDto(active: 0, completed: 0, failed: 0, delayed: 0, waiting: 0, paused: 0)
-        )
     }
 
     func getLibraries() async throws -> [LibraryResponseDto] {

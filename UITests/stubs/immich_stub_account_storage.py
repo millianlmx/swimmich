@@ -187,15 +187,6 @@ def admin_users(req):
     return Response([dict(ME_USER, isAdmin=True), OTHER_USER])
 
 
-@router.get("/api/jobs")
-def jobs(req):
-    return Response({"thumbnailGeneration": {
-        "queueStatus": {"isActive": False, "isPaused": False},
-        "jobCounts": {"active": 0, "completed": 12, "failed": 0,
-                      "delayed": 0, "waiting": 3, "paused": 0},
-    }})
-
-
 @router.get("/api/libraries")
 def libraries(req):
     return Response([{"id": "lib-1", "ownerId": ME, "name": "Stub Library", "assetCount": 42}])

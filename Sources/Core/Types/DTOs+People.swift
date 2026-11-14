@@ -64,7 +64,8 @@ struct PersonCreateDto: Codable, Equatable {
     var color: String?
 }
 
-/// `POST /api/people/{id}/merge` — note: POST, not PUT.
+/// `POST /api/people/{id}/merge` (legacy, `ids` = sources) or `POST /api/people/merge`
+/// (v3.2.1+, `ids` = target first, then sources) — note: POST, not PUT.
 struct MergePersonDto: Codable, Equatable {
     let ids: [String]
 }

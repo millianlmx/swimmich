@@ -60,6 +60,7 @@ USER_TOKEN = "stub-access-token"
 # Paths a session-less caller reaches: the server step and the SSO handshake.
 PUBLIC = {
     "/api/server/ping", "/api/server/version", "/api/server/config", "/api/server/features",
+    "/api/public/config",
     "/api/oauth/authorize", "/api/oauth/callback", "/api/auth/login",
 }
 SOCKET_PREFIX = "/api/socket.io"

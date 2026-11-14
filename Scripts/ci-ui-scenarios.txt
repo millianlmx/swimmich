@@ -4,6 +4,12 @@
 #
 #   <stub.py> <Class>[/<test>] [--content-size <simctl category>]
 #             [--media <file name>]... [--skip <test>]... [--erase]
+#             [--stub-version <X.Y.Z>]
+#
+# `--stub-version` starts the stub with `IMMICH_STUB_VERSION=<X.Y.Z>`: the shell
+# (immich_stub_base.py) then announces that version on `GET /api/server/version`
+# and serves only the routes it has (L-20). A stub that sets its own version
+# ignores it.
 #
 # A test that fails or skips itself fails the CI. Scenarios not listed here are
 # compiled by the CI, not run. The lines run several at a time and a free
@@ -48,6 +54,37 @@ immich_stub_search_filters.py SearchCriteriaUITests/test_AC_218
 immich_stub_search_filters.py SearchCriteriaUITests/test_AC_216
 immich_stub_search_filters.py SearchCriteriaUITests/test_AC_44
 immich_stub_search_filters.py SearchCriteriaUITests/test_AC_217
+
+# L-20 routes par version (AC-36, AC-174 à AC-180). The stub switches its
+# announced version itself (`/stub/version`), one launch per version.
+immich_stub_route_compat.py RouteCompatUITests/test_AC_36
+immich_stub_route_compat.py RouteCompatUITests/test_AC_174
+immich_stub_route_compat.py RouteCompatUITests/test_AC_175
+immich_stub_route_compat.py RouteCompatUITests/test_AC_176
+immich_stub_route_compat.py RouteCompatUITests/test_AC_177
+immich_stub_route_compat.py RouteCompatUITests/test_AC_178
+immich_stub_route_compat.py RouteCompatUITests/test_AC_179
+immich_stub_route_compat.py RouteCompatUITests/test_AC_180
+
+# L-20 AC-35: Dynamic Type scenarios replayed against the shell announcing 3.4.0
+# (replacement routes only where they exist), then 2.0.0 (historical routes
+# only). The version changes the routes the app calls, not its layout: the
+# replay keeps the tests that, together, call every route of the suite (albums
+# and partners, shared links and search, memories, people and map, the info
+# panel, backup and the locked folder, the slideshow, the viewer's favourite),
+# not the whole suite three times over.
+immich_stub_dynamic_type.py DynamicTypeUITests/test_AC_26_3_albums --stub-version 3.4.0
+immich_stub_dynamic_type.py DynamicTypeUITests/test_AC_26_3_links --stub-version 3.4.0
+immich_stub_dynamic_type.py DynamicTypeUITests/test_AC_26_4_lists --stub-version 3.4.0
+immich_stub_dynamic_type.py DynamicTypeUITests/test_AC_26_4_panels --stub-version 3.4.0
+immich_stub_dynamic_type.py DynamicTypeUITests/test_AC_26_9 --stub-version 3.4.0
+immich_stub_dynamic_type.py DynamicTypeUITests/test_AC_26_7 --stub-version 3.4.0
+immich_stub_dynamic_type.py DynamicTypeUITests/test_AC_26_3_albums --stub-version 2.0.0
+immich_stub_dynamic_type.py DynamicTypeUITests/test_AC_26_3_links --stub-version 2.0.0
+immich_stub_dynamic_type.py DynamicTypeUITests/test_AC_26_4_lists --stub-version 2.0.0
+immich_stub_dynamic_type.py DynamicTypeUITests/test_AC_26_4_panels --stub-version 2.0.0
+immich_stub_dynamic_type.py DynamicTypeUITests/test_AC_26_9 --stub-version 2.0.0
+immich_stub_dynamic_type.py DynamicTypeUITests/test_AC_26_7 --stub-version 2.0.0
 
 # L-21 server-side edits (AC-39, AC-40, AC-181, AC-182, AC-188, AC-189): the editor, the edited
 # version shown by the viewer, and the choice of the file to download.

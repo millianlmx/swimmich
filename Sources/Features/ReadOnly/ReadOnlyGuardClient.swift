@@ -62,8 +62,12 @@ final class ReadOnlyGuardClient: ImmichClient {
         try await inner.serverVersion()
     }
 
-    func serverConfig() async throws -> ServerConfigDto {
-        try await inner.serverConfig()
+    func publicConfig() async throws -> ServerConfig {
+        try await inner.publicConfig()
+    }
+
+    func sessionConfig() async throws -> ServerConfig {
+        try await inner.sessionConfig()
     }
 
     /// Account mechanics, not library writes: the mode guards the library, so a
@@ -592,9 +596,9 @@ final class ReadOnlyGuardClient: ImmichClient {
         try await inner.getJobsStatus()
     }
 
-    func sendJobCommand(name: String, command: String, force: Bool?) async throws -> QueueResponseLegacyDto {
+    func sendJobCommand(name: String, command: String, force: Bool?) async throws {
         try assertWritable()
-        return try await inner.sendJobCommand(name: name, command: command, force: force)
+        try await inner.sendJobCommand(name: name, command: command, force: force)
     }
 
     func getLibraries() async throws -> [LibraryResponseDto] {

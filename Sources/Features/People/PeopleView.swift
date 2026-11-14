@@ -490,6 +490,7 @@ private struct PersonDetailView: View {
                 } label: {
                     Label("Merge \(other.name)", systemImage: "person.crop.circle.badge.plus")
                 }
+                .accessibilityIdentifier("personMerge_\(other.id)")
             }
         } label: {
             Image(systemName: "arrow.triangle.merge")

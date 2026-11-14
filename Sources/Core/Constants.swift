@@ -27,7 +27,10 @@ enum ImmichAPI {
     static let duplicates = SubPath(root: "/duplicates") // P0 api-surface-expansion
     static let stacks = SubPath(root: "/stacks") // gap #1 (asset stacking)
     static let admin = SubPath(root: "/admin") // gap #12 (admin panel)
-    static let jobs = SubPath(root: "/jobs") // gap #12 (admin jobs)
+    static let jobs = SubPath(root: "/jobs") // gap #12 (admin jobs, deprecated since v2.4.0)
+    static let queues = SubPath(root: "/queues") // replaces /jobs from v2.4.0
+    static let publicConfig = SubPath(root: "/public/config") // replaces GET /server/config (no auth) from v3.2.0
+    static let userConfig = SubPath(root: "/config") // authenticated config, from v3.2.0
     static let libraries = SubPath(root: "/libraries") // gap #12 (admin libraries)
     static let apiKeys = SubPath(root: "/api-keys") // gap #12 (admin api keys)
     /// Connected devices (gap G19). Exactly `/sessions`: the two elevation
@@ -41,6 +44,23 @@ enum ImmichAPI {
 
     /// Header used for SHA1 checksum dedup on uploads + bulk-upload-check.
     static let checksumHeader = "x-immich-checksum"
+}
+
+/// Server version at which a replacement route appears (OpenAPI `x-immich-history`).
+/// A replacement is used only when the routing version is known and at least
+/// the threshold; an unknown version keeps the legacy route (L-20).
+enum ImmichRouteThreshold {
+    static let queues = ServerVersionResponseDto(major: 2, minor: 4, patch: 0, prerelease: nil)
+    static let config = ServerVersionResponseDto(major: 3, minor: 2, patch: 0, prerelease: nil)
+    static let peopleMerge = ServerVersionResponseDto(major: 3, minor: 2, patch: 1, prerelease: nil)
+}
+
+extension Optional where Wrapped == ServerVersionResponseDto {
+    /// True when the version is known and `>= threshold` (`prerelease` ignored).
+    func serves(_ threshold: ServerVersionResponseDto) -> Bool {
+        guard let self else { return false }
+        return self.isAtLeast(major: threshold.major, minor: threshold.minor, patch: threshold.patch)
+    }
 }
 
 enum ImmichHeader {

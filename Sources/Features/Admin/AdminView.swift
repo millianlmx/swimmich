@@ -199,11 +199,17 @@ struct AdminView: View {
                     }
                     .contextMenu {
                         Button { Task { await vm.runJob(name: name, command: "start") } } label: { Label("Run", systemImage: "play.fill") }
+                            .accessibilityIdentifier("adminJobCommand_start")
                         Button { Task { await vm.runJob(name: name, command: "pause") } } label: { Label("Pause", systemImage: "pause.fill") }
+                            .accessibilityIdentifier("adminJobCommand_pause")
                         Button { Task { await vm.runJob(name: name, command: "resume") } } label: { Label("Resume", systemImage: "arrow.clockwise") }
+                            .accessibilityIdentifier("adminJobCommand_resume")
                         Button { Task { await vm.runJob(name: name, command: "empty") } } label: { Label("Empty", systemImage: "trash") }
+                            .accessibilityIdentifier("adminJobCommand_empty")
                         Button { Task { await vm.runJob(name: name, command: "clear-failed") } } label: { Label("Clear failed", systemImage: "xmark.circle") }
+                            .accessibilityIdentifier("adminJobCommand_clear-failed")
                     }
+                    .accessibilityIdentifier("adminJob_\(name)")
                 }
             }
             if vm.jobs.isEmpty {
