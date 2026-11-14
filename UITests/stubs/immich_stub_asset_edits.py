@@ -1,4 +1,4 @@
-"""Immich API stub for the server-side edits (`AssetEditsUITests`).
+"""Immich API stub for the server-side edits (`AssetEditsUITests`, `EditedWidgetUITests`).
 
     python3 UITests/stubs/immich_stub_asset_edits.py 8421
 
@@ -57,6 +57,9 @@ ALBUM AND SEARCHES (the scenarios' surfaces besides the timeline)
 * `POST /api/search/metadata` with `albumIds` containing the album: the six timeline photos; otherwise
   none. `POST /api/search/smart`: the first timeline photo, for any query. Both carry the photo's
   thumbhash of the moment.
+* `GET /api/memories` answers one "on this day" memory `dddddddd-4444-4444-8444-000000000001` over the first
+  three timeline photos (each with the thumbhash of the moment), `GET /api/memories/statistics`
+  `{"total": 1}`: the card and the playback of the Memories tab.
 
 CONTROL ROUTES (under `/api/`: the base answers every `/__…` path itself). Unknown parameters are
 ignored; the state is wiped by `/__reset`.
@@ -80,8 +83,8 @@ import threading
 import time
 from urllib.parse import parse_qsl
 
-from immich_stub_base import (STATE, TIMELINE_ASSETS, Response, StubHandler, asset, bucket_payload, main, png,
-                              router)
+from immich_stub_base import (ME, STATE, TIMELINE_ASSETS, Response, StubHandler, asset, bucket_payload, main,
+                              png, router)
 from immich_stub_socketio import close_all, emit, is_upgrade, serve
 
 WIDTH, HEIGHT = 4000, 3000
@@ -400,6 +403,32 @@ def search_metadata(req):
 @router.post("/api/search/smart")
 def search_smart(req):
     return search_page(TIMELINE_ASSETS[:1])
+
+
+# MARK: - Memory
+
+
+MEMORY = "dddddddd-4444-4444-8444-000000000001"
+MEMORY_AT = "2022-09-01T00:00:00.000Z"
+
+
+def memory_dto():
+    """One "on this day" memory over the first three timeline photos, each with the thumbhash of the moment."""
+    return {
+        "id": MEMORY, "createdAt": MEMORY_AT, "updatedAt": MEMORY_AT, "memoryAt": MEMORY_AT, "ownerId": ME,
+        "type": "on_this_day", "data": {"year": 2022}, "assets": [detail(aid) for aid in TIMELINE_ASSETS[:3]],
+        "isSaved": False, "showAt": None, "hideAt": None, "seenAt": None, "deletedAt": None,
+    }
+
+
+@router.get("/api/memories")
+def memories(req):
+    return Response([memory_dto()])
+
+
+@router.get("/api/memories/statistics")
+def memory_statistics(req):
+    return Response({"total": 1})
 
 
 # MARK: - Control

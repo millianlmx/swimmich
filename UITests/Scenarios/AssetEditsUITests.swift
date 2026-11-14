@@ -150,12 +150,12 @@ final class AssetEditsUITests: XCTestCase {
 
     /// Reset, arm the stub with `config` (a query string for `/api/__edits/config`), launch signed in
     /// with the image probe on, and wait for the first tile.
-    private func launchSignedIn(config: String = "") {
+    private func launchSignedIn(config: String = "", arguments: [String] = []) {
         reset()
         setProvider("manual")
         if !config.isEmpty { get("/api/__edits/config?\(config)") }
         app.launchArguments = ["-AppleLanguages", "(en)", "-AppleLocale", "en_US",
-                               "-uiTestImageProbe", "YES"] + sessionArguments()
+                               "-uiTestImageProbe", "YES"] + arguments + sessionArguments()
         app.launch()
         XCTAssertTrue(app.tabBars.buttons["Photos"].waitForExistence(timeout: 30),
                       "the app did not start signed in — \(screenText())")
@@ -794,6 +794,224 @@ final class AssetEditsUITests: XCTestCase {
                       "reopening the photo never brought the copy up to date — \(describe())")
         setDown(true)
         XCTAssertTrue(waitForProbe("viewerImage_\(photo)", prefix: "loaded 96x96"), "the viewer lost the edited copy")
+    }
+
+    // MARK: - Proofs of the display (AC-190 to AC-195)
+
+    private let memory = "dddddddd-4444-4444-8444-000000000001"
+
+    /// The `config` query that stores `edits` as the saved list of the photo (no generation: an edit
+    /// that was made before the app started, by another client).
+    private func seedConfig(_ edits: [[String: Any]]) throws -> String {
+        let json = String(decoding: try JSONSerialization.data(withJSONObject: edits), as: UTF8.self)
+        let encoded = try XCTUnwrap(json.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed))
+        return "seed=\(photo)&edits=\(encoded)"
+    }
+
+    /// The number after `key=` in a viewer probe (`loaded 12x12 zoom=1.00 max=4.00 off=0.0,0.0 fit=402.0x402.0`).
+    private func probeNumber(_ value: String, _ key: String) -> Double? {
+        guard let raw = value.split(separator: " ").first(where: { $0.hasPrefix("\(key)=") }) else { return nil }
+        return Double(raw.dropFirst(key.count + 1))
+    }
+
+    /// The `fit=<w>x<h>` of a viewer probe.
+    private func probeFit(_ value: String) -> (width: Double, height: Double)? {
+        guard let raw = value.split(separator: " ").first(where: { $0.hasPrefix("fit=") }) else { return nil }
+        let sides = raw.dropFirst(4).split(separator: "x").compactMap { Double($0) }
+        return sides.count == 2 ? (sides[0], sides[1]) : nil
+    }
+
+    /// Terminates the app and starts it again on the same session and arguments: an iOS share sheet that
+    /// is open goes with the process.
+    private func relaunch() {
+        app.terminate()
+        app.launch()
+        XCTAssertTrue(app.tabBars.buttons["Photos"].waitForExistence(timeout: 30),
+                      "the app did not start again signed in — \(screenText())")
+        let whatsNewDone = element("whatsNewDoneButton")
+        if whatsNewDone.waitForExistence(timeout: 5) { whatsNewDone.tap() }
+        XCTAssertTrue(tile(photo).waitForExistence(timeout: 30), "the timeline never rendered again — \(screenText())")
+    }
+
+    /// A long press on Share chooses the quality of one share (`original` or `preview`) and shares at once.
+    private func shareWithQuality(_ quality: String) {
+        let share = element("viewerShareButton")
+        XCTAssertTrue(share.waitForExistence(timeout: 20), "the viewer has no share button — \(screenText())")
+        share.press(forDuration: 1.0)
+        let choice = element("shareQualityChoice_\(quality)")
+        XCTAssertTrue(choice.waitForExistence(timeout: 10), "the long press offered no \(quality) choice — \(screenText())")
+        choice.tap()
+    }
+
+    private func openSlideshow() {
+        let direct = element("viewerSlideshowButton")
+        if direct.waitForExistence(timeout: 3) {
+            direct.tap()
+        } else {
+            tapElement("viewerOverflowMenu")
+            tapElement("viewerMenuSlideshow")
+        }
+        XCTAssertTrue(element("slideshowCounter").waitForExistence(timeout: 20), "no slideshow — \(screenText())")
+    }
+
+    private func tapElement(_ identifier: String) {
+        let control = element(identifier)
+        XCTAssertTrue(control.waitForExistence(timeout: 15), "\(identifier) missing — \(screenText())")
+        control.tap()
+    }
+
+    // MARK: - AC-190
+
+    /// The published app: no launch argument and no hidden setting turn the server mode on, yet the editor
+    /// announces a server save and sends a `PUT`, not a copy.
+    func test_AC_190_serverSaveIsOnWithoutAnyHiddenSwitch() {
+        launchSignedIn()
+        XCTAssertFalse(app.launchArguments.contains { $0.lowercased().contains("assetedits") },
+                       "the scenario must not switch the server mode on: \(app.launchArguments)")
+        openEditor()
+        tapEditor("ratioButton.fourByThree")
+        XCTAssertEqual(saveMode(), "server")
+        save()
+
+        XCTAssertTrue(waitUntil(20) { !self.editsEntries("PUT").isEmpty }, "no PUT /edits — \(describe())")
+        XCTAssertEqual(editsEntries("PUT").count, 1)
+        XCTAssertTrue(uploads().isEmpty, "no copy: the edits are saved on the photo — \(describe())")
+    }
+
+    // MARK: - AC-191
+
+    /// An edited photo whose record still carries the original's EXIF size (4000×3000): the zoom ceiling
+    /// is the unknown-size one (4×) and the rectangle is the decoded image's, where an unedited photo's
+    /// ceiling follows its EXIF.
+    func test_AC_191_editedPhotoZoomLimitIgnoresTheOriginalExif() throws {
+        launchSignedIn(config: try seedConfig([crop(0, 375, 4000, 2250)]))
+        tile(photo).tap()
+        XCTAssertTrue(waitForProbe("viewerImage_\(photo)", prefix: "loaded 12x12"),
+                      "the viewer never showed the edited image — \(describe())")
+        XCTAssertTrue(waitUntil(20) { !self.entries("GET") { $0 == "/api/assets/\(self.photo)" }.isEmpty },
+                      "the viewer never read the record — \(describe())")
+        Thread.sleep(forTimeInterval: 2)
+
+        let edited = probe("viewerImage_\(photo)")
+        XCTAssertEqual(probeNumber(edited, "max") ?? 0, 4, accuracy: 0.001, "unknown size: the default ceiling — \(edited)")
+        let fit = probeFit(edited)
+        XCTAssertNotNil(fit, "no fit in the probe — \(edited)")
+        XCTAssertEqual(fit?.width ?? 0, fit?.height ?? 1, accuracy: 1.0,
+                       "the rectangle is the decoded 12×12 image's, not the EXIF 4:3 one — \(edited)")
+
+        closeViewer()
+        let other = "aaaaaaaa-1111-4111-8111-000000000002"
+        tile(other).tap()
+        XCTAssertTrue(waitUntil(20) {
+            let value = self.probe("viewerImage_\(other)")
+            return value.hasPrefix("loaded") && abs((self.probeNumber(value, "max") ?? 4) - 4) > 0.01
+        }, "an unedited photo's ceiling must follow its EXIF size — \(probe("viewerImage_\(other)"))")
+    }
+
+    // MARK: - AC-192
+
+    /// Another client edited the photo before the app started: the timeline, a memory, the viewer with its
+    /// filmstrip and the slideshow ask `edited=true` for every image of it, and the stub served the edited
+    /// rendering each time. The viewer and the slideshow share the memory's preview URL, so the image cache
+    /// answers them without a request: the probes of the tile and of the viewer show the edited image.
+    func test_AC_192_editMadeBeforeShowsOnEverySurface() throws {
+        launchSignedIn(config: try seedConfig([crop(0, 375, 4000, 2250)]),
+                       arguments: ["-uiTestMemoryPlaybackProbe", "YES", "-uiTestMemoryAutoplayOff", "YES",
+                                   "-uiTestSlideshowAutoplayOff", "YES"])
+        XCTAssertTrue(waitForProbe("assetTile_\(photo)", prefix: "loaded 12x12"),
+                      "the timeline did not show the edited thumbnail — \(describe())")
+
+        tab("Memories")
+        let card = element("memoryCard_\(memory)")
+        XCTAssertTrue(card.waitForExistence(timeout: 30), "no memory card — \(screenText())")
+        XCTAssertTrue(waitUntil(20) { self.thumbnails(size: "preview").contains { self.served($0) } },
+                      "the memory never asked the edited preview — \(describe())")
+        card.tap()
+        let playback = element("memoryPlaybackProbe")
+        XCTAssertTrue(playback.waitForExistence(timeout: 20), "the memory did not open — \(screenText())")
+        let playbackState = (playback.value as? String) ?? ""
+        XCTAssertTrue(playbackState.hasPrefix("page=\(memory) photo=0"), "the memory playback reads: \(playbackState)")
+        tapElement("memoryMomentClose")
+
+        tab("Photos")
+        tile(photo).tap()
+        XCTAssertTrue(waitForProbe("viewerImage_\(photo)", prefix: "loaded 12x12"),
+                      "the viewer did not show the edited image — \(describe())")
+        XCTAssertTrue(element("viewerFilmstripCell_1").waitForExistence(timeout: 15), "the viewer has no filmstrip")
+        openSlideshow()
+        tapElement("slideshowCloseButton")
+        XCTAssertTrue(waitUntil(15) { self.element("viewerBackButton").exists }, "the slideshow did not close")
+
+        let asked = thumbnails()
+        XCTAssertTrue(asked.contains { self.param($0, "size") == "thumbnail" }, "no thumbnail asked — \(describe())")
+        XCTAssertTrue(asked.contains { self.param($0, "size") == "preview" }, "no preview asked — \(describe())")
+        for entry in asked {
+            XCTAssertEqual(param(entry, "edited"), "true", "every image asks the edited rendering — \(describe())")
+            XCTAssertTrue(served(entry), "the stub served the original to \(entry) — \(describe())")
+        }
+        for entry in originals() { XCTAssertEqual(param(entry, "edited"), "true", "\(describe())") }
+        XCTAssertTrue(editsEntries("PUT").isEmpty && editsEntries("DELETE").isEmpty, "the app sent no edit — \(describe())")
+    }
+
+    // MARK: - AC-194
+
+    /// An edited photo is shared as it was uploaded, in both qualities, and the editor works on the
+    /// original: all three requests carry `edited=false` and the stub served the original file.
+    func test_AC_194_shareAndEditorStayOnTheOriginal() throws {
+        launchSignedIn(config: try seedConfig([crop(0, 375, 4000, 2250), rotate(90)]))
+        tile(photo).tap()
+        XCTAssertTrue(waitForProbe("viewerImage_\(photo)", prefix: "loaded 12x12"),
+                      "the viewer must show the edited version before sharing — \(describe())")
+
+        shareWithQuality("original")
+        XCTAssertTrue(waitUntil(30) { !self.originals().isEmpty }, "sharing the original never asked for it — \(describe())")
+        let sharedOriginals = originals()
+        XCTAssertEqual(sharedOriginals.map { self.param($0, "edited") }, ["false"], "\(describe())")
+        XCTAssertEqual(sharedOriginals[0]["sha"] as? String, sha("original"), "the file shared is the original")
+        relaunch()
+
+        tile(photo).tap()
+        XCTAssertTrue(waitForProbe("viewerImage_\(photo)", prefix: "loaded 12x12"), "\(describe())")
+        shareWithQuality("preview")
+        XCTAssertTrue(waitUntil(30) { self.thumbnails(size: "preview").contains { self.param($0, "edited") == "false" } },
+                      "sharing the preview never asked for the original's — \(describe())")
+        let sharedPreview = thumbnails(size: "preview").filter { self.param($0, "edited") == "false" }
+        XCTAssertEqual(sharedPreview.count, 1, "\(describe())")
+        XCTAssertFalse(served(sharedPreview[0]), "the preview shared is the original's")
+        XCTAssertEqual(sharedPreview[0]["sha"] as? String, sha("thumbnail"))
+        relaunch()
+
+        let before = originals().count
+        tile(photo).tap()
+        openEditor()
+        XCTAssertTrue(waitUntil(20) { self.originals().count > before }, "the editor never read its working image — \(describe())")
+        let working = Array(originals().dropFirst(before))
+        for entry in working {
+            XCTAssertEqual(param(entry, "edited"), "false", "the editor works on the original — \(describe())")
+            XCTAssertEqual(entry["sha"] as? String, sha("original"))
+        }
+        XCTAssertTrue(originals().allSatisfy { self.param($0, "edited") == "false" }, "\(describe())")
+    }
+
+    // MARK: - AC-195
+
+    /// A server that announces 2.0.0 and does not serve `/edits`: the grid and the viewer show the photos as
+    /// they always did, with no error, and nothing asks for `/edits`.
+    func test_AC_195_oldServerShowsPhotosAsBefore() {
+        launchSignedIn(config: "version=2.0.0")
+        XCTAssertTrue(waitForProbe("assetTile_\(photo)", prefix: "loaded 8x8"), "the grid never showed the photo — \(describe())")
+        tile(photo).tap()
+        XCTAssertTrue(waitForProbe("viewerImage_\(photo)", prefix: "loaded 8x8"), "the viewer never showed the photo — \(describe())")
+        XCTAssertTrue(element("viewerFilmstripCell_1").waitForExistence(timeout: 15), "the viewer has no filmstrip")
+        Thread.sleep(forTimeInterval: 2)
+
+        XCTAssertEqual(app.alerts.count, 0, "an alert is up — \(screenText())")
+        XCTAssertFalse(element("saveSectionError").exists, "an error is shown — \(screenText())")
+        XCTAssertFalse(probe("viewerImage_\(photo)").hasPrefix("failed"))
+        XCTAssertTrue(journal().allSatisfy { !(($0["path"] as? String) ?? "").contains("/edits") },
+                      "an old server must never be asked for /edits — \(describe())")
+        XCTAssertFalse(thumbnails().isEmpty, "no image was asked — \(describe())")
+        XCTAssertTrue(thumbnails().allSatisfy { !self.served($0) }, "an old server serves the photo as uploaded — \(describe())")
     }
 
     // MARK: - AC-40

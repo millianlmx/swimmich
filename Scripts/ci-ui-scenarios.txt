@@ -77,6 +77,15 @@ immich_stub_asset_edits.py AssetEditsUITests/test_AC_197_albumCoverFollowsTheEdi
 immich_stub_asset_edits.py AssetEditsUITests/test_AC_198_slowRegenerationRedownloadsOnTheEvent
 immich_stub_asset_edits.py AssetEditsUITests/test_AC_199_slowRegenerationReachesTheSearchGridAfterTheViewerClosed
 immich_stub_asset_edits.py AssetEditsUITests/test_AC_199_withoutTheEventTheReopenedViewerResumesTheCopy
+# The proofs of the display (AC-190 to AC-195): published app without a hidden switch, the zoom limit of an
+# edited photo, an edit made before the launch on every surface, share and editor on the original, an old
+# server. The widget on the Home Screen is erased like the other widget scenarios.
+immich_stub_asset_edits.py AssetEditsUITests/test_AC_190_serverSaveIsOnWithoutAnyHiddenSwitch
+immich_stub_asset_edits.py AssetEditsUITests/test_AC_191_editedPhotoZoomLimitIgnoresTheOriginalExif
+immich_stub_asset_edits.py AssetEditsUITests/test_AC_192_editMadeBeforeShowsOnEverySurface
+immich_stub_asset_edits.py EditedWidgetUITests/test_AC_193_widgetShowsTheEditedImageAfterTheEdit --erase
+immich_stub_asset_edits.py AssetEditsUITests/test_AC_194_shareAndEditorStayOnTheOriginal
+immich_stub_asset_edits.py AssetEditsUITests/test_AC_195_oldServerShowsPhotosAsBefore
 
 # L-30 widgets photo à leur taille (AC-61.6): the large Photos and Favorites widgets, posed on the Home
 # Screen through SpringBoard, are archived and drawn at the new image sizes (a wall of 4 previews; one
