@@ -13,6 +13,19 @@ actor ImageCache {
     /// Shared app-wide instance used by `AuthenticatedAsyncImage`.
     static let shared = ImageCache()
 
+    /// An image is keyed by the address of the account's connection, whichever of
+    /// its addresses (local or external) served it (L-26): a thumbnail already
+    /// seen on one address serves on the other without a request.
+    private let addressBook: ServerAddressBook
+
+    init(addressBook: ServerAddressBook = .shared) {
+        self.addressBook = addressBook
+    }
+
+    nonisolated private func key(for url: URL) -> NSString {
+        addressBook.canonicalURL(for: url).absoluteString as NSString
+    }
+
     /// `NSCache` is documented thread-safe ("add, remove, and query items from
     /// different threads without locking"), which is what makes the
     /// synchronous `cachedImage(for:)` read sound. Never mutated outside this actor.
@@ -27,13 +40,13 @@ actor ImageCache {
     }()
 
     func image(for url: URL) -> UIImage? {
-        cache.object(forKey: url.absoluteString as NSString)
+        cache.object(forKey: key(for: url))
     }
 
     /// Synchronous read for callers that must not wait (the viewer's opening
     /// animation starts on the very next frame, with no `await`).
     nonisolated func cachedImage(for url: URL) -> UIImage? {
-        cache.object(forKey: url.absoluteString as NSString)
+        cache.object(forKey: key(for: url))
     }
 
     /// Monotonic purge counter. Loaders read it before their network await and
@@ -46,13 +59,13 @@ actor ImageCache {
         guard epoch == self.epoch else { return }
         // Cost ≈ decoded bytes; falls back to 1 if size unknown.
         let cost = Int(image.size.width * image.size.height * image.scale * image.scale)
-        cache.setObject(image, forKey: url.absoluteString as NSString, cost: cost)
+        cache.setObject(image, forKey: key(for: url), cost: cost)
     }
 
     /// Removes the cached image for a URL, if any. Useful for tests + future
     /// invalidation flows (e.g. after asset edit).
     func remove(for url: URL) {
-        cache.removeObject(forKey: url.absoluteString as NSString)
+        cache.removeObject(forKey: key(for: url))
     }
 
     /// Clears the entire cache.

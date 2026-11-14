@@ -15,7 +15,10 @@ final class RoadTripViewModel {
     let client: any ImmichClient
     let albumId: String
     let albumTitle: String
-    let baseURL: URL
+    /// The address in use, read at every use (L-26): a switch of address during a
+    /// road trip moves the thumbnails to the new one.
+    var baseURL: URL { baseURLProvider() }
+    private let baseURLProvider: @Sendable () -> URL
     let token: String?
     private let photos: PhotoLibraryService
 
@@ -56,7 +59,7 @@ final class RoadTripViewModel {
         albumId: String,
         selectedAssetIds: Set<String>?,
         albumTitle: String,
-        baseURL: URL,
+        baseURL: @escaping @Sendable () -> URL,
         token: String?,
         photos: PhotoLibraryService,
         session: @escaping @Sendable () -> URLSession
@@ -65,7 +68,7 @@ final class RoadTripViewModel {
         self.albumId = albumId
         self.selectedAssetIds = selectedAssetIds
         self.albumTitle = albumTitle
-        self.baseURL = baseURL
+        self.baseURLProvider = baseURL
         self.token = token
         self.photos = photos
         self.session = session

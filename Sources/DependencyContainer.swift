@@ -142,6 +142,9 @@ final class DependencyContainer {
     /// Every server's custom HTTP headers (L-09): the one registry the API
     /// client, the realtime socket, the offline store and the editor read.
     nonisolated let customHeaders: CustomHeadersRegistry = .shared
+    /// Which address of the active account the app talks to (L-26): the local one
+    /// when it answers as this server, the external one otherwise.
+    let serverEndpoints: ServerEndpointSwitch
     /// "What's New" seen-state (gap G23). One store per process: the automatic
     /// sheet, the About row that reopens it and `AuthViewModel`'s
     /// add-an-account write must all agree on which batch has been presented.
@@ -192,6 +195,19 @@ final class DependencyContainer {
             customHeaders: customHeaders
         )
         self.realtime = realtime
+        self.serverEndpoints = ServerEndpointSwitch(
+            client: libraryClient, realtime: realtime,
+            store: UserDefaultsServerAddressSettingsStore(defaults: .standard),
+            probe: URLSessionServerAddressProbe(
+                session: { [serverSessions] in serverSessions.probe },
+                trustRefused: { TLSChallengeLog.shared.trustWasRefused(host: $0) },
+                localNetworkCheck: NWConnectionLocalNetworkCheck()
+            ),
+            monitor: SystemNetworkPathMonitor(),
+            addressBook: .shared, customHeaders: customHeaders, appLog: appLog,
+            // Test only: the simulator does not apply the local-network permission.
+            localNetworkDeniedOverride: UserDefaults.standard.bool(forKey: "uiTestLocalNetworkDenied")
+        )
         self.clientCertificates = ClientCertificateService(
             store: identities,
             log: .shared,
@@ -279,7 +295,8 @@ final class DependencyContainer {
                 serverSessions: serverSessions
             ),
             customHeaders: customHeaders,
-            identities: clientIdentities
+            identities: clientIdentities,
+            endpoints: serverEndpoints
         )
     }
 
@@ -359,7 +376,11 @@ final class DependencyContainer {
         SharedLinkViewerViewModel(
             client: libraryClient,
             baseURL: baseURL,
-            externalDomain: externalDomain
+            externalDomain: externalDomain,
+            // Links shown here are built on the external address; a link naming any
+            // address of this server is ours (L-26).
+            publicServerURL: serverEndpoints.publicURL ?? baseURL,
+            serverURLs: serverEndpoints.knownURLs
         )
     }
 
@@ -486,7 +507,8 @@ final class DependencyContainer {
             albumId: albumId,
             selectedAssetIds: selectedAssetIds,
             albumTitle: albumTitle,
-            baseURL: baseURL,
+            // The address in use when asked, not the one at creation (L-26).
+            baseURL: { ServerAddressBook.shared.activeURL ?? baseURL },
             token: token,
             photos: photos,
             session: { [serverSessions] in serverSessions.roadTrip }
@@ -569,7 +591,7 @@ final class DependencyContainer {
     /// the same reason as `makeSharedLinkViewerViewModel`: the container knows
     /// the client, but the connected server and its bearer token only exist
     /// once the app is authenticated.
-    func makeProfilePictureViewModel(baseURL: URL?, token: String?) -> ProfilePictureViewModel {
+    func makeProfilePictureViewModel(baseURL: @escaping @MainActor () -> URL?, token: String?) -> ProfilePictureViewModel {
         ProfilePictureViewModel(client: libraryClient, baseURL: baseURL, token: token)
     }
 

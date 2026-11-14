@@ -7,6 +7,18 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
+		D26E31A1B2C3D4E5F6A7B8C9 /* SharedLinkServerAddressTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = D26E30A1B2C3D4E5F6A7B8C9 /* SharedLinkServerAddressTests.swift */; };
+		D26E2FA1B2C3D4E5F6A7B8C9 /* BackgroundBackupPassTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = D26E2EA1B2C3D4E5F6A7B8C9 /* BackgroundBackupPassTests.swift */; };
+		D26E2DA1B2C3D4E5F6A7B8C9 /* ReloadAfterEvaluationTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = D26E2CA1B2C3D4E5F6A7B8C9 /* ReloadAfterEvaluationTests.swift */; };
+		D26E2BA1B2C3D4E5F6A7B8C9 /* BackgroundBackupPass.swift in Sources */ = {isa = PBXBuildFile; fileRef = D26E2AA1B2C3D4E5F6A7B8C9 /* BackgroundBackupPass.swift */; };
+		D26E29A1B2C3D4E5F6A7B8C9 /* ReloadAfterEvaluation.swift in Sources */ = {isa = PBXBuildFile; fileRef = D26E28A1B2C3D4E5F6A7B8C9 /* ReloadAfterEvaluation.swift */; };
+		D26E27A1B2C3D4E5F6A7B8C9 /* RoadTripViewModelTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = D26E26A1B2C3D4E5F6A7B8C9 /* RoadTripViewModelTests.swift */; };
+		D26E25A1B2C3D4E5F6A7B8C9 /* ImageCacheCanonicalKeyTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = D26E24A1B2C3D4E5F6A7B8C9 /* ImageCacheCanonicalKeyTests.swift */; };
+		D26E23A1B2C3D4E5F6A7B8C9 /* AuthViewModelServerAddressTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = D26E22A1B2C3D4E5F6A7B8C9 /* AuthViewModelServerAddressTests.swift */; };
+		D26E21A1B2C3D4E5F6A7B8C9 /* ServerEndpointSwitch.swift in Sources */ = {isa = PBXBuildFile; fileRef = D26E20A1B2C3D4E5F6A7B8C9 /* ServerEndpointSwitch.swift */; };
+		D26E1FA1B2C3D4E5F6A7B8C9 /* ServerEndpointSwitching.swift in Sources */ = {isa = PBXBuildFile; fileRef = D26E1EA1B2C3D4E5F6A7B8C9 /* ServerEndpointSwitching.swift */; };
+		D26E1DA1B2C3D4E5F6A7B8C9 /* ServerEndpointSwitchTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = D26E1CA1B2C3D4E5F6A7B8C9 /* ServerEndpointSwitchTests.swift */; };
+		D26E1BA1B2C3D4E5F6A7B8C9 /* ServerAddressTestSupport.swift in Sources */ = {isa = PBXBuildFile; fileRef = D26E1AA1B2C3D4E5F6A7B8C9 /* ServerAddressTestSupport.swift */; };
 		D26E19A1B2C3D4E5F6A7B8C9 /* ServerAddressBookTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = D26E18A1B2C3D4E5F6A7B8C9 /* ServerAddressBookTests.swift */; };
 		D26E17A1B2C3D4E5F6A7B8C9 /* ServerAddressBook.swift in Sources */ = {isa = PBXBuildFile; fileRef = D26E16A1B2C3D4E5F6A7B8C9 /* ServerAddressBook.swift */; };
 		D26E15A1B2C3D4E5F6A7B8C9 /* SystemNetworkPathMonitorTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = D26E14A1B2C3D4E5F6A7B8C9 /* SystemNetworkPathMonitorTests.swift */; };
@@ -793,6 +805,18 @@
 /* End PBXCopyFilesBuildPhase section */
 
 /* Begin PBXFileReference section */
+		D26E30A1B2C3D4E5F6A7B8C9 /* SharedLinkServerAddressTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SharedLinkServerAddressTests.swift; sourceTree = "<group>"; };
+		D26E2EA1B2C3D4E5F6A7B8C9 /* BackgroundBackupPassTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BackgroundBackupPassTests.swift; sourceTree = "<group>"; };
+		D26E2CA1B2C3D4E5F6A7B8C9 /* ReloadAfterEvaluationTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ReloadAfterEvaluationTests.swift; sourceTree = "<group>"; };
+		D26E2AA1B2C3D4E5F6A7B8C9 /* BackgroundBackupPass.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BackgroundBackupPass.swift; sourceTree = "<group>"; };
+		D26E28A1B2C3D4E5F6A7B8C9 /* ReloadAfterEvaluation.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ReloadAfterEvaluation.swift; sourceTree = "<group>"; };
+		D26E26A1B2C3D4E5F6A7B8C9 /* RoadTripViewModelTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RoadTripViewModelTests.swift; sourceTree = "<group>"; };
+		D26E24A1B2C3D4E5F6A7B8C9 /* ImageCacheCanonicalKeyTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ImageCacheCanonicalKeyTests.swift; sourceTree = "<group>"; };
+		D26E22A1B2C3D4E5F6A7B8C9 /* AuthViewModelServerAddressTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AuthViewModelServerAddressTests.swift; sourceTree = "<group>"; };
+		D26E20A1B2C3D4E5F6A7B8C9 /* ServerEndpointSwitch.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ServerEndpointSwitch.swift; sourceTree = "<group>"; };
+		D26E1EA1B2C3D4E5F6A7B8C9 /* ServerEndpointSwitching.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ServerEndpointSwitching.swift; sourceTree = "<group>"; };
+		D26E1CA1B2C3D4E5F6A7B8C9 /* ServerEndpointSwitchTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ServerEndpointSwitchTests.swift; sourceTree = "<group>"; };
+		D26E1AA1B2C3D4E5F6A7B8C9 /* ServerAddressTestSupport.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ServerAddressTestSupport.swift; sourceTree = "<group>"; };
 		D26E18A1B2C3D4E5F6A7B8C9 /* ServerAddressBookTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ServerAddressBookTests.swift; sourceTree = "<group>"; };
 		D26E16A1B2C3D4E5F6A7B8C9 /* ServerAddressBook.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ServerAddressBook.swift; sourceTree = "<group>"; };
 		D26E14A1B2C3D4E5F6A7B8C9 /* SystemNetworkPathMonitorTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SystemNetworkPathMonitorTests.swift; sourceTree = "<group>"; };
@@ -1593,6 +1617,9 @@
 				654AB8ED31CB6A932F118512 /* RealtimeService.swift */,
 				58F75B7704AC46C8D7E130CA /* ServerSessions.swift */,
 				D26E06A1B2C3D4E5F6A7B8C9 /* UserDefaultsServerAddressSettingsStore.swift */,
+				D26E2AA1B2C3D4E5F6A7B8C9 /* BackgroundBackupPass.swift */,
+				D26E28A1B2C3D4E5F6A7B8C9 /* ReloadAfterEvaluation.swift */,
+				D26E20A1B2C3D4E5F6A7B8C9 /* ServerEndpointSwitch.swift */,
 				D26E16A1B2C3D4E5F6A7B8C9 /* ServerAddressBook.swift */,
 				D26E12A1B2C3D4E5F6A7B8C9 /* SystemNetworkPathMonitor.swift */,
 				2733888CA0E8AA03F0B57E68 /* ThumbHashDecoder.swift */,
@@ -1739,6 +1766,7 @@
 				A7932D379D0AC9ADED6B297A /* FileDownloadTransport.swift */,
 				52227E27B6C189FC528D1924 /* ImmichClient.swift */,
 				D26E04A1B2C3D4E5F6A7B8C9 /* ServerAddressSettingsStoring.swift */,
+				D26E1EA1B2C3D4E5F6A7B8C9 /* ServerEndpointSwitching.swift */,
 				D26E10A1B2C3D4E5F6A7B8C9 /* NetworkPathMonitoring.swift */,
 				ACA8FE0FABA574203F62A5C1 /* KeychainStore.swift */,
 				16F7D31B8380292E146A2EC6 /* LocalCleanupSource.swift */,
@@ -1986,6 +2014,14 @@
 				D26E0AA1B2C3D4E5F6A7B8C9 /* ServerAddressSelectorTests.swift */,
 				D26E0CA1B2C3D4E5F6A7B8C9 /* UserDefaultsServerAddressSettingsStoreTests.swift */,
 				D26E0EA1B2C3D4E5F6A7B8C9 /* URLSessionServerAddressProbeTests.swift */,
+				D26E30A1B2C3D4E5F6A7B8C9 /* SharedLinkServerAddressTests.swift */,
+				D26E2EA1B2C3D4E5F6A7B8C9 /* BackgroundBackupPassTests.swift */,
+				D26E2CA1B2C3D4E5F6A7B8C9 /* ReloadAfterEvaluationTests.swift */,
+				D26E26A1B2C3D4E5F6A7B8C9 /* RoadTripViewModelTests.swift */,
+				D26E24A1B2C3D4E5F6A7B8C9 /* ImageCacheCanonicalKeyTests.swift */,
+				D26E22A1B2C3D4E5F6A7B8C9 /* AuthViewModelServerAddressTests.swift */,
+				D26E1CA1B2C3D4E5F6A7B8C9 /* ServerEndpointSwitchTests.swift */,
+				D26E1AA1B2C3D4E5F6A7B8C9 /* ServerAddressTestSupport.swift */,
 				D26E18A1B2C3D4E5F6A7B8C9 /* ServerAddressBookTests.swift */,
 				D26E14A1B2C3D4E5F6A7B8C9 /* SystemNetworkPathMonitorTests.swift */,
 				E5D10C82D78CAF4D69F0B565 /* UploadDetailViewModelTests.swift */,
@@ -3125,6 +3161,14 @@
 				D26E0BA1B2C3D4E5F6A7B8C9 /* ServerAddressSelectorTests.swift in Sources */,
 				D26E0DA1B2C3D4E5F6A7B8C9 /* UserDefaultsServerAddressSettingsStoreTests.swift in Sources */,
 				D26E0FA1B2C3D4E5F6A7B8C9 /* URLSessionServerAddressProbeTests.swift in Sources */,
+				D26E31A1B2C3D4E5F6A7B8C9 /* SharedLinkServerAddressTests.swift in Sources */,
+				D26E2FA1B2C3D4E5F6A7B8C9 /* BackgroundBackupPassTests.swift in Sources */,
+				D26E2DA1B2C3D4E5F6A7B8C9 /* ReloadAfterEvaluationTests.swift in Sources */,
+				D26E27A1B2C3D4E5F6A7B8C9 /* RoadTripViewModelTests.swift in Sources */,
+				D26E25A1B2C3D4E5F6A7B8C9 /* ImageCacheCanonicalKeyTests.swift in Sources */,
+				D26E23A1B2C3D4E5F6A7B8C9 /* AuthViewModelServerAddressTests.swift in Sources */,
+				D26E1DA1B2C3D4E5F6A7B8C9 /* ServerEndpointSwitchTests.swift in Sources */,
+				D26E1BA1B2C3D4E5F6A7B8C9 /* ServerAddressTestSupport.swift in Sources */,
 				D26E19A1B2C3D4E5F6A7B8C9 /* ServerAddressBookTests.swift in Sources */,
 				D26E15A1B2C3D4E5F6A7B8C9 /* SystemNetworkPathMonitorTests.swift in Sources */,
 				649FA46B988D267F7F9BF744 /* UploadDetailViewModelTests.swift in Sources */,
@@ -3214,6 +3258,10 @@
 				D26E02A1B2C3D4E5F6A7B8C9 /* ServerAddresses.swift in Sources */,
 				D26E05A1B2C3D4E5F6A7B8C9 /* ServerAddressSettingsStoring.swift in Sources */,
 				D26E07A1B2C3D4E5F6A7B8C9 /* UserDefaultsServerAddressSettingsStore.swift in Sources */,
+				D26E2BA1B2C3D4E5F6A7B8C9 /* BackgroundBackupPass.swift in Sources */,
+				D26E29A1B2C3D4E5F6A7B8C9 /* ReloadAfterEvaluation.swift in Sources */,
+				D26E21A1B2C3D4E5F6A7B8C9 /* ServerEndpointSwitch.swift in Sources */,
+				D26E1FA1B2C3D4E5F6A7B8C9 /* ServerEndpointSwitching.swift in Sources */,
 				D26E17A1B2C3D4E5F6A7B8C9 /* ServerAddressBook.swift in Sources */,
 				D26E13A1B2C3D4E5F6A7B8C9 /* SystemNetworkPathMonitor.swift in Sources */,
 				D26E11A1B2C3D4E5F6A7B8C9 /* NetworkPathMonitoring.swift in Sources */,

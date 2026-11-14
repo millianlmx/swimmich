@@ -81,7 +81,7 @@ final class AuthViewModel: AuthSessionDelegate {
     /// Stable identity of the active account. Drives the switcher checkmark
     /// and the RootView `.id(...)` that rebuilds the tab subtree on switch.
     var activeAccountID: String? {
-        SavedAccount.makeID(url: baseURL?.absoluteString ?? serverURLString, email: userEmail, userId: userId)
+        SavedAccount.makeID(url: accountURL?.absoluteString ?? serverURLString, email: userEmail, userId: userId)
     }
 
     /// True while `restoreSession()` reconfigures the client + validates the
@@ -117,6 +117,9 @@ final class AuthViewModel: AuthSessionDelegate {
     /// refused server trust from a plain network failure (L-10).
     private let challengeLog: TLSChallengeLog
     private let identities: any ClientIdentityStoring
+    /// Which address of the active account the app talks to (L-26). The account
+    /// keeps one identity (`accountURL`); the address in use is `baseURL`.
+    private let endpoints: ServerEndpointSwitch
 
     init(
         client: any ImmichClient,
@@ -129,7 +132,8 @@ final class AuthViewModel: AuthSessionDelegate {
         localData: LocalDataPurger? = nil,
         customHeaders: any CustomHeadersProviding = NoCustomHeaders(),
         challengeLog: TLSChallengeLog = .shared,
-        identities: any ClientIdentityStoring = KeychainClientIdentityStore()
+        identities: any ClientIdentityStoring = KeychainClientIdentityStore(),
+        endpoints: ServerEndpointSwitch? = nil
     ) {
         self.client = client
         self.keychain = keychain
@@ -142,6 +146,12 @@ final class AuthViewModel: AuthSessionDelegate {
         self.customHeaders = customHeaders
         self.challengeLog = challengeLog
         self.identities = identities
+        self.endpoints = endpoints ?? ServerEndpointSwitch(
+            client: client, realtime: realtime,
+            store: UserDefaultsServerAddressSettingsStore(defaults: defaults),
+            probe: URLSessionServerAddressProbe(session: { URLSession(configuration: ServerSessions.probeConfiguration()) }),
+            monitor: nil, addressBook: ServerAddressBook(), customHeaders: customHeaders, appLog: NoopAppLogSink()
+        )
         self.serverURLString = defaults.string(forKey: Self.serverURLDefaultsKey) ?? ""
         self.userEmail = defaults.string(forKey: Self.userEmailDefaultsKey)
         self.userName = defaults.string(forKey: Self.userNameDefaultsKey)
@@ -167,14 +177,17 @@ final class AuthViewModel: AuthSessionDelegate {
         isRestoringSession = true
         defer { isRestoringSession = false }
 
-        guard let token = accessToken, let url = baseURL else {
+        guard let token = accessToken, let url = accountURL else {
             resetSession()
             return
         }
         scopeLocalData()
-        client.configure(baseURL: url, token: token)
+        endpoints.activate(accountID: activeID(for: url), accountURL: url, token: token, connectRealtime: false)
         do {
             _ = try await client.validateToken()
+            // The session is valid: the version the server answers with is the reference
+            // the local address is compared to. Never awaited.
+            if accessToken == token, accountURL == url { Task { await endpoints.refreshKnownVersion() } }
         } catch APIError.unauthorized {
             resetSession()
         } catch {
@@ -187,8 +200,8 @@ final class AuthViewModel: AuthSessionDelegate {
         if isAuthenticated {
             // The token/URL pair that was just validated; a switch of account
             // during the await must not reconnect with the old token.
-            if accessToken == token, baseURL == url {
-                realtime.connect(baseURL: url, token: token)
+            if accessToken == token, accountURL == url {
+                endpoints.connectRealtime()
             }
             serverConfig = try? await client.serverConfig()
             publishWidgetSession()
@@ -201,15 +214,18 @@ final class AuthViewModel: AuthSessionDelegate {
     /// widget cannot see any of this state otherwise, and a stale mirror shows
     /// the previous account's photos.
     func publishWidgetSession() {
-        guard let token = accessToken, let baseURL else { return }
+        guard let token = accessToken, let accountURL else { return }
+        // Widgets and the share extension employ the external address (L-26): the
+        // local one is chosen from the app's own evaluation, which they cannot read.
+        let published = endpoints.externalURL ?? accountURL
         // The widget cannot read this process' trust store (a different
         // container), so a host whose certificate the user accepted travels
         // with the session — without it a self-signed server is unreachable
         // from the widget even though the app opens it fine.
-        let host = baseURL.host
+        let host = published.host
         let trustedHosts = (host.flatMap { trustStore.contains($0) ? $0 : nil }).map { [$0] } ?? []
         widgetSession.save(WidgetSession(
-            baseURL: baseURL.absoluteString,
+            baseURL: published.absoluteString,
             token: token,
             userName: userName,
             userId: userId,
@@ -222,7 +238,7 @@ final class AuthViewModel: AuthSessionDelegate {
             // the active server's headers travel with the session. `nil` (not
             // `[]`) when there are none, so the stored JSON is the one of a
             // build without custom headers.
-            customHeaders: Self.nonEmpty(customHeaders.headers(for: baseURL))
+            customHeaders: Self.nonEmpty(customHeaders.headers(for: accountURL))
         ))
         reloadWidgets()
     }
@@ -237,10 +253,10 @@ final class AuthViewModel: AuthSessionDelegate {
     /// at connect) and the widgets' session. The session itself is never reset.
     /// Without a session, or for another server, there is nothing to do.
     func customHeadersDidChange(for key: ServerKey) {
-        guard isAuthenticated, let token = accessToken, let url = baseURL,
+        guard isAuthenticated, accessToken != nil, let url = accountURL,
               ServerKey(url: url) == key
         else { return }
-        realtime.connect(baseURL: url, token: token)
+        endpoints.reconnectRealtime()
         publishWidgetSession()
     }
 
@@ -258,18 +274,37 @@ final class AuthViewModel: AuthSessionDelegate {
         return URL(string: trimmed)
     }
 
-    var baseURL: URL? {
+    /// The identity of the active account: the address it was connected with.
+    /// It keys the token, the offline copies and the caches, and never changes
+    /// when the app switches between the local and the external address.
+    var accountURL: URL? {
         if let cached = _cachedBaseURL { return cached }
         let url = normalizedBaseURL(from: serverURLString)
         _cachedBaseURL = url
         return url
     }
 
+    /// The address the app talks to: the one in use while signed in (the local
+    /// or the external address of the server), the typed one before.
+    var baseURL: URL? {
+        isAuthenticated ? (endpoints.activeURL ?? accountURL) : accountURL
+    }
+
+    /// The address links shared with other people are built on (the external one).
+    var publicServerURL: URL? { endpoints.publicURL ?? accountURL }
+
+    /// The service behind the "Network" setting.
+    var serverAddresses: ServerEndpointSwitch { endpoints }
+
+    private func activeID(for url: URL) -> String {
+        SavedAccount.makeID(url: url.absoluteString, email: userEmail, userId: userId)
+    }
+
     // MARK: - Server discovery
 
     @MainActor
     func connectServer() async {
-        guard let url = baseURL else {
+        guard let url = accountURL else {
             serverStatus = .unreachable
             errorMessage = String(localized: "Enter a valid server URL.")
             return
@@ -321,7 +356,7 @@ final class AuthViewModel: AuthSessionDelegate {
 
     /// Re-reads whether the typed server has a client certificate.
     func refreshClientCertificateState() {
-        guard let url = baseURL, let key = ServerKey(url: url) else {
+        guard let url = accountURL, let key = ServerKey(url: url) else {
             serverHasClientCertificate = false
             return
         }
@@ -332,7 +367,7 @@ final class AuthViewModel: AuthSessionDelegate {
     /// state and check the server again, so the status follows without a tap.
     func clientCertificateDidChange() async {
         refreshClientCertificateState()
-        if baseURL != nil { await connectServer() }
+        if accountURL != nil { await connectServer() }
     }
 
     /// Host whose TLS certificate failed validation (P5 selfsigned-cert).
@@ -351,7 +386,7 @@ final class AuthViewModel: AuthSessionDelegate {
 
     @MainActor
     func login(email: String, password: String) async {
-        guard baseURL != nil else {
+        guard accountURL != nil else {
             errorMessage = String(localized: "Connect to a server first.")
             return
         }
@@ -387,7 +422,7 @@ final class AuthViewModel: AuthSessionDelegate {
     /// current state untouched.
     @MainActor
     func startOAuthFlow() async {
-        guard baseURL != nil, canOAuthLogin else {
+        guard accountURL != nil, canOAuthLogin else {
             errorMessage = String(localized: "OAuth is not enabled on this server.")
             return
         }
@@ -439,7 +474,7 @@ final class AuthViewModel: AuthSessionDelegate {
         self.shouldChangePassword = shouldChangePassword
         sessionExpired = false
         keychain.saveToken(token)
-        defaults.set(baseURL?.absoluteString ?? serverURLString, forKey: Self.serverURLDefaultsKey)
+        defaults.set(accountURL?.absoluteString ?? serverURLString, forKey: Self.serverURLDefaultsKey)
         if let email { defaults.set(email, forKey: Self.userEmailDefaultsKey) }
         if let name { defaults.set(name, forKey: Self.userNameDefaultsKey) }
         if let userId { defaults.set(userId, forKey: Self.userIdDefaultsKey) }
@@ -450,8 +485,14 @@ final class AuthViewModel: AuthSessionDelegate {
         // `restoreSession()` — a relaunch that restores a session after an update
         // is exactly the case the sheet exists for.
         defaults.set(FeatureHighlightCatalog.release, forKey: WhatsNewStore.seenReleaseKey)
-        client.configure(baseURL: baseURL, token: token)
-        if let baseURL { realtime.connect(baseURL: baseURL, token: token) }
+        if let accountURL {
+            endpoints.activate(accountID: activeID(for: accountURL), accountURL: accountURL, token: token, connectRealtime: true)
+            if case .reachable(let version?) = serverStatus {
+                endpoints.recordVersion("\(version.major).\(version.minor).\(version.patch)")
+            }
+        } else {
+            client.configure(baseURL: nil, token: token)
+        }
         publishWidgetSession()
         addCurrentAccountToSaved()
         scopeLocalData()
@@ -477,6 +518,7 @@ final class AuthViewModel: AuthSessionDelegate {
         for account in savedAccounts { keychain.deleteToken(for: account.id) }
         savedAccounts = []
         defaults.removeObject(forKey: Self.serverListDefaultsKey)
+        endpoints.forgetAll()
         defaults.removeObject(forKey: Self.serverURLDefaultsKey)
         serverURLString = ""
         resetSession()
@@ -499,7 +541,8 @@ final class AuthViewModel: AuthSessionDelegate {
         defaults.removeObject(forKey: Self.userNameDefaultsKey)
         defaults.removeObject(forKey: Self.userIdDefaultsKey)
         defaults.removeObject(forKey: Self.isAdminDefaultsKey)
-        client.configure(baseURL: baseURL, token: nil)
+        endpoints.deactivate()
+        client.configure(baseURL: accountURL, token: nil)
         realtime.disconnect()
         scopeLocalData()
     }
@@ -539,7 +582,7 @@ final class AuthViewModel: AuthSessionDelegate {
 
     /// Returns the active session as a `SavedAccount` (nil if no URL yet).
     private func currentAccount() -> SavedAccount? {
-        guard let url = baseURL?.absoluteString else { return nil }
+        guard let url = accountURL?.absoluteString else { return nil }
         return SavedAccount(url: url, email: userEmail, name: userName, userId: userId, isAdmin: isAdmin)
     }
 
@@ -559,6 +602,7 @@ final class AuthViewModel: AuthSessionDelegate {
     /// If it is the active account, the session is reset (onboarding, URL kept).
     func removeSavedAccount(_ account: SavedAccount) {
         keychain.deleteToken(for: account.id)
+        endpoints.forget(accountID: account.id)
         savedAccounts.removeAll { $0.id == account.id }
         persistSavedAccounts()
         if account.id == activeAccountID {
@@ -611,11 +655,11 @@ final class AuthViewModel: AuthSessionDelegate {
         defaults.set(account.name, forKey: Self.userNameDefaultsKey)
         defaults.set(account.userId, forKey: Self.userIdDefaultsKey)
         defaults.set(account.isAdmin, forKey: Self.isAdminDefaultsKey)
-        client.configure(baseURL: url, token: token)
-        realtime.connect(baseURL: url, token: token)
+        endpoints.activate(accountID: activeID(for: url), accountURL: url, token: token, connectRealtime: true)
         publishWidgetSession()
         do {
             _ = try await client.validateToken()
+            if accessToken == token, accountURL == url { Task { await endpoints.refreshKnownVersion() } }
         } catch APIError.unauthorized {
             resetSession()
         } catch {
@@ -653,7 +697,8 @@ final class AuthViewModel: AuthSessionDelegate {
         accessToken = nil
         errorMessage = UserFacingError.sessionExpiredMessage
         sessionExpired = true
-        client.configure(baseURL: baseURL, token: nil)
+        endpoints.deactivate()
+        client.configure(baseURL: accountURL, token: nil)
         realtime.disconnect()
         scopeLocalData()
     }

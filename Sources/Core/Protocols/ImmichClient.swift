@@ -11,6 +11,11 @@ protocol ImmichClient: AnyObject, Sendable {
     /// Configures the server base URL + bearer token. Called by AuthViewModel.
     func configure(baseURL: URL?, token: String?)
 
+    /// Points the client at another address of the SAME server (L-26: the local
+    /// or the external one) and keeps the token and the shared-link visit, which
+    /// are valid on both. `configure` ends that visit; this does not.
+    func retarget(baseURL: URL)
+
     /// Delegate notified on global 401 (FM-4).
     var authDelegate: (any AuthSessionDelegate)? { get set }
 

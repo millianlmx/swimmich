@@ -127,6 +127,14 @@ final class ImmichAPIClient: ImmichClient, SessionRenewing, @unchecked Sendable 
         }
     }
 
+    /// Same server, another address (L-26): the token and the shared-link visit
+    /// stay, because both are valid on every address of the server.
+    func retarget(baseURL: URL) {
+        lock.lock()
+        _baseURL = baseURL
+        lock.unlock()
+    }
+
     /// Cookie storage of the client's session; the one `configure` purges.
     var sessionCookieStorage: HTTPCookieStorage? { currentSession.configuration.httpCookieStorage }
 

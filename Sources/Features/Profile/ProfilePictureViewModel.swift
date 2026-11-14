@@ -39,7 +39,8 @@ final class ProfilePictureViewModel {
     static let uploadFilename = "profile.jpg"
 
     private let client: any ImmichClient
-    private let baseURL: URL?
+    /// The address in use, read at every `avatarURL` (L-26).
+    private let baseURL: @MainActor () -> URL?
     private let token: String?
 
     private(set) var phase: Phase = .idle
@@ -60,7 +61,7 @@ final class ProfilePictureViewModel {
     /// a photo is picked there is nothing to crop.
     private(set) var cropRect: CGRect = CGRect(x: 0, y: 0, width: 1, height: 1)
 
-    init(client: any ImmichClient, baseURL: URL?, token: String?) {
+    init(client: any ImmichClient, baseURL: @escaping @MainActor () -> URL?, token: String?) {
         self.client = client
         self.baseURL = baseURL
         self.token = token
@@ -78,7 +79,7 @@ final class ProfilePictureViewModel {
     /// so `profileChangedAt` riding along is what makes a replacement photo
     /// appear instead of the cached previous one (AC-5162).
     var avatarURL: URL? {
-        guard let profile, let baseURL, !(profile.profileImagePath ?? "").isEmpty else { return nil }
+        guard let profile, let baseURL = baseURL(), !(profile.profileImagePath ?? "").isEmpty else { return nil }
         return ImmichAssetURL.profileImage(userId: profile.id, changedAt: profile.profileChangedAt, baseURL: baseURL)
     }
 

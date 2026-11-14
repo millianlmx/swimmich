@@ -206,7 +206,7 @@ final class AuthViewModelTests: XCTestCase {
         // `externalDomain`, and it used to be fetched only while walking
         // onboarding — so a relaunched session could not build a public shared
         // link URL pointing at the server's public domain.
-        XCTAssertEqual(mock.requestCount, 2, "validateToken then serverConfig")
+        XCTAssertGreaterThanOrEqual(mock.requestCount, 2, "validateToken then serverConfig (L-26 adds an unawaited version read)")
         XCTAssertEqual(auth.serverConfig?.externalDomain, "https://photos.public.example",
                        "a relaunch must learn the public domain, not only the onboarding walk")
     }
