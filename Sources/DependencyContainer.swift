@@ -41,6 +41,9 @@ final class DependencyContainer {
     nonisolated let clientIdentities: any ClientIdentityStoring
     nonisolated let clientCertificateResponder: ClientCertificateResponder
     let clientCertificates: ClientCertificateService
+    /// Reloads every widget timeline: after a TLS identity change and once an edited photo has been regenerated.
+    let reloadWidgets: @Sendable () -> Void
+    let editedAssetFollowUp: EditedAssetFollowUp
     /// Process-wide single instance so the BG handler, the settings toggle
     /// and `UploadViewModel` all submit through the same request slot —
     /// `submit()` cancels then re-submits, so concurrent independent
@@ -216,14 +219,18 @@ final class DependencyContainer {
             customHeaders: customHeaders
         )
         self.realtime = realtime
+        let reloadWidgets: @Sendable () -> Void = { WidgetCenter.shared.reloadAllTimelines() }
+        self.reloadWidgets = reloadWidgets
         self.clientCertificates = ClientCertificateService(
             store: identities,
             log: .shared,
             sessions: [client, serverSessions],
             reconnectRealtime: { [realtime] in realtime.reconnectIfConnected() },
-            reloadWidgets: { WidgetCenter.shared.reloadAllTimelines() },
+            reloadWidgets: reloadWidgets,
             appLog: appLog
         )
+        // Photos saved or reset in the editor, followed until the server has regenerated their thumbnails (L-21).
+        self.editedAssetFollowUp = EditedAssetFollowUp(client: self.libraryClient, reloadWidgets: reloadWidgets)
         self.backupScheduler = BGTaskBackupScheduler()
         self.backupLedger = BackupLedger.persistent()
         self.backupEditLedger = BackupEditLedger.persistent()

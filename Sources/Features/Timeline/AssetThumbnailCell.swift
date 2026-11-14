@@ -86,7 +86,7 @@ struct AssetThumbnailCell: View {
                     // elements the UI scenarios assert on. The same goes for the
                     // VoiceOver label and the button trait: the badges stay
                     // elements of their own.
-                    .accessibilityElement(children: .ignore)
+                    .imageTileAccessibilityElement()
                     .accessibilityLabel(Self.accessibilityLabel(for: asset))
                     .accessibilityAddTraits(onTap == nil ? [] : .isButton)
                     .accessibilityAddTraits(selectionMode && isSelected ? .isSelected : [])

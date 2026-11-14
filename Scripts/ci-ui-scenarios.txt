@@ -135,3 +135,25 @@ immich_stub_adjust_date.py AdjustDateUITests/test_AC_66_6_reopenAfterSave --rele
 # process) to the foreground, which no unit test can show. The other AdjustLocationUITests are compiled,
 # not run: their criteria have unit tests of the same name (AdjustLocationViewModelTests, DeviceLocationTests).
 immich_stub_adjust_location.py AdjustLocationUITests/test_AC_231
+
+# Tiers of the lines below: `--release` where a unit test of the same criterion exists
+# (func test_AC_<n> under Tests/); core for the others, as far as the night's budget of
+# 40 lines allows (27 taken by `main`).
+# The edited version follows everywhere after the regeneration (AC-183, AC-186, AC-196 to AC-199): a stub
+# that serves the old rendering for 5 s or 15 s, then the new one and the `AssetEditReadyV2` event.
+immich_stub_asset_edits.py AssetEditsUITests/test_AC_183_timelineAlbumAndSearchFollowTheEditAndItsRemoval --release
+immich_stub_asset_edits.py AssetEditsUITests/test_AC_186_offlineCopyFollowsAfterTheRegeneration --release
+immich_stub_asset_edits.py AssetEditsUITests/test_AC_196_editMadeElsewhereReachesOpenScreens
+immich_stub_asset_edits.py AssetEditsUITests/test_AC_197_albumCoverFollowsTheEdit --release
+immich_stub_asset_edits.py AssetEditsUITests/test_AC_198_slowRegenerationRedownloadsOnTheEvent --release
+immich_stub_asset_edits.py AssetEditsUITests/test_AC_199_slowRegenerationReachesTheSearchGridAfterTheViewerClosed --release
+immich_stub_asset_edits.py AssetEditsUITests/test_AC_199_withoutTheEventTheReopenedViewerResumesTheCopy --release
+# The proofs of the display (AC-190 to AC-195): published app without a hidden switch, the zoom limit of an
+# edited photo, an edit made before the launch on every surface, share and editor on the original, an old
+# server. The widget on the Home Screen is erased like the other widget scenarios.
+immich_stub_asset_edits.py AssetEditsUITests/test_AC_190_serverSaveIsOnWithoutAnyHiddenSwitch
+immich_stub_asset_edits.py AssetEditsUITests/test_AC_191_editedPhotoZoomLimitIgnoresTheOriginalExif --release
+immich_stub_asset_edits.py AssetEditsUITests/test_AC_192_editMadeBeforeShowsOnEverySurface
+immich_stub_asset_edits.py EditedWidgetUITests/test_AC_193_widgetShowsTheEditedImageAfterTheEdit --erase
+immich_stub_asset_edits.py AssetEditsUITests/test_AC_194_shareAndEditorStayOnTheOriginal --release
+immich_stub_asset_edits.py AssetEditsUITests/test_AC_195_oldServerShowsPhotosAsBefore

@@ -74,7 +74,7 @@ struct AddToAlbumPickerSheet: View {
                 .overlay {
                     if let thumbId = album.albumThumbnailAssetId {
                         AuthenticatedAsyncImage(
-                            url: ImmichAssetURL.thumbnail(assetId: thumbId, thumbhash: "", baseURL: baseURL),
+                            url: ImmichAssetURL.albumCover(assetId: thumbId, album: album, baseURL: baseURL),
                             token: auth.accessToken
                         )
                     } else {

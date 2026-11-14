@@ -57,6 +57,21 @@ private struct ImageLoadProbeModifier: ViewModifier {
     }
 }
 
+extension View {
+    /// `.accessibilityElement(children: .ignore)` around an `AuthenticatedAsyncImage` that gets its own
+    /// label, traits and identifier. Under the image probe the loader is already a single element that
+    /// carries the probe value, and a second `.ignore` around it drops that value (the tile of a grid
+    /// then reads empty to a UI test): the label, traits and identifier land on the loader's element.
+    @ViewBuilder
+    func imageTileAccessibilityElement() -> some View {
+        if ImageLoadProbe.isEnabled {
+            self
+        } else {
+            accessibilityElement(children: .ignore)
+        }
+    }
+}
+
 /// Loads images from authenticated Immich endpoints (Bearer token in header).
 ///
 /// Premium pipeline (AC-200 integration):
