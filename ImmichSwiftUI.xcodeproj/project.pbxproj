@@ -7,6 +7,29 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
+		D26E3FA1B2C3D4E5F6A7B8C9 /* immich_stub_server_addresses.py in Resources */ = {isa = PBXBuildFile; fileRef = D26E3EA1B2C3D4E5F6A7B8C9 /* immich_stub_server_addresses.py */; };
+		D26E3DA1B2C3D4E5F6A7B8C9 /* ServerAddressesUITests.swift in Sources */ = {isa = PBXBuildFile; fileRef = D26E3CA1B2C3D4E5F6A7B8C9 /* ServerAddressesUITests.swift */; };
+		D26E39A1B2C3D4E5F6A7B8C9 /* NetworkSettingsViewModelTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = D26E38A1B2C3D4E5F6A7B8C9 /* NetworkSettingsViewModelTests.swift */; };
+		D26E35A1B2C3D4E5F6A7B8C9 /* NetworkSettingsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = D26E34A1B2C3D4E5F6A7B8C9 /* NetworkSettingsView.swift */; };
+		D26E33A1B2C3D4E5F6A7B8C9 /* NetworkSettingsViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = D26E32A1B2C3D4E5F6A7B8C9 /* NetworkSettingsViewModel.swift */; };
+		D26E31A1B2C3D4E5F6A7B8C9 /* SharedLinkServerAddressTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = D26E30A1B2C3D4E5F6A7B8C9 /* SharedLinkServerAddressTests.swift */; };
+		D26E2FA1B2C3D4E5F6A7B8C9 /* BackgroundBackupPassTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = D26E2EA1B2C3D4E5F6A7B8C9 /* BackgroundBackupPassTests.swift */; };
+		D26E2DA1B2C3D4E5F6A7B8C9 /* ReloadAfterEvaluationTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = D26E2CA1B2C3D4E5F6A7B8C9 /* ReloadAfterEvaluationTests.swift */; };
+		D26E2BA1B2C3D4E5F6A7B8C9 /* BackgroundBackupPass.swift in Sources */ = {isa = PBXBuildFile; fileRef = D26E2AA1B2C3D4E5F6A7B8C9 /* BackgroundBackupPass.swift */; };
+		D26E29A1B2C3D4E5F6A7B8C9 /* ReloadAfterEvaluation.swift in Sources */ = {isa = PBXBuildFile; fileRef = D26E28A1B2C3D4E5F6A7B8C9 /* ReloadAfterEvaluation.swift */; };
+		D26E27A1B2C3D4E5F6A7B8C9 /* RoadTripViewModelTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = D26E26A1B2C3D4E5F6A7B8C9 /* RoadTripViewModelTests.swift */; };
+		D26E25A1B2C3D4E5F6A7B8C9 /* ImageCacheCanonicalKeyTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = D26E24A1B2C3D4E5F6A7B8C9 /* ImageCacheCanonicalKeyTests.swift */; };
+		D26E23A1B2C3D4E5F6A7B8C9 /* AuthViewModelServerAddressTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = D26E22A1B2C3D4E5F6A7B8C9 /* AuthViewModelServerAddressTests.swift */; };
+		D26E21A1B2C3D4E5F6A7B8C9 /* ServerEndpointSwitch.swift in Sources */ = {isa = PBXBuildFile; fileRef = D26E20A1B2C3D4E5F6A7B8C9 /* ServerEndpointSwitch.swift */; };
+		D26E1FA1B2C3D4E5F6A7B8C9 /* ServerEndpointSwitching.swift in Sources */ = {isa = PBXBuildFile; fileRef = D26E1EA1B2C3D4E5F6A7B8C9 /* ServerEndpointSwitching.swift */; };
+		D26E1DA1B2C3D4E5F6A7B8C9 /* ServerEndpointSwitchTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = D26E1CA1B2C3D4E5F6A7B8C9 /* ServerEndpointSwitchTests.swift */; };
+		D26E1BA1B2C3D4E5F6A7B8C9 /* ServerAddressTestSupport.swift in Sources */ = {isa = PBXBuildFile; fileRef = D26E1AA1B2C3D4E5F6A7B8C9 /* ServerAddressTestSupport.swift */; };
+		D26E19A1B2C3D4E5F6A7B8C9 /* ServerAddressBookTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = D26E18A1B2C3D4E5F6A7B8C9 /* ServerAddressBookTests.swift */; };
+		D26E41A1B2C3D4E5F6A7B8C9 /* WidgetServerAddressTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = D26E40A1B2C3D4E5F6A7B8C9 /* WidgetServerAddressTests.swift */; };
+		D26E17A1B2C3D4E5F6A7B8C9 /* ServerAddressBook.swift in Sources */ = {isa = PBXBuildFile; fileRef = D26E16A1B2C3D4E5F6A7B8C9 /* ServerAddressBook.swift */; };
+		D26E15A1B2C3D4E5F6A7B8C9 /* SystemNetworkPathMonitorTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = D26E14A1B2C3D4E5F6A7B8C9 /* SystemNetworkPathMonitorTests.swift */; };
+		D26E13A1B2C3D4E5F6A7B8C9 /* SystemNetworkPathMonitor.swift in Sources */ = {isa = PBXBuildFile; fileRef = D26E12A1B2C3D4E5F6A7B8C9 /* SystemNetworkPathMonitor.swift */; };
+		D26E11A1B2C3D4E5F6A7B8C9 /* NetworkPathMonitoring.swift in Sources */ = {isa = PBXBuildFile; fileRef = D26E10A1B2C3D4E5F6A7B8C9 /* NetworkPathMonitoring.swift */; };
 		0033168128061F9717ED66A2 /* MapViewModelTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0296808F41BB923762620C64 /* MapViewModelTests.swift */; };
 		00335522C07BD5F73F1CA5A3 /* PhotoLibraryService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 19228B23E7674EA5BE6AA5AF /* PhotoLibraryService.swift */; };
 		00CEFF46083F7B6F0270D1CF /* PhotoShareViewModelTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2AC83A2848BCC8C9285FB4A1 /* PhotoShareViewModelTests.swift */; };
@@ -728,6 +751,14 @@
 		FE878E244F2125507ECDCB36 /* PVStatusBadge.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5B50D4A922CF1A0C2F3FD209 /* PVStatusBadge.swift */; };
 		FF60B669921EB2F1A3B38BFD /* PhotoEditorViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1D54D90775F8E62B8FCDA9E4 /* PhotoEditorViewModel.swift */; };
 		FF78C43053848321ADA8A783 /* RoadTripSmoothPath.swift in Sources */ = {isa = PBXBuildFile; fileRef = EE1BCE57E2D0C2BD94AF459F /* RoadTripSmoothPath.swift */; };
+		D26E02A1B2C3D4E5F6A7B8C9 /* ServerAddresses.swift in Sources */ = {isa = PBXBuildFile; fileRef = D26E01A1B2C3D4E5F6A7B8C9 /* ServerAddresses.swift */; };
+		D26E03A1B2C3D4E5F6A7B8C9 /* ServerAddresses.swift in Sources */ = {isa = PBXBuildFile; fileRef = D26E01A1B2C3D4E5F6A7B8C9 /* ServerAddresses.swift */; };
+		D26E05A1B2C3D4E5F6A7B8C9 /* ServerAddressSettingsStoring.swift in Sources */ = {isa = PBXBuildFile; fileRef = D26E04A1B2C3D4E5F6A7B8C9 /* ServerAddressSettingsStoring.swift */; };
+		D26E07A1B2C3D4E5F6A7B8C9 /* UserDefaultsServerAddressSettingsStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = D26E06A1B2C3D4E5F6A7B8C9 /* UserDefaultsServerAddressSettingsStore.swift */; };
+		D26E09A1B2C3D4E5F6A7B8C9 /* ServerAddressInputTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = D26E08A1B2C3D4E5F6A7B8C9 /* ServerAddressInputTests.swift */; };
+		D26E0BA1B2C3D4E5F6A7B8C9 /* ServerAddressSelectorTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = D26E0AA1B2C3D4E5F6A7B8C9 /* ServerAddressSelectorTests.swift */; };
+		D26E0DA1B2C3D4E5F6A7B8C9 /* UserDefaultsServerAddressSettingsStoreTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = D26E0CA1B2C3D4E5F6A7B8C9 /* UserDefaultsServerAddressSettingsStoreTests.swift */; };
+		D26E0FA1B2C3D4E5F6A7B8C9 /* URLSessionServerAddressProbeTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = D26E0EA1B2C3D4E5F6A7B8C9 /* URLSessionServerAddressProbeTests.swift */; };
 		FFC3C966DB8C13623DC8BA25 /* AppLogRedactor.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2282A6488B618CDD6FC2B9A0 /* AppLogRedactor.swift */; };
 		FFDA143693E38E692D821C6D /* CustomHeadersRegistry.swift in Sources */ = {isa = PBXBuildFile; fileRef = 17AF4BC2197F80F835141FEE /* CustomHeadersRegistry.swift */; };
 /* End PBXBuildFile section */
@@ -833,6 +864,29 @@
 /* End PBXCopyFilesBuildPhase section */
 
 /* Begin PBXFileReference section */
+		D26E3EA1B2C3D4E5F6A7B8C9 /* immich_stub_server_addresses.py */ = {isa = PBXFileReference; lastKnownFileType = text.script.python; path = immich_stub_server_addresses.py; sourceTree = "<group>"; };
+		D26E3CA1B2C3D4E5F6A7B8C9 /* ServerAddressesUITests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ServerAddressesUITests.swift; sourceTree = "<group>"; };
+		D26E38A1B2C3D4E5F6A7B8C9 /* NetworkSettingsViewModelTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NetworkSettingsViewModelTests.swift; sourceTree = "<group>"; };
+		D26E34A1B2C3D4E5F6A7B8C9 /* NetworkSettingsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NetworkSettingsView.swift; sourceTree = "<group>"; };
+		D26E32A1B2C3D4E5F6A7B8C9 /* NetworkSettingsViewModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NetworkSettingsViewModel.swift; sourceTree = "<group>"; };
+		D26E30A1B2C3D4E5F6A7B8C9 /* SharedLinkServerAddressTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SharedLinkServerAddressTests.swift; sourceTree = "<group>"; };
+		D26E2EA1B2C3D4E5F6A7B8C9 /* BackgroundBackupPassTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BackgroundBackupPassTests.swift; sourceTree = "<group>"; };
+		D26E2CA1B2C3D4E5F6A7B8C9 /* ReloadAfterEvaluationTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ReloadAfterEvaluationTests.swift; sourceTree = "<group>"; };
+		D26E2AA1B2C3D4E5F6A7B8C9 /* BackgroundBackupPass.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BackgroundBackupPass.swift; sourceTree = "<group>"; };
+		D26E28A1B2C3D4E5F6A7B8C9 /* ReloadAfterEvaluation.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ReloadAfterEvaluation.swift; sourceTree = "<group>"; };
+		D26E26A1B2C3D4E5F6A7B8C9 /* RoadTripViewModelTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RoadTripViewModelTests.swift; sourceTree = "<group>"; };
+		D26E24A1B2C3D4E5F6A7B8C9 /* ImageCacheCanonicalKeyTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ImageCacheCanonicalKeyTests.swift; sourceTree = "<group>"; };
+		D26E22A1B2C3D4E5F6A7B8C9 /* AuthViewModelServerAddressTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AuthViewModelServerAddressTests.swift; sourceTree = "<group>"; };
+		D26E20A1B2C3D4E5F6A7B8C9 /* ServerEndpointSwitch.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ServerEndpointSwitch.swift; sourceTree = "<group>"; };
+		D26E1EA1B2C3D4E5F6A7B8C9 /* ServerEndpointSwitching.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ServerEndpointSwitching.swift; sourceTree = "<group>"; };
+		D26E1CA1B2C3D4E5F6A7B8C9 /* ServerEndpointSwitchTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ServerEndpointSwitchTests.swift; sourceTree = "<group>"; };
+		D26E1AA1B2C3D4E5F6A7B8C9 /* ServerAddressTestSupport.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ServerAddressTestSupport.swift; sourceTree = "<group>"; };
+		D26E18A1B2C3D4E5F6A7B8C9 /* ServerAddressBookTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ServerAddressBookTests.swift; sourceTree = "<group>"; };
+		D26E40A1B2C3D4E5F6A7B8C9 /* WidgetServerAddressTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WidgetServerAddressTests.swift; sourceTree = "<group>"; };
+		D26E16A1B2C3D4E5F6A7B8C9 /* ServerAddressBook.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ServerAddressBook.swift; sourceTree = "<group>"; };
+		D26E14A1B2C3D4E5F6A7B8C9 /* SystemNetworkPathMonitorTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SystemNetworkPathMonitorTests.swift; sourceTree = "<group>"; };
+		D26E12A1B2C3D4E5F6A7B8C9 /* SystemNetworkPathMonitor.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SystemNetworkPathMonitor.swift; sourceTree = "<group>"; };
+		D26E10A1B2C3D4E5F6A7B8C9 /* NetworkPathMonitoring.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NetworkPathMonitoring.swift; sourceTree = "<group>"; };
 		0028D761D00FEB73FA56DE76 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist; path = Info.plist; sourceTree = "<group>"; };
 		0029D378F6FF45BF15234C6F /* StorageStatsViewModelTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StorageStatsViewModelTests.swift; sourceTree = "<group>"; };
 		008EFA8FA5F57D82C472BDA7 /* VideoPlaybackEngine.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VideoPlaybackEngine.swift; sourceTree = "<group>"; };
@@ -1523,6 +1577,13 @@
 		FEC420980CEC8B5C54D39CEA /* ImmichFavoritesWidget.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ImmichFavoritesWidget.swift; sourceTree = "<group>"; };
 		FEC5F808F26A9C5CCB11E12B /* PreferencesView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PreferencesView.swift; sourceTree = "<group>"; };
 		FEF89AD151AE1656623B76FD /* NotificationsViewModelTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NotificationsViewModelTests.swift; sourceTree = "<group>"; };
+		D26E01A1B2C3D4E5F6A7B8C9 /* ServerAddresses.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ServerAddresses.swift; sourceTree = "<group>"; };
+		D26E04A1B2C3D4E5F6A7B8C9 /* ServerAddressSettingsStoring.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ServerAddressSettingsStoring.swift; sourceTree = "<group>"; };
+		D26E06A1B2C3D4E5F6A7B8C9 /* UserDefaultsServerAddressSettingsStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = UserDefaultsServerAddressSettingsStore.swift; sourceTree = "<group>"; };
+		D26E08A1B2C3D4E5F6A7B8C9 /* ServerAddressInputTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ServerAddressInputTests.swift; sourceTree = "<group>"; };
+		D26E0AA1B2C3D4E5F6A7B8C9 /* ServerAddressSelectorTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ServerAddressSelectorTests.swift; sourceTree = "<group>"; };
+		D26E0CA1B2C3D4E5F6A7B8C9 /* UserDefaultsServerAddressSettingsStoreTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = UserDefaultsServerAddressSettingsStoreTests.swift; sourceTree = "<group>"; };
+		D26E0EA1B2C3D4E5F6A7B8C9 /* URLSessionServerAddressProbeTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = URLSessionServerAddressProbeTests.swift; sourceTree = "<group>"; };
 		FF0D7F3DF2CC6294E615E55B /* CustomHeadersKitTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CustomHeadersKitTests.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
@@ -1680,6 +1741,12 @@
 				125C8D15AD494746DDDC499A /* PhotoLibraryServiceImpl.swift */,
 				654AB8ED31CB6A932F118512 /* RealtimeService.swift */,
 				58F75B7704AC46C8D7E130CA /* ServerSessions.swift */,
+				D26E06A1B2C3D4E5F6A7B8C9 /* UserDefaultsServerAddressSettingsStore.swift */,
+				D26E2AA1B2C3D4E5F6A7B8C9 /* BackgroundBackupPass.swift */,
+				D26E28A1B2C3D4E5F6A7B8C9 /* ReloadAfterEvaluation.swift */,
+				D26E20A1B2C3D4E5F6A7B8C9 /* ServerEndpointSwitch.swift */,
+				D26E16A1B2C3D4E5F6A7B8C9 /* ServerAddressBook.swift */,
+				D26E12A1B2C3D4E5F6A7B8C9 /* SystemNetworkPathMonitor.swift */,
 				2733888CA0E8AA03F0B57E68 /* ThumbHashDecoder.swift */,
 				036BFADE71C7FA65CBFEA7D2 /* TrustedServerStoreImpl.swift */,
 				DCAE470CA70136D8F3AE85C5 /* TrustEvaluatingURLSessionDelegate.swift */,
@@ -1749,6 +1816,7 @@
 				1CB763A236A72ACDF35B05CA /* Memories */,
 				5BA299BE7A2A2F8D1F5F5D14 /* Notifications */,
 				CE11628DAF8CCF79DF57E43A /* Offline */,
+				D26E36A1B2C3D4E5F6A7B8C9 /* NetworkSettings */,
 				90189886D1E3B905FC8A4B12 /* Partners */,
 				633245934307633FC94D5D9C /* People */,
 				F490BD76FA8C5B23572FD6CD /* PhotoViewer */,
@@ -1834,6 +1902,9 @@
 				A7932D379D0AC9ADED6B297A /* FileDownloadTransport.swift */,
 				E150F30749C769606E1FD03D /* ImageCacheManaging.swift */,
 				52227E27B6C189FC528D1924 /* ImmichClient.swift */,
+				D26E04A1B2C3D4E5F6A7B8C9 /* ServerAddressSettingsStoring.swift */,
+				D26E1EA1B2C3D4E5F6A7B8C9 /* ServerEndpointSwitching.swift */,
+				D26E10A1B2C3D4E5F6A7B8C9 /* NetworkPathMonitoring.swift */,
 				ACA8FE0FABA574203F62A5C1 /* KeychainStore.swift */,
 				16F7D31B8380292E146A2EC6 /* LocalCleanupSource.swift */,
 				2AAC708CF79B8E441BEB0481 /* LockedFolderPINStoring.swift */,
@@ -2121,6 +2192,22 @@
 				6AAAC623B25E2F58794D2DE8 /* TimelineViewModelTests.swift */,
 				E9F278A2DD511F10E13FDED5 /* TrashViewModelTests.swift */,
 				1D58BB447FEF7A1EE41810F9 /* TrustedServerStoreTests.swift */,
+				D26E08A1B2C3D4E5F6A7B8C9 /* ServerAddressInputTests.swift */,
+				D26E0AA1B2C3D4E5F6A7B8C9 /* ServerAddressSelectorTests.swift */,
+				D26E0CA1B2C3D4E5F6A7B8C9 /* UserDefaultsServerAddressSettingsStoreTests.swift */,
+				D26E0EA1B2C3D4E5F6A7B8C9 /* URLSessionServerAddressProbeTests.swift */,
+				D26E38A1B2C3D4E5F6A7B8C9 /* NetworkSettingsViewModelTests.swift */,
+				D26E30A1B2C3D4E5F6A7B8C9 /* SharedLinkServerAddressTests.swift */,
+				D26E2EA1B2C3D4E5F6A7B8C9 /* BackgroundBackupPassTests.swift */,
+				D26E2CA1B2C3D4E5F6A7B8C9 /* ReloadAfterEvaluationTests.swift */,
+				D26E26A1B2C3D4E5F6A7B8C9 /* RoadTripViewModelTests.swift */,
+				D26E24A1B2C3D4E5F6A7B8C9 /* ImageCacheCanonicalKeyTests.swift */,
+				D26E22A1B2C3D4E5F6A7B8C9 /* AuthViewModelServerAddressTests.swift */,
+				D26E1CA1B2C3D4E5F6A7B8C9 /* ServerEndpointSwitchTests.swift */,
+				D26E1AA1B2C3D4E5F6A7B8C9 /* ServerAddressTestSupport.swift */,
+				D26E18A1B2C3D4E5F6A7B8C9 /* ServerAddressBookTests.swift */,
+				D26E40A1B2C3D4E5F6A7B8C9 /* WidgetServerAddressTests.swift */,
+				D26E14A1B2C3D4E5F6A7B8C9 /* SystemNetworkPathMonitorTests.swift */,
 				E5D10C82D78CAF4D69F0B565 /* UploadDetailViewModelTests.swift */,
 				A3200001C0DE4B0E8A1F0003 /* BackupRemainderViewModelTests.swift */,
 				9F4DC04C9AE0A13B6A2ADF59 /* UploadViewModelLiveActivityTests.swift */,
@@ -2154,6 +2241,7 @@
 				AD19A65145D0FE42E2F794A7 /* MultipartBody.swift */,
 				2F9ED543AD8C1741EEA5A95A /* PKCS12Importer.swift */,
 				5A4F5AD7BBB938036239BB12 /* PrivacyInfo.xcprivacy */,
+				D26E01A1B2C3D4E5F6A7B8C9 /* ServerAddresses.swift */,
 				A88EA077EE3A2229B164E29D /* PublicLogText.swift */,
 				330EEBB975F3B54F14D1E296 /* ServerRedirectPolicy.swift */,
 				4B4FF6676DD74BB6DF67457F /* SharedUploadClient.swift */,
@@ -2253,6 +2341,15 @@
 				5919FFA04663962D6E523A84 /* FreeUpSpaceViewModel.swift */,
 			);
 			path = FreeUpSpace;
+			sourceTree = "<group>";
+		};
+		D26E36A1B2C3D4E5F6A7B8C9 /* NetworkSettings */ = {
+			isa = PBXGroup;
+			children = (
+				D26E32A1B2C3D4E5F6A7B8C9 /* NetworkSettingsViewModel.swift */,
+				D26E34A1B2C3D4E5F6A7B8C9 /* NetworkSettingsView.swift */,
+			);
+			path = NetworkSettings;
 			sourceTree = "<group>";
 		};
 		90189886D1E3B905FC8A4B12 /* Partners */ = {
@@ -2432,6 +2529,7 @@
 				E1208877397F4626C85572F2 /* immich_stub_ocr_text.py */,
 				C2298E0389CE0826F8764FCE /* immich_stub_offline.py */,
 				FDA5FDA4F292DCC9D90AC9CA /* immich_stub_partners.py */,
+				D26E3EA1B2C3D4E5F6A7B8C9 /* immich_stub_server_addresses.py */,
 				72BE3F287C311D808DB86E5B /* immich_stub_people_search.py */,
 				1BBFFBCA7F1A04CEFC4D00A9 /* immich_stub_person_birthday.py */,
 				05D344B8149F7A84F3F3D49B /* immich_stub_photo_details.py */,
@@ -2598,6 +2696,7 @@
 				865E168CB1D6E4971B80E6BC /* ViewerZoomUITests.swift */,
 				4AF236D6B8842526803E6D27 /* VoiceOverLabelsUITests.swift */,
 				F0811A00478B347A7005063B /* WhatsNewUITests.swift */,
+				D26E3CA1B2C3D4E5F6A7B8C9 /* ServerAddressesUITests.swift */,
 				F4F3713DED223400D327574D /* ZoomLimitUITests.swift */,
 			);
 			path = Scenarios;
@@ -3020,6 +3119,7 @@
 				59D319B0F93796330C3C8291 /* immich_stub_ocr_text.py in Resources */,
 				F45D52140BD74B3E459888A1 /* immich_stub_offline.py in Resources */,
 				A8E6691882D082D9A5F3E53F /* immich_stub_partners.py in Resources */,
+				D26E3FA1B2C3D4E5F6A7B8C9 /* immich_stub_server_addresses.py in Resources */,
 				20407BC713213C9E60637B05 /* immich_stub_people_search.py in Resources */,
 				77C911D66481ADAC278B8B2F /* immich_stub_person_birthday.py in Resources */,
 				0C439ECE793316C619EC1695 /* immich_stub_photo_details.py in Resources */,
@@ -3081,6 +3181,7 @@
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				D26E03A1B2C3D4E5F6A7B8C9 /* ServerAddresses.swift in Sources */,
 				5E4689D6F2D16D97A3851F71 /* BackupActivityAttributes.swift in Sources */,
 				E2868A8330240DD63F9DDB50 /* BackupLiveActivityViews.swift in Sources */,
 				0197E508BABB06DDB0E27DEB /* ClientCertificateResponder.swift in Sources */,
@@ -3276,6 +3377,22 @@
 				16A15FE17FE057D4F3F4B5A8 /* TimelineViewModelTests.swift in Sources */,
 				2516D9D5C7D2EC06E7CF8D30 /* TrashViewModelTests.swift in Sources */,
 				9C2C794CED578970A384690F /* TrustedServerStoreTests.swift in Sources */,
+				D26E09A1B2C3D4E5F6A7B8C9 /* ServerAddressInputTests.swift in Sources */,
+				D26E0BA1B2C3D4E5F6A7B8C9 /* ServerAddressSelectorTests.swift in Sources */,
+				D26E0DA1B2C3D4E5F6A7B8C9 /* UserDefaultsServerAddressSettingsStoreTests.swift in Sources */,
+				D26E0FA1B2C3D4E5F6A7B8C9 /* URLSessionServerAddressProbeTests.swift in Sources */,
+				D26E39A1B2C3D4E5F6A7B8C9 /* NetworkSettingsViewModelTests.swift in Sources */,
+				D26E31A1B2C3D4E5F6A7B8C9 /* SharedLinkServerAddressTests.swift in Sources */,
+				D26E2FA1B2C3D4E5F6A7B8C9 /* BackgroundBackupPassTests.swift in Sources */,
+				D26E2DA1B2C3D4E5F6A7B8C9 /* ReloadAfterEvaluationTests.swift in Sources */,
+				D26E27A1B2C3D4E5F6A7B8C9 /* RoadTripViewModelTests.swift in Sources */,
+				D26E25A1B2C3D4E5F6A7B8C9 /* ImageCacheCanonicalKeyTests.swift in Sources */,
+				D26E23A1B2C3D4E5F6A7B8C9 /* AuthViewModelServerAddressTests.swift in Sources */,
+				D26E1DA1B2C3D4E5F6A7B8C9 /* ServerEndpointSwitchTests.swift in Sources */,
+				D26E1BA1B2C3D4E5F6A7B8C9 /* ServerAddressTestSupport.swift in Sources */,
+				D26E19A1B2C3D4E5F6A7B8C9 /* ServerAddressBookTests.swift in Sources */,
+				D26E41A1B2C3D4E5F6A7B8C9 /* WidgetServerAddressTests.swift in Sources */,
+				D26E15A1B2C3D4E5F6A7B8C9 /* SystemNetworkPathMonitorTests.swift in Sources */,
 				F5440502898EC4C3D2EF2576 /* URLSessionSocketEngineTests.swift in Sources */,
 				649FA46B988D267F7F9BF744 /* UploadDetailViewModelTests.swift in Sources */,
 				A3200001C0DE4B0E8A1F0013 /* BackupRemainderViewModelTests.swift in Sources */,
@@ -3300,6 +3417,7 @@
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				D26E3DA1B2C3D4E5F6A7B8C9 /* ServerAddressesUITests.swift in Sources */,
 				021C7D8BEF6BE24361F97C49 /* AccountStorageUITests.swift in Sources */,
 				A1D7A3C0E1F24B6D9C0B1E06 /* AdjustDateUITests.swift in Sources */,
 				3DB1C3342E395C5031EB84FD /* AdjustLocationUITests.swift in Sources */,
@@ -3371,6 +3489,18 @@
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				D26E02A1B2C3D4E5F6A7B8C9 /* ServerAddresses.swift in Sources */,
+				D26E05A1B2C3D4E5F6A7B8C9 /* ServerAddressSettingsStoring.swift in Sources */,
+				D26E07A1B2C3D4E5F6A7B8C9 /* UserDefaultsServerAddressSettingsStore.swift in Sources */,
+				D26E35A1B2C3D4E5F6A7B8C9 /* NetworkSettingsView.swift in Sources */,
+				D26E33A1B2C3D4E5F6A7B8C9 /* NetworkSettingsViewModel.swift in Sources */,
+				D26E2BA1B2C3D4E5F6A7B8C9 /* BackgroundBackupPass.swift in Sources */,
+				D26E29A1B2C3D4E5F6A7B8C9 /* ReloadAfterEvaluation.swift in Sources */,
+				D26E21A1B2C3D4E5F6A7B8C9 /* ServerEndpointSwitch.swift in Sources */,
+				D26E1FA1B2C3D4E5F6A7B8C9 /* ServerEndpointSwitching.swift in Sources */,
+				D26E17A1B2C3D4E5F6A7B8C9 /* ServerAddressBook.swift in Sources */,
+				D26E13A1B2C3D4E5F6A7B8C9 /* SystemNetworkPathMonitor.swift in Sources */,
+				D26E11A1B2C3D4E5F6A7B8C9 /* NetworkPathMonitoring.swift in Sources */,
 				F082DE38C0BB2B118792F655 /* APIError.swift in Sources */,
 				907CF2DF3BBB369DD506B1C5 /* APIKeyCreateView.swift in Sources */,
 				1913FF40520D191D16338F7E /* APIKeyPermission.swift in Sources */,
