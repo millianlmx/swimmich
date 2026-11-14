@@ -47,9 +47,10 @@ immich_stub_asset_edits.py AssetEditsUITests/test_AC_39_editedVersionShownThenTh
 immich_stub_asset_edits.py AssetEditsUITests/test_AC_40_downloadEditedThenOriginalAsksTwiceWithDifferentFiles
 
 # L-26 adresse locale et externe (AC-49, AC-236, AC-248): one stub serves the
-# external address on the worker's port P and the local one on P + 100 (outside
-# the pool's 8421 + k - 1); the scenario switches between them and reads which
-# address every request reached.
+# external address on the worker's port P and the local one on a port the system
+# picks (`bind` on 0, reported as `localPort` by `/__whoami`: a fixed P + 100
+# can fall in another runner's pool); the scenario switches between them and
+# reads which address every request reached.
 immich_stub_server_addresses.py ServerAddressesUITests/test_AC_49
 immich_stub_server_addresses.py ServerAddressesUITests/test_AC_248
 immich_stub_server_addresses.py ServerAddressesUITests/test_AC_236

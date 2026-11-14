@@ -2,7 +2,8 @@ import XCTest
 
 /// Local and external address of the server (L-26), against
 /// `immich_stub_server_addresses.py`: the external address is `127.0.0.1:P` (the
-/// one the app connects with), the local address `127.0.0.1:P+100`, both served by
+/// one the app connects with), the local address `127.0.0.1:<localPort>`, a port
+/// the stub reports in `/__whoami`; both served by
 /// ONE process and logged in ONE `/__requests` list, each entry saying which
 /// address (`address`) it reached and whether it carried the session (`token`).
 ///
@@ -23,7 +24,9 @@ final class ServerAddressesUITests: XCTestCase {
     private let stub = ProcessInfo.processInfo.environment["IMMICH_STUB_URL"] ?? "http://127.0.0.1:8421"
     private var app: XCUIApplication!
     private var port: Int { URL(string: stub)?.port ?? 8421 }
-    private var localPort: Int { port + 100 }
+    /// The stub's own ports, read from its `/__whoami` in `setUpWithError`.
+    private var stubPorts: StubPorts!
+    private var localPort: Int { stubPorts.localPort }
     private var localAddress: String { "http://127.0.0.1:\(localPort)" }
     private let videoID = "aaaaaaaa-1111-4111-8111-000000000001"
     private let photoID = "aaaaaaaa-1111-4111-8111-000000000002"
@@ -54,19 +57,28 @@ final class ServerAddressesUITests: XCTestCase {
 
     // MARK: - The stub
 
+    private struct StubPorts: Decodable {
+        let localPort: Int
+        /// A port the stub holds without listening: a connection there is refused.
+        let deadPort: Int
+    }
+
     private func stubIsReachable() -> Bool {
         guard let url = URL(string: "\(stub)/__whoami") else { return false }
         let done = DispatchSemaphore(value: 0)
-        var ok = false
+        var ports: StubPorts?
         var request = URLRequest(url: url)
         request.timeoutInterval = 3
         URLSession.shared.dataTask(with: request) { data, response, _ in
-            // Another stub on the port would be a false green: this one names a local port.
-            let text = data.map { String(decoding: $0, as: UTF8.self) } ?? ""
-            ok = (response as? HTTPURLResponse)?.statusCode == 200 && text.contains("localPort")
+            // Another stub on the port would be a false green: this one names its local and dead ports.
+            if (response as? HTTPURLResponse)?.statusCode == 200, let data {
+                ports = try? JSONDecoder().decode(StubPorts.self, from: data)
+            }
             done.signal()
         }.resume()
-        return done.wait(timeout: .now() + 5) == .success && ok
+        guard done.wait(timeout: .now() + 5) == .success, let ports else { return false }
+        stubPorts = ports
+        return true
     }
 
     @discardableResult
@@ -395,7 +407,7 @@ final class ServerAddressesUITests: XCTestCase {
         XCTAssertTrue(element("networkLocalValidationMessage").waitForExistence(timeout: 10), "a malformed address must be refused")
         XCTAssertFalse(traffic(from: index).contains { $0.address == "local" }, "nothing is sent for a refused address")
 
-        saveLocal("http://127.0.0.1:\(localPort + 1)")   // nobody listens there
+        saveLocal("http://127.0.0.1:\(stubPorts.deadPort)")   // nobody listens there
         waitForLocalStatus("unreachable", timeout: 30)
 
         saveLocal(localAddress)

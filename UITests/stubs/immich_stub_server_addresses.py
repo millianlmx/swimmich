@@ -4,13 +4,18 @@ What it is for
 --------------
 A server can be reached on a local address and on an external one. This stub is
 that server seen from both: the whole Immich API on `127.0.0.1:P` (the external
-address, also the address the user connects with) and on `127.0.0.1:P+100` (the
+address, also the address the user connects with) and on `127.0.0.1:L` (the
 local address), in ONE process, so both ports share one request log.
 
-Two ports (P = the port given on the command line, default 8421)
------------------------------------------------------------------
-  P        External address. The API (`immich_stub_base` shell).
-  P + 100  Local address. The same API, in a mode a scenario picks.
+Ports (P = the port given on the command line, default 8421)
+-------------------------------------------------------------
+  P  External address. The API (`immich_stub_base` shell).
+  L  Local address. The same API, in a mode a scenario picks. Chosen by the
+     system (`bind` on port 0): a fixed offset from P can fall in the pool of
+     another runner on the same Mac. Read it from `/__whoami` (`localPort`).
+  D  A port nobody listens on (`deadPort` in `/__whoami`): bound by this
+     process for its whole life WITHOUT `listen`, so a connection is refused
+     and no other process can take the port meanwhile.
 
 Every `/__requests` entry carries what a scenario asserts on:
   address  `external` or `local`: the port the request arrived on;
@@ -26,7 +31,7 @@ Control (never logged, answered on both ports)
       notimmich     `GET /api/server/ping` is 200 `{"status":"ok"}` and
                     `GET /api/server/version` is 404 (a web server that is not Immich);
       otherversion  `GET /api/server/version` answers 1.118.0 (another server).
-  GET /__whoami                    the base's answer plus `localPort`.
+  GET /__whoami                    the base's answer plus `localPort` and `deadPort`.
   GET /__reset, GET /__requests    as in the base (`/__reset` also puts the local
                                    address back to `immich`).
 
@@ -37,7 +42,7 @@ log says WHICH address a video read and a socket handshake went to.
 Run by hand (the launcher `.omp/orchestration/uitest.sh` is not involved):
 
     python3 -u UITests/stubs/immich_stub_server_addresses.py 8421 &
-    curl http://127.0.0.1:8421/__whoami          # {"port": 8421, "localPort": 8521, ...}
+    curl http://127.0.0.1:8421/__whoami   # {"port": 8421, "localPort": <L>, "deadPort": <D>, ...}
     TEST_RUNNER_IMMICH_STUB_URL=http://127.0.0.1:8421 xcodebuild test \\
         -scheme ImmichSwiftUI -destination 'platform=iOS Simulator,name=<iPhone>' \\
         -only-testing:ImmichSwiftUIUITests/ServerAddressesUITests
@@ -45,6 +50,7 @@ Run by hand (the launcher `.omp/orchestration/uitest.sh` is not involved):
 
 import json
 import os
+import socket
 import sys
 import threading
 import time
@@ -54,12 +60,11 @@ from urllib.parse import parse_qsl
 import immich_stub_base as base
 from immich_stub_base import STATE, Request, Response, StubHandler, router
 
-LOCAL_OFFSET = 100
 SILENT_DELAY = 3.0
 LOCAL_MODES = ("immich", "silent", "notimmich", "otherversion")
 
-# One dict, mutated in place; `/__reset` puts it back (`router.reset`).
-ADDRESSES = {"local": "immich", "localPort": 0}
+# One dict, mutated in place; `/__reset` puts `local` back (`router.reset`).
+ADDRESSES = {"local": "immich", "localPort": 0, "deadPort": 0}
 
 
 @router.reset
@@ -135,6 +140,7 @@ class AddressHandler(StubHandler):
             return Response({
                 "port": STATE["port"],
                 "localPort": ADDRESSES["localPort"],
+                "deadPort": ADDRESSES["deadPort"],
                 "pid": os.getpid(),
                 "stub": os.path.basename(sys.argv[0]),
             })
@@ -157,14 +163,20 @@ class LocalHandler(AddressHandler):
 
 def main():
     port = int(sys.argv[1]) if len(sys.argv) > 1 else 8421
-    # A port already taken raises OSError here: no silent fallback to another.
+    # The external port taken raises OSError here: no silent fallback to another.
     external = ThreadingHTTPServer(("127.0.0.1", port), ExternalHandler)
-    local = ThreadingHTTPServer(("127.0.0.1", port + LOCAL_OFFSET), LocalHandler)
+    local = ThreadingHTTPServer(("127.0.0.1", 0), LocalHandler)
+    # Bound, never listening: a connection to it is refused, and the port stays
+    # ours (so free of any other listener) until the process exits.
+    dead = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+    dead.bind(("127.0.0.1", 0))
     STATE["port"] = external.server_address[1]
     ADDRESSES["localPort"] = local.server_address[1]
+    ADDRESSES["deadPort"] = dead.getsockname()[1]
     print(json.dumps({
         "port": STATE["port"],
         "localPort": ADDRESSES["localPort"],
+        "deadPort": ADDRESSES["deadPort"],
         "label": "server_addresses",
         "timeline_day": base.TIMELINE_DAY,
         "endpoints": base.BASE_ENDPOINTS + ["GET /__addresses"] + router.endpoints(),

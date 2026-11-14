@@ -500,6 +500,9 @@ raise SystemExit(0 if json.load(sys.stdin).get("pid") == int(sys.argv[1]) else 1
     sleep 0.5
   done
   if (( ! ready )); then
+    # The stub's own output (a traceback, an `Address already in use`) is the
+    # cause; without it the failure only says "no answer".
+    sed 's/^/stub: /' "$stub_log"
     echo "::error::$label: stub $stub did not answer /__whoami on port $port with its own pid"
     status=1
   else
