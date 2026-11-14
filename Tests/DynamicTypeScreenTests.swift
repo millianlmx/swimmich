@@ -13,6 +13,7 @@ final class DynamicTypeScreenTests: XCTestCase {
 
     private static let languages = ["en", "de"]
     private static let longPartnerName = "Maximiliana Wilhelmina Konstantinopoulou-Featherstonehaugh"
+    private static let longAlbumName = "Summer holidays in the Gorges du Verdon with the whole family"
     private static let longLinkDescription = "Weekend photos for the grandparents and the cousins abroad"
     private static let longUserEmail = "maximiliana.wilhelmina.konstantinopoulou-featherstonehaugh@photos.example.org"
 
@@ -52,6 +53,15 @@ final class DynamicTypeScreenTests: XCTestCase {
         )
     }
 
+    private func album(_ id: String, _ name: String) -> AlbumResponseDto {
+        AlbumResponseDto(
+            id: id, albumName: name, description: "", createdAt: "2024-01-01T00:00:00.000Z",
+            updatedAt: "2024-01-01T00:00:00.000Z", albumThumbnailAssetId: nil, shared: false,
+            hasSharedLink: false, assetCount: 3, isActivityEnabled: false, order: nil,
+            albumUsers: [], ownerId: "me"
+        )
+    }
+
     private func makeMock() -> MockImmichClient {
         let mock = MockImmichClient()
         let long = partner("dt-partner-long", Self.longPartnerName, inTimeline: true)
@@ -62,13 +72,14 @@ final class DynamicTypeScreenTests: XCTestCase {
             user("dt-user-long", name: Self.longPartnerName, email: Self.longUserEmail),
             user("dt-user-short", name: "Bo", email: "bo@x.org"),
         ]
+        mock.albumsResponse = [album("dt-album-long", Self.longAlbumName), album("dt-album-short", "Paris")]
         mock.sharedLinksResponse = [link("dt-link-long", Self.longLinkDescription), link("dt-link-short", "Trip")]
         return mock
     }
 
     /// Hosts `view` with the objects the app's root puts in the environment.
     private func host(_ view: some View, _ mock: MockImmichClient, size: DynamicTypeSize = .accessibility5,
-                      language: String) -> HostedScreen {
+                      language: String, height: CGFloat = 3000) -> HostedScreen {
         let auth = AuthViewModel(
             client: mock, keychain: MockKeychainStore(), defaults: makeDefaults(),
             widgetSession: NoWidgetSession(), reloadWidgets: {}
@@ -79,7 +90,7 @@ final class DynamicTypeScreenTests: XCTestCase {
                 .environment(AlbumsViewModel(client: mock))
                 .environment(AppSettingsStore(defaults: makeDefaults()))
                 .environment(ReadOnlyModeStore(defaults: makeDefaults())),
-            size: size, language: language
+            size: size, language: language, height: height
         )
     }
 
@@ -91,7 +102,8 @@ final class DynamicTypeScreenTests: XCTestCase {
     private func preferencesScreen(_ mock: MockImmichClient, size: DynamicTypeSize = .accessibility5,
                                    language: String) -> HostedScreen {
         let vm = PreferencesViewModel(store: AppSettingsStore(defaults: makeDefaults()))
-        return host(NavigationStack { PreferencesView(vm: vm) }, mock, size: size, language: language)
+        // At AX5 the form is about 7000 pt tall: the window shows it whole.
+        return host(NavigationStack { PreferencesView(vm: vm) }, mock, size: size, language: language, height: 9000)
     }
 
     private func createAlbumScreen(_ mock: MockImmichClient, size: DynamicTypeSize = .accessibility5,
@@ -99,7 +111,84 @@ final class DynamicTypeScreenTests: XCTestCase {
         host(CreateAlbumSheet(vm: AlbumsViewModel(client: mock), preselectedAssetIds: nil), mock, size: size, language: language)
     }
 
+    private func albumsScreen(_ mock: MockImmichClient, size: DynamicTypeSize = .accessibility5,
+                              language: String) -> HostedScreen {
+        // The twelve collections are only destinations of the Library section:
+        // the app's own, never opened here.
+        let container = DependencyContainer.shared
+        let library = LibraryDestinations(
+            recentTaken: container.makeRecentAssetsViewModel(mode: .taken),
+            recentAdded: container.makeRecentAssetsViewModel(mode: .added),
+            trash: container.makeTrashViewModel(),
+            people: container.makePeopleViewModel(),
+            tags: container.makeTagsViewModel(),
+            stacks: container.makeStacksViewModel(),
+            partners: container.makePartnersViewModel(),
+            offline: container.makeOfflineDownloadViewModel(accountID: "dt"),
+            folders: container.makeFolderViewModel(),
+            localLibrary: container.makeLocalLibraryViewModel(),
+            duplicates: container.makeDuplicatesViewModel(),
+            lockedFolder: container.makeLockedFolderViewModel(accountID: "dt")
+        )
+        return host(AlbumsView(vm: AlbumsViewModel(client: mock), library: library), mock,
+                    size: size, language: language, height: 9000)
+    }
+
+    private func searchScreen(_ mock: MockImmichClient, size: DynamicTypeSize = .accessibility5,
+                              language: String) -> HostedScreen {
+        let container = DependencyContainer.shared
+        let view = SearchView(
+            vm: SearchViewModel(client: mock),
+            mapVM: container.makeMapViewModel(accountID: "dt"),
+            downloads: container.makeDownloadQueueViewModel()
+        )
+        return host(view, mock, size: size, language: language)
+    }
+
     // MARK: - AC-26.3 / AC-26.8: whole screens at AX5, in English and in German
+
+    func test_AC_26_3_albumsScreen() async {
+        for language in Self.languages {
+            let screen = albumsScreen(makeMock(), language: language)
+            defer { screen.close() }
+            guard await screen.waitFor("albumCard_dt-album-short") else { continue }
+            screen.assertNoOverlap()
+            screen.assertRowGrows(long: "albumCard_dt-album-long", short: "albumCard_dt-album-short")
+        }
+    }
+
+    func test_AC_26_3_addToAlbumSheet() async {
+        for language in Self.languages {
+            let mock = makeMock()
+            let screen = host(AddToAlbumPickerSheet(selectedAssetIds: ["a1"]), mock, language: language)
+            defer { screen.close() }
+            guard await screen.waitFor("addToAlbumRow_dt-album-short") else { continue }
+            screen.assertNoOverlap()
+            screen.assertRowGrows(long: "addToAlbumRow_dt-album-long", short: "addToAlbumRow_dt-album-short")
+        }
+    }
+
+    func test_AC_26_3_editAlbumSheet() async {
+        for language in Self.languages {
+            let mock = makeMock()
+            let sheet = EditAlbumSheet(vm: AlbumDetailViewModel(client: mock, albumId: "dt-album-long"))
+            let screen = host(sheet, mock, language: language)
+            defer { screen.close() }
+            guard await screen.waitFor("editAlbumNameField") else { continue }
+            screen.assertNoOverlap()
+        }
+    }
+
+    func test_AC_26_3_searchPrompt() async {
+        for language in Self.languages {
+            let screen = searchScreen(makeMock(), language: language)
+            defer { screen.close() }
+            guard await screen.waitFor("searchPromptTitle") else { continue }
+            screen.assertNoOverlap()
+            screen.assertInWindow("searchPromptTitle")
+        }
+    }
+
 
     func test_AC_26_3_partnersScreen() async {
         for language in Self.languages {
@@ -118,7 +207,7 @@ final class DynamicTypeScreenTests: XCTestCase {
             defer { screen.close() }
             guard await screen.waitFor("inviteCandidate-dt-user-short") else { continue }
             screen.assertNoOverlap()
-            screen.assertFullyShown(long: "inviteCandidateEmail-dt-user-long", short: "inviteCandidateEmail-dt-user-short")
+            screen.assertRowGrows(long: "inviteCandidate-dt-user-long", short: "inviteCandidate-dt-user-short")
         }
     }
 
@@ -204,6 +293,8 @@ final class DynamicTypeScreenTests: XCTestCase {
             ("partnerRowName-dt-partner-short", partnersScreen(mock, size: .xSmall, language: "en")),
             ("preferencesResetButton", preferencesScreen(mock, size: .xSmall, language: "en")),
             ("createAlbumNameHeader", createAlbumScreen(mock, size: .xSmall, language: "en")),
+            ("albumCard_dt-album-short", albumsScreen(mock, size: .xSmall, language: "en")),
+            ("searchPromptTitle", searchScreen(mock, size: .xSmall, language: "en")),
         ]
         for (landmark, screen) in screens {
             defer { screen.close() }
@@ -220,6 +311,8 @@ final class DynamicTypeScreenTests: XCTestCase {
             ("partnerRowName-dt-partner-short", { self.partnersScreen(mock, size: $0, language: "en") }),
             ("preferencesGroupPicker", { self.preferencesScreen(mock, size: $0, language: "en") }),
             ("createAlbumNameHeader", { self.createAlbumScreen(mock, size: $0, language: "en") }),
+            ("albumCard_dt-album-short", { self.albumsScreen(mock, size: $0, language: "en") }),
+            ("searchPromptTitle", { self.searchScreen(mock, size: $0, language: "en") }),
         ]
         for (landmark, make) in landmarks {
             var heights: [CGFloat] = []
@@ -238,13 +331,13 @@ final class DynamicTypeScreenTests: XCTestCase {
     /// PROBE (temporary): prints the trees the next screens are written from.
     func test_probe_trees() async {
         let mock = makeMock()
-        let invite = host(InvitePartnerSheet(vm: PartnersViewModel(client: mock), currentUserId: "me"), mock, language: "en")
-        _ = await invite.waitFor("inviteCandidate-dt-user-short")
-        XCTFail("PROBE invite \(invite.dump(limit: 90))")
-        invite.close()
-        let prefs = preferencesScreen(mock, language: "en")
-        _ = await prefs.waitFor("preferencesResetButton")
-        XCTFail("PROBE prefs \(prefs.dump(limit: 120))")
-        prefs.close()
+        let albums = albumsScreen(mock, language: "en")
+        _ = await albums.waitFor("albumCard_dt-album-short")
+        XCTFail("PROBE albums \(albums.dump(limit: 140))")
+        albums.close()
+        let search = searchScreen(mock, language: "en")
+        _ = await search.waitFor("searchPromptTitle")
+        XCTFail("PROBE search \(search.dump(limit: 90))")
+        search.close()
     }
 }

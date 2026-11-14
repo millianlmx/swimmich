@@ -72,8 +72,6 @@ final class HostedScreen {
         }
     }
 
-    private static let userTestingChildren = Selector(("_accessibilityUserTestingChildren"))
-
     let window: UIWindow
     private let controller: UIViewController
 
@@ -164,15 +162,14 @@ final class HostedScreen {
         }
         // A SwiftUI button is a leaf for VoiceOver (one element, its texts merged
         // into its label) but not for the UI automation, which still reads the
-        // texts inside it: the same children XCUITest sees, so a title inside a
-        // card or a row is measured on its own frame here too.
+        // texts inside it (`automationElements`): the same children XCUITest sees,
+        // so a title inside a card or a row is measured on its own frame here too.
         var automationChildren = -1
-        if children.isEmpty, !(object is UIView), object.responds(to: Self.userTestingChildren),
-           let value = object.perform(Self.userTestingChildren)?.takeUnretainedValue() as? [NSObject] {
-            children = value
-            automationChildren = value.count
+        if children.isEmpty, !(object is UIView), let elements = object.automationElements {
+            children = elements.compactMap { $0 as? NSObject }
+            automationChildren = children.count
         }
-        result.summary += " utc=\(automationChildren)"
+        result.summary += " auto=\(automationChildren)"
         let inside = scrolls || object is UIScrollView
         for child in children {
             if let childNode = node(for: child, scrolls: inside, depth: depth + 1, visited: &visited) {
@@ -233,6 +230,21 @@ final class HostedScreen {
                                     "\(long) (\(longFrame.height) pt) is not shown on more lines than \(short) (\(shortFrame.height) pt)",
                                     file: file, line: line)
         assertInWindow(long, file: file, line: line)
+    }
+
+    /// The same rule for a text the tree does not expose on its own (a row that is
+    /// one button): the row of the long label is at least 1.8 times as tall as the
+    /// row of the short one, and inside the window.
+    func assertRowGrows(long: String, short: String, file: StaticString = #filePath, line: UInt = #line) {
+        guard let longFrame = find(long)?.frame, let shortFrame = find(short)?.frame else {
+            return XCTFail("no '\(long)' or '\(short)' on the hosted screen — \(dump(limit: 60))", file: file, line: line)
+        }
+        XCTAssertGreaterThanOrEqual(longFrame.height, 1.8 * shortFrame.height,
+                                    "\(long) (\(longFrame.height) pt) is not taller than \(short) (\(shortFrame.height) pt)",
+                                    file: file, line: line)
+        XCTAssertGreaterThanOrEqual(longFrame.minX, 0, "\(long) starts left of the window", file: file, line: line)
+        XCTAssertLessThanOrEqual(longFrame.maxX, windowFrame.width + 0.5,
+                                 "\(long) runs past the window's right edge", file: file, line: line)
     }
 
     /// The text is inside the window's width.
