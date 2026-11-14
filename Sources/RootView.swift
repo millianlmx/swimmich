@@ -272,7 +272,7 @@ private struct AuthenticatedRoot: View {
                 }
             }
             Tab("Search", systemImage: bubbleIcon, value: RootTab.search, role: .search) {
-                SearchView(vm: search, mapVM: map)
+                SearchView(vm: search, mapVM: map, downloads: downloads)
             }
         }
         .immichBottomBar()
