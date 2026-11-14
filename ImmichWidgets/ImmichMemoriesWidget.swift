@@ -67,7 +67,8 @@ struct MemoriesTimelineProvider: TimelineProvider {
     private func entry(for context: Context) async -> MemoriesEntry {
         let feed = await provider.memories(
             limit: context.family.memoryLimit,
-            offset: WidgetMemoriesShuffle.offset
+            offset: WidgetMemoriesShuffle.offset,
+            target: context.renderTarget
         )
         return MemoriesEntry(date: .now, feed: feed)
     }

@@ -117,15 +117,6 @@ public struct WidgetMemory: Identifiable, Equatable, Sendable {
     }
 }
 
-/// Media sizes the widget asks the server for. Separate from the app's
-/// `AssetMediaSize` because the kit cannot see the app target.
-public enum WidgetMediaSize: String, Sendable {
-    /// ~250 px — plenty for the small mosaic cells.
-    case thumbnail
-    /// ~1440 px — for the one hero photo the composition is built around.
-    case preview
-}
-
 // MARK: - Transport
 
 /// HTTP seam. Injectable so the tests can assert the exact contract (path,
@@ -275,31 +266,39 @@ public struct WidgetDataProvider: Sendable {
 
     /// Newest photos of the library, hero first, with the library total and the
     /// newest day's count.
-    public func recentPhotos(limit: Int) async -> PhotoWall {
+    public func recentPhotos(limit: Int, target: WidgetRenderTarget) async -> PhotoWall {
         let transport = makeTransport()
         defer { transport.finish() }
         let run = WidgetDataProvider(running: self, with: transport)
-        return await run.bounded { await run.wall(isFavorite: nil, limit: limit) }
+        return await run.bounded { cutoff in
+            await run.wall(isFavorite: nil, limit: limit, target: target, cutoff: cutoff)
+        }
     }
 
     /// Newest favorites, same shape.
-    public func favoritePhotos(limit: Int) async -> PhotoWall {
+    public func favoritePhotos(limit: Int, target: WidgetRenderTarget) async -> PhotoWall {
         let transport = makeTransport()
         defer { transport.finish() }
         let run = WidgetDataProvider(running: self, with: transport)
-        return await run.bounded { await run.wall(isFavorite: true, limit: limit) }
+        return await run.bounded { cutoff in
+            await run.wall(isFavorite: true, limit: limit, target: target, cutoff: cutoff)
+        }
     }
 
     /// Today's memories, rotated by `offset` so the shuffle intent shows a
     /// different one on every tap.
-    public func memories(limit: Int, offset: Int) async -> WidgetMemoryFeed {
+    public func memories(limit: Int, offset: Int, target: WidgetRenderTarget) async -> WidgetMemoryFeed {
         let transport = makeTransport()
         defer { transport.finish() }
         let run = WidgetDataProvider(running: self, with: transport)
-        return await run.bounded { await run.loadMemories(limit: limit, offset: offset) }
+        return await run.bounded { cutoff in
+            await run.loadMemories(limit: limit, offset: offset, target: target, cutoff: cutoff)
+        }
     }
 
-    private func loadMemories(limit: Int, offset: Int) async -> WidgetMemoryFeed {
+    private func loadMemories(
+        limit: Int, offset: Int, target: WidgetRenderTarget, cutoff: ContinuousClock.Instant
+    ) async -> WidgetMemoryFeed {
         guard let session = sessionStore.load() else {
             logger.error("no widget session in the keychain — sign in in the app, or the widget process cannot read the shared group")
             return .empty.empty(.signedOut, hint: "keychain")
@@ -317,7 +316,8 @@ public struct WidgetDataProvider: Sendable {
             guard !cards.isEmpty else { return .empty.empty(.ready) }
             let start = ((offset % cards.count) + cards.count) % cards.count
             let selected = Array((cards[start...] + cards[..<start]).prefix(max(1, limit)))
-            return WidgetMemoryFeed(cards: await hydrate(selected, session: session))
+            let tiles = WidgetTileLayout.tiles(.memories, target: target, count: selected.count)
+            return WidgetMemoryFeed(cards: await hydrate(selected, tiles: tiles, session: session, cutoff: cutoff))
         } catch {
             publishFailure("memories fetch failed: \(PublicLogText.describe(error))")
             return .empty.empty(availability(for: error), hint: hint(for: error, session: session))
@@ -326,7 +326,9 @@ public struct WidgetDataProvider: Sendable {
 
     // MARK: Internals
 
-    private func wall(isFavorite: Bool?, limit: Int) async -> PhotoWall {
+    private func wall(
+        isFavorite: Bool?, limit: Int, target: WidgetRenderTarget, cutoff: ContinuousClock.Instant
+    ) async -> PhotoWall {
         guard let session = sessionStore.load() else {
             logger.error("no widget session in the keychain — sign in in the app, or the widget process cannot read the shared group")
             return .empty(.signedOut, hint: "keychain")
@@ -351,7 +353,9 @@ public struct WidgetDataProvider: Sendable {
                 query: [URLQueryItem(name: "timeBucket", value: newest.timeBucket)] + filters,
                 session: session
             )
-            let photos = await hydrate(columnar.photos(day: newest.timeBucket, limit: limit), session: session)
+            let received = columnar.photos(day: newest.timeBucket, limit: limit)
+            let tiles = WidgetTileLayout.tiles(isFavorite == true ? .favorites : .photos, target: target, count: received.count)
+            let photos = await hydrate(received, tiles: tiles, session: session, cutoff: cutoff)
             return PhotoWall(
                 photos: photos,
                 totalCount: buckets.reduce(0) { $0 + $1.count },
@@ -368,9 +372,15 @@ public struct WidgetDataProvider: Sendable {
     /// "server unreachable" instead of leaving WidgetKit with nothing to show.
     /// (`Task.sleep` wins the race on timeout, and cancelling the group cancels
     /// the in-flight URLSession calls.)
-    private func bounded(_ work: @escaping @Sendable () async -> PhotoWall) async -> PhotoWall {
-        await withTaskGroup(of: PhotoWall?.self) { group in
-            group.addTask { await work() }
+    ///
+    /// `work` also gets the images' cutoff: 80 % of the deadline, the rest being
+    /// left to encode what arrived. Slow images are not an outage — they miss
+    /// the cutoff and their photos keep the plate (`hydrate`) — so only a
+    /// server that never sends the photo *lists* ends up "unreachable".
+    private func bounded(_ work: @escaping @Sendable (ContinuousClock.Instant) async -> PhotoWall) async -> PhotoWall {
+        let cutoff = ContinuousClock.now.advanced(by: deadline * 4 / 5)
+        return await withTaskGroup(of: PhotoWall?.self) { group in
+            group.addTask { await work(cutoff) }
             group.addTask {
                 try? await Task.sleep(for: deadline)
                 return nil
@@ -384,9 +394,10 @@ public struct WidgetDataProvider: Sendable {
         }
     }
 
-    private func bounded(_ work: @escaping @Sendable () async -> WidgetMemoryFeed) async -> WidgetMemoryFeed {
-        await withTaskGroup(of: WidgetMemoryFeed?.self) { group in
-            group.addTask { await work() }
+    private func bounded(_ work: @escaping @Sendable (ContinuousClock.Instant) async -> WidgetMemoryFeed) async -> WidgetMemoryFeed {
+        let cutoff = ContinuousClock.now.advanced(by: deadline * 4 / 5)
+        return await withTaskGroup(of: WidgetMemoryFeed?.self) { group in
+            group.addTask { await work(cutoff) }
             group.addTask {
                 try? await Task.sleep(for: deadline)
                 return nil
@@ -436,52 +447,66 @@ public struct WidgetDataProvider: Sendable {
         return .unreachable
     }
 
-    private func hydrate(_ photos: [WidgetPhoto], session: WidgetSession) async -> [WidgetPhoto] {
-        await withTaskGroup(of: (Int, Data?).self) { group in
-            for (index, photo) in photos.enumerated() {
-                // Only the hero gets the big render; the mosaic cells are tiny.
-                let size: WidgetMediaSize = index == 0 ? .preview : .thumbnail
-                group.addTask {
-                    (index, await thumbnail(photo: photo, size: size, session: session))
-                }
+    /// Downloads and encodes the photos a composition draws: the first
+    /// `tiles.count` of `photos`, each at the size of its tile. The others stay
+    /// in the entry without an image (nothing is fetched for them).
+    ///
+    /// One at a time, in drawing order, so on a slow link the main photo lands
+    /// first instead of every photo landing together too late; each is encoded
+    /// right after its download (one source in memory at a time). Past `cutoff`
+    /// nothing more is requested and the remaining photos keep their plate.
+    /// WidgetKit archives the entry to disk before it renders, and a widget
+    /// whose entry was never archived shows its placeholder forever: hence the
+    /// per-tile sizing and the entry-wide `budgeted` cap.
+    private func hydrate(
+        _ photos: [WidgetPhoto], tiles: [WidgetPixelSize], session: WidgetSession, cutoff: ContinuousClock.Instant
+    ) async -> [WidgetPhoto] {
+        var hydrated = photos
+        for (index, tile) in tiles.enumerated() where index < photos.count {
+            guard ContinuousClock.now < cutoff else { break }
+            let bytes = await download(photos[index], session: session, cutoff: cutoff)
+            if let bytes, let encoded = WidgetImageEncoder.encode(bytes, toCover: tile) {
+                hydrated[index] = photos[index].hydrating(with: encoded)
             }
-            var bytes: [Int: Data] = [:]
-            for await (index, data) in group {
-                bytes[index] = data
-            }
-            let hydrated = photos.enumerated().map { index, photo in
-                photo.hydrating(with: bytes[index] ?? nil)
-            }
-            // WidgetKit archives the entry to disk before it renders: full-size
-            // thumbnails make an entry that can fail to archive, and a widget
-            // whose entry was never archived shows its placeholder forever.
-            return WidgetImageEncoder.budgeted(hydrated)
+        }
+        return WidgetImageEncoder.budgeted(hydrated)
+    }
+
+    /// Memories: only the first photo of each drawn card is fetched (a card
+    /// draws that one and counts the rest), so `card.photos.count` is unchanged.
+    private func hydrate(
+        _ cards: [WidgetMemory], tiles: [WidgetPixelSize], session: WidgetSession, cutoff: ContinuousClock.Instant
+    ) async -> [WidgetMemory] {
+        let drawn = cards.prefix(tiles.count)
+        let firsts = await hydrate(drawn.compactMap(\.photos.first), tiles: tiles, session: session, cutoff: cutoff)
+        return cards.enumerated().map { index, card in
+            guard index < firsts.count else { return card }
+            return WidgetMemory(id: card.id, yearsAgo: card.yearsAgo, photos: [firsts[index]] + card.photos.dropFirst())
         }
     }
 
-    private func hydrate(_ cards: [WidgetMemory], session: WidgetSession) async -> [WidgetMemory] {
-        await withTaskGroup(of: (Int, [WidgetPhoto]).self) { group in
-            for (index, card) in cards.enumerated() {
-                group.addTask {
-                    (index, await hydrate(card.photos, session: session))
-                }
+    /// One thumbnail request racing the images' cutoff: the loser is cancelled.
+    private func download(_ photo: WidgetPhoto, session: WidgetSession, cutoff: ContinuousClock.Instant) async -> Data? {
+        await withTaskGroup(of: Data?.self) { group in
+            group.addTask { await thumbnail(photo: photo, session: session) }
+            group.addTask {
+                try? await Task.sleep(until: cutoff, clock: .continuous)
+                return nil
             }
-            var photos: [Int: [WidgetPhoto]] = [:]
-            for await (index, hydrated) in group {
-                photos[index] = hydrated
-            }
-            return cards.enumerated().map { index, card in
-                WidgetMemory(id: card.id, yearsAgo: card.yearsAgo, photos: photos[index] ?? card.photos)
-            }
+            let first = await group.next() ?? nil
+            group.cancelAll()
+            return first
         }
     }
 
-    private func thumbnail(photo: WidgetPhoto, size: WidgetMediaSize, session: WidgetSession) async -> Data? {
+    /// Always the server's preview: it is the largest size Immich serves
+    /// without the original, and it is never enlarged (`encode(_:toCover:)`).
+    private func thumbnail(photo: WidgetPhoto, session: WidgetSession) async -> Data? {
         guard var components = URLComponents(string: session.baseURL + "/api/assets/\(photo.id)/thumbnail") else {
             return nil
         }
         // `edited=true`, explicit like the app's thumbnails: a widget shows the photo as edited on the server.
-        components.queryItems = [URLQueryItem(name: "size", value: size.rawValue), URLQueryItem(name: "edited", value: "true")]
+        components.queryItems = [URLQueryItem(name: "size", value: "preview"), URLQueryItem(name: "edited", value: "true")]
         guard let url = components.url else { return nil }
         var request = URLRequest(url: url)
         ServerRequestAuthorization.apply(token: session.token, custom: session.customHeaders ?? [], to: &request)

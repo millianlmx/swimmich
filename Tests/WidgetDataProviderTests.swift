@@ -1,3 +1,6 @@
+import ImageIO
+import UIKit
+import WidgetKit
 import XCTest
 @testable import ImmichSwiftUI
 
@@ -86,7 +89,7 @@ final class WidgetDataProviderTests: XCTestCase {
 
     // MARK: - Photos wall
 
-    func test_recentPhotos_heroIsNewest_fetchedAtPreviewSize() async {
+    func test_recentPhotos_heroIsNewest_everyDrawnPhotoAtPreviewSize() async {
         let spy = TransportSpy { request in
             let path = request.url?.path ?? ""
             switch path {
@@ -99,7 +102,7 @@ final class WidgetDataProviderTests: XCTestCase {
             }
         }
 
-        let wall = await provider(spy).recentPhotos(limit: 3)
+        let wall = await provider(spy).recentPhotos(limit: 3, target: .medium)
 
         XCTAssertEqual(wall.photos.map(\.id), ["hero", "second", "third"])
         XCTAssertEqual(wall.totalCount, 142, "the total is the sum of every bucket, not just the newest")
@@ -118,15 +121,14 @@ final class WidgetDataProviderTests: XCTestCase {
         XCTAssertFalse(url(api[0]).contains("isFavorite"), "the photos wall is not the favorites one")
         XCTAssertEqual(url(api[1]), "https://photos.example.com/api/timeline/bucket?timeBucket=2026-09-13T00:00:00.000Z&visibility=timeline")
 
-        // The thumbnails are fetched concurrently, so assert the set, not the order.
+        // L-30: every drawn photo is one preview request, downloaded one after the other.
         let thumbnails = requests.filter { $0.url?.path.contains("/thumbnail") == true }
         XCTAssertEqual(thumbnails.count, 3)
+        XCTAssertEqual(thumbnails.map { $0.url?.path }, ["/api/assets/hero/thumbnail", "/api/assets/second/thumbnail", "/api/assets/third/thumbnail"], "in drawing order, the main photo first")
         // L-21 (AC-183): a widget shows the version edited on the server, asked for explicitly.
         XCTAssertTrue(thumbnails.allSatisfy { url($0).contains("edited=true") }, "every widget thumbnail asks edited=true")
-        let previews = thumbnails.filter { url($0).contains("size=preview") }
-        XCTAssertEqual(previews.count, 1, "the hero is the one big render")
-        XCTAssertTrue(url(previews[0]).contains("/api/assets/hero/thumbnail"))
-        XCTAssertEqual(thumbnails.filter { url($0).contains("size=thumbnail") }.count, 2)
+        XCTAssertTrue(thumbnails.allSatisfy { url($0).contains("size=preview") }, "every drawn photo is fetched at preview size")
+        XCTAssertTrue(thumbnails.filter { url($0).contains("size=thumbnail") }.isEmpty, "no 250 px thumbnail is ever drawn")
         XCTAssertTrue(wall.photos[0].day == "2026-09-13T00:00:00.000Z", "the tile carries its bucket so a tap can deep-link")
     }
 
@@ -141,7 +143,7 @@ final class WidgetDataProviderTests: XCTestCase {
             return (200, self.tinyImage())
         }
 
-        let wall = await provider(spy).favoritePhotos(limit: 2)
+        let wall = await provider(spy).favoritePhotos(limit: 2, target: .medium)
 
         XCTAssertEqual(wall.photos.map(\.id), ["fav"])
         XCTAssertEqual(wall.totalCount, 7)
@@ -169,7 +171,7 @@ final class WidgetDataProviderTests: XCTestCase {
     func test_AC7_favoritePhotos_bucketRequestAsksFavoritesToo() async {
         let spy = wallSpy()
 
-        _ = await provider(spy).favoritePhotos(limit: 1)
+        _ = await provider(spy).favoritePhotos(limit: 1, target: .medium)
 
         let bucket = bucketRequest(spy)
         XCTAssertEqual(bucket.map(url), "https://photos.example.com/api/timeline/bucket?timeBucket=2026-08-01T00:00:00.000Z&isFavorite=true&visibility=timeline")
@@ -180,7 +182,7 @@ final class WidgetDataProviderTests: XCTestCase {
     func test_AC8_recentPhotos_bucketRequestHasNoFavoriteFilter() async {
         let spy = wallSpy()
 
-        _ = await provider(spy).recentPhotos(limit: 1)
+        _ = await provider(spy).recentPhotos(limit: 1, target: .medium)
 
         XCTAssertEqual(bucketRequest(spy).map(url), "https://photos.example.com/api/timeline/bucket?timeBucket=2026-08-01T00:00:00.000Z&visibility=timeline")
     }
@@ -196,7 +198,7 @@ final class WidgetDataProviderTests: XCTestCase {
     func test_AC1_recentPhotos_bucketsRequestAsksTimelineVisibilityOnly() async {
         let spy = wallSpy()
 
-        _ = await provider(spy).recentPhotos(limit: 1)
+        _ = await provider(spy).recentPhotos(limit: 1, target: .medium)
 
         XCTAssertEqual(bucketsRequest(spy).map(url), "https://photos.example.com/api/timeline/buckets?visibility=timeline")
     }
@@ -204,7 +206,7 @@ final class WidgetDataProviderTests: XCTestCase {
     func test_AC2_recentPhotos_bucketRequestAsksTimelineVisibility() async {
         let spy = wallSpy()
 
-        _ = await provider(spy).recentPhotos(limit: 1)
+        _ = await provider(spy).recentPhotos(limit: 1, target: .medium)
 
         XCTAssertEqual(bucketRequest(spy).map(url), "https://photos.example.com/api/timeline/bucket?timeBucket=2026-08-01T00:00:00.000Z&visibility=timeline")
     }
@@ -212,7 +214,7 @@ final class WidgetDataProviderTests: XCTestCase {
     func test_AC3_favoritePhotos_bothRoutesAskFavoritesInTimeline() async {
         let spy = wallSpy()
 
-        _ = await provider(spy).favoritePhotos(limit: 1)
+        _ = await provider(spy).favoritePhotos(limit: 1, target: .medium)
 
         XCTAssertEqual(bucketsRequest(spy).map(url), "https://photos.example.com/api/timeline/buckets?isFavorite=true&visibility=timeline")
         XCTAssertEqual(bucketRequest(spy).map(url), "https://photos.example.com/api/timeline/bucket?timeBucket=2026-08-01T00:00:00.000Z&isFavorite=true&visibility=timeline")
@@ -222,9 +224,9 @@ final class WidgetDataProviderTests: XCTestCase {
         for favorites in [false, true] {
             let spy = wallSpy()
             if favorites {
-                _ = await provider(spy).favoritePhotos(limit: 1)
+                _ = await provider(spy).favoritePhotos(limit: 1, target: .medium)
             } else {
-                _ = await provider(spy).recentPhotos(limit: 1)
+                _ = await provider(spy).recentPhotos(limit: 1, target: .medium)
             }
 
             let bucketsFilters = Set(queryItems(bucketsRequest(spy)))
@@ -251,7 +253,7 @@ final class WidgetDataProviderTests: XCTestCase {
             }
         }
 
-        let wall = await provider(spy).recentPhotos(limit: 1)
+        let wall = await provider(spy).recentPhotos(limit: 1, target: .medium)
 
         XCTAssertEqual(wall.totalCount, 5)
         XCTAssertEqual(wall.newestCount, 3)
@@ -276,8 +278,8 @@ final class WidgetDataProviderTests: XCTestCase {
         }
         let year = Calendar.current.component(.year, from: Date())
 
-        let first = (await provider(spy).memories(limit: 2, offset: 0)).cards
-        let second = (await provider(spy).memories(limit: 2, offset: 1)).cards
+        let first = (await provider(spy).memories(limit: 2, offset: 0, target: .medium)).cards
+        let second = (await provider(spy).memories(limit: 2, offset: 1, target: .medium)).cards
 
         XCTAssertEqual(first.map(\.id), ["m2020", "m2019"], "empty and fully trashed memories never reach the widget, newest first")
         XCTAssertEqual(second.map(\.id), ["m2019", "m2020"], "the shuffle offset really rotates the list")
@@ -297,7 +299,7 @@ final class WidgetDataProviderTests: XCTestCase {
             request.url?.path == "/api/memories" ? (200, Data(payload.utf8)) : (200, self.tinyImage())
         }
 
-        let cards = (await provider(spy).memories(limit: 2, offset: 7)).cards
+        let cards = (await provider(spy).memories(limit: 2, offset: 7, target: .medium)).cards
 
         XCTAssertEqual(cards.map(\.id), ["only"], "an offset past the end wraps instead of returning nothing")
     }
@@ -307,9 +309,9 @@ final class WidgetDataProviderTests: XCTestCase {
     func test_noSession_returnsEmptyAndMakesNoRequest() async {
         let spy = TransportSpy { _ in (200, Data()) }
 
-        let wall = await provider(spy, session: nil).recentPhotos(limit: 3)
-        let favorites = await provider(spy, session: nil).favoritePhotos(limit: 3)
-        let feed = await provider(spy, session: nil).memories(limit: 2, offset: 0)
+        let wall = await provider(spy, session: nil).recentPhotos(limit: 3, target: .medium)
+        let favorites = await provider(spy, session: nil).favoritePhotos(limit: 3, target: .medium)
+        let feed = await provider(spy, session: nil).memories(limit: 2, offset: 0, target: .medium)
 
         XCTAssertTrue(wall.isEmpty)
         XCTAssertTrue(favorites.isEmpty)
@@ -323,14 +325,14 @@ final class WidgetDataProviderTests: XCTestCase {
         let unauthorized = TransportSpy { _ in (401, Data(#"{"message":"unauthorized"}"#.utf8)) }
         let broken = TransportSpy { _ in (500, Data()) }
 
-        let rejected = await provider(unauthorized).recentPhotos(limit: 3)
-        let failed = await provider(broken).recentPhotos(limit: 3)
+        let rejected = await provider(unauthorized).recentPhotos(limit: 3, target: .medium)
+        let failed = await provider(broken).recentPhotos(limit: 3, target: .medium)
 
         XCTAssertTrue(rejected.isEmpty)
         XCTAssertTrue(failed.isEmpty)
         XCTAssertEqual(rejected.availability, .signedOut, "a revoked token is a sign-in problem, not a network one")
         XCTAssertEqual(failed.availability, .unreachable)
-        let memories = await provider(broken).memories(limit: 1, offset: 0)
+        let memories = await provider(broken).memories(limit: 1, offset: 0, target: .medium)
         XCTAssertEqual(
             memories.availability,
             .unreachable,
@@ -343,7 +345,7 @@ final class WidgetDataProviderTests: XCTestCase {
             request.url?.path == "/api/timeline/buckets" ? (200, Data("<html>not json</html>".utf8)) : (200, Data())
         }
 
-        let wall = await provider(spy).recentPhotos(limit: 3)
+        let wall = await provider(spy).recentPhotos(limit: 3, target: .medium)
 
         XCTAssertTrue(wall.isEmpty)
     }
@@ -360,7 +362,7 @@ final class WidgetDataProviderTests: XCTestCase {
             return request.url?.absoluteString.contains("broken") == true ? (500, Data()) : (200, self.tinyImage())
         }
 
-        let wall = await provider(spy).recentPhotos(limit: 2)
+        let wall = await provider(spy).recentPhotos(limit: 2, target: .medium)
 
         XCTAssertEqual(wall.photos.count, 2, "one failed thumbnail does not drop the photo")
         XCTAssertNil(wall.photos[0].imageData)
@@ -435,8 +437,8 @@ final class WidgetDataProviderTests: XCTestCase {
             deadline: .milliseconds(80)
         )
 
-        let wall = await provider.recentPhotos(limit: 3)
-        let feed = await provider.memories(limit: 1, offset: 0)
+        let wall = await provider.recentPhotos(limit: 3, target: .medium)
+        let feed = await provider.memories(limit: 1, offset: 0, target: .medium)
 
         XCTAssertTrue(wall.isEmpty)
         XCTAssertEqual(wall.availability, .unreachable, "a hung fetch must resolve, not leave the widget redacted forever")
@@ -460,36 +462,22 @@ final class WidgetDataProviderTests: XCTestCase {
         return image.pngData() ?? Data()
     }
 
-    func test_entryImages_areShrunkToWidgetSize() {
-        let original = bigImage()
-        XCTAssertGreaterThan(original.count, 200_000, "the fixture must be heavy enough to matter")
-
-        let hero = WidgetImageEncoder.encode(original, at: .hero)
-        let cell = WidgetImageEncoder.encode(original, at: .cell)
-
-        XCTAssertNotNil(hero)
-        XCTAssertNotNil(cell)
-        XCTAssertLessThan(hero!.count, 220_000, "a 900 px re-encode must not carry the original weight")
-        XCTAssertLessThan(cell!.count, 40_000)
-        XCTAssertLessThan(hero!.count, original.count / 2)
-        guard let decoded = UIImage(data: hero!) else { return XCTFail("hero must stay decodable") }
-        XCTAssertLessThanOrEqual(max(decoded.size.width, decoded.size.height), 900)
-    }
-
     func test_entryBudget_stopsAttachingBytesInsteadOfExceedingIt() {
-        let heavy = bigImage()
+        let tile = WidgetPixelSize(width: 1092, height: 711)
+        let encoded = WidgetImageEncoder.encode(bigImage(), toCover: tile)
+        XCTAssertNotNil(encoded, "the fixture must encode")
         let photos = (0..<6).map { index in
-            WidgetPhoto(id: "p-\(index)", imageData: heavy, isVideo: false, isFavorite: false, day: nil)
+            WidgetPhoto(id: "p-\(index)", imageData: encoded, isVideo: false, isFavorite: false, day: nil)
         }
 
-        // A budget that fits the hero and nothing else: what survives must be
-        // the hero, never the satellites.
-        let heroOnly = (WidgetImageEncoder.encode(heavy, at: .hero)?.count ?? 0) + 1_000
-        let budgeted = WidgetImageEncoder.budgeted(photos, budget: heroOnly)
+        // A budget that fits the first image and nothing else: what survives
+        // must be the first, never the ones after it.
+        let firstOnly = (encoded?.count ?? 0) + 1_000
+        let budgeted = WidgetImageEncoder.budgeted(photos, budget: firstOnly)
 
-        XCTAssertNotNil(budgeted[0].imageData, "the hero is the one that matters")
-        XCTAssertLessThanOrEqual(budgeted.compactMap(\.imageData).reduce(0) { $0 + $1.count }, heroOnly)
-        XCTAssertTrue(budgeted.dropFirst().allSatisfy { $0.imageData == nil }, "the budget is spent by the hero")
+        XCTAssertNotNil(budgeted[0].imageData, "the first photo is the one that matters")
+        XCTAssertLessThanOrEqual(budgeted.compactMap(\.imageData).reduce(0) { $0 + $1.count }, firstOnly)
+        XCTAssertTrue(budgeted.dropFirst().allSatisfy { $0.imageData == nil }, "the budget is spent by the first")
         XCTAssertEqual(budgeted.map(\.id), photos.map(\.id), "every cell survives, just without bytes")
     }
 
@@ -511,7 +499,7 @@ final class WidgetDataProviderTests: XCTestCase {
             }
         }
 
-        let wall = await provider(spy(serving: JpegXLFixture.thumbnail)).recentPhotos(limit: 3)
+        let wall = await provider(spy(serving: JpegXLFixture.thumbnail)).recentPhotos(limit: 3, target: .medium)
 
         XCTAssertEqual(wall.photos.map(\.id), ["a", "b", "c"])
         let bytes = wall.photos.compactMap(\.imageData)
@@ -522,7 +510,7 @@ final class WidgetDataProviderTests: XCTestCase {
         }
         XCTAssertLessThanOrEqual(bytes.reduce(0) { $0 + $1.count }, WidgetImageEncoder.budget)
 
-        let broken = await provider(spy(serving: JpegXLFixture.truncated)).recentPhotos(limit: 3)
+        let broken = await provider(spy(serving: JpegXLFixture.truncated)).recentPhotos(limit: 3, target: .medium)
         XCTAssertEqual(broken.photos.count, 3)
         XCTAssertTrue(broken.photos.allSatisfy { $0.imageData == nil }, "undecodable bytes fall back to the plate")
     }
@@ -539,7 +527,7 @@ final class WidgetDataProviderTests: XCTestCase {
             return (200, self.bigImage())
         }
 
-        let wall = await provider(spy).recentPhotos(limit: 3)
+        let wall = await provider(spy).recentPhotos(limit: 3, target: .medium)
 
         let carried = wall.photos.compactMap(\.imageData).reduce(0) { $0 + $1.count }
         XCTAssertEqual(wall.photos.count, 3)
@@ -692,8 +680,8 @@ final class WidgetDataProviderTests: XCTestCase {
 
     private func requestsOfAFullRefresh(_ session: WidgetSession, spy: TransportSpy) async -> [URLRequest] {
         let wallProvider = provider(spy, session: session)
-        _ = await wallProvider.recentPhotos(limit: 2)
-        _ = await wallProvider.memories(limit: 1, offset: 0)
+        _ = await wallProvider.recentPhotos(limit: 2, target: .medium)
+        _ = await wallProvider.memories(limit: 1, offset: 0, target: .medium)
         return spy.requests
     }
 
@@ -1371,5 +1359,551 @@ final class ToggleFavoriteIntentWriteTests: XCTestCase {
         XCTAssertEqual(request.value(forHTTPHeaderField: "Authorization"), "Basic dXNlcjpwYXNz")
         XCTAssertEqual(request.value(forHTTPHeaderField: "x-immich-user-token"), "widget-jwt")
         XCTAssertFalse(outcome.logs.joined().contains("secret"))
+    }
+}
+
+extension WidgetRenderTarget {
+    /// A medium widget on a large iPhone (364×170 pt, 3×): the target the
+    /// provider tests that do not care about sizes pass.
+    static let medium = WidgetRenderTarget(family: .systemMedium, displaySize: CGSize(width: 364, height: 170), scale: 3)
+}
+
+// MARK: - L-30: images at the widget's real size
+
+/// L-30 (B-35): every photo a widget draws is decoded at the size of its tile,
+/// in pixels, instead of a fixed 900 / 320 px. The expected sizes are written as
+/// literals (the reference numbers of the specification), never computed by
+/// `WidgetTileLayout`.
+final class WidgetDisplaySizeTests: XCTestCase {
+
+    // MARK: Doubles
+
+    /// Records every request and answers it from an async script, which may
+    /// block (cancellably) to play a slow server.
+    private final class Spy: WidgetDataTransport, @unchecked Sendable {
+        private let lock = NSLock()
+        private var recorded: [URLRequest] = []
+        private let responder: @Sendable (URLRequest) async throws -> (Int, Data)
+
+        init(_ responder: @escaping @Sendable (URLRequest) async throws -> (Int, Data)) {
+            self.responder = responder
+        }
+
+        var requests: [URLRequest] {
+            lock.lock()
+            defer { lock.unlock() }
+            return recorded
+        }
+
+        var thumbnailRequests: [URLRequest] { requests.filter { $0.url?.path.hasSuffix("/thumbnail") == true } }
+        var thumbnailPaths: [String] { thumbnailRequests.compactMap { $0.url?.path } }
+
+        func send(_ request: URLRequest) async throws -> (Data, HTTPURLResponse) {
+            lock.lock()
+            recorded.append(request)
+            lock.unlock()
+            let (status, data) = try await responder(request)
+            let response = HTTPURLResponse(url: request.url!, statusCode: status, httpVersion: nil, headerFields: nil)!
+            return (data, response)
+        }
+    }
+
+    private struct Store: WidgetSessionStoring {
+        let session: WidgetSession?
+        func save(_ session: WidgetSession) {}
+        func load() -> WidgetSession? { session }
+        func clear() {}
+    }
+
+    private struct Source {
+        let data: Data
+        let width: Int
+        let height: Int
+    }
+
+    private enum Surface { case recents, favorites, memories }
+
+    // MARK: Reference targets (points; scale 3 unless said otherwise)
+
+    private static let phoneSmall = WidgetRenderTarget(family: .systemSmall, displaySize: CGSize(width: 170, height: 170), scale: 3)
+    private static let phoneMedium = WidgetRenderTarget(family: .systemMedium, displaySize: CGSize(width: 364, height: 170), scale: 3)
+    private static let phoneLarge = WidgetRenderTarget(family: .systemLarge, displaySize: CGSize(width: 364, height: 382), scale: 3)
+    private static let rectangular = WidgetRenderTarget(family: .accessoryRectangular, displaySize: CGSize(width: 172, height: 76), scale: 3)
+    private static let circular = WidgetRenderTarget(family: .accessoryCircular, displaySize: CGSize(width: 76, height: 76), scale: 3)
+    private static let inline = WidgetRenderTarget(family: .accessoryInline, displaySize: CGSize(width: 257, height: 26), scale: 3)
+    /// A small iPhone: 321×148 pt medium widget at 2×.
+    private static let smallPhoneMedium = WidgetRenderTarget(family: .systemMedium, displaySize: CGSize(width: 321, height: 148), scale: 2)
+    private static let phoneMediumAt2x = WidgetRenderTarget(family: .systemMedium, displaySize: CGSize(width: 364, height: 170), scale: 2)
+
+    // MARK: Sources
+
+    /// Photographic noise over a gradient (deterministic LCG): heavy to encode,
+    /// like a real photo. One JPEG at quality 0.9.
+    private static func noisy(width: Int, height: Int) -> Data {
+        var seed: UInt32 = 0x1234_5678
+        var bytes = [UInt8](repeating: 255, count: width * height * 4)
+        for y in 0..<height {
+            for x in 0..<width {
+                let offset = (y * width + x) * 4
+                let base = (x * 160 / width, y * 160 / height, (x + y) * 80 / (width + height))
+                seed = seed &* 1_664_525 &+ 1_013_904_223
+                bytes[offset] = UInt8(base.0 + (Int(seed >> 24) & 0x3F))
+                seed = seed &* 1_664_525 &+ 1_013_904_223
+                bytes[offset + 1] = UInt8(base.1 + (Int(seed >> 24) & 0x3F))
+                seed = seed &* 1_664_525 &+ 1_013_904_223
+                bytes[offset + 2] = UInt8(base.2 + (Int(seed >> 24) & 0x3F))
+            }
+        }
+        let provider = CGDataProvider(data: Data(bytes) as CFData)!
+        let image = CGImage(
+            width: width, height: height, bitsPerComponent: 8, bitsPerPixel: 32, bytesPerRow: width * 4,
+            space: CGColorSpaceCreateDeviceRGB(),
+            bitmapInfo: CGBitmapInfo(rawValue: CGImageAlphaInfo.noneSkipLast.rawValue),
+            provider: provider, decode: nil, shouldInterpolate: false, intent: .defaultIntent
+        )!
+        return UIImage(cgImage: image).jpegData(compressionQuality: 0.9)!
+    }
+
+    /// Three equal bands of pure red, green and blue along the long side.
+    private static func bands(width: Int, height: Int) -> Data {
+        let format = UIGraphicsImageRendererFormat()
+        format.scale = 1
+        format.opaque = true
+        format.preferredRange = .standard
+        let along = width >= height
+        let image = UIGraphicsImageRenderer(size: CGSize(width: width, height: height), format: format).image { context in
+            let colors = [UIColor(red: 1, green: 0, blue: 0, alpha: 1), UIColor(red: 0, green: 1, blue: 0, alpha: 1), UIColor(red: 0, green: 0, blue: 1, alpha: 1)]
+            for (index, color) in colors.enumerated() {
+                color.setFill()
+                context.fill(along
+                    ? CGRect(x: width * index / 3, y: 0, width: width / 3, height: height)
+                    : CGRect(x: 0, y: height * index / 3, width: width, height: height / 3))
+            }
+        }
+        return image.jpegData(compressionQuality: 0.95)!
+    }
+
+    private static let landscape = Source(data: WidgetDisplaySizeTests.noisy(width: 2400, height: 1800), width: 2400, height: 1800)
+    private static let portrait = Source(data: WidgetDisplaySizeTests.noisy(width: 1800, height: 2400), width: 1800, height: 2400)
+    private static let tiny = Source(data: WidgetDisplaySizeTests.noisy(width: 300, height: 200), width: 300, height: 200)
+    private static let panorama = Source(data: WidgetDisplaySizeTests.bands(width: 1440, height: 240), width: 1440, height: 240)
+    private static let vertical = Source(data: WidgetDisplaySizeTests.bands(width: 480, height: 1440), width: 480, height: 1440)
+
+    /// Even trailing digit in the id → landscape, odd → portrait.
+    private static func alternating(_ id: String) -> Source {
+        (id.last?.wholeNumberValue ?? 0) % 2 == 0 ? landscape : portrait
+    }
+
+    // MARK: Server and provider
+
+    /// `/api/timeline/*` serves `timeline` ids (one bucket); `/api/memories`
+    /// serves one card per entry of `memories` (newest first); thumbnails are
+    /// `source(id)`, except for `blocked` ids, which never answer.
+    private func server(
+        timeline: [String] = [],
+        memories: [[String]] = [],
+        source: @escaping @Sendable (String) -> Data,
+        blocked: Set<String> = []
+    ) -> Spy {
+        let year = Calendar.current.component(.year, from: Date())
+        return Spy { request in
+            let path = request.url?.path ?? ""
+            if path == "/api/timeline/buckets" {
+                return (200, Data(#"[{"timeBucket":"2026-09-01T00:00:00.000Z","count":\#(timeline.count + 37)}]"#.utf8))
+            }
+            if path == "/api/timeline/bucket" {
+                let ids = timeline.map { "\"\($0)\"" }.joined(separator: ",")
+                return (200, Data(#"{"id":[\#(ids)]}"#.utf8))
+            }
+            if path == "/api/memories" {
+                let cards = memories.enumerated().map { index, assets in
+                    let list = assets.map { #"{"id":"\#($0)","type":"IMAGE"}"# }.joined(separator: ",")
+                    return #"{"id":"mem\#(index)","data":{"year":\#(year - 1 - index)},"assets":[\#(list)]}"#
+                }.joined(separator: ",")
+                return (200, Data("[\(cards)]".utf8))
+            }
+            guard path.hasSuffix("/thumbnail") else { return (404, Data()) }
+            let id = request.url?.pathComponents.dropLast().last ?? ""
+            if blocked.contains(id) { try await Task.sleep(for: .seconds(30)) }
+            return (200, source(id))
+        }
+    }
+
+    private func provider(
+        _ spy: Spy,
+        session: WidgetSession = WidgetSession(baseURL: "https://photos.example.com", token: "widget-jwt"),
+        deadline: Duration = .seconds(10)
+    ) -> WidgetDataProvider {
+        WidgetDataProvider(sessionStore: Store(session: session), transport: { spy }, deadline: deadline)
+    }
+
+    private static func ids(_ count: Int) -> [String] { (0..<count).map { "p\($0)" } }
+
+    /// Memory cards of 3 assets: the first asset of card `i` ends with digit `i`.
+    private static func cards(_ count: Int, assets: Int = 3) -> [[String]] {
+        (0..<count).map { card in (0..<assets).map { "m\(card)a\(card + $0)" } }
+    }
+
+    /// The image size of every photo (Memories: of every card's first photo) a
+    /// surface produces for `target`, nil where no image was attached.
+    private func drawn(
+        _ surface: Surface,
+        _ target: WidgetRenderTarget,
+        received: Int,
+        source: @escaping @Sendable (String) -> Data = { WidgetDisplaySizeTests.alternating($0).data }
+    ) async -> [WidgetPixelSize?] {
+        switch surface {
+        case .recents:
+            let spy = server(timeline: Self.ids(received), source: source)
+            let wall = await provider(spy).recentPhotos(limit: target.family.photoLimit, target: target)
+            return wall.photos.map { pixelSize($0.imageData) }
+        case .favorites:
+            let spy = server(timeline: Self.ids(received), source: source)
+            let wall = await provider(spy).favoritePhotos(limit: target.family.photoLimit, target: target)
+            return wall.photos.map { pixelSize($0.imageData) }
+        case .memories:
+            let spy = server(memories: Self.cards(received), source: source)
+            let feed = await provider(spy).memories(limit: target.family.memoryLimit, offset: 0, target: target)
+            return feed.cards.map { pixelSize($0.photos.first?.imageData) }
+        }
+    }
+
+    // MARK: Measures
+
+    private static func px(_ width: Int, _ height: Int) -> WidgetPixelSize? { WidgetPixelSize(width: width, height: height) }
+
+    private func pixelSize(_ data: Data?) -> WidgetPixelSize? {
+        guard let data, let image = UIImage(data: data)?.cgImage else { return nil }
+        return WidgetPixelSize(width: image.width, height: image.height)
+    }
+
+    private func assertSizes(
+        _ actual: [WidgetPixelSize?], _ expected: [WidgetPixelSize?], _ label: String,
+        tolerance: Int = 1, file: StaticString = #filePath, line: UInt = #line
+    ) {
+        XCTAssertEqual(actual.count, expected.count, "\(label): number of photos", file: file, line: line)
+        for (index, pair) in zip(actual, expected).enumerated() {
+            switch pair {
+            case (nil, nil):
+                continue
+            case let (got?, want?):
+                XCTAssertLessThanOrEqual(abs(got.width - want.width), tolerance, "\(label)[\(index)] width \(got.width) vs \(want.width)", file: file, line: line)
+                XCTAssertLessThanOrEqual(abs(got.height - want.height), tolerance, "\(label)[\(index)] height \(got.height) vs \(want.height)", file: file, line: line)
+            default:
+                XCTFail("\(label)[\(index)]: got \(String(describing: pair.0)), wanted \(String(describing: pair.1))", file: file, line: line)
+            }
+        }
+    }
+
+    /// RGB of the middle pixel of a decoded image.
+    private func centerPixel(_ data: Data) -> (red: Int, green: Int, blue: Int)? {
+        guard let image = UIImage(data: data)?.cgImage,
+              let context = CGContext(
+                data: nil, width: 1, height: 1, bitsPerComponent: 8, bytesPerRow: 0,
+                space: CGColorSpaceCreateDeviceRGB(), bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue
+              ),
+              let memory = context.data?.assumingMemoryBound(to: UInt8.self)
+        else { return nil }
+        context.draw(image, in: CGRect(x: -image.width / 2, y: -image.height / 2, width: image.width, height: image.height))
+        return (Int(memory[0]), Int(memory[1]), Int(memory[2]))
+    }
+
+    /// Size in bytes of the same source reduced to cover `tile`, cropped to the
+    /// size that was produced and encoded at quality 0.6 — re-implemented here,
+    /// without the encoder, to catch any quality drop made to fit a budget.
+    private func referenceBytes(_ source: Source, tile: WidgetPixelSize, produced: WidgetPixelSize) -> Int {
+        guard let image = CGImageSourceCreateWithData(source.data as CFData, nil) else { return 0 }
+        let factor = min(1, max(CGFloat(tile.width) / CGFloat(source.width), CGFloat(tile.height) / CGFloat(source.height)))
+        let options: [CFString: Any] = [
+            kCGImageSourceCreateThumbnailFromImageAlways: true,
+            kCGImageSourceCreateThumbnailWithTransform: true,
+            kCGImageSourceThumbnailMaxPixelSize: Int((CGFloat(max(source.width, source.height)) * factor - 1e-6).rounded(.up)),
+        ]
+        guard let thumbnail = CGImageSourceCreateThumbnailAtIndex(image, 0, options as CFDictionary) else { return 0 }
+        let crop = CGRect(
+            x: (thumbnail.width - produced.width) / 2, y: (thumbnail.height - produced.height) / 2,
+            width: produced.width, height: produced.height
+        )
+        guard let cropped = thumbnail.cropping(to: crop) else { return 0 }
+        return UIImage(cgImage: cropped).jpegData(compressionQuality: 0.6)?.count ?? 0
+    }
+
+    /// AC-61.6 for one surface: `drawn` are the photos drawn (one per tile).
+    private func assertFits(
+        _ drawn: [WidgetPhoto], tiles: [WidgetPixelSize], spy: Spy, entryBytes: Int, _ label: String,
+        file: StaticString = #filePath, line: UInt = #line
+    ) {
+        XCTAssertEqual(drawn.count, tiles.count, "\(label): photos drawn", file: file, line: line)
+        XCTAssertEqual(spy.thumbnailPaths.count, tiles.count, "\(label): one thumbnail request per drawn photo", file: file, line: line)
+        XCTAssertLessThanOrEqual(entryBytes, 1_048_576, "\(label): the whole entry stays archivable", file: file, line: line)
+        for (photo, tile) in zip(drawn, tiles) {
+            guard let data = photo.imageData, let size = pixelSize(data) else {
+                XCTFail("\(label): \(photo.id) has no decodable image", file: file, line: line)
+                continue
+            }
+            XCTAssertLessThanOrEqual(size.width, tile.width + 1, "\(label): \(photo.id) width", file: file, line: line)
+            XCTAssertLessThanOrEqual(size.height, tile.height + 1, "\(label): \(photo.id) height", file: file, line: line)
+            let reference = referenceBytes(Self.alternating(photo.id), tile: tile, produced: size)
+            XCTAssertGreaterThanOrEqual(
+                Double(data.count), 0.85 * Double(reference),
+                "\(label): \(photo.id) is \(data.count) bytes, the same source at quality 0.6 is \(reference)",
+                file: file, line: line
+            )
+        }
+    }
+
+    private func bytes(_ photos: [WidgetPhoto]) -> Int { photos.compactMap(\.imageData).reduce(0) { $0 + $1.count } }
+
+    // MARK: AC-61 and its sub-criteria
+
+    /// AC-61 (per tile, decision #4): aggregates AC-61.1, .2, .3 and .8.
+    func test_AC_61() async {
+        await test_AC_61_1()
+        await test_AC_61_2()
+        await test_AC_61_3()
+        await test_AC_61_8()
+    }
+
+    func test_AC_61_1() async {
+        let small = await drawn(.recents, Self.phoneSmall, received: 2)
+        assertSizes(small, [Self.px(510, 510), nil], "Recents small")
+        let medium = await drawn(.recents, Self.phoneMedium, received: 3)
+        assertSizes(medium, [Self.px(537, 510), Self.px(537, 246), Self.px(537, 246)], "Recents medium")
+        let large = await drawn(.recents, Self.phoneLarge, received: 5)
+        assertSizes(large, [Self.px(1092, 711), Self.px(352, 418), Self.px(352, 418), Self.px(352, 418), nil], "Recents large")
+    }
+
+    func test_AC_61_2() async {
+        let small = await drawn(.favorites, Self.phoneSmall, received: 2)
+        assertSizes(small, [Self.px(246, 510), Self.px(246, 510)], "Favorites small, 2")
+        let smallOne = await drawn(.favorites, Self.phoneSmall, received: 1)
+        assertSizes(smallOne, [Self.px(510, 510)], "Favorites small, 1")
+        let medium = await drawn(.favorites, Self.phoneMedium, received: 3)
+        assertSizes(medium, [Self.px(352, 510), Self.px(352, 510), Self.px(352, 510)], "Favorites medium, 3")
+        let mediumOne = await drawn(.favorites, Self.phoneMedium, received: 1)
+        assertSizes(mediumOne, [Self.px(1092, 510)], "Favorites medium, 1")
+        let large = await drawn(.favorites, Self.phoneLarge, received: 5)
+        assertSizes(large, [Self.px(352, 564), Self.px(352, 564), Self.px(352, 564), Self.px(537, 564), Self.px(537, 564)], "Favorites large, 5")
+        let largeOne = await drawn(.favorites, Self.phoneLarge, received: 1)
+        assertSizes(largeOne, [Self.px(1092, 1146)], "Favorites large, 1")
+    }
+
+    func test_AC_61_3() async {
+        let small = await drawn(.memories, Self.phoneSmall, received: 2)
+        assertSizes(small, [Self.px(510, 510)], "Memories small")
+        let medium = await drawn(.memories, Self.phoneMedium, received: 2)
+        assertSizes(medium, [Self.px(537, 510), Self.px(537, 510)], "Memories medium, 2 cards")
+        let mediumOne = await drawn(.memories, Self.phoneMedium, received: 1)
+        assertSizes(mediumOne, [Self.px(1092, 510)], "Memories medium, 1 card")
+    }
+
+    /// AC-61.4: the size follows the widget — a bigger display size or a
+    /// higher screen scale gives bigger images, nothing caps them below the tile.
+    func test_AC_61_4() async {
+        let small = await drawn(.recents, Self.smallPhoneMedium, received: 3)
+        assertSizes(small, [Self.px(315, 296), Self.px(315, 142), Self.px(315, 142)], "small iPhone")
+        let large = await drawn(.recents, Self.phoneMedium, received: 3)
+        XCTAssertEqual(small.count, large.count)
+        for (little, big) in zip(small, large) {
+            XCTAssertGreaterThan(big?.width ?? 0, little?.width ?? .max)
+            XCTAssertGreaterThan(big?.height ?? 0, little?.height ?? .max)
+        }
+
+        let twoX = await drawn(.recents, Self.phoneMediumAt2x, received: 3)
+        let threeX = await drawn(.recents, Self.phoneMedium, received: 3)
+        XCTAssertEqual(twoX.count, threeX.count)
+        for (little, big) in zip(twoX, threeX) {
+            XCTAssertGreaterThan(big?.width ?? 0, little?.width ?? .max, "the same widget at 3× has more pixels than at 2×")
+            XCTAssertGreaterThan(big?.height ?? 0, little?.height ?? .max)
+        }
+    }
+
+    /// AC-61.5: a preview smaller than the tile is neither enlarged nor
+    /// replaced by the original.
+    func test_AC_61_5() async {
+        let spy = server(timeline: Self.ids(5), source: { _ in WidgetDisplaySizeTests.tiny.data })
+        let wall = await provider(spy).recentPhotos(limit: 5, target: Self.phoneLarge)
+
+        let sizes = wall.photos.map { pixelSize($0.imageData) }
+        assertSizes(sizes, [Self.px(300, 200), Self.px(300, 200), Self.px(300, 200), Self.px(300, 200), nil], "tiny preview", tolerance: 0)
+        XCTAssertTrue(spy.requests.allSatisfy { $0.url?.path.contains("/original") == false }, "the original is never asked for")
+        XCTAssertNotNil(wall.photos[0].imageData.flatMap { UIImage(data: $0) }, "the widget has an image to draw")
+    }
+
+    func test_AC_61_6_recents() async {
+        let spy = server(timeline: Self.ids(5), source: { WidgetDisplaySizeTests.alternating($0).data })
+        let wall = await provider(spy).recentPhotos(limit: 5, target: Self.phoneLarge)
+
+        assertFits(
+            Array(wall.photos.prefix(4)),
+            tiles: [WidgetPixelSize(width: 1092, height: 711)] + Array(repeating: WidgetPixelSize(width: 352, height: 418), count: 3),
+            spy: spy, entryBytes: bytes(wall.photos), "Recents large"
+        )
+    }
+
+    func test_AC_61_6_favorites() async {
+        let spy = server(timeline: Self.ids(5), source: { WidgetDisplaySizeTests.alternating($0).data })
+        let wall = await provider(spy).favoritePhotos(limit: 5, target: Self.phoneLarge)
+
+        assertFits(
+            wall.photos,
+            tiles: Array(repeating: WidgetPixelSize(width: 352, height: 564), count: 3) + Array(repeating: WidgetPixelSize(width: 537, height: 564), count: 2),
+            spy: spy, entryBytes: bytes(wall.photos), "Favorites large"
+        )
+    }
+
+    func test_AC_61_6_memories() async {
+        let spy = server(memories: Self.cards(2, assets: 30), source: { WidgetDisplaySizeTests.alternating($0).data })
+        let feed = await provider(spy).memories(limit: 2, offset: 0, target: Self.phoneMedium)
+
+        XCTAssertEqual(feed.cards.count, 2)
+        assertFits(
+            feed.cards.compactMap { $0.photos.first },
+            tiles: Array(repeating: WidgetPixelSize(width: 537, height: 510), count: 2),
+            spy: spy, entryBytes: feed.cards.reduce(0) { $0 + bytes($1.photos) }, "Memories medium"
+        )
+    }
+
+    /// AC-61.7: an extreme aspect ratio is covered, not letterboxed, and
+    /// cropped around its centre.
+    func test_AC_61_7() async {
+        let cases: [(name: String, source: Source, target: WidgetRenderTarget, received: Int, expected: WidgetPixelSize)] = [
+            ("panorama small", Self.panorama, Self.phoneSmall, 1, WidgetPixelSize(width: 510, height: 240)),
+            ("vertical small", Self.vertical, Self.phoneSmall, 1, WidgetPixelSize(width: 480, height: 510)),
+            ("panorama large", Self.panorama, Self.phoneLarge, 5, WidgetPixelSize(width: 1092, height: 240)),
+            ("vertical large", Self.vertical, Self.phoneLarge, 5, WidgetPixelSize(width: 480, height: 711)),
+        ]
+        for scenario in cases {
+            let data = scenario.source.data
+            let spy = server(timeline: Self.ids(scenario.received), source: { _ in data })
+            let wall = await provider(spy).recentPhotos(limit: scenario.target.family.photoLimit, target: scenario.target)
+
+            guard let main = wall.photos.first?.imageData, let size = pixelSize(main) else {
+                XCTFail("\(scenario.name): the photo has no image (plate fallback)")
+                continue
+            }
+            XCTAssertLessThanOrEqual(abs(size.width - scenario.expected.width), 1, "\(scenario.name): width \(size.width)")
+            XCTAssertLessThanOrEqual(abs(size.height - scenario.expected.height), 1, "\(scenario.name): height \(size.height)")
+            let centre = centerPixel(main)
+            XCTAssertGreaterThanOrEqual(centre?.green ?? 0, 200, "\(scenario.name): the centre is the middle band")
+            XCTAssertLessThanOrEqual(centre?.red ?? 255, 55, "\(scenario.name): no red")
+            XCTAssertLessThanOrEqual(centre?.blue ?? 255, 55, "\(scenario.name): no blue")
+            XCTAssertLessThanOrEqual(bytes(wall.photos), 1_048_576, "\(scenario.name): entry weight")
+        }
+    }
+
+    /// AC-61.8: the Lock Screen thumbnails are the size of their pad.
+    func test_AC_61_8() async {
+        let recents = await drawn(.recents, Self.rectangular, received: 1)
+        assertSizes(recents, [Self.px(102, 102)], "Recents rectangular")
+        let circular = await drawn(.memories, Self.circular, received: 2)
+        assertSizes(circular, [Self.px(192, 192)], "Memories circular")
+        let memoriesRectangular = await drawn(.memories, Self.rectangular, received: 2)
+        assertSizes(memoriesRectangular, [Self.px(120, 120)], "Memories rectangular")
+    }
+
+    /// AC-61.9: what the widget already guaranteed still holds.
+    func test_AC_61_9() async {
+        let session = WidgetSession(baseURL: "https://photos.example.com", token: "widget-jwt", customHeaders: [StaticCustomHeaders.xAccess])
+        let spy = server(timeline: Self.ids(3), source: { _ in JpegXLFixture.thumbnail })
+        let wall = await provider(spy, session: session).recentPhotos(limit: 3, target: Self.phoneMedium)
+
+        XCTAssertEqual(spy.thumbnailRequests.count, 3, "one thumbnail request per drawn photo")
+        for request in spy.thumbnailRequests {
+            XCTAssertTrue(request.url?.query?.contains("edited=true") == true, request.url?.absoluteString ?? "")
+            XCTAssertEqual(request.value(forHTTPHeaderField: "Authorization"), "Bearer widget-jwt")
+            XCTAssertEqual(request.value(forHTTPHeaderField: "X-Access"), "secret")
+        }
+        for photo in wall.photos {
+            // The JPEG XL fixture is 200×200: smaller than every tile, so it keeps its size.
+            XCTAssertEqual(pixelSize(photo.imageData), WidgetPixelSize(width: 200, height: 200))
+        }
+
+        let brokenSpy = server(timeline: Self.ids(3), source: { _ in JpegXLFixture.truncated })
+        let broken = await provider(brokenSpy, session: session).recentPhotos(limit: 3, target: Self.phoneMedium)
+        XCTAssertEqual(broken.photos.count, 3, "an undecodable image keeps its photo")
+        XCTAssertTrue(broken.photos.allSatisfy { $0.imageData == nil }, "and falls back to the plate")
+
+        let mute = Spy { _ in
+            try await Task.sleep(for: .seconds(30))
+            return (200, Data())
+        }
+        let silent = provider(mute, deadline: .milliseconds(80))
+        let recents = await silent.recentPhotos(limit: 3, target: Self.phoneMedium)
+        let favorites = await silent.favoritePhotos(limit: 3, target: Self.phoneMedium)
+        let memories = await silent.memories(limit: 2, offset: 0, target: Self.phoneMedium)
+        XCTAssertEqual(recents.availability, .unreachable)
+        XCTAssertEqual(favorites.availability, .unreachable)
+        XCTAssertEqual(memories.availability, .unreachable)
+    }
+
+    /// AC-61.10: only the photos a composition draws are downloaded.
+    func test_AC_61_10() async {
+        let memoriesSpy = server(memories: Self.cards(2, assets: 40), source: { _ in WidgetDisplaySizeTests.tiny.data })
+        let feed = await provider(memoriesSpy).memories(limit: 2, offset: 0, target: Self.phoneMedium)
+        XCTAssertEqual(memoriesSpy.thumbnailRequests.count, 2, "one request per drawn card")
+        XCTAssertEqual(feed.cards.map { $0.photos.count }, [40, 40], "each card still says 40 photos")
+        for card in feed.cards {
+            XCTAssertNotNil(card.photos[0].imageData)
+            XCTAssertTrue(card.photos.dropFirst().allSatisfy { $0.imageData == nil }, "undrawn photos carry no image")
+        }
+
+        let smallSpy = server(timeline: Self.ids(2), source: { _ in WidgetDisplaySizeTests.tiny.data })
+        let small = await provider(smallSpy).recentPhotos(limit: 2, target: Self.phoneSmall)
+        XCTAssertEqual(smallSpy.thumbnailRequests.count, 1)
+        XCTAssertEqual(small.photos.map(\.id), ["p0", "p1"], "the undrawn photo stays in the entry")
+        XCTAssertNil(small.photos[1].imageData)
+
+        let largeSpy = server(timeline: Self.ids(5), source: { _ in WidgetDisplaySizeTests.tiny.data })
+        let large = await provider(largeSpy).recentPhotos(limit: 5, target: Self.phoneLarge)
+        XCTAssertEqual(largeSpy.thumbnailRequests.count, 4)
+        XCTAssertNil(large.photos[4].imageData)
+    }
+
+    /// AC-61.10: a family that draws no photo, or a widget with no size, downloads nothing.
+    func test_AC_61_10_nothingDrawnNothingDownloaded() async {
+        let inlineSpy = server(timeline: Self.ids(2), memories: Self.cards(1), source: { _ in WidgetDisplaySizeTests.tiny.data })
+        let recents = await provider(inlineSpy).recentPhotos(limit: 1, target: Self.inline)
+        let favorites = await provider(inlineSpy).favoritePhotos(limit: 1, target: Self.circular)
+        let memories = await provider(inlineSpy).memories(limit: 1, offset: 0, target: Self.inline)
+        XCTAssertEqual(recents.availability, .ready)
+        XCTAssertEqual(favorites.availability, .ready)
+        XCTAssertEqual(memories.cards.count, 1)
+        XCTAssertTrue(inlineSpy.thumbnailRequests.isEmpty)
+
+        let zero = WidgetRenderTarget(family: .systemMedium, displaySize: .zero, scale: 3)
+        let zeroSpy = server(timeline: Self.ids(3), source: { _ in WidgetDisplaySizeTests.tiny.data })
+        let wall = await provider(zeroSpy).recentPhotos(limit: 3, target: zero)
+        XCTAssertEqual(wall.photos.count, 3)
+        XCTAssertTrue(zeroSpy.thumbnailRequests.isEmpty)
+    }
+
+    /// AC-61.11: slow previews never turn the widget "unreachable".
+    func test_AC_61_11() async {
+        let clock = ContinuousClock()
+        let recentsSpy = server(
+            timeline: Self.ids(5), source: { WidgetDisplaySizeTests.alternating($0).data },
+            blocked: ["p1", "p2", "p3", "p4"]
+        )
+        let start = clock.now
+        let wall = await provider(recentsSpy, deadline: .seconds(2)).recentPhotos(limit: 5, target: Self.phoneLarge)
+        XCTAssertLessThan(start.duration(to: clock.now), .seconds(2), "back before the refresh deadline")
+
+        XCTAssertEqual(wall.availability, .ready)
+        XCTAssertEqual(wall.photos.map(\.id), Self.ids(5))
+        XCTAssertEqual(wall.totalCount, 42)
+        XCTAssertEqual(wall.newestCount, 42)
+        assertSizes(wall.photos.map { pixelSize($0.imageData) }, [Self.px(1092, 711), nil, nil, nil, nil], "Recents with slow previews")
+        XCTAssertEqual(recentsSpy.thumbnailPaths, ["/api/assets/p0/thumbnail", "/api/assets/p1/thumbnail"], "one by one, none after the cutoff")
+
+        let memoriesSpy = server(
+            memories: Self.cards(2), source: { WidgetDisplaySizeTests.alternating($0).data }, blocked: ["m1a1"]
+        )
+        let feed = await provider(memoriesSpy, deadline: .seconds(2)).memories(limit: 2, offset: 0, target: Self.phoneMedium)
+        XCTAssertEqual(feed.availability, .ready)
+        XCTAssertEqual(feed.cards.count, 2)
+        XCTAssertNotNil(feed.cards[0].photos[0].imageData)
+        XCTAssertNil(feed.cards[1].photos[0].imageData)
+        XCTAssertEqual(feed.cards.map { $0.photos.count }, [3, 3])
     }
 }
