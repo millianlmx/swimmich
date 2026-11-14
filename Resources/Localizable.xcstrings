@@ -13193,6 +13193,34 @@
         }
       }
     },
+    "This server asks you to choose a new password before you continue." : {
+      "localizations" : {
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Ce serveur vous demande de choisir un nouveau mot de passe avant de continuer."
+          }
+        },
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Dieser Server bittet dich, vor dem Fortfahren ein neues Passwort zu wählen."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Este servidor te pide que elijas una contraseña nueva antes de continuar."
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Questo server ti chiede di scegliere una nuova password prima di continuare."
+          }
+        }
+      }
+    },
     "To" : {
       "localizations" : {
         "fr" : {
@@ -19821,6 +19849,34 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Indietro di 15 secondi"
+          }
+        }
+      }
+    },
+    "Back to Sign In" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Zurück zur Anmeldung"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Volver a iniciar sesión"
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Retour à la connexion"
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Torna all'accesso"
           }
         }
       }

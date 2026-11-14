@@ -14,7 +14,8 @@ day of six photos, real thumbnails). Every control is a plain `GET`, answered
 under `/control/` (the shell answers `/__…` itself, before the router); a
 `GET /__reset` restores the defaults: version 2.0.0, password 1, oauth 1,
 buttonText "Continue with Immich SSO", features `ok`, no revocation, no mute,
-no delay, no hold (a request still held is released), no asset status override.
+no delay, no hold (a request still held is released), no asset status override,
+an account that is no administrator and is not asked for a new password.
 
 CONTROLS
 
@@ -44,10 +45,16 @@ CONTROLS
   leaves, after it has seen what the app shows meanwhile.
 * `/control/asset?id=<id>&status=<200|400|404>`: status of `GET /api/assets/<id>`
   for that id; its thumbnail and original stay served.
+* `/control/account?admin=<0|1>&changePassword=<0|1>`: the `isAdmin` and
+  `shouldChangePassword` of the sign-in answer (`POST /api/auth/login`, B-42).
+  A successful `POST /api/auth/change-password` clears `changePassword`.
 
 OTHER ROUTES
 
-`POST /api/auth/login` (the shell's `LOGIN`), `POST /api/auth/validateToken`,
+`POST /api/auth/login` (the shell's `LOGIN` with the account's flags),
+`POST /api/auth/change-password` (the current password must be
+`stub-password`, the one the scenarios sign in with: else the real server's 400),
+`POST /api/auth/validateToken`,
 `GET /api/memories` (one memory of two shell photos, the shape of
 `immich_stub_memories.memory_dto`), `POST /api/assets/bulk-upload-check`
 (every asked id is a `reject`/`duplicate` of a shell photo: a manual backup pass
@@ -67,7 +74,7 @@ import threading
 import time
 
 from immich_stub_base import (
-    CONFIG, LOGIN, ME, Response, STATE, TIMELINE_ASSETS, asset, main, router,
+    CONFIG, LOGIN, ME, ME_USER, Response, STATE, TIMELINE_ASSETS, asset, main, router,
 )
 
 DEFAULTS = {
@@ -81,6 +88,8 @@ DEFAULTS = {
     "muteSeconds": 0.0,
     "delays": {},
     "assetStatus": {},
+    "admin": False,
+    "changePassword": False,
 }
 
 
@@ -230,6 +239,16 @@ def control_asset(req):
     return Response({"assetStatus": STATE["assetStatus"]})
 
 
+@router.get("/control/account")
+def control_account(req):
+    params = req.params
+    if "admin" in params:
+        STATE["admin"] = params["admin"] == "1"
+    if "changePassword" in params:
+        STATE["changePassword"] = params["changePassword"] == "1"
+    return Response({"account": {"admin": STATE["admin"], "changePassword": STATE["changePassword"]}})
+
+
 # MARK: - Server
 
 
@@ -295,7 +314,23 @@ def server_config(req):
 
 @router.post("/api/auth/login")
 def login(req):
-    return Response(LOGIN)
+    return Response(dict(LOGIN, isAdmin=STATE["admin"], shouldChangePassword=STATE["changePassword"]))
+
+
+# The password the scenarios sign in with (`LoginStartupUITests.signIn`).
+CURRENT_PASSWORD = "stub-password"
+
+
+@router.post("/api/auth/change-password")
+def change_password(req):
+    """A wrong current password is the real server's 400, never a 401 (which
+    would read as a refused session); a right one clears the account's flag."""
+    body = req.body if isinstance(req.body, dict) else {}
+    if body.get("password") != CURRENT_PASSWORD:
+        return Response({"message": "Wrong password", "error": "Bad Request",
+                         "statusCode": 400, "correlationId": "stub"}, status=400)
+    STATE["changePassword"] = False
+    return Response(dict(ME_USER, shouldChangePassword=False, isAdmin=STATE["admin"]))
 
 
 @router.post("/api/auth/validateToken")

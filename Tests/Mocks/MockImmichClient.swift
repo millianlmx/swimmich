@@ -50,6 +50,9 @@ final class MockImmichClient: ImmichClient, @unchecked Sendable {
     var lastLoginBody: LoginCredentialDto?
     var loginResponse: LoginResponseDto?
     var loginError: Error?
+    /// The token configured when each `logout()` was sent (B-42: the held
+    /// sign-in of a required password change is signed out on the server).
+    var logoutTokens: [String?] = []
 
     // OAuth (P5)
     var oauthAuthorizeResponse: OAuthAuthorizeResponseDto?
@@ -538,6 +541,7 @@ final class MockImmichClient: ImmichClient, @unchecked Sendable {
 
     func logout() async throws -> LogoutResponseDto {
         bump()
+        lock.lock(); logoutTokens.append(configuredToken); lock.unlock()
         if let e = globalError { throw e }
         return logoutResponse ?? LogoutResponseDto(successful: true, redirectUri: "")
     }

@@ -2,7 +2,8 @@ import UIKit
 import XCTest
 
 /// End-to-end proof of lot L-28 "Connexion et démarrage comme le client officiel"
-/// (AC-53 to AC-56, AC-330 to AC-346) against `immich_stub_login.py`.
+/// (AC-53 to AC-56, AC-330 to AC-346, and B-42's AC-347, AC-348) against
+/// `immich_stub_login.py`.
 ///
 /// Targets `accessibilityIdentifier`s. A localized text is read only where the
 /// criterion IS about the text: the field names of AC-339 (compared with the
@@ -1094,6 +1095,107 @@ final class LoginStartupUITests: XCTestCase {
             XCTAssertEqual(app.state, .runningForeground, "status \(status), hot: the app is gone")
             XCTAssertEqual(count("GET", path) - beforeHot, 1, "status \(status), hot: not exactly one request for the photo")
         }
+    }
+
+    // MARK: - AC-347, AC-348 (B-42)
+
+    /// `/control/account`: the flags of the sign-in answer.
+    private func account(admin: Bool, changePassword: Bool) {
+        let body = get("/control/account?admin=\(admin ? 1 : 0)&changePassword=\(changePassword ? 1 : 0)")
+        XCTAssertTrue(body.contains("\"account\""), "the stub did not take /control/account: \(body)")
+    }
+
+    private func secureField(_ identifier: String) -> XCUIElement {
+        app.secureTextFields.matching(identifier: identifier).firstMatch
+    }
+
+    /// Types into a password field of the change-password form, pulling it out
+    /// from under the keyboard first.
+    private func typePassword(_ identifier: String, _ text: String) {
+        let field = secureField(identifier)
+        XCTAssertTrue(field.waitForExistence(timeout: 15), "\(identifier) is missing — \(screenText())")
+        for _ in 0..<5 where !field.isHittable {
+            app.swipeDown()
+            Thread.sleep(forTimeInterval: 0.7)
+        }
+        field.tap()
+        field.typeText(text)
+    }
+
+    /// AC-347 (B-42): a non-administrator whose server asks for a new password
+    /// goes through the change-password step before the home screen; going back
+    /// signs the held session out; the change opens the home screen. An
+    /// administrator with the same flag is not redirected (the SSO case is
+    /// proven in `AuthViewModelTests.test_AC_347_adminAndSSOAreNotRedirected`).
+    func test_AC_347() throws {
+        account(admin: false, changePassword: true)
+        launchFresh()
+        reachLogin()
+        signIn()
+        XCTAssertTrue(element("requiredPasswordChangeNotice").waitForExistence(timeout: 30),
+                      "no change-password step after the sign-in — \(screenText())")
+        XCTAssertFalse(tabButton("Photos").exists, "the home screen opened before the new password")
+
+        let back = element("requiredPasswordChangeBackButton")
+        XCTAssertTrue(back.waitForExistence(timeout: 10), "no way back to the sign-in step")
+        back.tap()
+        XCTAssertTrue(element("loginTitle").waitForExistence(timeout: 20), "back did not return to the sign-in step — \(screenText())")
+        XCTAssertTrue(waitUntil(10) { self.count("POST", "/api/auth/logout") == 1 },
+                      "going back did not sign the held session out")
+        assertAbsent(["requiredPasswordChangeNotice"], "after going back")
+
+        // The fields kept their text: the same sign-in is sent again.
+        let signInButton = app.buttons.matching(identifier: "loginSignInButton").firstMatch
+        XCTAssertTrue(signInButton.waitForExistence(timeout: 10), "no sign-in button")
+        signInButton.tap()
+        XCTAssertTrue(element("requiredPasswordChangeNotice").waitForExistence(timeout: 30),
+                      "no change-password step after the second sign-in — \(screenText())")
+
+        typePassword("currentPasswordField", "stub-password")
+        typePassword("newPasswordField", "new-secret-1")
+        typePassword("confirmPasswordField", "new-secret-1\n")
+        reachShell()
+        XCTAssertEqual(count("POST", "/api/auth/change-password"), 1, "the new password was not sent once")
+
+        // An administrator with the same flag goes straight to the home screen.
+        app.terminate()
+        _ = get("/__reset")
+        account(admin: true, changePassword: true)
+        launchFresh()
+        reachLogin()
+        signIn()
+        let deadline = Date().addingTimeInterval(40)
+        while !tabButton("Photos").exists && Date() < deadline {
+            assertAbsent(["requiredPasswordChangeNotice"], "administrator sign-in")
+            Thread.sleep(forTimeInterval: 0.2)
+        }
+        XCTAssertTrue(tabButton("Photos").exists, "the administrator did not reach the home screen — \(screenText())")
+        assertAbsent(["requiredPasswordChangeNotice"], "administrator on the home screen")
+        XCTAssertEqual(count("POST", "/api/auth/change-password"), 0)
+    }
+
+    /// AC-348 (B-42): the onboarding shows `v<version>` next to "App Logs", on
+    /// the server step and on the sign-in step.
+    func test_AC_348() throws {
+        launchFresh()
+        openServerStep()
+        expectVersion(next: "serverLogsButton", version: "serverAppVersion", "server step")
+        enterServer(stub)
+        checkServer()
+        continueToLogin()
+        expectVersion(next: "loginLogsButton", version: "loginAppVersion", "sign-in step")
+    }
+
+    private func expectVersion(next logsID: String, version versionID: String, _ context: String) {
+        let logs = app.buttons.matching(identifier: logsID).firstMatch
+        let version = element(versionID)
+        XCTAssertTrue(logs.waitForExistence(timeout: 10), "\(context): no App Logs")
+        XCTAssertTrue(version.waitForExistence(timeout: 10), "\(context): no app version — \(screenText())")
+        XCTAssertNotNil(version.label.range(of: #"^v\d+(\.\d+)*$"#, options: .regularExpression),
+                        "\(context): the version reads \(version.label)")
+        let v = version.frame, l = logs.frame
+        XCTAssertLessThan(abs(v.midY - l.midY), 12, "\(context): the version is not on the App Logs row (\(v) vs \(l))")
+        XCTAssertLessThan(abs(l.minX - v.maxX), 48, "\(context): the version is not next to App Logs (\(v) vs \(l))")
     }
 }
 

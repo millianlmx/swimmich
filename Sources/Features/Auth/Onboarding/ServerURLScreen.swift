@@ -104,12 +104,7 @@ struct ServerURLScreen: View {
         .navigationBarTitleDisplayMode(.inline)
         .onAppear { isFocused = true }
         .toolbar {
-            ToolbarItem(placement: .topBarTrailing) {
-                Button(action: openLogs) {
-                    Label("App Logs", systemImage: "doc.text.magnifyingglass")
-                }
-                .accessibilityIdentifier("serverLogsButton")
-            }
+            OnboardingLogsToolbar(openLogs: openLogs, logsIdentifier: "serverLogsButton", versionIdentifier: "serverAppVersion")
         }
         // The end of every validation of the address: a success or a failure
         // (unreachable, refused certificate, client certificate missing). The

@@ -147,12 +147,7 @@ struct LoginScreen: View {
         }
         .appSensoryFeedback(.error, trigger: auth.errorMessage)
         .toolbar {
-            ToolbarItem(placement: .topBarTrailing) {
-                Button(action: openLogs) {
-                    Label("App Logs", systemImage: "doc.text.magnifyingglass")
-                }
-                .accessibilityIdentifier("loginLogsButton")
-            }
+            OnboardingLogsToolbar(openLogs: openLogs, logsIdentifier: "loginLogsButton", versionIdentifier: "loginAppVersion")
         }
         .onboardingBottomBar(isPresented: showsPasswordForm) {
             Button(action: signIn) {

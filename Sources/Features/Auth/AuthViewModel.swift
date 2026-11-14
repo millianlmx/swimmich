@@ -82,6 +82,26 @@ final class AuthViewModel: AuthSessionDelegate {
     var shouldChangePassword: Bool = false
     var isAuthenticated: Bool { accessToken != nil }
 
+    /// A password sign-in the server accepted for a non-administrator account
+    /// it asks to choose a new password (B-42, like the official client's
+    /// `login_form.dart` `onLogin`): the onboarding shows the change-password
+    /// step before the home screen.
+    ///
+    /// Held in memory only: the token reaches the API client (the change needs
+    /// it) but neither the Keychain, the saved accounts nor the widgets, so a
+    /// relaunch never restores a session that skipped the step. A successful
+    /// change applies it (`completeRequiredPasswordChange()`); going back drops
+    /// it (`abandonRequiredPasswordChange()`).
+    private var pendingPasswordChangeLogin: LoginResponseDto?
+    var isPasswordChangeRequired: Bool { pendingPasswordChangeLogin != nil }
+
+    /// The rule of the official client: only a password sign-in of a
+    /// non-administrator whose server sets `shouldChangePassword` goes through
+    /// the step. SSO never calls it (`startOAuthFlow` applies its session).
+    static func requiresPasswordChange(_ response: LoginResponseDto) -> Bool {
+        response.shouldChangePassword && !response.isAdmin
+    }
+
     /// Saved accounts (server URL + identity) for the multi-server /
     /// multi-account switcher (P5 multi-server). Persisted as JSON under
     /// `serverListDefaultsKey`.
@@ -523,18 +543,57 @@ final class AuthViewModel: AuthSessionDelegate {
         errorMessage = nil
         do {
             let response = try await client.login(email: email, password: password)
-            applySession(
-                token: response.accessToken,
-                email: response.userEmail,
-                name: response.name,
-                userId: response.userId,
-                isAdmin: response.isAdmin,
-                shouldChangePassword: response.shouldChangePassword
-            )
+            if Self.requiresPasswordChange(response) {
+                holdForPasswordChange(response)
+            } else {
+                applySession(
+                    token: response.accessToken,
+                    email: response.userEmail,
+                    name: response.name,
+                    userId: response.userId,
+                    isAdmin: response.isAdmin,
+                    shouldChangePassword: response.shouldChangePassword
+                )
+            }
         } catch let e {
             errorMessage = e.userFacingMessage
         }
         isLoading = false
+    }
+
+    /// Gives the API client the token of a sign-in that must change its
+    /// password first, and nothing else: no session is applied (B-42).
+    private func holdForPasswordChange(_ response: LoginResponseDto) {
+        sessionExpired = false
+        pendingPasswordChangeLogin = response
+        client.configure(baseURL: baseURL, token: response.accessToken)
+    }
+
+    /// The server accepted the new password: the held sign-in becomes the
+    /// session, and the home screen opens without a second sign-in (the server
+    /// keeps this device's session, `auth.service.ts:143-147`).
+    func completeRequiredPasswordChange() {
+        guard let response = pendingPasswordChangeLogin else { return }
+        pendingPasswordChangeLogin = nil
+        applySession(
+            token: response.accessToken,
+            email: response.userEmail,
+            name: response.name,
+            userId: response.userId,
+            isAdmin: response.isAdmin,
+            shouldChangePassword: false
+        )
+    }
+
+    /// "Back to sign in" from the required step: the held sign-in is signed
+    /// out on the server and forgotten here; the address stays typed.
+    func abandonRequiredPasswordChange() async {
+        guard pendingPasswordChangeLogin != nil else { return }
+        pendingPasswordChangeLogin = nil
+        _ = try? await client.logout()
+        // A sign-in that completed meanwhile owns the client now.
+        guard !isAuthenticated, pendingPasswordChangeLogin == nil else { return }
+        client.configure(baseURL: baseURL, token: nil)
     }
 
     // MARK: - OAuth (P5)
@@ -648,6 +707,7 @@ final class AuthViewModel: AuthSessionDelegate {
     /// next sign-in skips re-entering the address.
     func resetSession() {
         accessToken = nil
+        pendingPasswordChangeLogin = nil
         userEmail = nil
         userName = nil
         userId = nil
@@ -809,6 +869,13 @@ final class AuthViewModel: AuthSessionDelegate {
     /// logout (`resetSession()`) wipes them. A 401 while not authenticated
     /// (e.g. a failed sign-in) must not override the message being shown.
     private func handleSessionExpired() {
+        if pendingPasswordChangeLogin != nil {
+            // The held sign-in was refused: back to the sign-in step.
+            pendingPasswordChangeLogin = nil
+            errorMessage = UserFacingError.sessionExpiredMessage
+            client.configure(baseURL: baseURL, token: nil)
+            return
+        }
         guard isAuthenticated else { return }
         isLoading = false
         accessToken = nil

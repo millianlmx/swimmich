@@ -60,7 +60,7 @@ immich_stub_share_caches.py ShareAndCachesUITests/test_AC_50
 immich_stub_share_caches.py ShareAndCachesUITests/test_AC_270
 immich_stub_share_caches.py ShareAndCachesUITests/test_AC_273
 
-# L-28 Connexion et démarrage (AC-53 to AC-56, AC-330 to AC-346), against
+# L-28 Connexion et démarrage (AC-53 to AC-56, AC-330 to AC-348), against
 # immich_stub_login.py. The widget backup pass needs a photo in the library.
 immich_stub_login.py LoginStartupUITests/test_AC_53
 immich_stub_login.py LoginStartupUITests/test_AC_339
@@ -88,6 +88,8 @@ immich_stub_login.py LoginStartupUITests/test_AC_330
 immich_stub_login.py LoginStartupUITests/test_AC_331
 immich_stub_login.py LoginStartupUITests/test_AC_332
 immich_stub_login.py LoginStartupUITests/test_AC_335
+immich_stub_login.py LoginStartupUITests/test_AC_347
+immich_stub_login.py LoginStartupUITests/test_AC_348
 
 # L-21 server-side edits (AC-39, AC-40, AC-181, AC-182, AC-188, AC-189): the editor, the edited
 # version shown by the viewer, and the choice of the file to download.
