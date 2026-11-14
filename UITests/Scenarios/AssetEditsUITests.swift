@@ -931,12 +931,13 @@ final class AssetEditsUITests: XCTestCase {
 
     /// Another client edited the photo before the app started: the timeline, a memory, the viewer with its
     /// filmstrip and the slideshow ask `edited=true` for every image of it, and the stub served the edited
-    /// rendering each time. The viewer and the slideshow share the memory's preview URL, so the image cache
-    /// answers them without a request: the probes of the tile and of the viewer show the edited image.
+    /// rendering each time. The memory and the filmstrip have no probe and share the URL, so the image cache,
+    /// of the tile and of the viewer's preview: the journal proves them. The tile, the viewer and the slideshow
+    /// slide (dissolve, a `ZoomableImageView`) are read by their probes.
     func test_AC_192_editMadeBeforeShowsOnEverySurface() throws {
         launchSignedIn(config: try seedConfig([crop(0, 375, 4000, 2250)]),
                        arguments: ["-uiTestMemoryPlaybackProbe", "YES", "-uiTestMemoryAutoplayOff", "YES",
-                                   "-uiTestSlideshowAutoplayOff", "YES"])
+                                   "-uiTestSlideshowAutoplayOff", "YES", "-slideshowLook", "dissolve"])
         XCTAssertTrue(waitForProbe("assetTile_\(photo)", prefix: "loaded 12x12", within: 30),
                       "the timeline did not show the edited thumbnail — \(describe())")
 
@@ -956,8 +957,22 @@ final class AssetEditsUITests: XCTestCase {
         tile(photo).tap()
         XCTAssertTrue(waitForProbe("viewerImage_\(photo)", prefix: "loaded 12x12", within: 30),
                       "the viewer did not show the edited image — \(describe())")
-        XCTAssertTrue(element("viewerFilmstripCell_1").waitForExistence(timeout: 15), "the viewer has no filmstrip")
+        XCTAssertTrue(element("viewerFilmstripCell_0").waitForExistence(timeout: 15),
+                      "the filmstrip has no cell for the photo itself — \(screenText())")
+        // The viewer keeps its own `viewerImage_<photo>` under the slideshow layer (PhotoViewer.swift:705-717): the
+        // slide is the one more element the opening adds, and every one of them reads the edited image.
+        let slideImages = { self.app.descendants(matching: .any).matching(identifier: "viewerImage_\(self.photo)") }
+        let before = slideImages().count
         openSlideshow()
+        XCTAssertTrue(element("slideshowCloseButton").exists, "the slideshow shows no close button — \(screenText())")
+        var reading = (count: 0, values: [String]())
+        let slideShowsEdited = waitUntil(15) {
+            let found = slideImages().allElementsBoundByIndex
+            reading = (found.count, found.map { ($0.value as? String) ?? "" })
+            return found.count == before + 1 && reading.values.allSatisfy { $0.hasPrefix("loaded 12x12") }
+        }
+        XCTAssertTrue(slideShowsEdited,
+                      "the slideshow slide is not an edited image: viewerImage_<photo> counted \(before) before, \(reading.count) after, reading \(reading.values) — \(describe())")
         tapElement("slideshowCloseButton")
         XCTAssertTrue(waitUntil(15) { self.element("viewerBackButton").exists }, "the slideshow did not close")
 

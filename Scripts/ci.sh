@@ -371,9 +371,15 @@ for seconds, name in slow[:25]:
 ' || true
 }
 
+# Appends the JSON summary of an .xcresult to the summary file of job <k> (Scripts/ci_summary.py).
+record_job_summary() {
+  xcrun xcresulttool get test-results summary --path "$1" >>"build/ci/job-$2.summary" 2>/dev/null || true
+}
+
 # The unit tests, as a job of the pool: run_unit_tests <udid>.
 run_unit_tests() {
   local sim="$1"
+  printf '%s\n' "unit tests" >build/ci/job-0.summary
   echo "ci.sh: unit tests (simulator $sim)"
   if ! prepare_simulator "$sim" 0; then
     echo "::error::unit tests: could not ready the simulator"
@@ -383,10 +389,12 @@ run_unit_tests() {
   mkdir -p "$(dirname "$RESULT")"
   if ! xcodebuild test-without-building -xctestrun "$xctestrun" -destination "platform=iOS Simulator,id=$sim" -quiet \
     -only-testing:ImmichSwiftUITests -resultBundlePath "$RESULT" </dev/null; then
+    record_job_summary "$RESULT" 0
     report_failed_tests "$RESULT"
     report_slow_unit_tests "$RESULT"
     return 1
   fi
+  record_job_summary "$RESULT" 0
   report_slow_unit_tests "$RESULT"
 }
 
@@ -479,6 +487,7 @@ run_scenario() {
     shift
   done
   local label="$selector" result="build/ci/ui-$index.xcresult" stub_log="build/ci/ui-$index-stub.log"
+  printf '%s\n' "$label" >"build/ci/job-$index.summary"
   local media_here="$media_dir/$index"
   echo "ci.sh: UI scenario $label (stub $stub, simulator $sim, port $port)"
 
@@ -543,6 +552,7 @@ raise SystemExit(0 if json.load(sys.stdin).get("pid") == int(sys.argv[1]) else 1
       report_failed_tests "$result"
       status=1
     fi
+    record_job_summary "$result" "$index"
     check_ui_summary "$result" "$label" || status=1
     report_slow_tests "$result"
   fi
@@ -559,6 +569,7 @@ raise SystemExit(0 if json.load(sys.stdin).get("pid") == int(sys.argv[1]) else 1
 # printed whole once the job ends, so the CI log never interleaves two jobs.
 echo "ci.sh: unit tests and ${#ui_lines[@]} UI scenario line(s) on $UI_WORKERS simulator(s): ${worker_udids[*]}"
 mkdir -p build/ci
+rm -f build/ci/job-*.summary
 worker_pids=()
 worker_jobs=()
 for (( worker = 0; worker < UI_WORKERS; worker++ )); do worker_pids+=(""); worker_jobs+=(""); done
@@ -607,6 +618,8 @@ apply_audit_verdict || audit_ok=0
 phase_done "i18n audit after the tests"
 timings=$(IFS=,; echo "${phase_times[*]}")
 echo "ci.sh: timings: ${timings//,/, }, total $SECONDS s"
+# The positive trace: one `notice` naming every job that ran, with its counts. Whatever the verdict.
+python3 Scripts/ci_summary.py --scope "$UI_SCOPE" build/ci/job-*.summary || true
 GATE_BUDGET="${SWIMMICH_CI_GATE_BUDGET:-300}"
 if [[ "$UI_SCOPE" == gate ]] && (( SECONDS > GATE_BUDGET )); then
   echo "::warning::the gate took $SECONDS s, over its budget of $GATE_BUDGET s: ${timings//,/, }"
