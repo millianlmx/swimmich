@@ -187,9 +187,10 @@ struct AlbumsView: View {
                 .overlay {
                     if let thumbId = album.albumThumbnailAssetId {
                         AuthenticatedAsyncImage(
-                            url: ImmichAssetURL.thumbnail(assetId: thumbId, thumbhash: "", baseURL: baseURL),
+                            url: ImmichAssetURL.albumCover(assetId: thumbId, album: album, baseURL: baseURL),
                             token: token
                         )
+                        .accessibilityIdentifier("albumCover_\(album.id)")
                     } else {
                         ZStack {
                             Color.bgTertiary

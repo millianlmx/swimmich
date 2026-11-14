@@ -314,6 +314,25 @@ final class ServerSessionsTests: XCTestCase {
         XCTAssertNil(cacheTransfers.cachedResponse(for: request), "transfers session reset")
         XCTAssertNil(cacheRoadTrip.cachedResponse(for: request), "road-trip session reset")
     }
+
+    func test_AC_246_probeSessionNeverCachesWaitsOrCarriesCookies() {
+        let config = ServerSessions.probeConfiguration()
+        XCTAssertEqual(config.timeoutIntervalForRequest, 2)
+        XCTAssertEqual(config.timeoutIntervalForResource, 2)
+        XCTAssertFalse(config.waitsForConnectivity, "the system may deny a local connection at once: the probe must not wait")
+        XCTAssertNil(config.urlCache)
+        XCTAssertEqual(config.requestCachePolicy, .reloadIgnoringLocalCacheData)
+        XCTAssertFalse(config.httpShouldSetCookies)
+        XCTAssertNil(config.httpCookieStorage)
+    }
+
+    func test_AC_246_probeSessionIsRenewedWithTheOthers() {
+        let (made, _) = makeSessions(trusting: [])
+        let before = made.probe
+        made.renewSessions()
+        XCTAssertFalse(before === made.probe, "a certificate change replaces the probe session too")
+        made.probe.invalidateAndCancel()
+    }
 }
 
 private final class Box<T>: @unchecked Sendable {

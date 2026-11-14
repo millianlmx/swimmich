@@ -114,6 +114,32 @@ final class AssetPixelSizeViewModelTests: XCTestCase {
         XCTAssertEqual(mock.getAssetCalls, ["a1"])
     }
 
+    // MARK: - AC-191
+
+    /// A record that says `isEdited` while its EXIF still holds the original's 4000×3000: the size is
+    /// unknown, so the ceiling is the default one and the rectangle follows the decoded image, or the
+    /// grid's ratio, never the EXIF's 4:3. The same record not edited gives the EXIF ceiling.
+    func test_AC_191_editedRecordWithOriginalExifIsUnknownSizeAndFitsTheDecodedImage() async {
+        let mock = MockImmichClient()
+        mock.getAssetResponse["a1"] = dto(exif: exif(4000, 3000), isEdited: true)
+        mock.getAssetResponse["a2"] = dto(id: "a2", exif: exif(4000, 3000), isEdited: false)
+
+        let edited = AssetPixelSizeViewModel(asset: gridItem(), client: mock)
+        await edited.load()
+        let plain = AssetPixelSizeViewModel(asset: gridItem(id: "a2"), client: mock)
+        await plain.load()
+
+        XCTAssertNil(edited.pixelSize)
+        XCTAssertEqual(maxScale(edited.pixelSize), ZoomGeometry.unknownMaxScale)
+        XCTAssertEqual(plain.pixelSize, PixelSize(width: 4000, height: 3000))
+        XCTAssertNotEqual(maxScale(plain.pixelSize), ZoomGeometry.unknownMaxScale)
+
+        let decoded = CGSize(width: 12, height: 12)
+        XCTAssertEqual(ZoomGeometry.displayAspect(decoded: decoded, pixelSize: edited.pixelSize, fallback: 1.3), 1, accuracy: 0.001)
+        XCTAssertEqual(ZoomGeometry.displayAspect(decoded: nil, pixelSize: edited.pixelSize, fallback: 1.3), 1.3, accuracy: 0.001,
+                       "without a decoded image the grid's ratio is used, not the EXIF's 4:3")
+    }
+
     // MARK: - AC-114
 
     func test_AC_114_lateReadAndRetryAfterCancel() async {

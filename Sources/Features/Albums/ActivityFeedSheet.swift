@@ -5,6 +5,7 @@ import SwiftUI
 /// when anchored, relative time, like toggle + delete for the current user.
 struct ActivityFeedSheet: View {
     let vm: ActivityFeedViewModel
+    let album: AlbumResponseDto
 
     @Environment(AuthViewModel.self) private var auth
     @State private var draft = ""
@@ -47,6 +48,7 @@ struct ActivityFeedSheet: View {
                         ForEach(vm.activities, id: \.id) { activity in
                             ActivityRow(
                                 activity: activity,
+                                album: album,
                                 canDelete: activity.user.id == auth.userId,
                                 hasMyLike: vm.hasMyLike(activity),
                                 canToggleLike: vm.canToggleLike(activity),
@@ -140,6 +142,7 @@ struct ActivityFeedSheet: View {
 /// per-row like toggle and delete (own activities).
 private struct ActivityRow: View {
     let activity: ActivityResponseDto
+    let album: AlbumResponseDto
     let canDelete: Bool
     let hasMyLike: Bool
     let canToggleLike: Bool
@@ -175,9 +178,9 @@ private struct ActivityRow: View {
                 HStack(spacing: PVSpacing.s12) {
                     if let assetId = activity.assetId {
                         AuthenticatedAsyncImage(
-                            url: ImmichAssetURL.thumbnail(
+                            url: ImmichAssetURL.albumCover(
                                 assetId: assetId,
-                                thumbhash: "",
+                                album: album,
                                 baseURL: authBaseURL
                             ),
                             token: authToken

@@ -42,7 +42,15 @@ final class PhotoShareViewModel {
     /// not: a photo from a partner or shared album can be shared with its owner.
     private let currentUserId: String?
 
-    init(asset: AssetReactItem, client: any ImmichClient, baseURL: URL, externalDomain: String = "", currentUserId: String?) {
+    /// The address a link handed to other people is built on (L-26): the external
+    /// one, whichever address the app is using at the moment.
+    private let publicServerURL: URL
+
+    init(
+        asset: AssetReactItem, client: any ImmichClient, baseURL: URL, externalDomain: String = "",
+        currentUserId: String?, publicServerURL: URL? = nil
+    ) {
+        self.publicServerURL = publicServerURL ?? baseURL
         self.asset = asset
         self.client = client
         self.baseURL = baseURL
@@ -135,7 +143,7 @@ final class PhotoShareViewModel {
             let link = try await client.createSharedLink(dto: dto)
             // Same builder as the Shared tab: a server behind a reverse proxy
             // must hand out its public domain, not the address the app dials.
-            linkURL = SharedLinkURL(serverURL: baseURL, externalDomain: externalDomain)
+            linkURL = SharedLinkURL(serverURL: publicServerURL, externalDomain: externalDomain)
                 .urlString(slug: link.slug, key: link.key)
         } catch let e {
             errorMessage = e.userFacingMessage

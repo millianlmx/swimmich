@@ -97,12 +97,16 @@ public struct ToggleFavoriteIntent: AppIntent {
         sessionStore: any WidgetSessionStoring,
         transport: any WidgetDataTransport,
         reloadTimelines: @Sendable (String) -> Void,
-        log: @Sendable (String) -> Void
+        log: @Sendable (String) -> Void,
+        endpoints: WidgetEndpointResolver? = nil
     ) async {
-        guard let session = sessionStore.load() else {
+        guard let stored = sessionStore.load() else {
             log("favorite write skipped for asset \(assetId): no widget session")
             return
         }
+        // The local address of the server when it answers as this server (L-26).
+        let resolver = endpoints ?? WidgetEndpointResolver.live(sessionStore: sessionStore)
+        let session = await resolver.resolve(stored)
         guard let url = URL(string: session.baseURL + "/api/assets/\(assetId)"),
               let scheme = url.scheme?.lowercased(), scheme == "http" || scheme == "https",
               let host = url.host, !host.isEmpty

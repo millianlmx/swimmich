@@ -30,8 +30,8 @@ struct SearchView: View {
     @State private var showSaveSearch = false
     @State private var saveSearchName = ""
     @State private var showFilters = false
-    @State private var pendingDeleteSelected = false
-    @State private var presentAlbumPicker = false
+    /// Ticks on a touch or a long press that checks a thumbnail (the haptic the timeline gives).
+    @State private var lastSelectionTick = 0
     /// What the photo viewer needs to grow out of a thumbnail and shrink back
     /// onto it (L-14): the thumbnails' frames and the scroll owed on close.
     @State private var zoomSource = ViewerZoomSource()
@@ -77,9 +77,10 @@ struct SearchView: View {
                             SearchModeGlassBar(mode: $vm.viewMode)
                             Spacer(minLength: PVSpacing.s16)
                         }
-                        // The selection's count. The navigation title says it too,
-                        // but iOS drops the title when the selection actions fill
-                        // the bar: this line is the one that always shows.
+                        // The selection's count, a line of its own (names no action).
+                        // The navigation title says it too, but iOS drops the title
+                        // when the seven selection actions fill the bar: this line
+                        // is the one that always shows.
                         if vm.selectionMode && vm.viewMode == .results {
                             Text("\(vm.selectedIds.count) selected")
                                 .font(.pvSubhead.weight(.semibold))
@@ -100,20 +101,6 @@ struct SearchView: View {
                 // double-glass and clip. Menu only in results mode; the two
                 // pinned buttons are always visible.
                 .toolbar {
-                    if vm.selectionMode && vm.viewMode == .results {
-                        SearchSelectionToolbar(
-                            vm: vm,
-                            userId: auth.userId,
-                            onConfirmDelete: { pendingDeleteSelected = true },
-                            onAddToAlbum: { presentAlbumPicker = true },
-                            onDownload: {
-                                Task {
-                                    await downloads.enqueue(assets: vm.selectedItems)
-                                    vm.exitSelectionMode()
-                                }
-                            }
-                        )
-                    }
                     if !(vm.selectionMode && vm.viewMode == .results) {
                         ToolbarItemGroup(placement: .topBarTrailing) {
                             if vm.viewMode == .results {
@@ -136,12 +123,9 @@ struct SearchView: View {
                         }
                     }
                 }
-                .modifier(SearchSelectionPresentations(
-                    vm: vm,
-                    userId: auth.userId,
-                    pendingDelete: $pendingDeleteSelected,
-                    presentAlbumPicker: $presentAlbumPicker
-                ))
+                // L-23b: the same selection bar as the Photos tab, written once.
+                .batchSelectionBar(vm, userId: auth.userId, downloads: downloads, alertsSuspended: viewerItem != nil)
+                .appSensoryFeedback(.selection, trigger: lastSelectionTick)
                 // Full-screen photo viewer (tap any result photo → browse/zoom).
                 // Favorite/delete run self-sufficient; re-run the search so the
                 // results grid reflects mutations after the viewer closes.
@@ -309,13 +293,16 @@ struct SearchView: View {
                 Image(systemName: "xmark.circle.fill")
                     .font(.pvCaption)
                     .foregroundStyle(Color.textSecondaryPV)
+                    // HIG: a touch target of at least 44 × 44 pt (the glyph alone is 15).
+                    .frame(minWidth: 44, minHeight: 44)
                     .contentShape(Rectangle())
             }
             .buttonStyle(.plain)
             .accessibilityIdentifier("searchFilterChipRemove_\(constraint.field.rawValue)")
             .accessibilityLabel("Remove filter")
         }
-        .padding(.horizontal, PVSpacing.s12)
+        // The cross's 44 pt frame closes the capsule on the right.
+        .padding(.leading, PVSpacing.s12)
         .frame(minHeight: PVSpacing.s32)
         .background(Color.bgSecondary, in: Capsule())
         .overlay(Capsule().stroke(Color.separatorPV, lineWidth: 1))
@@ -618,6 +605,7 @@ struct SearchView: View {
             onTap: {
                 if vm.selectionMode {
                     vm.toggleSelection(id: item.id)
+                    lastSelectionTick &+= 1
                 } else {
                     openViewer(for: item)
                 }
@@ -630,6 +618,7 @@ struct SearchView: View {
         .onLongPressGesture(minimumDuration: 0.4) {
             if !vm.selectionMode { vm.enterSelectionMode() }
             vm.toggleSelection(id: item.id)
+            lastSelectionTick &+= 1
         }
     }
 

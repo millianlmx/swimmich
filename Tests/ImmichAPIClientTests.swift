@@ -1749,6 +1749,23 @@ final class ImmichAPIClientTests: XCTestCase {
         XCTAssertTrue(stored.contains { $0.name == ImmichCookie.sharedLinkToken })
     }
 
+    /// L-26: another address of the same server keeps the visit, and the token.
+    func test_AC_49_retargetKeepsSharedLinkVisit() async throws {
+        let (client, _) = try await makeCookieClient()
+        let local = URL(string: "http://192.168.1.10:2283")!
+        client.retarget(baseURL: local)
+
+        XCTAssertEqual(client.baseURL, local)
+        XCTAssertEqual(client.token, "token-a", "the token is valid on both addresses")
+        CapturingURLProtocol.reset()
+        CapturingURLProtocol.nextData = Self.sharedLinkJSON(key: "a2V5")
+        _ = try await client.getSharedLinkMine(.slug("secured"))
+        XCTAssertEqual(CapturingURLProtocol.lastRequest?.url?.host, "192.168.1.10")
+        XCTAssertEqual(
+            CapturingURLProtocol.lastRequest?.value(forHTTPHeaderField: ImmichHeader.cookie),
+            "\(ImmichCookie.sharedLinkToken)=tok123", "retarget does not end the shared-link visit")
+    }
+
     /// A 401 on this path is about the *link*, not the session — so it must not
     /// reach `authDelegate`, which resets the whole app session (FM-4). The raw
     /// server message is preserved because it is the only way to tell "needs a
