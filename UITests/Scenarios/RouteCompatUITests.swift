@@ -245,7 +245,7 @@ final class RouteCompatUITests: XCTestCase {
     func test_AC_180() throws {
         try begin(version: "3.4.0")
         stubGet("/stub/version?v=2.0.0&host=localhost")
-        try signIn()
+        try signInWithSSO()
         try addAccount(url: "http://localhost:\(port)")
         // Both accounts exist now: the switch itself is what the scenario watches.
         switchToAccount(containing: "127.0.0.1")
@@ -292,9 +292,51 @@ final class RouteCompatUITests: XCTestCase {
         app.launch()
     }
 
+    /// Signed in with the stub's session from the launch arguments
+    /// (`-uiTestSessionToken`): these scenarios watch the routes of the signed-in
+    /// app, not the sign-in, which AC-175 and AC-180 walk for real
+    /// (`signInWithSSO`). The SSO sheet (`SafariViewService`) is what failed most
+    /// on a loaded Mac.
     private func signIn() throws {
+        app.terminate()
+        launch(arguments: relaunch + sessionArguments())
+        XCTAssertTrue(app.tabBars.buttons.matching(labelPredicate(["Photos", "Fotos"]))
+            .firstMatch.waitForExistence(timeout: 30), "the app did not start signed in")
+        XCTAssertTrue(element("assetTile_aaaaaaaa-1111-4111-8111-000000000001").waitForExistence(timeout: 40),
+                      "the timeline never rendered")
+        dismissWhatsNewIfPresent()
+    }
+
+    private func signInWithSSO() throws {
         try walkToLogin()
         try completeSSOSignIn()
+    }
+
+    /// The session the stub's SSO sign-in hands out (`POST /api/oauth/callback`),
+    /// as the launch arguments of `AuthViewModel`'s keys.
+    private func sessionArguments() -> [String] {
+        var request = URLRequest(url: URL(string: "\(stub)/api/oauth/callback")!)
+        request.httpMethod = "POST"
+        request.timeoutInterval = 5
+        let done = DispatchSemaphore(value: 0)
+        var login: [String: Any] = [:]
+        URLSession.shared.dataTask(with: request) { data, _, _ in
+            login = data.flatMap { try? JSONSerialization.jsonObject(with: $0) as? [String: Any] } ?? [:]
+            done.signal()
+        }.resume()
+        _ = done.wait(timeout: .now() + 6)
+        guard let token = login["accessToken"] as? String else {
+            XCTFail("the stub's /api/oauth/callback gave no session: \(login)")
+            return []
+        }
+        return [
+            "-uiTestSessionToken", token,
+            "-authServerURL", stub,
+            "-authUserId", login["userId"] as? String ?? "",
+            "-authUserName", login["name"] as? String ?? "",
+            "-authUserEmail", login["userEmail"] as? String ?? "",
+            "-authIsAdmin", (login["isAdmin"] as? Bool ?? false) ? "YES" : "NO",
+        ]
     }
 
     private func walkToLogin() throws {
@@ -388,13 +430,22 @@ final class RouteCompatUITests: XCTestCase {
         reveal("readOnlyModeToggle")
         let toggle = element("readOnlyModeToggle")
         if (toggle.value as? String == "1") != enabled { toggle.tap() }
-        app.swipeDown()
-        dismissSheetIfPresent()
+        dismissMeSheet()
     }
 
-    private func dismissSheetIfPresent() {
-        let close = app.buttons.matching(labelPredicate(["Done", "Close", "Terminé", "Fermer"])).firstMatch
-        if close.waitForExistence(timeout: 3) { close.tap() }
+    /// The Me sheet, dragged down from its bar: a swipe on the scrolled list only
+    /// scrolled it back, and the sheet stayed over the tab bar.
+    private func dismissMeSheet() {
+        let albums = app.tabBars.buttons.matching(labelPredicate(["Albums", "Alben"])).firstMatch
+        for attempt in 0..<3 where !(albums.exists && albums.isHittable) {
+            let bar = app.navigationBars.firstMatch
+            let start = bar.exists
+                ? bar.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5))
+                : app.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.12))
+            start.press(forDuration: 0.2, thenDragTo: start.withOffset(CGVector(dx: 0, dy: attempt == 0 ? 700 : 950)))
+            _ = waitUntil(timeout: 6) { albums.exists && albums.isHittable }
+        }
+        XCTAssertTrue(albums.exists && albums.isHittable, "the Me sheet never dismissed")
     }
 
     /// Long-presses the queue's row and taps the command in its context menu.
