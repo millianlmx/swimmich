@@ -76,7 +76,7 @@ final class AssetEditsUITests: XCTestCase {
         app.descendants(matching: .any).matching(identifier: identifier).firstMatch
     }
 
-    private func tile(_ assetId: String) -> XCUIElement { element("assetTile_\(assetId)") }
+    private func tile(_ assetId: String) -> XCUIElement { visible("assetTile_\(assetId)") }
 
     private func waitUntil(_ timeout: TimeInterval, _ condition: () -> Bool) -> Bool {
         let deadline = Date().addingTimeInterval(timeout)
@@ -230,6 +230,190 @@ final class AssetEditsUITests: XCTestCase {
         button.tap()
     }
 
+    private func waitEditorClosed() {
+        XCTAssertTrue(waitUntil(15) { !self.element("editorSaveButton").exists }, "the editor stayed open — \(screenText())")
+    }
+
+    /// The viewer is open: its editor, a 4:3 crop, Save.
+    private func cropAndSave() {
+        reopenEditorFromViewer()
+        tapEditor("ratioButton.fourByThree")
+        save()
+        waitEditorClosed()
+        XCTAssertTrue(waitUntil(20) { !self.editsEntries("PUT").isEmpty }, "no PUT — \(describe())")
+    }
+
+    /// The viewer is open: its editor, back to the original, Save.
+    private func revertAndSave() {
+        reopenEditorFromViewer()
+        tapEditor("revertToOriginalButton")
+        save()
+        waitEditorClosed()
+    }
+
+    // MARK: - Stub state and screens (display scenarios)
+
+    private let album = "eeeeeeee-2222-4222-8222-000000000001"
+
+    private func getJSON(_ path: String) -> [String: Any] {
+        var request = URLRequest(url: URL(string: "\(stub)\(path)")!)
+        request.timeoutInterval = 5
+        let done = DispatchSemaphore(value: 0)
+        var payload = Data()
+        URLSession.shared.dataTask(with: request) { data, _, _ in
+            if let data { payload = data }
+            done.signal()
+        }.resume()
+        _ = done.wait(timeout: .now() + 6)
+        return (try? JSONSerialization.jsonObject(with: payload)) as? [String: Any] ?? [:]
+    }
+
+    /// `GET /api/__edits/state` of the photo: generation, `readyAt`, `emittedAt`, thumbhash, `sha`.
+    private func state() -> [String: Any] { getJSON("/api/__edits/state?id=\(photo)") }
+
+    private func stubTime(_ key: String) -> Double { state()[key] as? Double ?? 0 }
+
+    private func sha(_ key: String) -> String? { (state()["sha"] as? [String: String])?[key] }
+
+    private func at(_ entry: [String: Any]) -> Double { entry["at"] as? Double ?? 0 }
+
+    private func after(_ time: Double, _ entries: [[String: Any]]) -> [[String: Any]] {
+        entries.filter { at($0) >= time }
+    }
+
+    /// An edit made by another client: `edits` is the whole list (`[]` removes it).
+    private func remote(_ edits: [[String: Any]]) throws {
+        let json = String(decoding: try JSONSerialization.data(withJSONObject: edits), as: UTF8.self)
+        let encoded = try XCTUnwrap(json.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed))
+        get("/api/__edits/remote?id=\(photo)&edits=\(encoded)")
+    }
+
+    /// A server that does not answer: every `/api/` request fails, the socket is cut.
+    private func setDown(_ on: Bool) { get("/api/__edits/config?down=\(on ? 1 : 0)") }
+
+    /// The matching element that is on screen: the grids of the other tabs stay in the tree, and show
+    /// the same photo.
+    private func visible(_ identifier: String) -> XCUIElement {
+        let matches = app.descendants(matching: .any).matching(identifier: identifier)
+        return matches.allElementsBoundByIndex.first(where: { $0.isHittable }) ?? matches.firstMatch
+    }
+
+    /// The image probe of an element (`placeholder`, `loaded <w>x<h> …`, `failed`), empty when it is absent.
+    private func probe(_ identifier: String) -> String {
+        let match = visible(identifier)
+        return match.exists ? (match.value as? String ?? "") : ""
+    }
+
+    /// Waits for the probe of `identifier` to start with `prefix`: until `within` seconds after the stub's
+    /// `key` time (`readyAt` of the change, `emittedAt` of the event), or after the call when that time is past
+    /// (a screen reached late is judged from its arrival).
+    private func waitForProbe(_ identifier: String, prefix: String, within: TimeInterval = 10,
+                              after key: String = "readyAt") -> Bool {
+        let start = state()
+        let now = start["now"] as? Double ?? 0
+        let anchor = max(start[key] as? Double ?? now, now)
+        let deadline = Date().addingTimeInterval(anchor - now + within)
+        while Date() < deadline {
+            if probe(identifier).hasPrefix(prefix) { return true }
+            Thread.sleep(forTimeInterval: 0.3)
+        }
+        return probe(identifier).hasPrefix(prefix)
+    }
+
+    private func waitForSocket(timeout: TimeInterval = 30) -> Bool {
+        waitUntil(timeout) {
+            self.journal().contains { ($0["path"] as? String) == "/api/socket.io/" && ($0["status"] as? Int) == 101 }
+        }
+    }
+
+    /// The stub has emitted `AssetEditReadyV2` for the last change.
+    private func waitForEmission(timeout: TimeInterval = 45) -> Bool {
+        waitUntil(timeout) { self.state()["emittedAt"] is Double }
+    }
+
+    private func tab(_ label: String) {
+        let button = app.tabBars.buttons[label].firstMatch
+        XCTAssertTrue(button.waitForExistence(timeout: 20), "no \(label) tab — \(screenText())")
+        button.tap()
+    }
+
+    private func closeViewer() {
+        let back = element("viewerBackButton")
+        XCTAssertTrue(back.waitForExistence(timeout: 20), "the viewer has no back button — \(screenText())")
+        back.tap()
+        XCTAssertTrue(waitUntil(15) { !back.exists }, "the viewer stayed open")
+    }
+
+    /// "Keep offline" from the share sheet of the open viewer, then the sheet is closed.
+    private func keepOffline() {
+        let share = element("viewerShareButton")
+        XCTAssertTrue(share.waitForExistence(timeout: 20), "the viewer has no share button — \(screenText())")
+        share.tap()
+        let keep = element("downloadForOfflineButton")
+        XCTAssertTrue(keep.waitForExistence(timeout: 20), "no Download for Offline — \(screenText())")
+        keep.tap()
+        XCTAssertTrue(element("offlineAvailableRow").waitForExistence(timeout: 30), "the copy was never kept — \(describe())")
+        for _ in 0..<3 where element("offlineAvailableRow").exists {
+            app.swipeDown(velocity: .fast)
+            Thread.sleep(forTimeInterval: 1)
+        }
+    }
+
+    /// The offline library, reached from the Albums tab.
+    private func openOfflineStorage() {
+        tab("Albums")
+        let row = element("offlineStorageRow")
+        for _ in 0..<5 where !row.exists || !row.isHittable { app.swipeUp() }
+        row.tap()
+        XCTAssertTrue(element("offlineStorageScreen").waitForExistence(timeout: 20), "no offline library — \(screenText())")
+    }
+
+    /// The Albums tab, on the list of albums (an album left open on this tab is closed first).
+    private func openAlbumList() {
+        tab("Albums")
+        let card = element("albumCard_\(album)")
+        if !card.waitForExistence(timeout: 5) {
+            let back = app.navigationBars.buttons.element(boundBy: 0)
+            if back.exists { back.tap() }
+        }
+        XCTAssertTrue(card.waitForExistence(timeout: 30), "no album card — \(screenText())")
+    }
+
+    /// The album of the stub, opened from its card.
+    private func openAlbum() {
+        openAlbumList()
+        element("albumCard_\(album)").tap()
+        XCTAssertTrue(element("albumHeroImage").waitForExistence(timeout: 20), "the album never opened — \(screenText())")
+    }
+
+    /// "beach" typed in the search tab (an earlier query is cleared).
+    private func search(_ text: String) {
+        tab("Search")
+        let field = app.searchFields.firstMatch
+        XCTAssertTrue(field.waitForExistence(timeout: 20), "no search field — \(screenText())")
+        field.tap()
+        let clear = field.buttons["Clear text"]
+        if clear.exists { clear.tap() }
+        field.typeText("\(text)\n")
+    }
+
+    /// The requests for the album cover: their cache key `c` starts with the album's date (`…Z`), a tile's
+    /// is a thumbhash.
+    private func coverRequests() -> [[String: Any]] {
+        thumbnails().filter { (self.param($0, "c") ?? "").contains("Z") }
+    }
+
+    /// The stub served the edited rendering for this request.
+    private func served(_ entry: [String: Any]) -> Bool { entry["edited_served"] as? Bool == true }
+
+    /// A `GET …/original` of the photo with `edited`, after `time`, that served the file `sha` names.
+    private func hasOriginal(edited: String, after time: Double, sha key: String) -> Bool {
+        let expected = sha(key)
+        return originals().contains {
+            self.param($0, "edited") == edited && self.at($0) >= time && $0["sha"] as? String == expected
+        }
+    }
+
     // MARK: - AC-181
 
     func test_AC_181_cropRotateMirrorSavesEdits() {
@@ -324,10 +508,12 @@ final class AssetEditsUITests: XCTestCase {
 
     // MARK: - AC-39
 
-    /// The edited version reaches the viewer's requests once the server has regenerated it, with
-    /// `edited=true` on every thumbnail, and the original comes back after the removal.
+    /// Crop, quarter turn and mirror are saved as edits on the photo (no new asset); once the server has
+    /// regenerated the thumbnails the viewer and the grid show the edited version, with `edited=true` on
+    /// every thumbnail request; after the removal the original comes back on both.
     func test_AC_39_editedVersionShownThenTheOriginalComesBack() {
-        launchSignedIn()
+        launchSignedIn(config: "regen=5")
+        XCTAssertTrue(waitForProbe("assetTile_\(photo)", prefix: "loaded 8x8"), "the grid never showed the photo — \(describe())")
         openEditor()
         tapEditor("ratioButton.fourByThree")
         tapEditor("rotate90CWButton")
@@ -335,19 +521,279 @@ final class AssetEditsUITests: XCTestCase {
         save()
 
         XCTAssertTrue(waitUntil(20) { !self.editsEntries("PUT").isEmpty }, "no PUT /edits — \(describe())")
+        let expected: [[String: Any]] = [crop(0, 375, 4000, 2250), mirror("vertical"), rotate(90)]
+        XCTAssertEqual(editsBody(of: editsEntries("PUT")[0]), expected as NSArray, "\(describe())")
         XCTAssertTrue(uploads().isEmpty, "no new asset: the edits are saved on the photo — \(describe())")
-        XCTAssertTrue(waitUntil(15) { !self.thumbnails(generation: "-e1", size: "preview").isEmpty },
-                      "the viewer never asked for the regenerated preview — \(describe())")
+        waitEditorClosed()
+
+        XCTAssertTrue(waitForProbe("viewerImage_\(photo)", prefix: "loaded 12x12"),
+                      "the viewer never showed the edited preview — \(describe())")
+        let readyAt = stubTime("readyAt")
+        XCTAssertFalse(after(readyAt, thumbnails(generation: "-e1", size: "preview")).isEmpty,
+                       "no regenerated preview after the switch — \(describe())")
+        closeViewer()
+        XCTAssertTrue(waitForProbe("assetTile_\(photo)", prefix: "loaded 12x12"),
+                      "the grid never showed the edited thumbnail — \(describe())")
+        XCTAssertFalse(after(readyAt, thumbnails(generation: "-e1", size: "thumbnail")).isEmpty,
+                       "no regenerated thumbnail after the switch — \(describe())")
+
+        tile(photo).tap()
+        revertAndSave()
+        XCTAssertTrue(waitUntil(20) { !self.editsEntries("DELETE").isEmpty }, "no DELETE — \(describe())")
+        XCTAssertEqual(editsEntries("DELETE").count, 1)
+        XCTAssertTrue(waitForProbe("viewerImage_\(photo)", prefix: "loaded 8x8"),
+                      "the original never came back to the viewer — \(describe())")
+        closeViewer()
+        XCTAssertTrue(waitForProbe("assetTile_\(photo)", prefix: "loaded 8x8"),
+                      "the original never came back to the grid — \(describe())")
+        XCTAssertFalse((state()["thumbhash"] as? String ?? "-e").contains("-e"), "the server is back on its first thumbhash")
         for entry in thumbnails() {
             XCTAssertEqual(param(entry, "edited"), "true", "every thumbnail asks the edited rendering — \(describe())")
         }
+    }
+
+    // MARK: - AC-183
+
+    /// The photo shown by the timeline, an album and the search follows the edit and its removal without a
+    /// gesture, although the server serves the old image for 5 s after each change.
+    func test_AC_183_timelineAlbumAndSearchFollowTheEditAndItsRemoval() {
+        launchSignedIn(config: "regen=5")
+        search("beach")
+        XCTAssertTrue(waitForProbe("assetTile_\(photo)", prefix: "loaded 8x8"), "the search never showed the photo — \(describe())")
+        openAlbum()
+        XCTAssertTrue(waitForProbe("assetTile_\(photo)", prefix: "loaded 8x8"), "the album never showed the photo — \(describe())")
+        tab("Photos")
+
+        tile(photo).tap()
+        cropAndSave()
+        closeViewer()
+        let readyAt = stubTime("readyAt")
+        XCTAssertTrue(waitForProbe("assetTile_\(photo)", prefix: "loaded 12x12"),
+                      "the timeline kept the old image — \(describe())")
+        openAlbum()
+        XCTAssertTrue(waitForProbe("assetTile_\(photo)", prefix: "loaded 12x12"),
+                      "the album kept the old image — \(describe())")
+        tab("Search")
+        XCTAssertTrue(waitForProbe("assetTile_\(photo)", prefix: "loaded 12x12"),
+                      "the search kept the old image — \(describe())")
+        tab("Photos")
+        tile(photo).tap()
+        XCTAssertTrue(waitForProbe("viewerImage_\(photo)", prefix: "loaded 12x12"), "the viewer kept the old image — \(describe())")
+        XCTAssertFalse(after(readyAt, thumbnails(generation: "-e1", size: "thumbnail")).isEmpty, "\(describe())")
+        XCTAssertFalse(after(readyAt, thumbnails(generation: "-e1", size: "preview")).isEmpty, "\(describe())")
+
+        // The search reads the new thumbhash from the server (`-e1`) before the removal: the original must
+        // still come back on it.
+        closeViewer()
+        search("beach again")
+        XCTAssertTrue(waitForProbe("assetTile_\(photo)", prefix: "loaded 12x12"), "the search lost the edit — \(describe())")
+        tab("Photos")
+        tile(photo).tap()
+        revertAndSave()
+        XCTAssertTrue(waitUntil(20) { !self.editsEntries("DELETE").isEmpty }, "no DELETE — \(describe())")
+        closeViewer()
+        XCTAssertTrue(waitForProbe("assetTile_\(photo)", prefix: "loaded 8x8"), "the timeline kept the edited image — \(describe())")
+        openAlbum()
+        XCTAssertTrue(waitForProbe("assetTile_\(photo)", prefix: "loaded 8x8"), "the album kept the edited image — \(describe())")
+        tab("Search")
+        XCTAssertTrue(waitForProbe("assetTile_\(photo)", prefix: "loaded 8x8"), "the search kept the edited image — \(describe())")
+        for entry in thumbnails() {
+            XCTAssertEqual(param(entry, "edited"), "true", "every thumbnail asks the edited rendering — \(describe())")
+        }
+    }
+
+    // MARK: - AC-186
+
+    /// A photo kept offline: its copy is downloaded `edited=true`, not again before the regeneration, then
+    /// as the edited rendering; after the removal as the original — and the grid, the viewer and the
+    /// offline library show the copy with the server cut.
+    func test_AC_186_offlineCopyFollowsAfterTheRegeneration() {
+        launchSignedIn(config: "regen=5")
+        tile(photo).tap()
+        keepOffline()
+        let kept = originals()
+        XCTAssertEqual(kept.count, 1, "\(describe())")
+        XCTAssertEqual(param(kept[0], "edited"), "true", "the copy is kept as the displayed version")
 
         reopenEditorFromViewer()
-        tapEditor("revertToOriginalButton")
+        tapEditor("ratioButton.fourByThree")
         save()
+        waitEditorClosed()
+        XCTAssertTrue(waitUntil(20) { !self.editsEntries("PUT").isEmpty }, "no PUT — \(describe())")
+        XCTAssertTrue(waitUntil(30) { self.state()["ready"] as? Bool == true }, "the regeneration never ended")
+        let readyAt = stubTime("readyAt")
+        XCTAssertTrue(originals().dropFirst(kept.count).allSatisfy { self.at($0) >= readyAt },
+                      "the copy was fetched again before the regeneration — \(describe())")
+        XCTAssertTrue(waitUntil(15) { self.hasOriginal(edited: "true", after: readyAt, sha: "originalEdited") },
+                      "the copy was never fetched again as the edited version — \(describe())")
+
+        setDown(true)
+        XCTAssertTrue(waitForProbe("viewerImage_\(photo)", prefix: "loaded 96x96"), "the viewer lost the edited copy")
+        closeViewer()
+        XCTAssertTrue(waitForProbe("assetTile_\(photo)", prefix: "loaded 96x96"), "the grid lost the edited copy")
+        openOfflineStorage()
+        XCTAssertTrue(waitForProbe("offlineAsset_\(photo)", prefix: "loaded 96x96"), "the library lost the edited copy")
+
+        setDown(false)
+        tab("Photos")
+        tile(photo).tap()
+        revertAndSave()
         XCTAssertTrue(waitUntil(20) { !self.editsEntries("DELETE").isEmpty }, "no DELETE — \(describe())")
-        XCTAssertTrue(waitUntil(15) { !self.thumbnails(generation: "-e2", size: "preview").isEmpty },
-                      "the original never came back to the viewer — \(describe())")
+        XCTAssertTrue(waitUntil(30) { self.state()["ready"] as? Bool == true }, "the second regeneration never ended")
+        let removedAt = stubTime("readyAt")
+        XCTAssertTrue(waitUntil(15) { self.hasOriginal(edited: "false", after: removedAt, sha: "original") },
+                      "the copy was never fetched again as the original — \(describe())")
+        setDown(true)
+        XCTAssertTrue(waitForProbe("viewerImage_\(photo)", prefix: "loaded 64x64"), "the viewer lost the restored copy")
+    }
+
+    // MARK: - AC-196
+
+    /// Another client edits the photo: the timeline and the open viewer follow, without a gesture.
+    func test_AC_196_editMadeElsewhereReachesOpenScreens() throws {
+        launchSignedIn(config: "regen=5")
+        XCTAssertTrue(waitForSocket(), "the app never opened the socket — \(describe())")
+
+        try remote([crop(0, 375, 4000, 2250)])
+        XCTAssertTrue(waitForEmission(), "the stub never emitted the event")
+        XCTAssertTrue(waitForProbe("assetTile_\(photo)", prefix: "loaded 12x12", after: "emittedAt"),
+                      "the timeline kept the old image — \(describe())")
+        XCTAssertFalse(after(stubTime("readyAt"), thumbnails(generation: "-e1", size: "thumbnail")).isEmpty, "\(describe())")
+
+        tile(photo).tap()
+        XCTAssertTrue(waitForProbe("viewerImage_\(photo)", prefix: "loaded 12x12"), "the viewer opened on the old image")
+        try remote([])
+        XCTAssertTrue(waitUntil(30) { self.state()["emittedAt"] is NSNull }, "the second change was not seen")
+        XCTAssertTrue(waitForEmission(), "the stub never emitted the second event")
+        XCTAssertTrue(waitForProbe("viewerImage_\(photo)", prefix: "loaded 8x8", after: "emittedAt"),
+                      "the viewer kept the edited image — \(describe())")
+        XCTAssertFalse((state()["thumbhash"] as? String ?? "-e").contains("-e"), "the server is back on its first thumbhash")
+
+        try remote([rotate(90)])
+        XCTAssertTrue(waitUntil(30) { self.state()["emittedAt"] is NSNull }, "the third change was not seen")
+        XCTAssertTrue(waitForEmission(), "the stub never emitted the third event")
+        XCTAssertTrue(waitForProbe("viewerImage_\(photo)", prefix: "loaded 12x12", after: "emittedAt"),
+                      "the viewer kept the original — \(describe())")
+        XCTAssertTrue((state()["thumbhash"] as? String ?? "").hasSuffix("-e3"))
+        XCTAssertTrue(originals().isEmpty, "no copy is kept offline: no original is fetched — \(describe())")
+    }
+
+    // MARK: - AC-197
+
+    /// The cover of the album, in the list and in the detail, follows the edit made here, its removal, and
+    /// an edit made by another client.
+    func test_AC_197_albumCoverFollowsTheEdit() throws {
+        launchSignedIn(config: "regen=5")
+        openAlbumList()
+        XCTAssertTrue(waitUntil(20) { self.coverRequests().contains { !self.served($0) } }, "no cover — \(describe())")
+        openAlbum()
+        XCTAssertTrue(waitForProbe("albumHeroCover", prefix: "loaded 8x8"), "the header never showed the cover — \(describe())")
+
+        tab("Photos")
+        tile(photo).tap()
+        cropAndSave()
+        closeViewer()
+        let readyAt = stubTime("readyAt")
+        openAlbum()
+        XCTAssertTrue(waitForProbe("albumHeroCover", prefix: "loaded 12x12"), "the header kept the old cover — \(describe())")
+        openAlbumList()
+        XCTAssertTrue(waitUntil(15) { self.coverRequests().contains { self.served($0) && self.at($0) >= readyAt } },
+                      "the list never asked for the edited cover — \(describe())")
+        for entry in coverRequests() { XCTAssertEqual(param(entry, "edited"), "true") }
+
+        tab("Photos")
+        tile(photo).tap()
+        revertAndSave()
+        XCTAssertTrue(waitUntil(20) { !self.editsEntries("DELETE").isEmpty }, "no DELETE — \(describe())")
+        closeViewer()
+        XCTAssertTrue(waitUntil(30) { self.state()["ready"] as? Bool == true }, "the second regeneration never ended")
+        let removedAt = stubTime("readyAt")
+        openAlbumList()
+        XCTAssertTrue(waitUntil(15) { self.coverRequests().contains { !self.served($0) && self.at($0) >= removedAt } },
+                      "the list never asked for the original cover — \(describe())")
+        openAlbum()
+        XCTAssertTrue(waitForProbe("albumHeroCover", prefix: "loaded 8x8"), "the header kept the edited cover — \(describe())")
+
+        try remote([rotate(90)])
+        XCTAssertTrue(waitUntil(30) { self.state()["emittedAt"] is NSNull }, "the change was not seen")
+        XCTAssertTrue(waitForEmission(), "the stub never emitted the event")
+        let remoteAt = stubTime("readyAt")
+        tab("Photos")
+        openAlbumList()
+        XCTAssertTrue(waitUntil(15) { self.coverRequests().contains { self.served($0) && self.at($0) >= remoteAt } },
+                      "the list never asked for the cover edited elsewhere — \(describe())")
+    }
+
+    // MARK: - AC-198
+
+    /// The regeneration takes 15 s, longer than the app's wait: the copy is not fetched again blindly, and
+    /// it is fetched, edited, within 10 s of the event.
+    func test_AC_198_slowRegenerationRedownloadsOnTheEvent() {
+        launchSignedIn(config: "regen=15")
+        XCTAssertTrue(waitForSocket(), "the app never opened the socket — \(describe())")
+        tile(photo).tap()
+        keepOffline()
+        let kept = originals()
+
+        reopenEditorFromViewer()
+        tapEditor("ratioButton.fourByThree")
+        save()
+        waitEditorClosed()
+        XCTAssertTrue(waitUntil(20) { !self.editsEntries("PUT").isEmpty }, "no PUT — \(describe())")
+        XCTAssertTrue(waitForEmission(), "the stub never emitted the event")
+        let readyAt = stubTime("readyAt")
+        XCTAssertTrue(originals().dropFirst(kept.count).allSatisfy { self.at($0) >= readyAt },
+                      "the copy was fetched again before the regeneration — \(describe())")
+        XCTAssertTrue(waitUntil(10) { self.hasOriginal(edited: "true", after: readyAt, sha: "originalEdited") },
+                      "the copy was never fetched again after the event — \(describe())")
+        setDown(true)
+        XCTAssertTrue(waitForProbe("viewerImage_\(photo)", prefix: "loaded 96x96", after: "emittedAt"),
+                      "the viewer lost the edited copy")
+    }
+
+    // MARK: - AC-199
+
+    /// The viewer is closed before the switch: the search grid follows on the event, all the same.
+    func test_AC_199_slowRegenerationReachesTheSearchGridAfterTheViewerClosed() {
+        launchSignedIn(config: "regen=15")
+        XCTAssertTrue(waitForSocket(), "the app never opened the socket — \(describe())")
+        search("beach")
+        XCTAssertTrue(waitForProbe("assetTile_\(photo)", prefix: "loaded 8x8"), "the search never showed the photo — \(describe())")
+        tab("Photos")
+        tile(photo).tap()
+        cropAndSave()
+        closeViewer()
+        XCTAssertLessThan(stubTime("now"), stubTime("readyAt"), "the viewer must close before the switch")
+
+        XCTAssertTrue(waitForEmission(), "the stub never emitted the event")
+        tab("Search")
+        XCTAssertTrue(waitForProbe("assetTile_\(photo)", prefix: "loaded 12x12", after: "emittedAt"),
+                      "the search kept the old image — \(describe())")
+        XCTAssertFalse(after(stubTime("readyAt"), thumbnails(generation: "-e1", size: "thumbnail")).isEmpty, "\(describe())")
+    }
+
+    /// No event at all: reopening the photo after the switch brings the copy up to date.
+    func test_AC_199_withoutTheEventTheReopenedViewerResumesTheCopy() {
+        launchSignedIn(config: "regen=15&event=0")
+        tile(photo).tap()
+        keepOffline()
+        let kept = originals()
+        reopenEditorFromViewer()
+        tapEditor("ratioButton.fourByThree")
+        save()
+        waitEditorClosed()
+        XCTAssertTrue(waitUntil(20) { !self.editsEntries("PUT").isEmpty }, "no PUT — \(describe())")
+        closeViewer()
+
+        XCTAssertTrue(waitUntil(40) { self.state()["ready"] as? Bool == true }, "the regeneration never ended")
+        let readyAt = stubTime("readyAt")
+        XCTAssertTrue(originals().dropFirst(kept.count).allSatisfy { self.at($0) >= readyAt },
+                      "the copy was fetched again before the regeneration — \(describe())")
+        tile(photo).tap()
+        XCTAssertTrue(waitUntil(10) { self.hasOriginal(edited: "true", after: readyAt, sha: "originalEdited") },
+                      "reopening the photo never brought the copy up to date — \(describe())")
+        setDown(true)
+        XCTAssertTrue(waitForProbe("viewerImage_\(photo)", prefix: "loaded 96x96"), "the viewer lost the edited copy")
     }
 
     // MARK: - AC-40
