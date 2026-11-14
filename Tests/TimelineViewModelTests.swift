@@ -129,7 +129,7 @@ final class TimelineViewModelTests: XCTestCase {
         )
         XCTAssertEqual(
             url.absoluteString,
-            "https://example.com/api/assets/abc123/thumbnail?size=thumbnail&c=xyz"
+            "https://example.com/api/assets/abc123/thumbnail?size=thumbnail&c=xyz&edited=true"
         )
     }
 

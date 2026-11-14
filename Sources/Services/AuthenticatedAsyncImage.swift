@@ -156,10 +156,19 @@ struct AuthenticatedAsyncImage: View {
         .animation(PVMotion.fading(PVMotion.gentle, reduceMotion: reduceMotion), value: image != nil)
         // Keyed on the offline copy too: going offline→cached (or removing the
         // cached file) must re-run the load, even though the URL is unchanged.
-        .task(id: localFileURL?.path ?? url?.absoluteString) {
+        .task(id: loadKey) {
             await load()
         }
         .modifier(ImageLoadProbeModifier(state: loadState, extra: probeExtra))
+    }
+
+    /// What `.task(id:)` watches. The offline copy keeps its path when it is downloaded again (after an
+    /// edit was saved or removed, L-21), so the file's modification date is part of the key: the
+    /// replaced file is decoded again. Read with `FileManager`, which does not cache the value.
+    private var loadKey: String {
+        guard let localFileURL else { return url?.absoluteString ?? "" }
+        let modified = (try? FileManager.default.attributesOfItem(atPath: localFileURL.path))?[.modificationDate] as? Date
+        return "\(localFileURL.path)|\(modified?.timeIntervalSinceReferenceDate ?? 0)"
     }
 
     /// `UIImage` isn't `Sendable`, so the detached hop hands back a box.

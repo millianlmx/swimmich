@@ -306,6 +306,8 @@ struct PhotoViewer: View {
     @State private var editorVM: PhotoEditorViewModel?
     /// Transient "edited copy saved" banner; hidden after 3 s.
     @State private var editedCopyNotice: String?
+    /// Which save the banner reports (`savedCopy`, `savedEdits`, `removedEdits`): read by UI tests only.
+    @State private var editedNoticeKind = ""
     @State private var editedCopyTick = 0
     @State private var presentShare = false
     @State private var showCastSheet = false
@@ -366,6 +368,8 @@ struct PhotoViewer: View {
     /// Offline cache mirror (issue #18): lets every page serve its full-size
     /// image from disk when the asset has been downloaded.
     @Environment(OfflineAssetIndex.self) private var offlineIndex: OfflineAssetIndex?
+    /// Offline copies follow the displayed version: re-downloaded after an edit is saved or removed here.
+    @Environment(OfflineDownloadViewModel.self) private var offlineVM: OfflineDownloadViewModel?
     /// Logged-in user: a partner's photo (owner-only server rights) gets no
     /// favorite / edit / archive / delete and no info-panel edits. Injected by
     /// every host, like `PhotoShareSheet`'s read.
@@ -487,6 +491,7 @@ struct PhotoViewer: View {
                         .pvFullscreenChromeTextCap()
                         .padding(.top, PVSpacing.s8)
                         .accessibilityIdentifier("editedCopySavedBanner")
+                        .modifier(SaveProbeValue(value: editedNoticeKind))
                         Spacer()
                     }
                     .transition(.opacity)
@@ -531,6 +536,9 @@ struct PhotoViewer: View {
             .offset(y: zoomSource == nil ? dragOffset.height : 0)
             .opacity(zoomSource == nil ? 1 - dismissProgress : 1)
             .allowsHitTesting(zoomPhase == .open)
+            .onReceive(NotificationCenter.default.publisher(for: .immichAssetsChanged)) { note in
+                if RealtimeBatch(notification: note).touchesEditedAssets { refreshCurrentAfterRegeneration() }
+            }
             .onChange(of: selectedIndex) { _, _ in
                 isZoomed = false
                 showChrome = true
@@ -571,9 +579,22 @@ struct PhotoViewer: View {
             }
             .sheet(isPresented: $presentEdit, onDismiss: { editorVM = nil }) {
                 if let editorVM {
-                    PhotoEditorView(vm: editorVM, onSavedCopy: {
-                        editedCopyNotice = String(localized: "Edited copy saved")
+                    PhotoEditorView(vm: editorVM, onSaved: { reason in
+                        switch reason {
+                        case .savedEdits:
+                            editedCopyNotice = String(localized: "Edits saved")
+                            editedNoticeKind = "savedEdits"
+                        case .removedEdits:
+                            editedCopyNotice = String(localized: "Edits removed")
+                            editedNoticeKind = "removedEdits"
+                        case .savedCopy, .cancelled:
+                            editedCopyNotice = String(localized: "Edited copy saved")
+                            editedNoticeKind = "savedCopy"
+                        }
                         editedCopyTick &+= 1
+                        if reason == .savedEdits || reason == .removedEdits {
+                            refreshAfterEdits(assetId: editorVM.assetId, removed: reason == .removedEdits)
+                        }
                     })
                 }
             }
@@ -610,6 +631,7 @@ struct PhotoViewer: View {
                         baseURL: baseURL,
                         token: token,
                         allowsOwnerEdits: viewerActions(for: asset).allowsInfoEdits,
+                        currentUserId: auth.userId,
                         onClose: { showInfo = false },
                         onOpenLocationMap: { latitude, longitude, placeName in
                             locationMap = AssetLocationMapRequest(
@@ -1214,6 +1236,45 @@ struct PhotoViewer: View {
 
     private func closeInfo() {
         showInfo = false
+    }
+
+    // MARK: - Edited photo refresh (L-21)
+
+    /// After `PUT`/`DELETE /api/assets/{id}/edits` the server regenerates the thumbnails in the
+    /// background: wait for the new thumbhash, then adopt it, so every screen builds the URL of the
+    /// edited (or restored) image, and bring the offline copy, if there is one, in line with the
+    /// version displayed (`edited=true` after an edit, `edited=false` after its removal).
+    private func refreshAfterEdits(assetId: String, removed: Bool) {
+        guard let previous = localAssets.first(where: { $0.id == assetId }) else { return }
+        Task {
+            if let fresh = await EditedAssetRefresh.awaitRegeneration(
+                assetId: assetId, previousThumbhash: previous.thumbhash, client: client
+            ) {
+                adoptRegeneratedAsset(fresh, previousThumbhash: previous.thumbhash)
+            }
+            if let offlineVM, offlineVM.isCached(assetId),
+               let item = localAssets.first(where: { $0.id == assetId }) {
+                await offlineVM.downloadAsset(item, baseURL: baseURL, token: token, edited: !removed)
+            }
+            onDataChanged?()
+        }
+    }
+
+    /// A burst of server events carried a thumbnail regeneration: the photo on screen may be one of
+    /// them (edited on another device), so its record is read once more.
+    private func refreshCurrentAfterRegeneration() {
+        guard let asset = currentAsset else { return }
+        Task {
+            guard let record = try? await client.getAsset(id: asset.id), record.thumbhash != asset.thumbhash else { return }
+            adoptRegeneratedAsset(record, previousThumbhash: asset.thumbhash)
+        }
+    }
+
+    private func adoptRegeneratedAsset(_ record: AssetResponseDto, previousThumbhash: String?) {
+        ThumbhashSuccession.shared.record(old: previousThumbhash, new: record.thumbhash)
+        if let index = localAssets.firstIndex(where: { $0.id == record.id }) {
+            localAssets[index] = localAssets[index].refreshed(from: record)
+        }
     }
 
     /// (Re)creates the detail VM for the CURRENT asset — refetches the EXIF
@@ -1918,6 +1979,7 @@ private struct PhotoShareSheet: View {
     @State private var vm: PhotoShareViewModel?
     @State private var saveVM: SaveToLibraryViewModel?
     @State private var didCopyLink = false
+    @State private var pendingChoice: EditedChoiceTarget?
 
     var body: some View {
         VStack(spacing: PVSpacing.s0) {
@@ -1951,6 +2013,29 @@ private struct PhotoShareSheet: View {
         .appSensoryFeedback(.success, trigger: vm?.lastAddedAlbumId)
         .appSensoryFeedback(.success, trigger: saveVM?.lastSavedIdentifier)
         .appSensoryFeedback(.success, trigger: saveVM?.didPresentDownload)
+        // The photo is edited on the server (L-21): which file does the user want?
+        .alert(
+            "Which version?",
+            isPresented: Binding(get: { pendingChoice != nil }, set: { if !$0 { pendingChoice = nil } }),
+            presenting: pendingChoice
+        ) { target in
+            Button("Edited version") { perform(target, edited: true) }
+                .accessibilityIdentifier("downloadChoiceEdited")
+            Button("Original") { perform(target, edited: false) }
+                .accessibilityIdentifier("downloadChoiceOriginal")
+            Button("Cancel", role: .cancel) {}
+        } message: { _ in
+            Text("This photo has edits saved on the server. Choose the file to keep.")
+        }
+    }
+
+    private func perform(_ target: EditedChoiceTarget, edited: Bool) {
+        switch target {
+        case .saveToPhotos:
+            Task { await saveVM?.saveToPhotos(edited: edited) }
+        case .downloadToFiles:
+            Task { await downloads.enqueue(asset: asset, edited: edited) }
+        }
     }
 
     private var header: some View {
@@ -1997,7 +2082,7 @@ private struct PhotoShareSheet: View {
         @Bindable var vm = vm
         List {
             if let saveVM {
-                SaveSection(saveVM: saveVM, asset: asset, downloads: downloads)
+                SaveSection(saveVM: saveVM, asset: asset, downloads: downloads, pendingChoice: $pendingChoice)
             }
 
             if let offlineVM {
@@ -2133,7 +2218,8 @@ private struct PhotoShareSheet: View {
             originalMime = detail.originalMimeType
         } catch {}
 
-        let url = asset.thumbnailURL(base: baseURL, size: .preview)
+        // The photo as uploaded, not its edited rendering (decision #4: the share sheet keeps the original).
+        let url = asset.thumbnailURL(base: baseURL, size: .preview, edited: false)
         do {
             let (data, contentType) = try await AssetFileTransfer.fetchData(from: url, token: token, session: DependencyContainer.shared.serverSessions.transfers)
 
@@ -2155,6 +2241,12 @@ private struct PhotoShareSheet: View {
 
 // MARK: - Save section
 
+/// Which action the "edited version or original" question belongs to (L-21).
+private enum EditedChoiceTarget: Identifiable {
+    case saveToPhotos, downloadToFiles
+    var id: Self { self }
+}
+
 /// "Save to Photos" / "Download original" / "Download to Files" actions atop
 /// the share sheet.
 private struct SaveSection: View {
@@ -2163,11 +2255,19 @@ private struct SaveSection: View {
     /// The queue the "Download to Files" row feeds — owned by the app, not by
     /// this sheet, so the file keeps downloading after the viewer closes.
     let downloads: DownloadQueueViewModel
+    /// Set when the photo is edited on the server: the sheet then asks which file to take.
+    @Binding var pendingChoice: EditedChoiceTarget?
 
     var body: some View {
         Section {
             Button {
-                Task { await saveVM.saveToPhotos() }
+                Task {
+                    if await saveVM.offersEditedChoice() {
+                        pendingChoice = .saveToPhotos
+                    } else {
+                        await saveVM.saveToPhotos(edited: false)
+                    }
+                }
             } label: {
                 HStack(spacing: PVSpacing.s12) {
                     Label("Save to Photos", systemImage: "photo.badge.plus")
@@ -2197,12 +2297,19 @@ private struct SaveSection: View {
                 }
             }
             .disabled(saveVM.isDownloading)
+            .accessibilityIdentifier("downloadOriginalButton")
 
             // Gap G10: the other intent — "give me the FILE, named like the
             // server", next to "Download original", which hands it to Photos.
             // The queue is process-wide, so closing the viewer does not stop it.
             Button {
-                Task { await downloads.enqueue(asset: asset) }
+                Task {
+                    if await downloads.offersEditedChoice(forViewerAsset: asset) {
+                        pendingChoice = .downloadToFiles
+                    } else {
+                        await downloads.enqueue(asset: asset, edited: false)
+                    }
+                }
             } label: {
                 HStack(spacing: PVSpacing.s12) {
                     Label("Download to Files", systemImage: "square.and.arrow.down")

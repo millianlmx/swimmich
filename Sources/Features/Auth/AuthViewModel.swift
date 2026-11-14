@@ -32,6 +32,12 @@ final class AuthViewModel: AuthSessionDelegate {
     static let userIdDefaultsKey = "authUserId"
     static let isAdminDefaultsKey = "authIsAdmin"
 
+    /// Test only (`-uiTestSessionToken <token>`, with the other `auth*` keys on the
+    /// launch arguments): a UI scenario starts signed in, as a sign-in would have
+    /// left the device, without walking the onboarding it does not test. Never
+    /// written outside tests.
+    static let uiTestSessionTokenKey = "uiTestSessionToken"
+
     /// Must match the `CFBundleURLTypes` scheme *and* the value whitelisted at
     /// the OIDC provider — this is the exact URI the Immich docs publish.
     static let oauthRedirectURI = "app.immich:///oauth-callback"
@@ -157,6 +163,7 @@ final class AuthViewModel: AuthSessionDelegate {
         self.userName = defaults.string(forKey: Self.userNameDefaultsKey)
         self.userId = defaults.string(forKey: Self.userIdDefaultsKey)
         self.isAdmin = defaults.bool(forKey: Self.isAdminDefaultsKey)
+        if let token = defaults.string(forKey: Self.uiTestSessionTokenKey) { keychain.saveToken(token) }
         self.accessToken = keychain.getToken()
         self.savedAccounts = Self.loadSavedAccounts(from: defaults)
         self.client.authDelegate = self

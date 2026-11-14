@@ -315,6 +315,7 @@ final class ReadOnlyModeTests: XCTestCase {
             settings: BackupSettingsStore(suiteName: suiteName),
             scheduler: MockBackupScheduler(),
             activityService: MockBackupLiveActivityService(),
+            notifications: MockNotificationService(),
             readOnly: store
         )
         store.setEnabled(true)

@@ -112,6 +112,11 @@ final class DependencyContainer {
     /// outlive the segment view that presents the sheet.
     let mapSettings: MapSettingsStore
 
+    /// The device position (L-25, B-29.2): one provider for the map's "My
+    /// Location" and the adjust-location sheet's. The launch arguments of the UI
+    /// tests swap in a scripted one; production always gets CoreLocation.
+    let deviceLocation: any DeviceLocationProviding
+
     /// Process-wide download queue (gap G10). Same reasoning as `upload`: the
     /// floating panel, the viewer's "Download to Files" and the timeline's
     /// mass action must all drive ONE queue — and it has to outlive the screen
@@ -228,6 +233,8 @@ final class DependencyContainer {
         // and the two must be the same object.
         self.appSettings = AppSettingsStore.shared
         self.mapSettings = MapSettingsStore()
+        let scriptedLocation: (any DeviceLocationProviding)? = ScriptedDeviceLocationService.fromLaunchArguments()
+        self.deviceLocation = scriptedLocation ?? SystemDeviceLocationService()
         let cloudStatus = CloudBackupStatusIndex()
         self.cloudStatus = cloudStatus
         self.albumSyncStore = AlbumSyncStore()
@@ -348,7 +355,12 @@ final class DependencyContainer {
     }
 
     func makeMapViewModel(accountID: String) -> MapViewModel {
-        MapViewModel(client: libraryClient, cache: MapMarkerCache(accountID: accountID), settings: mapSettings)
+        MapViewModel(
+            client: libraryClient,
+            cache: MapMarkerCache(accountID: accountID),
+            settings: mapSettings,
+            location: deviceLocation
+        )
     }
 
     func makeAlbumsViewModel() -> AlbumsViewModel {

@@ -107,6 +107,53 @@ final class AssetDetailViewModel {
         }
     }
 
+    // MARK: - Age and owner (B-28)
+
+    /// The calendar day the info panel's header shows for this photo: the EXIF
+    /// capture instant read in `timeZone` (the device's, in the app), else the
+    /// UTC day of `fileCreatedAt`. An unreadable `dateTimeOriginal` falls back
+    /// to `fileCreatedAt`, as the header would show it raw. `nil` when neither
+    /// reads.
+    static func referenceDay(dateTimeOriginal: String?, fileCreatedAt: String, timeZone: TimeZone) -> CalendarDay? {
+        let instant = dateTimeOriginal.flatMap { LongDateFormatter.parse(isoTimestamp: $0) }
+            ?? LongDateFormatter.date(isoPrefix: fileCreatedAt)
+        guard let instant else { return nil }
+        var calendar = Calendar(identifier: .gregorian)
+        calendar.timeZone = timeZone
+        let parts = calendar.dateComponents([.year, .month, .day], from: instant)
+        guard let year = parts.year, let month = parts.month, let day = parts.day else { return nil }
+        return CalendarDay(year: year, month: month, day: day)
+    }
+
+    /// Age of the person on `face` on the photo's reference day. `nil` without
+    /// a person, a readable birthday or a reference day, and for a birthday
+    /// after the photo. Reads loaded state only — no request.
+    func age(for face: AssetFaceResponseDto, timeZone: TimeZone = .current) -> PersonAge? {
+        guard let birth = PersonBirthday.day(from: face.person?.birthDate),
+              let reference = Self.referenceDay(
+                dateTimeOriginal: detail?.exifInfo?.dateTimeOriginal,
+                fileCreatedAt: asset.fileCreatedAt,
+                timeZone: timeZone)
+        else { return nil }
+        return PersonAge.at(birth: birth, on: reference)
+    }
+
+    /// The account that owns this photo when it is not the signed-in user,
+    /// for the "Shared by" row. The owner comes from the detail response
+    /// already loaded (no extra request): an item without an owner id (map,
+    /// offline copy) falls back to the detail's `ownerId`. `nil` for the user's
+    /// own photo, an unknown signed-in user, a missing detail or `owner`, an
+    /// owner that is not the expected one, or a blank name.
+    func sharedByOwner(currentUserId: String?) -> UserResponseDto? {
+        guard let currentUserId, !currentUserId.isEmpty else { return nil }
+        let expected = asset.ownerId.isEmpty ? (detail?.ownerId ?? "") : asset.ownerId
+        guard !expected.isEmpty, expected != currentUserId,
+              let owner = detail?.owner, owner.id == expected,
+              !owner.name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+        else { return nil }
+        return owner
+    }
+
     /// AC-204/205/206: drive reverse-geocoding once per VM lifetime.
     /// No-op without coords (AC-206). On geocoder throw, fall back to EXIF city/state/country (AC-205).
     private func reverseGeocodeIfNeeded() async {
@@ -197,6 +244,7 @@ final class AssetDetailViewModel {
         do {
             let updated = try await client.updateAsset(id: asset.id, dto: body)
             detail = updated
+            errorMessage = nil
             geocoded = false // FM-3 guard reset: the spot changed, re-geocode allowed.
             await reverseGeocodeIfNeeded()
         } catch let e {
