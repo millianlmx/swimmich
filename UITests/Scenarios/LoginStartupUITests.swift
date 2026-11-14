@@ -421,20 +421,6 @@ final class LoginStartupUITests: XCTestCase {
         XCTAssertTrue(waitUntil(10) { (toggle.value as? String) == "1" }, "Require Face ID did not turn on")
     }
 
-    /// Me → Preferences → "Haptic Feedback" set to `on`; the value is stored at once.
-    private func setHaptics(on: Bool) {
-        openMe(scrollingTo: "preferencesRow").tap()
-        let toggle = element("preferencesHapticsToggle")
-        XCTAssertTrue(toggle.waitForExistence(timeout: 15), "the Haptic Feedback toggle is missing — \(screenText())")
-        let wanted = on ? "1" : "0"
-        for _ in 0..<3 where (toggle.value as? String) != wanted {
-            // The element is the whole row: its own control sits at the trailing edge.
-            toggle.coordinate(withNormalizedOffset: CGVector(dx: 0.93, dy: 0.5)).tap()
-            waitUntil(4) { (toggle.value as? String) == wanted }
-        }
-        XCTAssertEqual(toggle.value as? String, wanted, "Haptic Feedback never reached \(wanted)")
-    }
-
     // MARK: - System alerts (Photos access, notifications)
 
     private static func fullAccessButton(in alert: XCUIElement) -> XCUIElement? {
@@ -858,26 +844,10 @@ final class LoginStartupUITests: XCTestCase {
         XCTAssertTrue(waitUntil(10) { self.probeValue().contains("haptic=error#2") },
                       "no failure haptic for the unreachable server (probe: \(probeValue()))")
 
-        // Haptics off through the interface (Me → Preferences), like
-        // MemoriesChainUITests.test_AC_60_4: a `-hapticFeedbackEnabled NO`
-        // launch argument arrives as a string and is read as the default (on).
+        // Haptics off from the launch arguments: AppSettingsStore reads the
+        // argument's "NO" string as off (bool(forKey:)).
         mute("off")
-        launchFresh()
-        reachLogin()
-        signIn()
-        reachShell()
-        // Registered BEFORE the setting is touched, and run even when this test
-        // fails on the way: no later scenario may read a haptics-off setting.
-        addTeardownBlock { [self] in
-            _ = get("/__reset")
-            launchFresh()
-            reachLogin()
-            signIn()
-            reachShell()
-            setHaptics(on: true)
-        }
-        setHaptics(on: false)
-        launchFresh()
+        launchFresh(extra: ["-hapticFeedbackEnabled", "NO"])
         openServerStep()
         enterServer(stub)
         checkServer()
@@ -932,8 +902,11 @@ final class LoginStartupUITests: XCTestCase {
         launchStored()
         XCTAssertTrue(element("timelineLoadErrorState").waitForExistence(timeout: 3),
                       "no error state within 3 s of the slow probe — \(screenText())")
-        XCTAssertTrue(element(firstPhotoTile).waitForExistence(timeout: max(1, 8 - Date().timeIntervalSince(started))),
-                      "the late first page did not replace the error within 8 s — \(screenText())")
+        // 15 s from before the launch: the app's own launch (2–3 s, more on a
+        // loaded Mac), the 4 s the stub holds the month list, then the month and
+        // its thumbnails. What is proved is that the late page replaces the error.
+        XCTAssertTrue(element(firstPhotoTile).waitForExistence(timeout: max(1, 15 - Date().timeIntervalSince(started))),
+                      "the late first page did not replace the error within 15 s — \(screenText())")
     }
 
     // MARK: - AC-342, AC-343
