@@ -120,6 +120,7 @@ private struct AuthenticatedRoot: View {
     @State private var storage: StorageStatsViewModel
     @State private var upload: UploadViewModel
     @State private var uploadDetail: UploadDetailViewModel
+    @State private var backupRemainder: BackupRemainderViewModel
     @State private var people: PeopleViewModel
     @State private var memories: MemoriesViewModel
     @State private var duplicates: DuplicatesViewModel
@@ -201,6 +202,7 @@ private struct AuthenticatedRoot: View {
         _storage = State(initialValue: container.makeStorageStatsViewModel())
         _upload = State(initialValue: container.upload)
         _uploadDetail = State(initialValue: container.makeUploadDetailViewModel(upload: container.upload))
+        _backupRemainder = State(initialValue: container.makeBackupRemainderViewModel(upload: container.upload))
         _people = State(initialValue: container.makePeopleViewModel())
         _memories = State(initialValue: container.makeMemoriesViewModel())
         _duplicates = State(initialValue: container.makeDuplicatesViewModel())
@@ -390,6 +392,7 @@ private struct AuthenticatedRoot: View {
                 storage: storage,
                 upload: upload,
                 uploadDetail: uploadDetail,
+                backupRemainder: backupRemainder,
                 admin: admin,
                 notifications: notifications,
                 language: language,

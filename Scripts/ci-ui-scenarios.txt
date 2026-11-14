@@ -93,3 +93,9 @@ immich_stub_confirmations.py ConfirmationsUITests/test_AC_62_partnerStopSharing
 immich_stub_confirmations.py ConfirmationsUITests/test_AC_62_viewerDelete
 immich_stub_confirmations.py ConfirmationsUITests/test_AC_807_lockedFolderWrongPIN
 immich_stub_confirmations.py ConfirmationsUITests/test_AC_807_sessionElevationWrongPIN
+
+# L-32 "Remaining to back up": the entry and the list over the real Photos library of the simulator
+# (3 seeded media, plus the sample photos of an erased simulator) → a pass against a server that accepts
+# everything empties both. The AX5 line reads a row at the largest text size: whole file name, no overflow.
+immich_stub_backup_remainder.py BackupRemainderUITests/test_AC_65_remainderFromBackupScreen --media L32-a.png --media L32-b.png --media L32-c.png --erase
+immich_stub_backup_remainder.py BackupRemainderUITests/test_AC_65_9_rowsReadableAtAX5 --content-size accessibility-extra-extra-extra-large --media L32-ax5.png --erase

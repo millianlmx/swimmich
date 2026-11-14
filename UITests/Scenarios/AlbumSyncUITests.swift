@@ -373,10 +373,9 @@ final class AlbumSyncUITests: XCTestCase {
     }
 
     /// Returns to the previous screen. Written as a loop over every navigation
-    /// bar, most recently added first, because more than one bar is in the tree:
-    /// `BackupSettingsView` wraps its own `NavigationStack` inside the push from
-    /// the "Me" hub, and — measured by the sync-badge scenario — inside that
-    /// sheet `app.navigationBars.firstMatch` is the COVERED timeline's bar, so a
+    /// bar, most recently added first, because the tree can hold more than the
+    /// hub's bar: measured by the sync-badge scenario, inside the "Me" sheet
+    /// `app.navigationBars.firstMatch` can be the COVERED timeline's bar, so a
     /// plain "tap the first bar's first button" taps the timeline's "Select"
     /// instead and leaves the scenario debugging a ghost.
     private func goBack() {

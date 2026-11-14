@@ -616,6 +616,14 @@ final class DependencyContainer {
         UploadDetailViewModel(upload: upload)
     }
 
+    /// "Remaining to back up": what a complete pass would still send. Takes the
+    /// caller's `UploadViewModel` for the same reason as the upload report
+    /// above: the engine it projects is the one the process runs, and its
+    /// settings and ledger are the ones the Backup screen edits.
+    func makeBackupRemainderViewModel(upload: UploadViewModel) -> BackupRemainderViewModel {
+        BackupRemainderViewModel(upload: upload)
+    }
+
     /// "On this device" (local library). Reads the same Photos instance the
     /// backup engine reads (`PhotoLibraryServiceImpl` is both the library
     /// service and the backup asset source) and the same client for the remote
