@@ -549,7 +549,12 @@ final class UploadViewModel {
     /// Needed when the server library was wiped and the ledger is now stale.
     func resetBackupTracking() {
         engine.forgetAllBackedUp()
+        ledgerRevision += 1
     }
+
+    /// Bumped each time the backup screen itself rewrites the ledger outside a
+    /// pass ("Reset tracking", "Check server now"): the remainder's reload key.
+    private(set) var ledgerRevision = 0
 
     /// When the ledger was last confronted with the server (nil = never).
     var lastReconciliation: Date? { engine.lastReconciliation }
@@ -559,6 +564,7 @@ final class UploadViewModel {
     /// has, so those get re-uploaded instead of being skipped forever.
     func reconcileNow() async {
         await engine.reconcileNow(includeEdits: settings.backUpEdits)
+        ledgerRevision += 1
     }
 
     // MARK: - Album mirror (device → server)
@@ -657,6 +663,8 @@ struct BackupSettingsView: View {
     /// The per-asset report of the same run — built from `vm`'s engine, not a
     /// second one (see `DependencyContainer.upload`).
     @State var detail: UploadDetailViewModel
+    /// What a complete pass would still send — shared with the pushed list.
+    @State var remainder: BackupRemainderViewModel
     /// Legend dot, scaled with the caption text it labels.
     @ScaledMetric(relativeTo: .footnote) private var dotSize: CGFloat = 7
 
@@ -687,6 +695,9 @@ struct BackupSettingsView: View {
             .immichAppBarTitleHeader("Backup")
             .task {
                 await vm.loadAlbums()
+            }
+            .task {
+                await remainder.load()
             }
             .confirmationDialog(
                 "Reset backup tracking?",
@@ -838,6 +849,19 @@ struct BackupSettingsView: View {
                     vm.syncBadgeIndex()
                 }
                 .accessibilityIdentifier("syncBadgeToggle")
+            // What a complete pass would still send, with the live count: the
+            // list shrinks as the run sends each photo.
+            NavigationLink {
+                BackupRemainderView(vm: remainder)
+            } label: {
+                LabeledContent {
+                    remainderCount
+                } label: {
+                    Label("Remaining to back up", systemImage: "icloud.and.arrow.up")
+                }
+            }
+            .accessibilityValue(remainderValueText)
+            .accessibilityIdentifier("backupRemainderRow")
             // What the last run did, asset by asset. A pushed page, not a sheet:
             // a sheet is handed a copy of the failures array and cannot follow
             // assets still in flight, and the list needs a stable destination on
@@ -861,6 +885,40 @@ struct BackupSettingsView: View {
             Text("Auto backup")
         } footer: {
             Text("While Swimmich is open, new photos start backing up within a few seconds. When it's closed, iOS decides when to run — usually while charging on Wi-Fi.")
+        }
+    }
+
+    /// What VoiceOver reads as the row's value: the pluralised count, once known.
+    private var remainderValueText: Text {
+        guard let count = remainder.count else { return Text(verbatim: "") }
+        return Text("\(count) items to back up")
+    }
+
+    /// Value of the "Remaining to back up" row: the live count, a dash while
+    /// Photos access is off, a spinner while the first (or a new-scope)
+    /// calculation runs. A count of another scope is never shown.
+    @ViewBuilder
+    private var remainderCount: some View {
+        if let count = remainder.count {
+            HStack(spacing: PVSpacing.s8) {
+                if remainder.showsReloadIndicator {
+                    ProgressView()
+                        .controlSize(.small)
+                        .pvLoadingIndicator("backupRemainderCountReloading")
+                }
+                Text("\(count)")
+                    .font(.pvNumeric)
+                    .contentTransition(PVMotion.contentChange(.numericText(), reduceMotion: reduceMotion))
+                    .accessibilityIdentifier("backupRemainderCount")
+            }
+        } else if !remainder.canReadLibrary {
+            Text(verbatim: "—")
+                .font(.pvNumeric)
+                .accessibilityIdentifier("backupRemainderCount")
+        } else {
+            ProgressView()
+                .controlSize(.small)
+                .pvLoadingIndicator("backupRemainderCountLoading")
         }
     }
 

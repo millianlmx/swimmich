@@ -11,6 +11,7 @@ struct ProfileView: View {
     @State var storage: StorageStatsViewModel
     @State var upload: UploadViewModel
     @State var uploadDetail: UploadDetailViewModel
+    @State var backupRemainder: BackupRemainderViewModel
     @State var admin: AdminViewModel
     @State var notifications: NotificationsViewModel
     @State var language: LanguageSettingsViewModel
@@ -129,7 +130,7 @@ struct ProfileView: View {
 
                 Section {
                     NavigationLink {
-                        BackupSettingsView(vm: upload, detail: uploadDetail)
+                        BackupSettingsView(vm: upload, detail: uploadDetail, remainder: backupRemainder)
                     } label: {
                         Label("Backup", systemImage: "icloud.and.arrow.up")
                     }

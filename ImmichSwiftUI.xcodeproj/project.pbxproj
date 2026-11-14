@@ -174,6 +174,7 @@
 		357404EEF31D0274DDDE30BB /* ListStateViews.swift in Sources */ = {isa = PBXBuildFile; fileRef = 74DAA39FA702B8FA8100EAE4 /* ListStateViews.swift */; };
 		3624B2A08F9652A63ED13453 /* PhotoLibraryChangeMonitoring.swift in Sources */ = {isa = PBXBuildFile; fileRef = AEFE4EBF848A641180419217 /* PhotoLibraryChangeMonitoring.swift */; };
 		365EBE988B9DB1483C23C6FC /* immich_stub_upload_detail.py in Resources */ = {isa = PBXBuildFile; fileRef = 7DA861477F3413995E33B935 /* immich_stub_upload_detail.py */; };
+		A3200001C0DE4B0E8A1F0015 /* immich_stub_backup_remainder.py in Resources */ = {isa = PBXBuildFile; fileRef = A3200001C0DE4B0E8A1F0005 /* immich_stub_backup_remainder.py */; };
 		3670AD015A2E270961800429 /* TimelineGridZoom.swift in Sources */ = {isa = PBXBuildFile; fileRef = B401D9CEED0EFFEE799E61F1 /* TimelineGridZoom.swift */; };
 		37547BE769BDC8B23CD020E3 /* CountryFlag.swift in Sources */ = {isa = PBXBuildFile; fileRef = CB6D635F0CFE068BCCC41652 /* CountryFlag.swift */; };
 		375CC3D254EFA48471384587 /* MapDTOs.swift in Sources */ = {isa = PBXBuildFile; fileRef = 712D1C56106FA8DAE37F50C8 /* MapDTOs.swift */; };
@@ -286,6 +287,10 @@
 		61E5245CC75ED1BAB633E10F /* SearchSelection.swift in Sources */ = {isa = PBXBuildFile; fileRef = 028E5D55D84C91912F69F383 /* SearchSelection.swift */; };
 		62BFF65708FB956A0A778DD9 /* MapMarkerCache.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8615FB2C6F9490858FF86568 /* MapMarkerCache.swift */; };
 		62E0530C1F108640DA4986F1 /* UploadDetailUITests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 152EE6E26D6D4AA0188324A9 /* UploadDetailUITests.swift */; };
+		A3200001C0DE4B0E8A1F0014 /* BackupRemainderUITests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A3200001C0DE4B0E8A1F0004 /* BackupRemainderUITests.swift */; };
+		A3200001C0DE4B0E8A1F0013 /* BackupRemainderViewModelTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A3200001C0DE4B0E8A1F0003 /* BackupRemainderViewModelTests.swift */; };
+		A3200001C0DE4B0E8A1F0011 /* BackupRemainderViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = A3200001C0DE4B0E8A1F0001 /* BackupRemainderViewModel.swift */; };
+		A3200001C0DE4B0E8A1F0012 /* BackupRemainderView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A3200001C0DE4B0E8A1F0002 /* BackupRemainderView.swift */; };
 		649FA46B988D267F7F9BF744 /* UploadDetailViewModelTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = E5D10C82D78CAF4D69F0B565 /* UploadDetailViewModelTests.swift */; };
 		667A78866E71C7134EE8B201 /* DTOs+Social.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0823A48357EB2A5CBEFDBBC8 /* DTOs+Social.swift */; };
 		66B53969B765E0EDE61468F4 /* PhotoShareViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = F44FD3BD401F8A82719AF19C /* PhotoShareViewModel.swift */; };
@@ -880,6 +885,11 @@
 		14BF103E51F40742C18916F7 /* AssetDetailGeocodingTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AssetDetailGeocodingTests.swift; sourceTree = "<group>"; };
 		15168B21BF81DE8DB9FB219B /* TimelineViewModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TimelineViewModel.swift; sourceTree = "<group>"; };
 		152EE6E26D6D4AA0188324A9 /* UploadDetailUITests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = UploadDetailUITests.swift; sourceTree = "<group>"; };
+		A3200001C0DE4B0E8A1F0001 /* BackupRemainderViewModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BackupRemainderViewModel.swift; sourceTree = "<group>"; };
+		A3200001C0DE4B0E8A1F0002 /* BackupRemainderView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BackupRemainderView.swift; sourceTree = "<group>"; };
+		A3200001C0DE4B0E8A1F0003 /* BackupRemainderViewModelTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BackupRemainderViewModelTests.swift; sourceTree = "<group>"; };
+		A3200001C0DE4B0E8A1F0004 /* BackupRemainderUITests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BackupRemainderUITests.swift; sourceTree = "<group>"; };
+		A3200001C0DE4B0E8A1F0005 /* immich_stub_backup_remainder.py */ = {isa = PBXFileReference; lastKnownFileType = text.script.python; path = immich_stub_backup_remainder.py; sourceTree = "<group>"; };
 		155A75580B734AE221CD3AF3 /* immich_stub_album_pagination_three_pages.py */ = {isa = PBXFileReference; lastKnownFileType = text.script.python; path = immich_stub_album_pagination_three_pages.py; sourceTree = "<group>"; };
 		1664E7D5F5F8AE5D34FC2AD0 /* ProfileView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ProfileView.swift; sourceTree = "<group>"; };
 		16C4E4E66D3333481033C96D /* BackupLedger.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BackupLedger.swift; sourceTree = "<group>"; };
@@ -1707,6 +1717,7 @@
 			isa = PBXGroup;
 			children = (
 				A36962B17EB89788D4E309B1 /* About */,
+				A3200001C0DE4B0E8A1F0021 /* BackupRemainder */,
 				81676B7F88F193AF8234E502 /* Admin */,
 				C58A440B2EFBD74A5DF57290 /* Albums */,
 				FC7AE403277548E752BBFA20 /* AppUtilities */,
@@ -1925,6 +1936,15 @@
 			path = WhatsNew;
 			sourceTree = "<group>";
 		};
+		A3200001C0DE4B0E8A1F0021 /* BackupRemainder */ = {
+			isa = PBXGroup;
+			children = (
+				A3200001C0DE4B0E8A1F0002 /* BackupRemainderView.swift */,
+				A3200001C0DE4B0E8A1F0001 /* BackupRemainderViewModel.swift */,
+			);
+			path = BackupRemainder;
+			sourceTree = "<group>";
+		};
 		6ADEA01C845CD55A2AB54778 /* UploadDetail */ = {
 			isa = PBXGroup;
 			children = (
@@ -2087,6 +2107,7 @@
 				E9F278A2DD511F10E13FDED5 /* TrashViewModelTests.swift */,
 				1D58BB447FEF7A1EE41810F9 /* TrustedServerStoreTests.swift */,
 				E5D10C82D78CAF4D69F0B565 /* UploadDetailViewModelTests.swift */,
+				A3200001C0DE4B0E8A1F0003 /* BackupRemainderViewModelTests.swift */,
 				9F4DC04C9AE0A13B6A2ADF59 /* UploadViewModelLiveActivityTests.swift */,
 				3112223979E8A8D6485EC5BA /* UploadViewModelTests.swift */,
 				A54ACD73D82512BA1FE75A7F /* URLSessionSocketEngineTests.swift */,
@@ -2418,6 +2439,7 @@
 				3A28C42FF63DC9AB545FAA4B /* immich_stub_tags.py */,
 				49988B76E50CC35B52877F77 /* immich_stub_timeline_scrubber.py */,
 				7DA861477F3413995E33B935 /* immich_stub_upload_detail.py */,
+				A3200001C0DE4B0E8A1F0005 /* immich_stub_backup_remainder.py */,
 				9A97648B707DD7F4432406FA /* immich_stub_user_api_keys.py */,
 				74485E244136850849F9CA67 /* immich_stub_video_duration.py */,
 				C6F04BAB31975E0BD9AD6054 /* immich_stub_video_player.py */,
@@ -2551,6 +2573,7 @@
 				176CA1673FD70921BBFC2753 /* TagsHierarchyUITests.swift */,
 				2BC1624F74D21101E9AFDF7F /* TimelineScrubberUITests.swift */,
 				152EE6E26D6D4AA0188324A9 /* UploadDetailUITests.swift */,
+				A3200001C0DE4B0E8A1F0004 /* BackupRemainderUITests.swift */,
 				6FA470C3C036E0918556DE7F /* UserApiKeysUITests.swift */,
 				B99E5039B81A0AF4B2A314D3 /* VideoDurationUITests.swift */,
 				D6D13AA3CE7A3AE9BDB68B4D /* VideoPlayerLayoutUITests.swift */,
@@ -3001,6 +3024,7 @@
 				675E7D68F72D3E68F4CD9CD7 /* immich_stub_tags.py in Resources */,
 				E4146E73548C93BEED72D1AB /* immich_stub_timeline_scrubber.py in Resources */,
 				365EBE988B9DB1483C23C6FC /* immich_stub_upload_detail.py in Resources */,
+				A3200001C0DE4B0E8A1F0015 /* immich_stub_backup_remainder.py in Resources */,
 				4AA76DD389842C33842041E5 /* immich_stub_user_api_keys.py in Resources */,
 				124FE1966D7DE5A21491F52B /* immich_stub_video_duration.py in Resources */,
 				762854A1F2020DB8E412C300 /* immich_stub_video_player.py in Resources */,
@@ -3234,6 +3258,7 @@
 				9C2C794CED578970A384690F /* TrustedServerStoreTests.swift in Sources */,
 				F5440502898EC4C3D2EF2576 /* URLSessionSocketEngineTests.swift in Sources */,
 				649FA46B988D267F7F9BF744 /* UploadDetailViewModelTests.swift in Sources */,
+				A3200001C0DE4B0E8A1F0013 /* BackupRemainderViewModelTests.swift in Sources */,
 				9FFBC1370C7B55C6D8B921F4 /* UploadViewModelLiveActivityTests.swift in Sources */,
 				90D07D5E20EED13A92D9BBA9 /* UploadViewModelTests.swift in Sources */,
 				0677921A3C54CB8BDE59DE0B /* UserApiKeysViewModelTests.swift in Sources */,
@@ -3309,6 +3334,7 @@
 				D3BFB51696E9A48F4C0FDFF0 /* TagsHierarchyUITests.swift in Sources */,
 				C8049001104C6EBDD3BD98F9 /* TimelineScrubberUITests.swift in Sources */,
 				62E0530C1F108640DA4986F1 /* UploadDetailUITests.swift in Sources */,
+				A3200001C0DE4B0E8A1F0014 /* BackupRemainderUITests.swift in Sources */,
 				AD3A4903F3E63C47324D282B /* UserApiKeysUITests.swift in Sources */,
 				E1E855F3A04D89A732662487 /* VideoDurationUITests.swift in Sources */,
 				290377155419160F014EAC10 /* VideoPlayerLayoutUITests.swift in Sources */,
@@ -3653,6 +3679,8 @@
 				C320DC234AB539007382B67F /* URLSessionFileDownloadTransport.swift in Sources */,
 				EF2FFF27D3ED99AA188FDE95 /* URLSessionSocketEngine.swift in Sources */,
 				C0382A57ED8E4170E02F7BC2 /* UploadDetailView.swift in Sources */,
+				A3200001C0DE4B0E8A1F0012 /* BackupRemainderView.swift in Sources */,
+				A3200001C0DE4B0E8A1F0011 /* BackupRemainderViewModel.swift in Sources */,
 				FB03E411B804997C9BD3304B /* UploadDetailViewModel.swift in Sources */,
 				B2A0ECCF66B27FB64ADA526F /* UploadViewModel.swift in Sources */,
 				D688B2CC25D1BBE4719E8DD3 /* UserApiKeysView.swift in Sources */,
