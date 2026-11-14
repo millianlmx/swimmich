@@ -1871,6 +1871,10 @@ final class ImmichAPIClientTests: XCTestCase {
         XCTAssertEqual(
             CapturingURLProtocol.lastRequest?.value(forHTTPHeaderField: ImmichHeader.cookie),
             "\(ImmichCookie.sharedLinkToken)=tok123", "retarget does not end the shared-link visit")
+
+        // `configure` onto another address still ends the visit.
+        client.configure(baseURL: URL(string: "http://192.168.1.20:2283")!, token: "token-a")
+        await assertCookieGone(client)
     }
 
     /// A 401 on this path is about the *link*, not the session — so it must not
