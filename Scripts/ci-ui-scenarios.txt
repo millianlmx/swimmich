@@ -140,6 +140,11 @@ immich_stub_adjust_date.py AdjustDateUITests/test_AC_66
 immich_stub_adjust_date.py AdjustDateUITests/test_AC_66_4_editedTimeIsWallClock --release
 immich_stub_adjust_date.py AdjustDateUITests/test_AC_66_6_reopenAfterSave --release
 
+# L-25 "My Location" (AC-231): "Open Settings" in the refusal alert brings the Settings app (another
+# process) to the foreground, which no unit test can show. The other AdjustLocationUITests are compiled,
+# not run: their criteria have unit tests of the same name (AdjustLocationViewModelTests, DeviceLocationTests).
+immich_stub_adjust_location.py AdjustLocationUITests/test_AC_231
+
 # Tiers of the lines below: `--release` where a unit test of the same criterion exists
 # (func test_AC_<n> under Tests/); core for the others, as far as the night's budget of
 # 40 lines allows (27 taken by `main`).

@@ -124,7 +124,8 @@ final class DependencyContainer {
 
     /// The device position (L-25, B-29.2): one provider for the map's "My
     /// Location" and the adjust-location sheet's. The launch arguments of the UI
-    /// tests swap in a scripted one; production always gets CoreLocation.
+    /// tests swap in a scripted one, in Debug builds only (`makeDeviceLocation`);
+    /// a Release build always gets CoreLocation.
     let deviceLocation: any DeviceLocationProviding
 
     /// Process-wide download queue (gap G10). Same reasoning as `upload`: the
@@ -161,6 +162,16 @@ final class DependencyContainer {
     /// sheet, the About row that reopens it and `AuthViewModel`'s
     /// add-an-account write must all agree on which batch has been presented.
     let whatsNewStore = WhatsNewStore(defaults: .standard)
+
+    /// The device position the app runs on. Debug builds (unit tests, UI
+    /// scenarios) honour `-uiTestLocationStatus` and its siblings; a Release build
+    /// always gets CoreLocation and reads none of these keys.
+    static func makeDeviceLocation(defaults: UserDefaults = .standard) -> any DeviceLocationProviding {
+        #if DEBUG
+        if let scripted = ScriptedDeviceLocationService.fromLaunchArguments(defaults) { return scripted }
+        #endif
+        return SystemDeviceLocationService()
+    }
 
     init() {
         self.keychain = KeychainStoreImpl()
@@ -233,8 +244,7 @@ final class DependencyContainer {
         // and the two must be the same object.
         self.appSettings = AppSettingsStore.shared
         self.mapSettings = MapSettingsStore()
-        let scriptedLocation: (any DeviceLocationProviding)? = ScriptedDeviceLocationService.fromLaunchArguments()
-        self.deviceLocation = scriptedLocation ?? SystemDeviceLocationService()
+        self.deviceLocation = Self.makeDeviceLocation()
         let cloudStatus = CloudBackupStatusIndex()
         self.cloudStatus = cloudStatus
         self.albumSyncStore = AlbumSyncStore()
