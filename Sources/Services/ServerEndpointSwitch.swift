@@ -166,7 +166,11 @@ final class ServerEndpointSwitch: ServerEndpointSwitching {
         if !(settings.autoSwitch && hasLocal) {
             applyExternal(reconnectSocket: true)
             finishOutcome(before: before)
-            if !hasLocal, externalURL != oldExternal, let external = externalURL {
+            // The external address is probed once when it changed, and again when its last
+            // state was "certificate not trusted" (the user has just approved it).
+            var wasUntrusted = false
+            if case .untrusted? = externalStatus { wasUntrusted = true }
+            if !hasLocal, externalURL != oldExternal || wasUntrusted, let external = externalURL {
                 let gen = generation
                 isEvaluating = true
                 externalStatus = .checking
@@ -205,7 +209,10 @@ final class ServerEndpointSwitch: ServerEndpointSwitching {
         }
         generation += 1
         let gen = generation
-        let task = Task { @MainActor [weak self] in await self?.runEvaluation(reason, generation: gen) }
+        let task = Task { @MainActor [weak self] in
+            guard let self else { return }
+            await self.runEvaluation(reason, generation: gen)
+        }
         evaluationTask = task
         await task.value
     }

@@ -196,7 +196,20 @@ struct ProfileView: View {
                 // asset troubleshoot — lives on the photo it describes, never
                 // here: its page is parameterized by an asset.
                 Section {
-                    if let serverKey = auth.baseURL.flatMap({ ServerKey(url: $0) }) {
+                    if let accountURL = auth.accountURL {
+                        NavigationLink {
+                            NetworkSettingsScreen(
+                                accountURL: accountURL,
+                                // The widgets and the share extension are told the external address.
+                                onExternalChanged: { auth.publishWidgetSession() }
+                            )
+                        } label: {
+                            Label("Network", systemImage: "network")
+                        }
+                        .accessibilityIdentifier("networkSettingsRow")
+                    }
+
+                    if let serverKey = auth.accountURL.flatMap({ ServerKey(url: $0) }) {
                         NavigationLink {
                             CustomHeadersScreen(
                                 serverKey: serverKey,

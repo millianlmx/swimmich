@@ -69,6 +69,9 @@ targets:
         NSPhotoLibraryAddUsageDescription: "Swimmich needs Photos access to add uploaded assets."
         NSFaceIDUsageDescription: "Swimmich uses Face ID to unlock the app."
         NSCameraUsageDescription: "Swimmich uses the camera to scan server configuration QR codes."
+        # L-26: the local address of a server is reached over the local network (TN3179).
+        # App target only: extensions share the privilege of their container app.
+        NSLocalNetworkUsageDescription: "Swimmich connects to your Immich server's local address when your phone is on the same network."
         NSSupportsLiveActivities: true
         NSSupportsLiveActivitiesFrequentUpdates: true
         # Documents/Downloads is exposed to the Files app (Downloads panel).

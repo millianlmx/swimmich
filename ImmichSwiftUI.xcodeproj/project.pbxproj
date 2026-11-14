@@ -7,6 +7,11 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
+		D26E3FA1B2C3D4E5F6A7B8C9 /* immich_stub_server_addresses.py in Resources */ = {isa = PBXBuildFile; fileRef = D26E3EA1B2C3D4E5F6A7B8C9 /* immich_stub_server_addresses.py */; };
+		D26E3DA1B2C3D4E5F6A7B8C9 /* ServerAddressesUITests.swift in Sources */ = {isa = PBXBuildFile; fileRef = D26E3CA1B2C3D4E5F6A7B8C9 /* ServerAddressesUITests.swift */; };
+		D26E39A1B2C3D4E5F6A7B8C9 /* NetworkSettingsViewModelTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = D26E38A1B2C3D4E5F6A7B8C9 /* NetworkSettingsViewModelTests.swift */; };
+		D26E35A1B2C3D4E5F6A7B8C9 /* NetworkSettingsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = D26E34A1B2C3D4E5F6A7B8C9 /* NetworkSettingsView.swift */; };
+		D26E33A1B2C3D4E5F6A7B8C9 /* NetworkSettingsViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = D26E32A1B2C3D4E5F6A7B8C9 /* NetworkSettingsViewModel.swift */; };
 		D26E31A1B2C3D4E5F6A7B8C9 /* SharedLinkServerAddressTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = D26E30A1B2C3D4E5F6A7B8C9 /* SharedLinkServerAddressTests.swift */; };
 		D26E2FA1B2C3D4E5F6A7B8C9 /* BackgroundBackupPassTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = D26E2EA1B2C3D4E5F6A7B8C9 /* BackgroundBackupPassTests.swift */; };
 		D26E2DA1B2C3D4E5F6A7B8C9 /* ReloadAfterEvaluationTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = D26E2CA1B2C3D4E5F6A7B8C9 /* ReloadAfterEvaluationTests.swift */; };
@@ -805,6 +810,11 @@
 /* End PBXCopyFilesBuildPhase section */
 
 /* Begin PBXFileReference section */
+		D26E3EA1B2C3D4E5F6A7B8C9 /* immich_stub_server_addresses.py */ = {isa = PBXFileReference; lastKnownFileType = text.script.python; path = immich_stub_server_addresses.py; sourceTree = "<group>"; };
+		D26E3CA1B2C3D4E5F6A7B8C9 /* ServerAddressesUITests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ServerAddressesUITests.swift; sourceTree = "<group>"; };
+		D26E38A1B2C3D4E5F6A7B8C9 /* NetworkSettingsViewModelTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NetworkSettingsViewModelTests.swift; sourceTree = "<group>"; };
+		D26E34A1B2C3D4E5F6A7B8C9 /* NetworkSettingsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NetworkSettingsView.swift; sourceTree = "<group>"; };
+		D26E32A1B2C3D4E5F6A7B8C9 /* NetworkSettingsViewModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NetworkSettingsViewModel.swift; sourceTree = "<group>"; };
 		D26E30A1B2C3D4E5F6A7B8C9 /* SharedLinkServerAddressTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SharedLinkServerAddressTests.swift; sourceTree = "<group>"; };
 		D26E2EA1B2C3D4E5F6A7B8C9 /* BackgroundBackupPassTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BackgroundBackupPassTests.swift; sourceTree = "<group>"; };
 		D26E2CA1B2C3D4E5F6A7B8C9 /* ReloadAfterEvaluationTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ReloadAfterEvaluationTests.swift; sourceTree = "<group>"; };
@@ -1683,6 +1693,7 @@
 				CE11628DAF8CCF79DF57E43A /* Offline */,
 				C09E22A1B2C3D4E5F6A7B8C9 /* CustomHeaders */,
 				C10E20A1B2C3D4E5F6A7B8C9 /* ClientCertificate */,
+				D26E36A1B2C3D4E5F6A7B8C9 /* NetworkSettings */,
 				90189886D1E3B905FC8A4B12 /* Partners */,
 				633245934307633FC94D5D9C /* People */,
 				F490BD76FA8C5B23572FD6CD /* PhotoViewer */,
@@ -2014,6 +2025,7 @@
 				D26E0AA1B2C3D4E5F6A7B8C9 /* ServerAddressSelectorTests.swift */,
 				D26E0CA1B2C3D4E5F6A7B8C9 /* UserDefaultsServerAddressSettingsStoreTests.swift */,
 				D26E0EA1B2C3D4E5F6A7B8C9 /* URLSessionServerAddressProbeTests.swift */,
+				D26E38A1B2C3D4E5F6A7B8C9 /* NetworkSettingsViewModelTests.swift */,
 				D26E30A1B2C3D4E5F6A7B8C9 /* SharedLinkServerAddressTests.swift */,
 				D26E2EA1B2C3D4E5F6A7B8C9 /* BackgroundBackupPassTests.swift */,
 				D26E2CA1B2C3D4E5F6A7B8C9 /* ReloadAfterEvaluationTests.swift */,
@@ -2177,6 +2189,15 @@
 				C10E1EA1B2C3D4E5F6A7B8C9 /* ClientCertificateTestFeed.swift */,
 			);
 			path = ClientCertificate;
+			sourceTree = "<group>";
+		};
+		D26E36A1B2C3D4E5F6A7B8C9 /* NetworkSettings */ = {
+			isa = PBXGroup;
+			children = (
+				D26E32A1B2C3D4E5F6A7B8C9 /* NetworkSettingsViewModel.swift */,
+				D26E34A1B2C3D4E5F6A7B8C9 /* NetworkSettingsView.swift */,
+			);
+			path = NetworkSettings;
 			sourceTree = "<group>";
 		};
 		C09E22A1B2C3D4E5F6A7B8C9 /* CustomHeaders */ = {
@@ -2359,6 +2380,7 @@
 				C16A00000000000000000005 /* immich_stub_list_states.py */,
 				C09E1FA1B2C3D4E5F6A7B8C9 /* immich_stub_proxy_headers.py */,
 				C10E42A1B2C3D4E5F6A7B8C9 /* immich_stub_client_cert.py */,
+				D26E3EA1B2C3D4E5F6A7B8C9 /* immich_stub_server_addresses.py */,
 				72BE3F287C311D808DB86E5B /* immich_stub_people_search.py */,
 				1BBFFBCA7F1A04CEFC4D00A9 /* immich_stub_person_birthday.py */,
 				17A7602FF3060BF40F59B02F /* immich_stub_profile_picture.py */,
@@ -2511,6 +2533,7 @@
 				F0811A00478B347A7005063B /* WhatsNewUITests.swift */,
 				C09E1CA1B2C3D4E5F6A7B8C9 /* CustomHeadersUITests.swift */,
 				C10E40A1B2C3D4E5F6A7B8C9 /* ClientCertificateUITests.swift */,
+				D26E3CA1B2C3D4E5F6A7B8C9 /* ServerAddressesUITests.swift */,
 			);
 			path = Scenarios;
 			sourceTree = "<group>";
@@ -2914,6 +2937,7 @@
 				C16A00000000000000000006 /* immich_stub_list_states.py in Resources */,
 				C09E20A1B2C3D4E5F6A7B8C9 /* immich_stub_proxy_headers.py in Resources */,
 				C10E43A1B2C3D4E5F6A7B8C9 /* immich_stub_client_cert.py in Resources */,
+				D26E3FA1B2C3D4E5F6A7B8C9 /* immich_stub_server_addresses.py in Resources */,
 				20407BC713213C9E60637B05 /* immich_stub_people_search.py in Resources */,
 				77C911D66481ADAC278B8B2F /* immich_stub_person_birthday.py in Resources */,
 				1187E9FCD768EF8A04CCAABE /* immich_stub_profile_picture.py in Resources */,
@@ -3161,6 +3185,7 @@
 				D26E0BA1B2C3D4E5F6A7B8C9 /* ServerAddressSelectorTests.swift in Sources */,
 				D26E0DA1B2C3D4E5F6A7B8C9 /* UserDefaultsServerAddressSettingsStoreTests.swift in Sources */,
 				D26E0FA1B2C3D4E5F6A7B8C9 /* URLSessionServerAddressProbeTests.swift in Sources */,
+				D26E39A1B2C3D4E5F6A7B8C9 /* NetworkSettingsViewModelTests.swift in Sources */,
 				D26E31A1B2C3D4E5F6A7B8C9 /* SharedLinkServerAddressTests.swift in Sources */,
 				D26E2FA1B2C3D4E5F6A7B8C9 /* BackgroundBackupPassTests.swift in Sources */,
 				D26E2DA1B2C3D4E5F6A7B8C9 /* ReloadAfterEvaluationTests.swift in Sources */,
@@ -3191,6 +3216,7 @@
 			files = (
 				C09E1DA1B2C3D4E5F6A7B8C9 /* CustomHeadersUITests.swift in Sources */,
 				C10E41A1B2C3D4E5F6A7B8C9 /* ClientCertificateUITests.swift in Sources */,
+				D26E3DA1B2C3D4E5F6A7B8C9 /* ServerAddressesUITests.swift in Sources */,
 				F15E5A4EE0F95A36206DE8DB /* AlbumPaginationUITests.swift in Sources */,
 				7C1A0E5B2D4F6A8091B3C5D3 /* AlbumRolesUITests.swift in Sources */,
 				8C135C7B90E587648F9339D1 /* AlbumSyncUITests.swift in Sources */,
@@ -3258,6 +3284,8 @@
 				D26E02A1B2C3D4E5F6A7B8C9 /* ServerAddresses.swift in Sources */,
 				D26E05A1B2C3D4E5F6A7B8C9 /* ServerAddressSettingsStoring.swift in Sources */,
 				D26E07A1B2C3D4E5F6A7B8C9 /* UserDefaultsServerAddressSettingsStore.swift in Sources */,
+				D26E35A1B2C3D4E5F6A7B8C9 /* NetworkSettingsView.swift in Sources */,
+				D26E33A1B2C3D4E5F6A7B8C9 /* NetworkSettingsViewModel.swift in Sources */,
 				D26E2BA1B2C3D4E5F6A7B8C9 /* BackgroundBackupPass.swift in Sources */,
 				D26E29A1B2C3D4E5F6A7B8C9 /* ReloadAfterEvaluation.swift in Sources */,
 				D26E21A1B2C3D4E5F6A7B8C9 /* ServerEndpointSwitch.swift in Sources */,

@@ -44,6 +44,8 @@
 	<string>Swimmich uses the camera to scan server configuration QR codes.</string>
 	<key>NSFaceIDUsageDescription</key>
 	<string>Swimmich uses Face ID to unlock the app.</string>
+	<key>NSLocalNetworkUsageDescription</key>
+	<string>Swimmich connects to your Immich server's local address when your phone is on the same network.</string>
 	<key>NSPhotoLibraryAddUsageDescription</key>
 	<string>Swimmich needs Photos access to add uploaded assets.</string>
 	<key>NSPhotoLibraryUsageDescription</key>

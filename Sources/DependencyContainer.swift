@@ -482,6 +482,17 @@ final class DependencyContainer {
         UserApiKeysViewModel(client: libraryClient)
     }
 
+    /// L-26: the "Network" setting of the active account. `onExternalChanged` is
+    /// what republishes the session the widgets and the extension read.
+    func makeNetworkSettingsViewModel(accountURL: URL, onExternalChanged: @escaping () -> Void) -> NetworkSettingsViewModel {
+        NetworkSettingsViewModel(
+            endpoints: serverEndpoints, trustStore: trustedServers, accountURL: accountURL,
+            // Test only (`-uiTestNetworkControls YES`): a button that stands for a change of network.
+            showsTestControls: UserDefaults.standard.bool(forKey: "uiTestNetworkControls"),
+            onExternalChanged: onExternalChanged
+        )
+    }
+
     /// L-09: the editor of one server's custom HTTP headers. `onSaved` is what
     /// nudges the session (`AuthViewModel.customHeadersDidChange`).
     func makeCustomHeadersViewModel(

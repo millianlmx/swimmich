@@ -33,7 +33,7 @@ final class SystemNetworkPathMonitor: NetworkPathMonitoring, @unchecked Sendable
     static func signature(of path: NWPath) -> String {
         signature(
             status: path.status,
-            interfaces: path.availableInterfaces.map { ($0.name, $0.type) },
+            interfaces: path.availableInterfaces.map { (name: $0.name, type: $0.type) },
             gateways: path.gateways.map { "\($0)" }
         )
     }
