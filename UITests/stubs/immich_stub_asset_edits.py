@@ -7,8 +7,8 @@
 
 Built on `immich_stub_base` (OAuth shell, request journal `/__requests`, asset
 thumbnails and originals) and `immich_stub_socketio` (the `AssetEditReadyV2` event). What it adds is
-the `/edits` family of Immich v3.4.0, the regeneration job that follows a change, one album, two
-searches, and control routes to arm all of it.
+the `/edits` family of Immich v3.4.0, the regeneration job that follows a change, the downloads (info and
+ZIP archive), one album, two searches, and control routes to arm all of it.
 
 SERVER VERSION
 * `GET /api/server/version` answers the configured version: `3.4.0` (default) or
@@ -49,6 +49,12 @@ THE REGENERATION JOB, as v3.4.0 runs it after a `PUT` or `DELETE`
   unless `event=0`. The socket is `ws://…/api/socket.io/` (see `immich_stub_socketio.py`); its journal
   entry has `status: 101`.
 
+DOWNLOADS
+* `POST /api/download/info` answers one archive for any number of photos, 2048 bytes each, at every version.
+* `POST /api/download/archive` answers a ZIP of the files `/original` would serve for the body's `edited`
+  (the field is ignored at 2.0.0, as a server older than v2.6.0 does); the journal entry carries the body,
+  `sha` and `edited_served` (the ids served edited).
+
 ALBUM AND SEARCHES (the scenarios' surfaces besides the timeline)
 * `GET /api/albums` answers one album `eeeeeeee-2222-4222-8222-000000000001` ("Edits", cover = the first
   timeline photo, 6 photos, `updatedAt` 2026-09-01); `?shared=true` answers `[]`. `GET /api/albums/<id>` the
@@ -77,10 +83,12 @@ ignored; the state is wiped by `/__reset`.
 """
 import datetime
 import hashlib
+import io
 import json
 import re
 import threading
 import time
+import zipfile
 from urllib.parse import parse_qsl
 
 from immich_stub_base import (ME, STATE, TIMELINE_ASSETS, Response, StubHandler, asset, bucket_payload, main,
@@ -352,6 +360,35 @@ def upload(req):
     match = re.search(r'filename="([^"]*)"', raw)
     req.note(filename=match.group(1) if match else None)
     return Response({"id": NEW_ASSET, "status": "created"}, status=201)
+
+
+# MARK: - Download
+
+
+@router.post("/api/download/info")
+def download_info(req):
+    """One archive for any number of photos, 2048 bytes each (the base's `fileSizeInByte`), at every version."""
+    ids = req.body.get("assetIds") or []
+    total = 2048 * len(ids)
+    return Response({"totalSize": total, "archives": [{"assetIds": ids, "size": total}]})
+
+
+@router.post("/api/download/archive")
+def download_archive(req):
+    """A ZIP of what `/original` would serve for `edited`; a 2.0.0 server ignores the field, as a server
+    older than v2.6.0 does. Fixed entry dates: the same content gives the same bytes."""
+    ids = req.body.get("assetIds") or []
+    honoured = req.body.get("edited") is True and STATE["edits"]["version"] == "3.4.0"
+    served = [aid for aid in ids if honoured and edited_ready(aid)]
+    buffer = io.BytesIO()
+    with zipfile.ZipFile(buffer, "w", zipfile.ZIP_STORED) as archive:
+        for aid in ids:
+            data = png(aid + "-edited", size=96) if aid in served else png(aid, size=64)
+            info = zipfile.ZipInfo(asset(aid)["originalFileName"], date_time=(2026, 1, 1, 0, 0, 0))
+            archive.writestr(info, data)
+    data = buffer.getvalue()
+    req.note(sha=sha_of(data), edited_served=served, at=time.time())
+    return Response(data, ctype="application/zip", headers={"Cache-Control": "no-store"})
 
 
 # MARK: - Album and searches
