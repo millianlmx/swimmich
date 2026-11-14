@@ -128,6 +128,14 @@ final class BackupLedger: BackupLedgerStoring, @unchecked Sendable {
         return entries[id] != nil
     }
 
+    func trackedEntry(id: String) -> BackupLedgerEntry? {
+        lock.lock(); defer { lock.unlock() }
+        ensureLoaded()
+        return entries[id].map {
+            BackupLedgerEntry(signature: $0.signature, checksum: $0.checksum, serverAssetId: $0.serverAssetId)
+        }
+    }
+
     func entriesForReconciliation() -> [(id: String, checksum: String)] {
         lock.lock(); defer { lock.unlock() }
         ensureLoaded()

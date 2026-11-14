@@ -812,6 +812,140 @@ public extension WidgetFamily {
     }
 }
 
+// MARK: - Render target
+
+/// What WidgetKit will draw a timeline entry into: the family, its size in
+/// points on this device, and the screen scale (pixels per point). The provider
+/// sizes every image from it, so a photo is sharp at the widget's real size.
+public struct WidgetRenderTarget: Equatable, Sendable {
+    public let family: WidgetFamily
+    public let displaySize: CGSize
+    public let scale: CGFloat
+
+    public init(family: WidgetFamily, displaySize: CGSize, scale: CGFloat) {
+        self.family = family
+        self.displaySize = displaySize
+        self.scale = scale
+    }
+}
+
+public extension TimelineProviderContext {
+    /// The only place the screen scale is read: `TimelineProviderContext`
+    /// carries the size in points, not the scale.
+    var renderTarget: WidgetRenderTarget {
+        WidgetRenderTarget(family: family, displaySize: displaySize, scale: UIScreen.main.scale)
+    }
+}
+
+/// Where each photo of a composition is drawn, in pixels. This copies the
+/// geometry of `WidgetPhotosView`, `WidgetFavoritesView` and
+/// `WidgetMemoriesView` (the views are not read at refresh time): when a
+/// composition changes, so must this, and the tests pin both to the same
+/// reference numbers.
+enum WidgetTileLayout {
+    enum Composition { case photos, favorites, memories }
+
+    /// One entry per photo actually drawn, in drawing order (the main photo
+    /// first). `count` is the photos received (Recents, Favorites) or the cards
+    /// received (Memories). A tile with an empty side is not drawn.
+    static func tiles(_ composition: Composition, target: WidgetRenderTarget, count: Int) -> [WidgetPixelSize] {
+        let sizes: [CGSize]
+        switch composition {
+        case .photos: sizes = photoTiles(target, count: count)
+        case .favorites: sizes = favoriteTiles(target, count: count)
+        case .memories: sizes = memoryTiles(target, count: count)
+        }
+        let pixels = sizes.map {
+            WidgetPixelSize(width: pixel($0.width, target.scale), height: pixel($0.height, target.scale))
+        }
+        return Array(pixels.prefix(while: { $0.width > 0 && $0.height > 0 }))
+    }
+
+    private static func pixel(_ points: CGFloat, _ scale: CGFloat) -> Int {
+        Int((points * scale - 1e-6).rounded(.up))
+    }
+
+    private static func photoTiles(_ target: WidgetRenderTarget, count: Int) -> [CGSize] {
+        guard count > 0 else { return [] }
+        let size = target.displaySize
+        let gutter = WidgetMetrics.gutters
+        switch target.family {
+        case .systemSmall:
+            return [size]
+        case .systemLarge:
+            let mainHeight = size.height * 0.62
+            let rest = min(count - 1, 3)
+            guard rest > 0 else { return [CGSize(width: size.width, height: mainHeight)] }
+            let cell = CGSize(
+                width: (size.width - gutter * CGFloat(rest - 1)) / CGFloat(rest),
+                height: size.height - mainHeight - gutter
+            )
+            return [CGSize(width: size.width, height: mainHeight)] + Array(repeating: cell, count: rest)
+        case .accessoryRectangular:
+            return [CGSize(width: 34, height: 34)]
+        case .accessoryInline:
+            return []
+        default:
+            let rest = min(count - 1, 2)
+            guard rest > 0 else { return [size] }
+            let column = (size.width - gutter) / 2
+            let cell = CGSize(width: column, height: (size.height - gutter * CGFloat(rest - 1)) / CGFloat(rest))
+            return [CGSize(width: column, height: size.height)] + Array(repeating: cell, count: rest)
+        }
+    }
+
+    private static func favoriteTiles(_ target: WidgetRenderTarget, count: Int) -> [CGSize] {
+        let columns: Int
+        let limit: Int
+        switch target.family {
+        case .accessoryCircular, .accessoryRectangular, .accessoryInline:
+            return []
+        case .systemSmall:
+            columns = 2
+            limit = 4
+        case .systemLarge:
+            columns = 3
+            limit = 9
+        default:
+            columns = 3
+            limit = 6
+        }
+        let drawn = min(count, limit)
+        guard drawn > 0 else { return [] }
+        let size = target.displaySize
+        let gutter = WidgetMetrics.gutters
+        let rows = (drawn + columns - 1) / columns
+        let rowHeight = (size.height - gutter * CGFloat(rows - 1)) / CGFloat(rows)
+        return (0..<rows).flatMap { row -> [CGSize] in
+            let inRow = min(columns, drawn - row * columns)
+            let width = (size.width - gutter * CGFloat(inRow - 1)) / CGFloat(inRow)
+            return Array(repeating: CGSize(width: width, height: rowHeight), count: inRow)
+        }
+    }
+
+    private static func memoryTiles(_ target: WidgetRenderTarget, count: Int) -> [CGSize] {
+        guard count > 0 else { return [] }
+        let size = target.displaySize
+        switch target.family {
+        case .systemSmall:
+            return [size]
+        case .accessoryCircular:
+            return [CGSize(width: 64, height: 64)]
+        case .accessoryRectangular:
+            return [CGSize(width: 40, height: 40)]
+        case .accessoryInline:
+            return []
+        default:
+            let cards = min(count, 2)
+            let card = CGSize(
+                width: (size.width - WidgetMetrics.gutters * CGFloat(cards - 1)) / CGFloat(cards),
+                height: size.height
+            )
+            return Array(repeating: card, count: cards)
+        }
+    }
+}
+
 /// Applies the widget's own platter: a neutral canvas behind a full-bleed
 /// composition, plus the system content margins for Lock Screen families —
 /// `contentMarginsDisabled()` gives every family the whole rect, and an

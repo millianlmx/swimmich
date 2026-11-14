@@ -85,6 +85,13 @@ final class BackupSettingsStore {
         didSet { defaults.set(Array(syncedAlbumIDs), forKey: Self.syncedAlbumsKey) }
     }
 
+    /// "Also back up edits": upload the edited version of an asset edited on
+    /// the phone and stack it on its original. Off by default — off, the
+    /// backup is the original alone, exactly as before this setting existed.
+    var backUpEdits: Bool {
+        didSet { defaults.set(backUpEdits, forKey: Self.backUpEditsKey) }
+    }
+
     static let enabledKey = "photoBackupEnabled"
     static let wifiKey = "photoBackupOnlyWiFi"
     static let chargingKey = "photoBackupOnlyCharging"
@@ -96,6 +103,7 @@ final class BackupSettingsStore {
     static let autoDetectNewPhotosKey = "photoBackupAutoDetectNewPhotos"
     static let showSyncBadgeKey = "photoBackupShowSyncBadge"
     static let syncedAlbumsKey = "photoBackupSyncedAlbums"
+    static let backUpEditsKey = "photoBackupEdits"
 
     /// Legacy keys, read once for the one-shot migration and then deleted.
     /// The old screenshots toggle becomes the Screenshots smart album; the
@@ -129,6 +137,7 @@ final class BackupSettingsStore {
         }
         excludedAlbumIDs = excluded
         syncedAlbumIDs = Set(defaults.stringArray(forKey: Self.syncedAlbumsKey) ?? [])
+        backUpEdits = defaults.bool(forKey: Self.backUpEditsKey)
         if let raw = defaults.string(forKey: Self.albumScopeKey),
            let stored = BackupAlbumScope(rawValue: raw) {
             albumScope = stored
@@ -170,7 +179,8 @@ final class BackupSettingsStore {
             excludedAlbumIDs: inForce == .excluded ? excludedAlbumIDs : [],
             selectedAlbumIDs: inForce == .selected ? selectedAlbumIDs : [],
             showSyncBadge: showSyncBadge,
-            syncedAlbumIDs: syncedAlbumIDs
+            syncedAlbumIDs: syncedAlbumIDs,
+            backUpEdits: backUpEdits
         )
     }
 }
@@ -270,6 +280,7 @@ final class UploadViewModel {
         photos: any PhotoLibraryService,
         engine: BackupEngine? = nil,
         ledger: (any BackupLedgerStoring)? = nil,
+        editLedger: (any BackupEditLedgerStoring)? = nil,
         settings: BackupSettingsStore? = nil,
         scheduler: any BackgroundBackupScheduling = BGTaskBackupScheduler(),
         activityService: any BackupLiveActivityServicing = LiveActivityBackupService(),
@@ -291,6 +302,7 @@ final class UploadViewModel {
             client: client,
             source: (photos as? BackupAssetSource) ?? PhotoLibraryServiceImpl(),
             ledger: ledger ?? BackupLedger.persistent(),
+            editLedger: editLedger ?? BackupEditLedger.persistent(),
             albumSync: albumSync,
             userID: userID
         )
@@ -547,7 +559,12 @@ final class UploadViewModel {
     /// Needed when the server library was wiped and the ledger is now stale.
     func resetBackupTracking() {
         engine.forgetAllBackedUp()
+        ledgerRevision += 1
     }
+
+    /// Bumped each time the backup screen itself rewrites the ledger outside a
+    /// pass ("Reset tracking", "Check server now"): the remainder's reload key.
+    private(set) var ledgerRevision = 0
 
     /// When the ledger was last confronted with the server (nil = never).
     var lastReconciliation: Date? { engine.lastReconciliation }
@@ -556,7 +573,8 @@ final class UploadViewModel {
     /// throttle. Non-destructive: it only forgets entries the server no longer
     /// has, so those get re-uploaded instead of being skipped forever.
     func reconcileNow() async {
-        await engine.reconcileNow()
+        await engine.reconcileNow(includeEdits: settings.backUpEdits)
+        ledgerRevision += 1
     }
 
     // MARK: - Album mirror (device → server)
@@ -655,60 +673,65 @@ struct BackupSettingsView: View {
     /// The per-asset report of the same run — built from `vm`'s engine, not a
     /// second one (see `DependencyContainer.upload`).
     @State var detail: UploadDetailViewModel
+    /// What a complete pass would still send — shared with the pushed list.
+    @State var remainder: BackupRemainderViewModel
     /// Legend dot, scaled with the caption text it labels.
     @ScaledMetric(relativeTo: .footnote) private var dotSize: CGFloat = 7
 
     var body: some View {
         @Bindable var vm = vm
-        NavigationStack {
-            Form {
-                Section {
-                    LabeledContent("Server", value: auth.serverURLString)
-                    LabeledContent("User", value: auth.userEmail ?? "—")
-                }
-                backupSection
-                albumSection
-                reorganizeSection
-                progressSection
-                trackingSection
-                serverCheckSection
-                resetTrackingSection
+        // No `NavigationStack`: the hub (`ProfileView`) pushes this screen into
+        // its own stack, so the one bar and its back button to "Me" are the hub's.
+        Form {
+            Section {
+                LabeledContent("Server", value: auth.serverURLString)
+                LabeledContent("User", value: auth.userEmail ?? "—")
             }
-            .labeledContentStyle(.pvAdaptive)
-            .navigationTitle(Text(verbatim: ""))
-            .navigationBarTitleDisplayMode(.inline)
-            .toolbar {
-                ToolbarItem(placement: .principal) {
-                    ImmichAppBar(title: "Backup")
-                }
+            backupSection
+            albumSection
+            reorganizeSection
+            progressSection
+            trackingSection
+            serverCheckSection
+            resetTrackingSection
+        }
+        .labeledContentStyle(.pvAdaptive)
+        .navigationTitle(Text(verbatim: ""))
+        .navigationBarTitleDisplayMode(.inline)
+        .toolbar {
+            ToolbarItem(placement: .principal) {
+                ImmichAppBar(title: "Backup")
             }
-            .immichAppBarTitleHeader("Backup")
-            .task {
-                await vm.loadAlbums()
+        }
+        .immichAppBarTitleHeader("Backup")
+        .task {
+            await vm.loadAlbums()
+        }
+        .task {
+            await remainder.load()
+        }
+        .confirmationDialog(
+            "Reset backup tracking?",
+            isPresented: $vm.showResetTrackingConfirm,
+            titleVisibility: .visible
+        ) {
+            Button("Reset tracking", role: .destructive) {
+                vm.resetBackupTracking()
             }
-            .confirmationDialog(
-                "Reset backup tracking?",
-                isPresented: $vm.showResetTrackingConfirm,
-                titleVisibility: .visible
-            ) {
-                Button("Reset tracking", role: .destructive) {
-                    vm.resetBackupTracking()
-                }
-                Button("Cancel", role: .cancel) {}
-            } message: {
-                Text("The next backup will re-check every photo against the server. Nothing is deleted — already-uploaded photos are simply skipped again.")
-            }
-            .alert(
-                "Reorganization failed",
-                isPresented: Binding(
-                    get: { vm.albumSyncError != nil },
-                    set: { if !$0 { vm.albumSyncError = nil } }
-                )
-            ) {
-                Button("OK", role: .cancel) { vm.albumSyncError = nil }
-            } message: {
-                Text(vm.albumSyncError ?? "")
-            }
+            Button("Cancel", role: .cancel) {}
+        } message: {
+            Text("The next backup will re-check every photo against the server. Nothing is deleted — already-uploaded photos are simply skipped again.")
+        }
+        .alert(
+            "Reorganization failed",
+            isPresented: Binding(
+                get: { vm.albumSyncError != nil },
+                set: { if !$0 { vm.albumSyncError = nil } }
+            )
+        ) {
+            Button("OK", role: .cancel) { vm.albumSyncError = nil }
+        } message: {
+            Text(vm.albumSyncError ?? "")
         }
     }
 
@@ -749,8 +772,8 @@ struct BackupSettingsView: View {
     /// one section, one button — modelled on `serverCheckSection`, the
     /// non-destructive maintenance action already in this Form.
     ///
-    /// No `NavigationStack` here: `BackupSettingsView` wraps its own `Form` in
-    /// one, and a second would draw a second bar.
+    /// No `NavigationStack` here (nor in `BackupSettingsView`): the hub's stack
+    /// pushes this screen, and a second one would draw a second bar.
     @ViewBuilder
     private var reorganizeSection: some View {
         Section {
@@ -818,6 +841,15 @@ struct BackupSettingsView: View {
                     .padding(.leading, PVSpacing.s16)
             }
             Toggle("Charging only", isOn: $vm.settings.onlyWhenCharging)
+            Toggle(isOn: $vm.settings.backUpEdits) {
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("Also back up edits")
+                    Text("Edits made in Photos or another app are uploaded too, stacked on top of their original.")
+                        .font(.pvCaption)
+                        .foregroundStyle(Color.textSecondaryPV)
+                }
+            }
+            .accessibilityIdentifier("backupEditsToggle")
             Toggle("Back up new photos automatically", isOn: $vm.settings.autoDetectNewPhotos)
                 .onChange(of: vm.settings.autoDetectNewPhotos) { _, _ in
                     DependencyContainer.shared.syncLibraryMonitor()
@@ -827,6 +859,19 @@ struct BackupSettingsView: View {
                     vm.syncBadgeIndex()
                 }
                 .accessibilityIdentifier("syncBadgeToggle")
+            // What a complete pass would still send, with the live count: the
+            // list shrinks as the run sends each photo.
+            NavigationLink {
+                BackupRemainderView(vm: remainder)
+            } label: {
+                LabeledContent {
+                    remainderCount
+                } label: {
+                    Label("Remaining to back up", systemImage: "icloud.and.arrow.up")
+                }
+            }
+            .accessibilityValue(remainderValueText)
+            .accessibilityIdentifier("backupRemainderRow")
             // What the last run did, asset by asset. A pushed page, not a sheet:
             // a sheet is handed a copy of the failures array and cannot follow
             // assets still in flight, and the list needs a stable destination on
@@ -850,6 +895,40 @@ struct BackupSettingsView: View {
             Text("Auto backup")
         } footer: {
             Text("While Swimmich is open, new photos start backing up within a few seconds. When it's closed, iOS decides when to run — usually while charging on Wi-Fi.")
+        }
+    }
+
+    /// What VoiceOver reads as the row's value: the pluralised count, once known.
+    private var remainderValueText: Text {
+        guard let count = remainder.count else { return Text(verbatim: "") }
+        return Text("\(count) items to back up")
+    }
+
+    /// Value of the "Remaining to back up" row: the live count, a dash while
+    /// Photos access is off, a spinner while the first (or a new-scope)
+    /// calculation runs. A count of another scope is never shown.
+    @ViewBuilder
+    private var remainderCount: some View {
+        if let count = remainder.count {
+            HStack(spacing: PVSpacing.s8) {
+                if remainder.showsReloadIndicator {
+                    ProgressView()
+                        .controlSize(.small)
+                        .pvLoadingIndicator("backupRemainderCountReloading")
+                }
+                Text("\(count)")
+                    .font(.pvNumeric)
+                    .contentTransition(PVMotion.contentChange(.numericText(), reduceMotion: reduceMotion))
+                    .accessibilityIdentifier("backupRemainderCount")
+            }
+        } else if !remainder.canReadLibrary {
+            Text(verbatim: "—")
+                .font(.pvNumeric)
+                .accessibilityIdentifier("backupRemainderCount")
+        } else {
+            ProgressView()
+                .controlSize(.small)
+                .pvLoadingIndicator("backupRemainderCountLoading")
         }
     }
 

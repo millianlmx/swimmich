@@ -12,6 +12,9 @@ final class DependencyContainer {
     /// could not be given one afterwards. One store per process — a second
     /// instance would show a log the client never wrote to.
     let appLog = AppLogStore()
+    /// Thumbnail and preview caches (memory and disk) the "Advanced" section
+    /// measures and empties; not the offline copies, the map or the widgets.
+    let imageCache: any ImageCacheManaging = ImageCacheService()
 
     let client: ImmichAPIClient
     let keychain: KeychainStore
@@ -46,6 +49,10 @@ final class DependencyContainer {
     /// Process-wide ledger so the BG handler, the foreground kick and the
     /// backup screen all share one loaded copy of the already-backed-up set.
     let backupLedger: any BackupLedgerStoring
+    /// The edited versions already backed up, beside `backupLedger`. The same
+    /// persistent instance for the engine, the thumbnail badge index and Free
+    /// Up Space — an in-memory one would forget every edit at each launch.
+    let backupEditLedger: any BackupEditLedgerStoring
     /// Process-wide Live Activity driver: the BG handler, the scene-phase
     /// kick and the backup screen must all drive ONE activity — separate
     /// instances each `Activity.request` their own, pile up concurrent
@@ -168,6 +175,11 @@ final class DependencyContainer {
         if UserDefaults.standard.bool(forKey: "uiTestResetWhatsNewSeen") {
             UserDefaults.standard.removeObject(forKey: WhatsNewStore.seenReleaseKey)
         }
+        #if DEBUG
+        // Test only (`-uiTestEditAssetNamed <file name>`): edits that Photos
+        // asset in place so a scenario holds a really edited photo.
+        UITestPhotoEditHook.runIfRequested()
+        #endif
         let responder = ClientCertificateResponder(store: identities, log: .shared)
         self.clientCertificateResponder = responder
         let trustStore = TrustedServerStoreImpl()
@@ -209,6 +221,7 @@ final class DependencyContainer {
         )
         self.backupScheduler = BGTaskBackupScheduler()
         self.backupLedger = BackupLedger.persistent()
+        self.backupEditLedger = BackupEditLedger.persistent()
         self.backupLiveActivity = LiveActivityBackupService()
         self.libraryMonitor = PhotoLibraryChangeMonitor()
         self.offlineStore = OfflineAssetStore(transport: serverSessions.makeDownloadTransport(), customHeaders: customHeaders)
@@ -232,7 +245,8 @@ final class DependencyContainer {
         )
         self.upload = UploadViewModel(
             client: libraryClient, photos: photos,
-            ledger: backupLedger, scheduler: backupScheduler,
+            ledger: backupLedger, editLedger: backupEditLedger,
+            scheduler: backupScheduler,
             activityService: backupLiveActivity,
             cloudStatus: cloudStatus,
             albumSync: albumSyncService,
@@ -246,8 +260,9 @@ final class DependencyContainer {
         // on every ledger write — the engine's runs are the only thing that adds
         // or removes a "proven on the server" fact.
         let ledger = backupLedger
-        cloudStatus.refresh(ledger: ledger)
-        upload.engine.onLedgerChange = { cloudStatus.refresh(ledger: ledger) }
+        let editLedger = backupEditLedger
+        cloudStatus.refresh(ledger: ledger, editLedger: editLedger)
+        upload.engine.onLedgerChange = { cloudStatus.refresh(ledger: ledger, editLedger: editLedger) }
         upload.syncBadgeIndex()
         // Foreground-only by construction: the transport streams through
         // `ServerSessions.transfers`, a default (non-background) session, so a
@@ -382,6 +397,21 @@ final class DependencyContainer {
     /// writes into — a fresh store would show an empty log.
     func makeAppLogViewModel() -> AppLogViewModel {
         AppLogViewModel(store: appLog)
+    }
+
+    /// "Advanced" section of the Me hub: log level and image cache. Shares the
+    /// process-wide log store and image cache.
+    func makeAdvancedSettingsViewModel() -> AdvancedSettingsViewModel {
+        AdvancedSettingsViewModel(log: appLog, imageCache: imageCache)
+    }
+
+    /// Viewer share (B-31): downloads the photo in the chosen quality to a file
+    /// and hands it to the iOS share sheet. One instance per viewer.
+    func makeViewerShareViewModel(baseURL: URL, token: String?) -> ViewerShareViewModel {
+        ViewerShareViewModel(
+            client: libraryClient, baseURL: baseURL, token: token,
+            transport: serverSessions.makeDownloadTransport(), customHeaders: customHeaders
+        )
     }
 
     /// Inventory of the offline cache (gap G24). Takes the caller's offline
@@ -598,6 +628,14 @@ final class DependencyContainer {
         UploadDetailViewModel(upload: upload)
     }
 
+    /// "Remaining to back up": what a complete pass would still send. Takes the
+    /// caller's `UploadViewModel` for the same reason as the upload report
+    /// above: the engine it projects is the one the process runs, and its
+    /// settings and ledger are the ones the Backup screen edits.
+    func makeBackupRemainderViewModel(upload: UploadViewModel) -> BackupRemainderViewModel {
+        BackupRemainderViewModel(upload: upload)
+    }
+
     /// "On this device" (local library). Reads the same Photos instance the
     /// backup engine reads (`PhotoLibraryServiceImpl` is both the library
     /// service and the backup asset source) and the same client for the remote
@@ -622,6 +660,8 @@ final class DependencyContainer {
             source: cleanupSource,
             albumSource: photoLibrary,
             ledger: backupLedger,
+            editLedger: backupEditLedger,
+            includesEdits: { [upload] in upload.settings.backUpEdits },
             settings: CleanupSettingsStore()
         )
     }

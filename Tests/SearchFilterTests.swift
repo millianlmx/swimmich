@@ -42,6 +42,7 @@ final class SearchFilterTests: XCTestCase {
         XCTAssertNil(dto.type)
         XCTAssertNil(dto.isFavorite)
         XCTAssertNil(dto.filter, "no OCR criterion means no similarity node")
+        XCTAssertEqual(dto.visibility, .timeline, "visibility is written even with Archive off")
 
         // …and the untouched fields really leave the request body (synthesized
         // `Codable` omits the key, it does not send null).
@@ -224,6 +225,8 @@ final class SearchFilterTests: XCTestCase {
         XCTAssertEqual(filter.rating?.eq, 4)
         XCTAssertEqual(filter.takenAt?.gte, "2024-01-01T00:00:00.000Z", "takenAfter is the range's lower bound")
         XCTAssertEqual(filter.takenAt?.lte, "2025-01-01T00:00:00.000Z")
+        XCTAssertEqual(filter.visibility?.eq, "timeline", "every metadata request states its visibility")
+        XCTAssertNil(dto.visibility)
 
         XCTAssertNil(dto.city)
         XCTAssertNil(dto.state)
@@ -243,7 +246,7 @@ final class SearchFilterTests: XCTestCase {
         // …and the same on the wire: no deprecated key is even present.
         let body = try json(dto)
         for key in ["page", "city", "state", "country", "make", "model", "lensModel",
-                    "type", "isFavorite", "rating", "takenAfter", "takenBefore", "order", "ocr"] {
+                    "type", "isFavorite", "rating", "takenAfter", "takenBefore", "order", "ocr", "visibility"] {
             XCTAssertNil(body[key], "\(key) cannot be combined with filter/orderBy/cursor")
         }
         XCTAssertNil(
@@ -304,6 +307,7 @@ final class SearchFilterTests: XCTestCase {
         XCTAssertEqual(dto.takenAfter, "2024-01-01T00:00:00.000Z")
         XCTAssertEqual(dto.page, 1)
         XCTAssertNil(dto.filter)
+        XCTAssertEqual(dto.visibility, .timeline, "the flat route says `timeline` itself, archived photos stay out")
         XCTAssertNil(dto.orderBy)
         XCTAssertNil(dto.cursor)
 

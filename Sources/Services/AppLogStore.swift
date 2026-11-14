@@ -34,15 +34,43 @@ final class AppLogStore: AppLogSink, @unchecked Sendable {
     private var redactor = AppLogRedactor()
     /// Bumped, under the lock, each time the vocabulary grows.
     private var generation = 0
+    /// Lines below this severity are dropped at recording; lines already kept
+    /// stay. Persisted by the store itself (`minimumLevelKey`).
+    private var minimumLevel: AppLogLevel
+    private let defaults: UserDefaults
+
+    static let minimumLevelKey = "logLevel"
 
     /// 500 lines — the bound the Flutter client's logger keeps, chosen there to
     /// hold a session's traffic without holding a session's memory.
-    init(capacity: Int = 500) {
+    init(capacity: Int = 500, defaults: UserDefaults = .standard) {
         self.capacity = capacity
+        self.defaults = defaults
+        minimumLevel = defaults.string(forKey: Self.minimumLevelKey)
+            .flatMap(AppLogLevel.init(rawValue:)) ?? .info
+    }
+
+    func currentMinimumLevel() -> AppLogLevel {
+        lock.lock(); defer { lock.unlock() }
+        return minimumLevel
+    }
+
+    /// The Advanced screen's log level: only lines at this level or more
+    /// severe are recorded from now on.
+    func setMinimumLevel(_ level: AppLogLevel) {
+        lock.lock(); defer { lock.unlock() }
+        minimumLevel = level
+        defaults.set(level.rawValue, forKey: Self.minimumLevelKey)
     }
 
     func record(_ entry: AppLogEntry) {
         lock.lock()
+        // Dropped before any masking: a line below the threshold costs one
+        // comparison, on every request's way out.
+        if entry.level < minimumLevel {
+            lock.unlock()
+            return
+        }
         let snapshotRedactor = redactor
         let seen = generation
         lock.unlock()

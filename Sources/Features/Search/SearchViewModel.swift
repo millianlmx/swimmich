@@ -27,20 +27,18 @@ struct ExplorePlace: Identifiable, Equatable {
 /// - free-text metadata search (`POST /api/search/metadata`)
 /// - CLIP semantic smart search (`POST /api/search/smart`)
 /// - curated explore suggestions (`GET /api/search/explore`)
-///
-/// People / faces (L136) + object detection (L137) deferred to a future
-/// iteration — searchMetadata(personIds:) already supports the drill-down.
+/// - people, tags, display options (not in album, favourites, archive), and
+///   the file name / description text modes, as criteria of the two routes
 ///
 /// `@Observable @MainActor` mirrors TimelineViewModel / TrashViewModel.
 @Observable
 @MainActor
 final class SearchViewModel {
-    enum SearchMode: Hashable { case metadata, smart }
+    /// How the typed text is read. Smart is CLIP; Metadata keeps the OCR
+    /// toggle; file name and description are `POST /api/search/metadata`
+    /// criteria (a substring, case and accent insensitive).
+    enum SearchMode: String, CaseIterable, Hashable { case smart, metadata, filename, description }
     enum ViewMode: Hashable { case results, explore, map }
-    /// The two shapes `POST /api/search/metadata` understands. They are
-    /// mutually exclusive in one body: `filter`/`orderBy`/`cursor` (v3.2.0) next
-    /// to any deprecated flat field — `page` included — is a 400.
-    enum SearchShape { case flat, structured }
 
     /// EXIF field a user can drill into from an Explore card. Maps the server's
     /// `fieldName` ("exifInfo.city" …) onto the matching `MetadataSearchDto`
@@ -72,12 +70,21 @@ final class SearchViewModel {
     }
 
     let client: any ImmichClient
+    /// The timeline's selection and batch actions, reused as the engine of the
+    /// result grid (L-23b). Private to this view model — never shared; its
+    /// `items` mirror `results` (`results.didSet`) and every action copies them
+    /// back (`runBatch`).
+    private let batch: TimelineViewModel
     private let recentsStore: RecentSearchesStore
     private let savedStore: SavedSearchesStore
 
     // Inputs
     var query: String = ""
     var searchMode: SearchMode = .smart
+    /// The current Metadata mode was taken by the view model (criteria with no
+    /// text, an Explore card), not picked in the menu: typing a text returns
+    /// to Smart (S-5).
+    private var metadataIsAutomatic = false
     var viewMode: ViewMode = .results
     /// Restrict metadata results to assets whose *detected text* matches the
     /// query (ocr-text). Sent as the v3.2.0 `filter.ocr.matches` similarity
@@ -91,9 +98,29 @@ final class SearchViewModel {
     /// The Filters sheet's state (search-filters): every constraint the sheet
     /// edits lives here, and `apply(to:)` is the only reader that touches a DTO.
     var filter = SearchFilter()
+    /// The criteria the bar shows, in the bar's order: the file name /
+    /// description text mode first, then the sheet's constraints.
+    var activeConstraints: [SearchFilter.Constraint] {
+        (textModeConstraint.map { [$0] } ?? []) + filter.constraints
+    }
     /// Active constraints — the number the toolbar button badges.
-    var activeFilterCount: Int { filter.activeCount }
-    var isFilterActive: Bool { !filter.isEmpty }
+    var activeFilterCount: Int { activeConstraints.count }
+    var isFilterActive: Bool { !activeConstraints.isEmpty }
+
+    /// The file name / description text mode, as a chip: only while that mode
+    /// is chosen and a text is typed.
+    var textModeConstraint: SearchFilter.Constraint? {
+        let typed = query.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !typed.isEmpty else { return nil }
+        switch searchMode {
+        case .filename:
+            return SearchFilter.Constraint(field: .originalFileName, label: String(localized: "File name, \(typed)"))
+        case .description:
+            return SearchFilter.Constraint(field: .description, label: String(localized: "Description, \(typed)"))
+        case .smart, .metadata:
+            return nil
+        }
+    }
 
     /// Star-rating filter (star-ratings) — `nil` = no rating constraint.
     /// Sticky by design: it survives text edits and Explore drill-downs; only
@@ -117,7 +144,11 @@ final class SearchViewModel {
     }
 
     // Results
-    private(set) var results: [AssetReactItem] = []
+    private(set) var results: [AssetReactItem] = [] {
+        // The batch engine acts on the rows the grid shows (selection, owner
+        // split, favourite targets): keep its copy in step with every change.
+        didSet { batch.items = results }
+    }
     private(set) var loadedIds: Set<String> = []
     private(set) var currentPage: Int = 1
     /// Flat pagination token: the page number the flat route must send next
@@ -187,13 +218,110 @@ final class SearchViewModel {
 
     /// Asks the server for its version once, and remembers the answer.
     ///
-    /// Lazy on purpose: nothing probes at launch — the first request that
-    /// cannot be expressed flat does, and so does the Filters sheet, which must
-    /// tell the user what the server can search before anything is sent. A
-    /// failed probe stays unknown, so the next request retries it.
+    /// Lazy on purpose: nothing probes at launch — the first metadata request
+    /// does (each carries `visibility`, spelled differently per generation),
+    /// and so does the Filters sheet, which must tell the user what the server
+    /// can search before anything is sent. A failed probe stays unknown, so the
+    /// next request retries it.
     func probeSearchShape() async {
         guard serverVersion == nil else { return }
         serverVersion = try? await client.serverVersion()
+    }
+
+    // MARK: - People and tag pickers (the Filters sheet's two pushed screens)
+
+    /// Every non-hidden person, in the server's order, read once per opening of
+    /// the picker and filtered locally (`matchingPeople`).
+    private(set) var peopleOptions: [PersonResponseDto] = []
+    private(set) var peopleOptionsError: String?
+    private var peopleOptionsLoaded = false
+    private var isLoadingPeopleOptions = false
+
+    var peopleOptionsState: ListRenderState {
+        .resolve(
+            isEmpty: peopleOptions.isEmpty,
+            hasLoaded: peopleOptionsLoaded,
+            isLoading: isLoadingPeopleOptions,
+            isRefreshing: false,
+            loadError: peopleOptionsError
+        )
+    }
+
+    /// Reads every page of `GET /api/people` (hidden people excluded), then
+    /// replaces the list in one go: a failure on page 3 keeps the previous
+    /// list and publishes the reason.
+    func loadPeopleOptions() async {
+        guard !isLoadingPeopleOptions else { return }
+        isLoadingPeopleOptions = true
+        defer { isLoadingPeopleOptions = false }
+        do {
+            var collected: [PersonResponseDto] = []
+            var page = 1
+            while true {
+                let response = try await client.getPeople(page: page, withHidden: false)
+                collected.append(contentsOf: response.people.filter { !$0.isHidden })
+                guard response.hasNextPage == true, !response.people.isEmpty else { break }
+                page += 1
+            }
+            peopleOptions = collected
+            peopleOptionsLoaded = true
+            peopleOptionsError = nil
+        } catch {
+            if UserFacingError.isCancellation(error) { return }
+            peopleOptionsError = error.userFacingMessage
+        }
+    }
+
+    /// The people whose name contains `query`, ignoring case and accents; the
+    /// whole list for a blank query. A nameless person never matches a text.
+    static func matchingPeople(_ people: [PersonResponseDto], query: String) -> [PersonResponseDto] {
+        let options: String.CompareOptions = [.caseInsensitive, .diacriticInsensitive]
+        let needle = query.trimmingCharacters(in: .whitespacesAndNewlines).folding(options: options, locale: nil)
+        guard !needle.isEmpty else { return people }
+        return people.filter { person in
+            !person.name.isEmpty && person.name.folding(options: options, locale: nil).contains(needle)
+        }
+    }
+
+    /// Adds or removes a person; the search runs on Done (`applyFilters()`).
+    func togglePerson(_ person: PersonResponseDto) {
+        filter.toggle(person: person)
+    }
+
+    /// Every tag as an indented row (`TagTree`), read when the picker opens.
+    private(set) var tagOptions: [TagRow] = []
+    private(set) var tagOptionsError: String?
+    private var tagOptionsLoaded = false
+    private var isLoadingTagOptions = false
+
+    var tagOptionsState: ListRenderState {
+        .resolve(
+            isEmpty: tagOptions.isEmpty,
+            hasLoaded: tagOptionsLoaded,
+            isLoading: isLoadingTagOptions,
+            isRefreshing: false,
+            loadError: tagOptionsError
+        )
+    }
+
+    func loadTagOptions() async {
+        guard !isLoadingTagOptions else { return }
+        isLoadingTagOptions = true
+        defer { isLoadingTagOptions = false }
+        do {
+            tagOptions = TagTree.rows(from: try await client.getAllTags())
+            tagOptionsLoaded = true
+            tagOptionsError = nil
+        } catch {
+            if UserFacingError.isCancellation(error) { return }
+            tagOptionsError = error.userFacingMessage
+        }
+    }
+
+    /// Adds or removes a tag by id only: the server includes the descendants
+    /// of `Voyages` when it is asked for `Voyages`, so the client adds nothing.
+    func toggleTag(_ tag: TagResponseDto) {
+        filter.toggle(tag: tag)
     }
 
     // UI state
@@ -224,7 +352,7 @@ final class SearchViewModel {
     private var searchTask: Task<Void, Never>?
     /// Bumped on every new search intent; guards stale in-flight responses
     /// from overwriting the idle state after clear/reset.
-    private var searchGeneration = 0
+    private(set) var searchGeneration = 0
 
     init(
         client: any ImmichClient,
@@ -232,6 +360,7 @@ final class SearchViewModel {
         saved: SavedSearchesStore = SavedSearchesStore()
     ) {
         self.client = client
+        self.batch = TimelineViewModel(client: client)
         self.recentsStore = recents
         self.savedStore = saved
         self.recentSearches = recents.load()
@@ -262,16 +391,27 @@ final class SearchViewModel {
                 try? await Task.sleep(for: .milliseconds(50))
             }
             guard !Task.isCancelled else { return }
-            await search()
+            await runSearch()
         }
     }
 
     // MARK: - Search (AC-401 / AC-401b / AC-402 / AC-405)
 
-    /// Reset + dispatch a fresh search (page=1).
+    /// Reset + dispatch a fresh search (page=1). A pending debounced search is
+    /// dropped: this one supersedes it.
     func search() async {
-        guard !isLoading else { return }
         searchTask?.cancel()
+        await runSearch()
+    }
+
+    /// The search itself. The debounced path calls it from inside `searchTask`,
+    /// so it must not cancel `searchTask`: that cancelled the very task running
+    /// it, the request went out cancelled (URLSession honours the task's
+    /// cancellation) and the cancellation was swallowed below, so a typed query
+    /// never reached the server and the screen stayed on "no results".
+    private func runSearch() async {
+        guard !isLoading else { return }
+        batch.exitSelectionMode()
         let gen = searchGeneration + 1
         searchGeneration = gen
         lastQueried = query.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -281,6 +421,7 @@ final class SearchViewModel {
         // empty query but pre-sets the filter, so we only clear when there is
         // actual free-text to run.)
         if !lastQueried.isEmpty { pendingExploreFilter = nil }
+        reevaluateMode(typed: lastQueried)
         beginRead()
         defer { endRead() }
 
@@ -297,12 +438,7 @@ final class SearchViewModel {
         do {
             let resp = try await dispatchSearch(page: 1)
             // A superseded search (newer keystroke / clear / city tap bumped the
-            // generation) must never overwrite the fresher state. We don't check
-            // `Task.isCancelled` here because `search()` runs inside the very
-            // `searchTask` it cancels on line above — that self-cancel is benign
-            // (it only clears the debounce sleep) and must not short-circuit a
-            // successful response. Cancellation from a *newer* search is caught
-            // by the generation guard.
+            // generation) must never overwrite the fresher state.
             guard gen == searchGeneration else { return }
             applyResponse(resp)
             recordRecentSearch()
@@ -345,6 +481,7 @@ final class SearchViewModel {
     /// Never touches `isRefreshing`, never swallowed by an in-flight read.
     func replaySearch() async {
         guard hasSearched else { return }
+        batch.exitSelectionMode()
         let gen = searchGeneration + 1
         searchGeneration = gen
         beginRead()
@@ -395,44 +532,104 @@ final class SearchViewModel {
         lastQueried = ""
     }
 
-    /// Sets (or clears) the star-rating filter and re-runs the search.
-    ///
-    /// Metadata mode is forced when a value is set: `SmartSearchDto` carries no
-    /// filter field, so a rating filter under Smart search would be dropped
-    /// silently. Values outside the server's `1...5` scale (including `0`, which
-    /// is invalid since v3) mean "no filter" rather than a request the server
-    /// would reject — the `ratingFilter` setter does that normalization.
+    /// Sets (or clears) the star-rating filter and re-runs the search. Smart
+    /// carries the rating as a flat field, so a typed text stays Smart; with no
+    /// text, `search()` moves to Metadata on its own.
     func setRatingFilter(_ value: Int?) async {
         ratingFilter = value
-        if ratingFilter != nil { searchMode = .metadata }
-        await search()
+        await restartSearch()
     }
 
-    /// Done in the Filters sheet: run the filter as it now stands.
-    ///
-    /// Metadata mode is forced when the mode is CLIP (`SmartSearchDto` has no
-    /// filter field, so the filter would be dropped silently), an Explore
+    /// Done in the Filters sheet: run the filter as it now stands. An Explore
     /// drill-down is cancelled — a filter typed into the sheet is the more
     /// specific intent — and the search is dispatched directly: the 400 ms
     /// debounce of `queryDidChange()` would only delay what the user just
-    /// confirmed.
+    /// confirmed. A search already in flight is superseded, not skipped.
     func applyFilters() async {
-        if searchMode == .smart { searchMode = .metadata }
         pendingExploreFilter = nil
-        await search()
+        await restartSearch()
     }
 
     /// Reset, from the sheet or the chips bar: back to `SearchFilter()`, then
     /// the same dispatch path. The query is **not** touched — only the
-    /// constraints go.
+    /// constraints go; the file name / description text mode is one of them
+    /// (the bar shows it as a chip), so the mode returns to Smart and the text
+    /// stays.
     ///
     /// An Explore drill-down goes with them: it is a constraint the chips bar
     /// cannot show, so leaving it behind would contradict a bar that just
     /// emptied.
     func clearFilters() async {
+        let hadTextMode = textModeConstraint != nil
         filter = SearchFilter()
         pendingExploreFilter = nil
+        if hadTextMode {
+            searchMode = .smart
+            metadataIsAutomatic = false
+        }
+        await restartSearch()
+    }
+
+    /// Drops one chip and re-runs the search. The text-mode chips (file name,
+    /// description) return to Smart and keep the text; any other chip clears
+    /// its constraint.
+    func removeConstraint(_ field: SearchFilter.Field) async {
+        switch field {
+        case .originalFileName, .description:
+            searchMode = .smart
+            metadataIsAutomatic = false
+            await restartSearch()
+        default:
+            filter.clear(field)
+            await applyFilters()
+        }
+    }
+
+    /// Menu choice of how the typed text is read. Changing it with a text
+    /// re-runs the search; without one, nothing is sent.
+    func selectSearchMode(_ mode: SearchMode) async {
+        guard mode != searchMode else { return }
+        searchMode = mode
+        metadataIsAutomatic = false
+        if !query.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            await restartSearch()
+        }
+    }
+
+    /// Re-runs the search from the current state even while a read is in
+    /// flight (`search()` alone returns when `isLoading`). The generation bump
+    /// makes the running read drop its answer; once it has finished, a fresh
+    /// search reads the state as it is *then*. A newer restart, keystroke or
+    /// search that takes over while we wait already carries the current state:
+    /// we step aside.
+    private func restartSearch() async {
+        searchTask?.cancel()
+        searchGeneration += 1
+        let token = searchGeneration
+        while isLoading {
+            try? await Task.sleep(for: .milliseconds(50))
+            if token != searchGeneration { return }
+        }
         await search()
+    }
+
+    /// Moves between Smart and Metadata where the typed text and the criteria
+    /// call for it, as long as the user has not picked a mode in the menu.
+    ///
+    /// Smart carries every criterion but the detected-text one, so Metadata is
+    /// taken for an OCR criterion, and for an empty text (Smart needs a query).
+    /// A Metadata that was taken automatically goes back to Smart as soon as a
+    /// text is typed — unless a detected-text criterion is still active.
+    private func reevaluateMode(typed: String) {
+        let ocrCriterion = !(filter.ocrText?.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ?? true)
+        if searchMode == .smart, ocrCriterion || typed.isEmpty {
+            searchMode = .metadata
+            metadataIsAutomatic = true
+        } else if searchMode == .metadata, metadataIsAutomatic,
+                  !typed.isEmpty, !ocrCriterion, !ocrFilterEnabled {
+            searchMode = .smart
+            metadataIsAutomatic = false
+        }
     }
 
     /// Recent-search chip tap: write the term into the field, then search
@@ -471,6 +668,7 @@ final class SearchViewModel {
     }
 
     private func resetToIdle() {
+        batch.exitSelectionMode()
         results = []
         loadedIds = []
         currentPage = 1
@@ -492,74 +690,76 @@ final class SearchViewModel {
     }
 
     /// Builds the right DTO for the current mode + dispatches.
-    /// `pendingExploreFilter` overrides `query` for metadata mode, routed to
-    /// the matching EXIF field (AC-404b / AC-406c — generalized beyond city).
     ///
-    /// The body is always written the flat way first — one writer per
-    /// constraint, the ones the cards pin — and then handed to the shape the
-    /// server speaks: `structuredShape(cursor:)` on a v3.2.0 server,
-    /// `flatShape()` anywhere else. A body never carries both languages, the
+    /// One writer builds the body of every constraint (`constraintBody`):
+    /// the Explore pin, the sheet's `SearchFilter` and the date range, written
+    /// the flat way. Smart then copies the flat criteria its route accepts
+    /// (`smartShape`, flat on every server version: v3.4.0 has no Smart cursor).
+    /// The three metadata modes hand the body to the shape the server speaks —
+    /// `structuredShape(cursor:)` from v3.2.0, `flatShape()` anywhere else,
+    /// unknown version included. A body never carries both languages: the
     /// server rejects that with a 400.
+    ///
+    /// Every metadata request asks the server's version (cached after the
+    /// first answer): each one carries `visibility`, whose flat and structured
+    /// spellings differ, so even free text pays for the probe.
     private func dispatchSearch(page: Int) async throws -> SearchResponseDto {
+        var dto = constraintBody(page: page)
+        if searchMode == .smart {
+            return try await client.searchSmart(dto: dto.smartShape(query: query, page: page))
+        }
+
+        let typed = query.trimmingCharacters(in: .whitespacesAndNewlines)
+        // The toolbar toggle reads the query as a detected-text criterion — in
+        // Metadata mode only. On a server that has no field for one the toggle
+        // changes nothing: emptying the query for a criterion that cannot be
+        // sent would turn a search into an unfiltered one.
+        let toggleCarriesCriterion = searchMode == .metadata
+            && filter.ocrText == nil && ocrFilterEnabled && !typed.isEmpty
+
+        await probeSearchShape()
+        let structured = supportsStructuredSearch
+
         switch searchMode {
         case .metadata:
-            // The toolbar toggle reads the query as a detected-text criterion.
-            // On a server that has no field for one the toggle changes nothing:
-            // emptying the query for a criterion that cannot be sent would turn
-            // a search into an unfiltered one (see `searchShape`).
-            let typed = query.trimmingCharacters(in: .whitespacesAndNewlines)
-            let toggleCarriesCriterion = filter.ocrText == nil && ocrFilterEnabled && !typed.isEmpty
-            let shape = await searchShape(toggleCarriesCriterion: toggleCarriesCriterion)
-
-            var dto = MetadataSearchDto(query: query, page: page)
-            if let (field, value) = pendingExploreFilter {
-                dto.query = nil
-                field.apply(value, to: &dto)
-            }
-            // The sheet's filter and the date range: the only writes of the
-            // whole feature into a request body.
-            filter.apply(to: &dto)
-            if let after = filter.takenAfter { dto.takenAfter = ISO8601.immichFormatter.string(from: after) }
-            if let before = filter.takenBefore { dto.takenBefore = ISO8601.immichFormatter.string(from: before) }
-
-            // The toolbar's "search by detected text" toggle keeps its meaning:
-            // *the typed query is* the criterion, so that route replaces free
-            // text. An OCR criterion typed into the sheet is a filter like any
-            // other (`filter.apply` already wrote it) and joins the query instead
-            // of replacing it.
-            if toggleCarriesCriterion, shape == .structured {
-                dto.query = nil
-                dto.filter = SearchFilterDto(ocr: StringSimilarityFilterDto(matches: typed))
-            }
-
-            switch shape {
-            case .structured:
-                return try await client.searchMetadata(
-                    dto: dto.structuredShape(cursor: page > 1 ? nextCursor : nil)
-                )
-            case .flat:
-                return try await client.searchMetadata(dto: dto.flatShape())
-            }
+            // Text is only ever a criterion through the toggle or the OCR field
+            // (the server ignores a Metadata `query`, decision #10).
+            dto.query = pendingExploreFilter == nil ? query : nil
+        case .filename:
+            if !typed.isEmpty { dto.originalFileName = typed }
+        case .description:
+            if !typed.isEmpty { dto.description = typed }
         case .smart:
-            let dto = SmartSearchDto(query: query, page: page)
-            return try await client.searchSmart(dto: dto)
+            break
         }
+
+        // The toolbar's "search by detected text" toggle keeps its meaning:
+        // *the typed query is* the criterion, so that route replaces free
+        // text. An OCR criterion typed into the sheet is a filter like any
+        // other (`filter.apply` already wrote it) and joins the query instead
+        // of replacing it.
+        if toggleCarriesCriterion, structured {
+            dto.query = nil
+            dto.filter = SearchFilterDto(ocr: StringSimilarityFilterDto(matches: typed))
+        }
+
+        if structured {
+            return try await client.searchMetadata(dto: dto.structuredShape(cursor: page > 1 ? nextCursor : nil))
+        }
+        return try await client.searchMetadata(dto: dto.flatShape())
     }
 
-    /// The shape this request must go out in.
-    ///
-    /// The flat route says everything this screen can ask for *except* two
-    /// things: a detected-text criterion (the deprecated scalar `ocr` is gone
-    /// for good, so the structured filter is its only field) and — in general —
-    /// any Filters-sheet constraint, because the sheet's contract is that the
-    /// request carries exactly its constraints and one body speaks one
-    /// language. What the flat route does say identically well (free text, an
-    /// Explore drill-down) never pays for the probe.
-    private func searchShape(toggleCarriesCriterion: Bool) async -> SearchShape {
-        let needsStructured = !filter.isEmpty || toggleCarriesCriterion
-        guard needsStructured else { return .flat }
-        await probeSearchShape()
-        return supportsStructuredSearch ? .structured : .flat
+    /// The flat body of every active constraint — the only writes of the
+    /// whole feature into a request body.
+    private func constraintBody(page: Int) -> MetadataSearchDto {
+        var dto = MetadataSearchDto(page: page)
+        if let (field, value) = pendingExploreFilter {
+            field.apply(value, to: &dto)
+        }
+        filter.apply(to: &dto)
+        if let after = filter.takenAfter { dto.takenAfter = ISO8601.immichFormatter.string(from: after) }
+        if let before = filter.takenBefore { dto.takenBefore = ISO8601.immichFormatter.string(from: before) }
+        return dto
     }
 
     private func applyResponse(_ resp: SearchResponseDto, append: Bool = false) {
@@ -745,8 +945,88 @@ final class SearchViewModel {
         searchTask?.cancel()
         viewMode = .results
         searchMode = .metadata
+        // Not the user's pick: typing after a card returns to Smart (S-5).
+        metadataIsAutomatic = true
         pendingExploreFilter = (field, value)
         query = ""
         await search()
+    }
+}
+
+// MARK: - Selection and batch actions (L-23b)
+
+/// The result grid's multi-selection. The state and the requests are the
+/// timeline's (`TimelineViewModel`, kept private as `batch`): the same owner
+/// split, the same try-then-mutate discipline, the same routes. This extension
+/// only adapts what the grid shows afterwards.
+extension SearchViewModel {
+    var selectionMode: Bool { batch.selectionMode }
+    var selectedIds: Set<String> { batch.selectedIds }
+
+    /// The selected rows in grid order (what a download enqueues).
+    var selectedItems: [AssetReactItem] { results.filter { batch.selectedIds.contains($0.id) } }
+
+    /// A refusal of a batch action (server or read-only mode), shown by the view.
+    var actionErrorMessage: String? {
+        get { batch.actionErrorMessage }
+        set { batch.actionErrorMessage = newValue }
+    }
+
+    /// Photos of a partner left out of the last batch action.
+    var skippedPartnerCount: Int? {
+        get { batch.skippedPartnerCount }
+        set { batch.skippedPartnerCount = newValue }
+    }
+
+    func enterSelectionMode() { batch.enterSelectionMode() }
+    func exitSelectionMode() { batch.exitSelectionMode() }
+    func toggleSelection(id: String) { batch.toggleSelection(id: id) }
+
+    func ownerScopedSelection(currentUserId: String?) -> (ids: [String], skipped: Int) {
+        batch.ownerScopedSelection(currentUserId: currentUserId)
+    }
+
+    /// "Unarchive" replaces "Archive" when the grid lists archived photos
+    /// (the Archive option is on) or the selection holds only archived rows.
+    var selectionOffersUnarchive: Bool { filter.isArchived || batch.selectionOffersUnarchive }
+
+    func favoriteSelected(currentUserId: String?) async {
+        await batch.favoriteSelected(currentUserId: currentUserId)
+        results = batch.items
+        // A grid filtered on favourites (or non-favourites) no longer holds a
+        // row whose state just changed.
+        if let wanted = filter.isFavorite { results.removeAll { $0.isFavorite != wanted } }
+    }
+
+    func deleteSelected(currentUserId: String?) async {
+        await batch.deleteSelected(currentUserId: currentUserId)
+        results = batch.items
+    }
+
+    func archiveSelected(currentUserId: String?) async {
+        await batch.archiveSelected(currentUserId: currentUserId)
+        results = batch.items
+    }
+
+    /// Moves the selection back to the timeline. The grid lists archived
+    /// photos only when the Archive option is on: then they leave it.
+    func unarchiveSelected() async {
+        let ids = batch.selectedIds
+        await batch.unarchiveSelected()
+        let accepted = !ids.isEmpty && !batch.selectionMode
+        results = batch.items
+        if accepted && filter.isArchived { results.removeAll { ids.contains($0.id) } }
+    }
+
+    func moveSelectedToLockedFolder(currentUserId: String?) async {
+        await batch.moveSelectedToLockedFolder(currentUserId: currentUserId)
+        results = batch.items
+    }
+
+    /// Stacks the selection, then re-reads the results so the new stack shows.
+    func stackSelected(currentUserId: String?) async {
+        let wasSelecting = batch.selectionMode
+        await batch.stackSelected(currentUserId: currentUserId, refreshing: false)
+        if wasSelecting && !batch.selectionMode { await replaySearch() }
     }
 }

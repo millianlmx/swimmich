@@ -110,9 +110,9 @@ final class FloatingControlStyleTests: XCTestCase {
         let bar: Int
     }
 
-    /// The closed table of the style's call sites (29 + 22 + 9).
+    /// The closed table of the style's call sites (29 + 22 + 10).
     private static let expectedCounts: [String: RoleCounts] = [
-        "Sources/Features/PhotoViewer/PhotoViewer.swift": RoleCounts(circle: 8, pill: 5, bar: 1),
+        "Sources/Features/PhotoViewer/PhotoViewer.swift": RoleCounts(circle: 8, pill: 5, bar: 2),
         "Sources/Features/PhotoViewer/PhotoInfoPanel.swift": RoleCounts(circle: 1, pill: 0, bar: 0),
         "Sources/Features/PhotoViewer/AssetLocationMapSheet.swift": RoleCounts(circle: 1, pill: 0, bar: 0),
         "Sources/Features/PhotoViewer/SlideshowView.swift": RoleCounts(circle: 4, pill: 2, bar: 0),
@@ -185,7 +185,7 @@ final class FloatingControlStyleTests: XCTestCase {
             XCTAssertEqual(actual.bar, expected.bar, "\(path): .pvFloating(.bar) count")
         }
         XCTAssertEqual(pills, 22)
-        XCTAssertEqual(bars, 9)
+        XCTAssertEqual(bars, 10)
 
         let roadTrip = try Self.normalizedLines("Sources/Features/RoadTrip/RoadTripView.swift")
         XCTAssertFalse(roadTrip.contains { $0.text.contains(".black.opacity(0.5)") },

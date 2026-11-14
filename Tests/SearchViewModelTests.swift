@@ -51,6 +51,7 @@ final class SearchViewModelTests: XCTestCase {
 
     private func makeMock(items: [AssetResponseDto] = [], nextPage: String? = nil) -> MockImmichClient {
         let mock = MockImmichClient()
+        mock.versionProbeCountsAsRequest = false // the suites count search requests
         let resp = SearchResponseDto(
             assets: SearchAssetResponseDto(count: items.count, items: items, nextPage: nextPage)
         )
@@ -463,6 +464,7 @@ final class SearchViewModelTests: XCTestCase {
 
     func test_AC_406c_loadMore_persists_city_filter() async {
         let mock = MockImmichClient()
+        mock.versionProbeCountsAsRequest = false
         mock.searchMetadataResponse = SearchResponseDto(
             assets: SearchAssetResponseDto(
                 count: 1, items: [makeAsset(id: "p1", city: "Paris")], nextPage: "2"
@@ -491,6 +493,7 @@ final class SearchViewModelTests: XCTestCase {
     /// P0 regression: loadMore must persist a NON-city field filter too.
     func test_AC_406c_loadMore_persists_make_filter() async {
         let mock = MockImmichClient()
+        mock.versionProbeCountsAsRequest = false
         mock.searchMetadataResponse = SearchResponseDto(
             assets: SearchAssetResponseDto(
                 count: 1, items: [makeAsset(id: "c1")], nextPage: "2"
@@ -592,6 +595,20 @@ final class SearchViewModelTests: XCTestCase {
         XCTAssertEqual(mock.lastSmartSearchDto?.query, "beach")
         XCTAssertTrue(vm.hasSearched)
         XCTAssertEqual(vm.results.count, 1)
+    }
+
+    /// The debounced search runs inside the debounce task: it must not cancel
+    /// that task, or the request goes out cancelled (as URLSession does, the gate
+    /// honours cancellation) and a typed query never gets results.
+    func test_liveSearch_debouncedRequestIsNotCancelled() async {
+        let mock = makeMock(items: [makeAsset(id: "a1")])
+        mock.searchSmartGate = { _ in try Task.checkCancellation() }
+        let vm = SearchViewModel(client: mock)
+        vm.debounceInterval = .zero
+        vm.query = "beach"
+        vm.queryDidChange()
+        try? await Task.sleep(for: .milliseconds(80))
+        XCTAssertEqual(vm.results.count, 1, "the debounced search was cancelled by itself")
     }
 
     func test_liveSearch_empty_query_resets_to_idle() async {

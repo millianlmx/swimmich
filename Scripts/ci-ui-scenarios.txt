@@ -36,6 +36,29 @@ immich_stub_dynamic_type.py DynamicTypeUITests/test_AC_26
 immich_stub_dynamic_type.py DynamicTypeUITests/test_AC_26_4_shareExtension --content-size accessibility-extra-extra-extra-large --media Summer-holidays-in-the-Gorges-du-Verdon-with-the-whole-family.png
 immich_stub_dynamic_type.py DynamicTypeUITests/test_AC_26_7
 immich_stub_dynamic_type.py DynamicTypeUITests/test_AC_26_5
+immich_stub_search_filters.py SearchCriteriaUITests/test_AC_42
+immich_stub_search_filters.py SearchCriteriaUITests/test_AC_209
+immich_stub_search_filters.py SearchCriteriaUITests/test_AC_210
+immich_stub_search_filters.py SearchCriteriaUITests/test_AC_211
+immich_stub_search_filters.py SearchCriteriaUITests/test_AC_212
+immich_stub_search_filters.py SearchCriteriaUITests/test_AC_213
+immich_stub_search_filters.py SearchCriteriaUITests/test_AC_43
+immich_stub_search_filters.py SearchCriteriaUITests/test_AC_215
+immich_stub_search_filters.py SearchCriteriaUITests/test_AC_218
+immich_stub_search_filters.py SearchCriteriaUITests/test_AC_216
+immich_stub_search_filters.py SearchCriteriaUITests/test_AC_44
+immich_stub_search_filters.py SearchCriteriaUITests/test_AC_217
+
+# L-27 Share quality, log level and caches (AC-50, AC-52, AC-270 to AC-280).
+immich_stub_share_caches.py ShareAndCachesUITests/test_AC_280
+immich_stub_share_caches.py ShareAndCachesUITests/test_AC_52
+immich_stub_share_caches.py ShareAndCachesUITests/test_AC_277
+immich_stub_share_caches.py ShareAndCachesUITests/test_AC_279
+immich_stub_share_caches.py ShareAndCachesUITests/test_AC_272
+immich_stub_share_caches.py ShareAndCachesUITests/test_AC_275
+immich_stub_share_caches.py ShareAndCachesUITests/test_AC_50
+immich_stub_share_caches.py ShareAndCachesUITests/test_AC_270
+immich_stub_share_caches.py ShareAndCachesUITests/test_AC_273
 
 # L-28 Connexion et démarrage (AC-53 to AC-56, AC-330 to AC-346), against
 # immich_stub_login.py. The widget backup pass needs a photo in the library.
@@ -74,3 +97,19 @@ immich_stub_asset_edits.py AssetEditsUITests/test_AC_188_oldServerSavesCopy
 immich_stub_asset_edits.py AssetEditsUITests/test_AC_189_putErrorShowsMessage
 immich_stub_asset_edits.py AssetEditsUITests/test_AC_39_editedVersionShownThenTheOriginalComesBack
 immich_stub_asset_edits.py AssetEditsUITests/test_AC_40_downloadEditedThenOriginalAsksTwiceWithDifferentFiles
+
+# L-30 widgets photo à leur taille (AC-61.6): the large Photos and Favorites widgets, posed on the Home
+# Screen through SpringBoard, are archived and drawn at the new image sizes (a wall of 4 previews; one
+# favourite on the biggest tile). Erased: a widget posed by an earlier test would falsify the gallery search.
+immich_stub_widgets.py WidgetDisplaySizeUITests/test_AC_61_6_photosLarge --erase
+immich_stub_widgets.py WidgetDisplaySizeUITests/test_AC_61_6_favoritesLargeOneFavorite --erase
+
+immich_stub_edit_stacks.py EditStacksUITests/test_AC_41_editStackedOnOriginal --media L22-edit-on.png --erase
+immich_stub_edit_stacks.py EditStacksUITests/test_AC_41_settingOffSendsNothing --media L22-edit-off.png --erase
+immich_stub_edit_stacks.py EditStacksUITests/test_AC_200_settingOffByDefaultAndPersisted
+
+# L-32 "Remaining to back up": the entry and the list over the real Photos library of the simulator
+# (3 seeded media, plus the sample photos of an erased simulator) → a pass against a server that accepts
+# everything empties both. The AX5 line reads a row at the largest text size: whole file name, no overflow.
+immich_stub_backup_remainder.py BackupRemainderUITests/test_AC_65_remainderFromBackupScreen --media L32-a.png --media L32-b.png --media L32-c.png --erase
+immich_stub_backup_remainder.py BackupRemainderUITests/test_AC_65_9_rowsReadableAtAX5 --content-size accessibility-extra-extra-extra-large --media L32-ax5.png --erase

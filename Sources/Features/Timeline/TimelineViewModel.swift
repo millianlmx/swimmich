@@ -864,8 +864,12 @@ final class TimelineViewModel {
     /// cover would be arbitrary. Grid order makes "the newest selected photo is
     /// the cover" predictable, and the cover stays changeable from the stack
     /// detail.
+    ///
+    /// - Parameter refreshing: `false` for a host that is not the timeline
+    ///   (the search results): the caller re-reads its own list, and this
+    ///   view model must not replace its `items` with timeline buckets.
     @MainActor
-    func stackSelected(currentUserId: String?) async {
+    func stackSelected(currentUserId: String?, refreshing: Bool = true) async {
         let selected = items.filter { selectedIds.contains($0.id) }
         let owned = selected.filter { $0.allowsOwnerActions(currentUserId: currentUserId) }.map(\.id)
         let skipped = selected.count - owned.count
@@ -877,7 +881,7 @@ final class TimelineViewModel {
             _ = try await client.createStack(assetIds: owned)
             exitSelectionMode()
             if skipped > 0 { skippedPartnerCount = skipped }
-            await refresh()
+            if refreshing { await refresh() }
         } catch let e {
             actionErrorMessage = e.userFacingMessage
         }
