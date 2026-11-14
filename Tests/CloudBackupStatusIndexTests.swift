@@ -21,7 +21,7 @@ final class CloudBackupStatusIndexTests: XCTestCase {
     private func enabledIndex(ledger: BackupLedger) -> CloudBackupStatusIndex {
         let index = CloudBackupStatusIndex()
         index.setEnabled(true)
-        index.refresh(ledger: ledger)
+        index.refresh(ledger: ledger, editLedger: BackupEditLedger.inMemory())
         return index
     }
 
@@ -68,11 +68,36 @@ final class CloudBackupStatusIndexTests: XCTestCase {
         XCTAssertNil(index.status(forServerAssetID: "uuid-inconnu"))
     }
 
+    /// An edit sent and stacked is the head of its stack, the one tile the
+    /// timeline shows: it carries the badge. An edit waiting for its stack is on
+    /// the server too. The local side stays the original's.
+    @MainActor
+    func test_AC_41_statusForServerAssetID_countsTheEditsOfTheEditLedger() {
+        let editLedger = BackupEditLedger.inMemory()
+        editLedger.upsert(id: "lib-1", BackupEditRecord(
+            signature: "s", checksum: "c", serverAssetId: "edit-stacked", originalServerAssetId: "srv-1",
+            previousServerAssetId: nil, isStacked: true, fileName: "a.jpg"
+        ))
+        editLedger.upsert(id: "lib-2", BackupEditRecord(
+            signature: "s", checksum: "c2", serverAssetId: "edit-pending", originalServerAssetId: nil,
+            previousServerAssetId: nil, isStacked: false, fileName: "b.jpg"
+        ))
+        let index = CloudBackupStatusIndex()
+        index.setEnabled(true)
+
+        index.refresh(ledger: ledgerWithOneUploadedAsset(), editLedger: editLedger)
+
+        XCTAssertEqual(index.status(forServerAssetID: "edit-stacked"), .uploaded)
+        XCTAssertEqual(index.status(forServerAssetID: "edit-pending"), .uploaded)
+        XCTAssertEqual(index.status(forServerAssetID: "srv-1"), .uploaded)
+        XCTAssertEqual(index.status(forLocalAssetID: "lib-2"), .localOnly, "the local side is the original ledger's")
+    }
+
     /// With the setting off no tile carries a badge, whatever the ledger holds.
     @MainActor
     func test_isEnabledFalse_suppressesEveryStatus() {
         let index = CloudBackupStatusIndex()
-        index.refresh(ledger: ledgerWithOneUploadedAsset())
+        index.refresh(ledger: ledgerWithOneUploadedAsset(), editLedger: BackupEditLedger.inMemory())
         XCTAssertFalse(index.isEnabled, "le réglage par défaut est éteint")
 
         XCTAssertNil(index.status(forServerAssetID: "srv-1"))
@@ -220,7 +245,7 @@ final class CloudBackupStatusRecordingTests: XCTestCase {
         )
         let index = CloudBackupStatusIndex()
         index.setEnabled(true)
-        engine.onLedgerChange = { index.refresh(ledger: ledger) }
+        engine.onLedgerChange = { index.refresh(ledger: ledger, editLedger: BackupEditLedger.inMemory()) }
 
         await engine.run(settings: BackupSettings(isEnabled: true))
 

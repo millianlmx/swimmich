@@ -54,6 +54,21 @@ struct MetadataSearchDto: Codable, Equatable {
     /// v3.2.0. Never written next to the flat `page` — the server rejects the
     /// mix — so `flatShape()` drops it.
     var cursor: String?
+    /// Tag ids — the flat form of `filter.tagIds.all`: every tag must match,
+    /// descendants included (server-side closure). Appended after `cursor` so
+    /// every existing member-wise call keeps compiling.
+    var tagIds: [String]?
+    /// Written on **every** metadata request (`timeline` unless the Archive
+    /// option is on): without it the server's flat routes would mix archived
+    /// photos into the results (`not-locked`).
+    var visibility: AssetVisibility?
+    /// Only ever `true` (the official client never sends `false`): the photos
+    /// that belong to no album.
+    var isNotInAlbum: Bool?
+    /// Substring of the original file name (case and accent insensitive).
+    var originalFileName: String?
+    /// Substring of the description (case and accent insensitive).
+    var description: String?
 
     // MARK: - The two shapes of the request
 
@@ -84,6 +99,32 @@ struct MetadataSearchDto: Codable, Equatable {
         return dto
     }
 
+    /// The body of `POST /api/search/smart`: the fifteen flat criteria the
+    /// Smart route accepts since v2.0.0, plus the text. Flat on every server
+    /// version: v3.4.0 has no cursor for Smart (`searchSmartV3`), so the
+    /// structured shape would give up pagination. Never carries `filter`,
+    /// `orderBy`, `cursor`, `originalFileName`, `description`, `albumIds` or
+    /// `order` — the route has no field for them.
+    func smartShape(query: String, page: Int) -> SmartSearchDto {
+        var dto = SmartSearchDto(query: query, page: page)
+        dto.personIds = personIds
+        dto.tagIds = tagIds
+        dto.isNotInAlbum = isNotInAlbum
+        dto.isFavorite = isFavorite
+        dto.visibility = visibility
+        dto.rating = rating
+        dto.type = type
+        dto.city = city
+        dto.state = state
+        dto.country = country
+        dto.make = make
+        dto.model = model
+        dto.lensModel = lensModel
+        dto.takenAfter = takenAfter
+        dto.takenBefore = takenBefore
+        return dto
+    }
+
     /// The flat constraints of this request, projected onto `SearchFilter`.
     ///
     /// One writer per constraint and one operator each (`nonEmptyPartial`
@@ -105,6 +146,12 @@ struct MetadataSearchDto: Codable, Equatable {
         if takenAfter != nil || takenBefore != nil {
             structured.takenAt = DateFilterDto(gte: takenAfter, lte: takenBefore)
         }
+        if let personIds, !personIds.isEmpty { structured.personIds = IdsFilterDto(all: personIds) }
+        if let tagIds, !tagIds.isEmpty { structured.tagIds = IdsFilterDto(all: tagIds) }
+        if isNotInAlbum == true { structured.hasAlbums = BoolFilterDto(eq: false) }
+        if let visibility { structured.visibility = EnumFilterAssetVisibilityDto(eq: visibility.rawValue) }
+        if let originalFileName { structured.originalFileName = StringPatternFilterDto(like: originalFileName) }
+        if let description { structured.description = StringPatternFilterDto(like: description) }
         // An operator-less `SearchFilter` would make the body say "filtered"
         // while nothing is filtered; the key simply stays out.
         return structured == SearchFilterDto() ? nil : structured
@@ -120,11 +167,30 @@ struct SearchOrderDto: Codable, Equatable {
 }
 
 /// Body for `POST /api/search/smart` — CLIP semantic search.
+///
+/// The criteria are the flat fields every server since v2.0.0 accepts
+/// (`ocr` only exists from v3.1.0, so it is not carried). They are deprecated
+/// from v3.2.0 but accepted without a `filter`, which Smart has no use for.
 struct SmartSearchDto: Codable, Equatable {
     var query: String
     var page: Int?
     var size: Int?
     var withExif: Bool?
+    var personIds: [String]?
+    var tagIds: [String]?
+    var isNotInAlbum: Bool?
+    var isFavorite: Bool?
+    var visibility: AssetVisibility?
+    var rating: Int?
+    var type: String?
+    var city: String?
+    var state: String?
+    var country: String?
+    var make: String?
+    var model: String?
+    var lensModel: String?
+    var takenAfter: String?
+    var takenBefore: String?
 }
 
 /// Body for `POST /api/search/statistics` — returns a total count for a given

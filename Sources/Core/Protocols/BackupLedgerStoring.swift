@@ -1,5 +1,13 @@
 import Foundation
 
+/// What the ledger knows about one tracked asset (a copy: the stored entry is
+/// private to the ledger).
+struct BackupLedgerEntry: Equatable, Sendable {
+    let signature: String
+    let checksum: String?
+    let serverAssetId: String?
+}
+
 /// Persistent record of assets already backed up to the server, keyed by the
 /// Photos `localIdentifier`. It lets a run skip assets it has already handled
 /// — uploaded, or confirmed by the server as duplicates — *before* exporting
@@ -66,6 +74,11 @@ protocol BackupLedgerStoring: Sendable {
     /// Forgets every tracked asset, forcing a full re-backup on the next run.
     /// Used when the server library was wiped and the local ledger is stale.
     func removeAll()
+
+    /// Read-only view of one tracked entry — signature, checksum and server
+    /// UUID — or nil when the id is not tracked. The engine's edit logic needs
+    /// the original's server id and checksum by local id.
+    func trackedEntry(id: String) -> BackupLedgerEntry?
 }
 
 extension BackupLedgerStoring {

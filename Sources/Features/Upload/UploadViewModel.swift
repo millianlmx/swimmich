@@ -85,6 +85,13 @@ final class BackupSettingsStore {
         didSet { defaults.set(Array(syncedAlbumIDs), forKey: Self.syncedAlbumsKey) }
     }
 
+    /// "Also back up edits": upload the edited version of an asset edited on
+    /// the phone and stack it on its original. Off by default — off, the
+    /// backup is the original alone, exactly as before this setting existed.
+    var backUpEdits: Bool {
+        didSet { defaults.set(backUpEdits, forKey: Self.backUpEditsKey) }
+    }
+
     static let enabledKey = "photoBackupEnabled"
     static let wifiKey = "photoBackupOnlyWiFi"
     static let chargingKey = "photoBackupOnlyCharging"
@@ -96,6 +103,7 @@ final class BackupSettingsStore {
     static let autoDetectNewPhotosKey = "photoBackupAutoDetectNewPhotos"
     static let showSyncBadgeKey = "photoBackupShowSyncBadge"
     static let syncedAlbumsKey = "photoBackupSyncedAlbums"
+    static let backUpEditsKey = "photoBackupEdits"
 
     /// Legacy keys, read once for the one-shot migration and then deleted.
     /// The old screenshots toggle becomes the Screenshots smart album; the
@@ -129,6 +137,7 @@ final class BackupSettingsStore {
         }
         excludedAlbumIDs = excluded
         syncedAlbumIDs = Set(defaults.stringArray(forKey: Self.syncedAlbumsKey) ?? [])
+        backUpEdits = defaults.bool(forKey: Self.backUpEditsKey)
         if let raw = defaults.string(forKey: Self.albumScopeKey),
            let stored = BackupAlbumScope(rawValue: raw) {
             albumScope = stored
@@ -170,7 +179,8 @@ final class BackupSettingsStore {
             excludedAlbumIDs: inForce == .excluded ? excludedAlbumIDs : [],
             selectedAlbumIDs: inForce == .selected ? selectedAlbumIDs : [],
             showSyncBadge: showSyncBadge,
-            syncedAlbumIDs: syncedAlbumIDs
+            syncedAlbumIDs: syncedAlbumIDs,
+            backUpEdits: backUpEdits
         )
     }
 }
@@ -270,6 +280,7 @@ final class UploadViewModel {
         photos: any PhotoLibraryService,
         engine: BackupEngine? = nil,
         ledger: (any BackupLedgerStoring)? = nil,
+        editLedger: (any BackupEditLedgerStoring)? = nil,
         settings: BackupSettingsStore? = nil,
         scheduler: any BackgroundBackupScheduling = BGTaskBackupScheduler(),
         activityService: any BackupLiveActivityServicing = LiveActivityBackupService(),
@@ -291,6 +302,7 @@ final class UploadViewModel {
             client: client,
             source: (photos as? BackupAssetSource) ?? PhotoLibraryServiceImpl(),
             ledger: ledger ?? BackupLedger.persistent(),
+            editLedger: editLedger ?? BackupEditLedger.persistent(),
             albumSync: albumSync,
             userID: userID
         )
@@ -546,7 +558,7 @@ final class UploadViewModel {
     /// throttle. Non-destructive: it only forgets entries the server no longer
     /// has, so those get re-uploaded instead of being skipped forever.
     func reconcileNow() async {
-        await engine.reconcileNow()
+        await engine.reconcileNow(includeEdits: settings.backUpEdits)
     }
 
     // MARK: - Album mirror (device → server)
@@ -808,6 +820,15 @@ struct BackupSettingsView: View {
                     .padding(.leading, PVSpacing.s16)
             }
             Toggle("Charging only", isOn: $vm.settings.onlyWhenCharging)
+            Toggle(isOn: $vm.settings.backUpEdits) {
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("Also back up edits")
+                    Text("Edits made in Photos or another app are uploaded too, stacked on top of their original.")
+                        .font(.pvCaption)
+                        .foregroundStyle(Color.textSecondaryPV)
+                }
+            }
+            .accessibilityIdentifier("backupEditsToggle")
             Toggle("Back up new photos automatically", isOn: $vm.settings.autoDetectNewPhotos)
                 .onChange(of: vm.settings.autoDetectNewPhotos) { _, _ in
                     DependencyContainer.shared.syncLibraryMonitor()
