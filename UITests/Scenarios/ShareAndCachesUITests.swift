@@ -14,7 +14,10 @@ import XCTest
 ///
 /// The iOS share sheet is "open" when an element with the identifier
 /// `ActivityListView` (or `UIActivityContentView`) exists, or when the system
-/// sheet's own close button does; the test closes it afterwards.
+/// sheet's own close button does. The test never drives it: on iOS 26 the app
+/// stops reporting idle while the sheet is up, so a tap or swipe on it can stall
+/// XCUITest ("Stall on main thread", or a swipe on an empty frame). Once seen,
+/// the sheet is left by relaunching the app (`leaveIOSSheet`), session kept.
 ///
 /// One test per criterion (AC-50, AC-52, AC-270, AC-272, AC-273, AC-275, AC-277,
 /// AC-279, AC-280). Each one signs in on its own, resets the stub, and gives its
@@ -41,7 +44,6 @@ final class ShareAndCachesUITests: XCTestCase {
 
     private static let welcome = ["Your photo library", "Votre photothèque"]
     private static let resetLabels = ["Reset", "Zurücksetzen", "Restablecer", "Réinitialiser", "Reimposta"]
-    private static let closeLabels = ["Close", "Fermer", "Schließen", "Cerrar", "Chiudi"]
 
     /// The character `AppLogEntry.message` puts between a call and its outcome.
     private let arrow = "\u{2192}"
@@ -118,8 +120,7 @@ final class ShareAndCachesUITests: XCTestCase {
         var diff = Array(stubRequests().dropFirst(before))
         XCTAssertTrue(diff.filter { isThumbnail($0, of: photo) }.isEmpty,
                       "sharing with 'Original' also fetched a thumbnail of P1 — got:\n\(describe(diff))")
-        closeIOSSheet()
-        closeViewer()
+        leaveIOSSheet()
 
         // Preview: only `thumbnail?size=preview`.
         setShareQuality(1)
@@ -135,8 +136,7 @@ final class ShareAndCachesUITests: XCTestCase {
                       "sharing with 'Preview' downloaded the original — got:\n\(describe(diff))")
         XCTAssertTrue(diff.filter { isThumbnail($0, of: photo) }.allSatisfy { $0.params["size"] == "preview" },
                       "sharing with 'Preview' fetched a thumbnail that is not size=preview — got:\n\(describe(diff))")
-        closeIOSSheet()
-        closeViewer()
+        leaveIOSSheet()
     }
 
     /// AC-272: a long press on Share chooses the quality of ONE share, shares at
@@ -160,7 +160,8 @@ final class ShareAndCachesUITests: XCTestCase {
         XCTAssertTrue(waitForIOSSheet(timeout: 30), "the iOS share sheet did not open after the choice — \(screenReads())")
         XCTAssertFalse(element("shareSheetNativeShareButton").exists,
                        "the long press opened the actions sheet instead of sharing at once")
-        closeIOSSheet()
+        leaveIOSSheet()
+        openSettledViewer(photo)
 
         // A plain tap still shares in the setting (Preview).
         before = stubRequests().count
@@ -171,8 +172,7 @@ final class ShareAndCachesUITests: XCTestCase {
         XCTAssertTrue(waitForIOSSheet(timeout: 30), "the iOS share sheet did not open for the header share")
         XCTAssertTrue(stubRequests().dropFirst(before).filter { isOriginal($0, of: photo) }.isEmpty,
                       "the header share downloaded the original although the setting is Preview")
-        closeIOSSheet()
-        closeViewer()
+        leaveIOSSheet()
 
         // The one-off choice left the setting alone.
         openPreferences()
@@ -282,8 +282,8 @@ final class ShareAndCachesUITests: XCTestCase {
         let done = element("imageCacheClearedDismiss")
         XCTAssertTrue(done.waitForExistence(timeout: 20), "no 'Image Cache Cleared' alert after confirming")
         done.tap()
-        XCTAssertTrue(waitUntil(timeout: 10) { self.cacheSizeText().hasPrefix("0") },
-                      "the image cache size does not start with 0 after clearing — it reads '\(cacheSizeText())'")
+        XCTAssertTrue(waitUntil(timeout: 10) { self.cacheSizeInteger() == 0 },
+                      "the image cache size does not read 0 after clearing — it reads '\(cacheSizeText())'")
         closeHub()
 
         // AC-275: the album is fetched again.
@@ -526,19 +526,11 @@ final class ShareAndCachesUITests: XCTestCase {
         waitUntil(timeout: timeout) { self.iosSheetOpen }
     }
 
-    private func closeIOSSheet() {
-        for _ in 0..<3 where iosSheetOpen {
-            let close = app.buttons.matching(labelPredicate(Self.closeLabels)).firstMatch
-            if iosSheetCloseButton.exists {
-                iosSheetCloseButton.tap()
-            } else if close.exists {
-                close.tap()
-            } else if iosSheet.exists {
-                iosSheet.swipeDown()
-            }
-            if waitUntil(timeout: 8, { !self.iosSheetOpen }) { break }
-        }
-        XCTAssertTrue(waitUntil(timeout: 15) { !self.iosSheetOpen }, "the iOS share sheet did not close — \(screenReads())")
+    /// Leaves an open iOS share sheet without touching it: the app is relaunched
+    /// on the same session (see the type's comment), and the viewer with it.
+    private func leaveIOSSheet() {
+        relaunch()
+        XCTAssertFalse(iosSheetOpen, "the iOS share sheet outlived the relaunch")
     }
 
     // MARK: - Offline
@@ -708,8 +700,11 @@ final class ShareAndCachesUITests: XCTestCase {
         return (value.value as? String) ?? ""
     }
 
+    /// The number the size row reads. `LabeledContent` merges the row, so the
+    /// identified element's label is "Image Cache, 5 MB": the last run of digits
+    /// is the size.
     private func cacheSizeInteger() -> Int? {
-        Int(cacheSizeText().prefix { $0.isNumber })
+        cacheSizeText().split(whereSeparator: { !$0.isNumber }).last.flatMap { Int($0) }
     }
 
     // MARK: - Segmented pickers
