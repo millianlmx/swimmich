@@ -173,13 +173,16 @@ final class ConfirmationsUITests: XCTestCase {
         return target
     }
 
-    /// A row of the "Me" hub (a `Form`), by identifier, scrolled into view.
+    /// A row of the "Me" hub (a `Form`), by identifier, scrolled into view. The
+    /// row is waited on before each swipe: a swipe sent while the sheet still
+    /// animates in lands on the timeline beneath it.
     private func hubRow(_ identifier: String) -> XCUIElement {
         let row = app.buttons.matching(identifier: identifier).firstMatch
-        for _ in 0..<8 where !row.exists {
+        for _ in 0..<8 where !row.waitForExistence(timeout: 2) {
             app.swipeUp()
             sleep(1)
         }
+        XCTAssertTrue(row.exists, "the Me hub has no \(identifier) row — \(screenText())")
         return row
     }
 
@@ -346,7 +349,13 @@ final class ConfirmationsUITests: XCTestCase {
         if uploadDelay > 0 { setUploadDelay(seconds: uploadDelay) }
         app.launchArguments = ["-AppleLanguages", "(en)", "-AppleLocale", "en_US", "-uiTestHapticProbe", "YES"]
         app.launch()
-        if waitForStaticText(["Your photo library", "Votre photothèque"], timeout: 30) {
+        // A signed-in device lands on the timeline without the onboarding: wait
+        // for whichever comes first, never the full onboarding timeout (the
+        // teardowns relaunch a signed-in app; 30 s lost there broke the budget).
+        let onboarding = app.staticTexts.matching(labelPredicate(["Your photo library", "Votre photothèque"])).firstMatch
+        let photosTab = app.tabBars.buttons["Photos"]
+        _ = waitUntil(30) { onboarding.exists || photosTab.exists }
+        if onboarding.exists, !photosTab.exists {
             signIn()
         }
         XCTAssertTrue(app.tabBars.buttons["Photos"].waitForExistence(timeout: 30),
@@ -381,14 +390,30 @@ final class ConfirmationsUITests: XCTestCase {
         XCTAssertTrue(dismissed, "the Me sheet never dismissed")
     }
 
+    /// Me hub → Preferences, on the model of the Backup row: the row is waited
+    /// on until it is hittable, then tapped; while the Preferences screen does
+    /// not show, the app and SpringBoard alerts are answered (a banner or a
+    /// permission prompt can stand over the hub's first row) and the row is
+    /// tapped again — at most 3 attempts. The screen is recognised by its first
+    /// section (the Haptic Feedback toggle sits at the bottom of the form and is
+    /// only published once scrolled to).
     private func openPreferences() {
         openHub()
         let row = hubRow("preferencesRow")
-        XCTAssertTrue(row.waitForExistence(timeout: 10), "Preferences row missing — \(screenText())")
-        row.tap()
-        XCTAssertTrue(element("preferencesHapticsToggle").waitForExistence(timeout: 20)
-                      || element("preferencesThemePicker").waitForExistence(timeout: 5),
-                      "the Preferences screen never opened")
+        let opened = { () -> Bool in
+            ["preferencesHapticsToggle", "preferencesGroupPicker", "preferencesSmoothScrubbingToggle"]
+                .contains { self.element($0).exists }
+        }
+        for attempt in 0..<3 where !opened() {
+            if attempt > 0 { answerPermissionPrompts(window: 4) }
+            if opened() { break }
+            let ready = waitUntil(10) { row.exists && row.isHittable }
+            XCTAssertTrue(ready || opened(),
+                          "the Preferences row is not hittable in the Me hub (attempt \(attempt + 1)) — \(screenText())")
+            if ready { row.tap() }
+            _ = waitUntil(10) { opened() }
+        }
+        XCTAssertTrue(opened(), "the Preferences screen never opened after 3 attempts — \(screenText())")
     }
 
     private func openBackup() {
@@ -401,6 +426,29 @@ final class ConfirmationsUITests: XCTestCase {
         XCTAssertTrue(element("runBackupButton").waitForExistence(timeout: 25)
                       || element("autoBackupToggle").waitForExistence(timeout: 5),
                       "the Backup screen never loaded — \(screenText())")
+    }
+
+    /// The backup tests leave a signed-in device with Photos access and
+    /// notifications granted; the next scenario on the same simulator is not
+    /// erased. Their teardown relaunches the app (the held pass dies with it)
+    /// and turns "Auto backup" off, so no pass — and no "Backup complete"
+    /// notification banner over the Me hub — starts when the next test launches.
+    private func turnAutoBackupOffAtTeardown() {
+        addTeardownBlock { [self] in
+            app.terminate()
+            launchSignedIn()
+            openBackup()
+            let toggle = scrollTo("autoBackupToggle")
+            XCTAssertTrue(waitUntil(15) { toggle.exists && toggle.isHittable },
+                          "the Auto backup toggle is missing — \(screenText())")
+            for _ in 0..<3 where (toggle.value as? String) != "0" {
+                // The element is the whole row: its own control sits at the trailing edge.
+                toggle.coordinate(withNormalizedOffset: CGVector(dx: 0.93, dy: 0.5)).tap()
+                _ = waitUntil(4) { (toggle.value as? String) == "0" }
+            }
+            XCTAssertEqual(toggle.value as? String, "0", "Auto backup never turned off — \(screenText())")
+            app.terminate()
+        }
     }
 
     private func openPartners() {
@@ -599,6 +647,7 @@ final class ConfirmationsUITests: XCTestCase {
     /// the confirmation zeroes it.
     func test_AC_62_backupResetTracking() throws {
         launchSignedIn()
+        turnAutoBackupOffAtTeardown()
         openBackup()
 
         scrollTo("runBackupButton").tap()
@@ -827,11 +876,13 @@ final class ConfirmationsUITests: XCTestCase {
         assertProbe("partnerStopSharing", "none calls=1")
     }
 
-    /// The Me hub → Preferences → "Haptic Feedback" set to `on`, then back to the timeline.
+    /// The Me hub → Preferences → "Haptic Feedback" set to `on`, then back to the
+    /// timeline. The toggle is the form's last control: scrolled to before use.
     private func setHaptics(on: Bool) {
         openPreferences()
-        let toggle = element("preferencesHapticsToggle")
-        XCTAssertTrue(toggle.waitForExistence(timeout: 15), "the Haptic Feedback toggle is missing")
+        let toggle = scrollTo("preferencesHapticsToggle")
+        XCTAssertTrue(waitUntil(15) { toggle.exists && toggle.isHittable },
+                      "the Haptic Feedback toggle is missing — \(screenText())")
         let wanted = on ? "1" : "0"
         for _ in 0..<3 where (toggle.value as? String) != wanted {
             // The element is the whole row: its own control sits at the trailing edge.
@@ -934,6 +985,7 @@ final class ConfirmationsUITests: XCTestCase {
     /// "Resume last backup" a start again, and the upload details' "Stop" a stop.
     func test_AC_809_backupScreenStartStop() throws {
         launchSignedIn(uploadDelay: longUploadSeconds)
+        turnAutoBackupOffAtTeardown()
         openBackup()
         assertProbe("backupStart.settings", "none calls=0")
         assertProbe("backupStop.settings", "none calls=0")
@@ -983,6 +1035,7 @@ final class ConfirmationsUITests: XCTestCase {
     /// AC-809: the sync status sheet's "Run now" plays a start, its "Stop" a stop.
     func test_AC_809_syncStatusStartStop() throws {
         launchSignedIn(uploadDelay: longUploadSeconds)
+        turnAutoBackupOffAtTeardown()
         let syncButton = app.buttons.matching(identifier: "syncStatusButton").firstMatch
         XCTAssertTrue(syncButton.waitForExistence(timeout: 15), "the sync status button is missing from the timeline")
         syncButton.tap()
