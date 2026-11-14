@@ -492,7 +492,7 @@ Chaque écran principal a une ligne par aspect. « États » regroupe le chargem
 | L-29 | Visionneuse : relance des erreurs, haptique, diaporama éveillé et repli vidéo | B-33 | planifié | — | — |
 | L-30 | Widgets photo nets à leur taille réelle | B-35 | livré | 1438907cf4b6 | AC-61, AC-61.1, AC-61.2, AC-61.3, AC-61.4, AC-61.5, AC-61.6, AC-61.7, AC-61.8, AC-61.9, AC-61.10, AC-61.11 |
 | L-31 | Confirmations avec Annuler, échec Face ID, barre unique et retours haptiques | B-36 | planifié | — | — |
-| L-32 | Sauvegarde : liste des photos qui restent à sauvegarder | B-37 | livré | 8b4d838137a0 | AC-65, AC-65.1, AC-65.2, AC-65.3, AC-65.4, AC-65.5, AC-65.6, AC-65.7, AC-65.8, AC-65.9, AC-65.10, AC-65.11, AC-65.12 |
+| L-32 | Sauvegarde : liste des photos qui restent à sauvegarder | B-37 | livré | b3f6ff9a677b | AC-65, AC-65.1, AC-65.2, AC-65.3, AC-65.4, AC-65.5, AC-65.6, AC-65.7, AC-65.8, AC-65.9, AC-65.10, AC-65.11, AC-65.12 |
 | L-33 | Correction de la date avec choix du fuseau horaire | B-38 | planifié | — | — |
 | L-34 | Albums : tri et filtre de la liste, options pour les membres | B-39, B-40 | planifié | — | — |
 | L-35 | Widget Souvenirs : intitulés des anniversaires | B-41 | planifié | — | — |
