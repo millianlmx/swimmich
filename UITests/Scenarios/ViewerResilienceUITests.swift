@@ -522,27 +522,21 @@ final class ViewerResilienceUITests: XCTestCase {
         leavePreferencesAndHub()
     }
 
-    /// The Me sheet's bar: the lowest one on screen (the covered timeline's sits above it).
-    private func sheetNavigationBar() -> XCUIElement {
-        let bars = app.navigationBars.allElementsBoundByIndex.filter(\.exists)
-        return bars.max { $0.frame.minY < $1.frame.minY } ?? app.navigationBars.firstMatch
-    }
-
     /// Preferences → Back → the hub → dragged down from its bar (the sheet has no
-    /// Done button; a drag inside the list would scroll it). The close is VERIFIED
-    /// on `profileList`: the covered timeline stays in the tree, so its tab bar
-    /// proves nothing.
+    /// Done button; a drag inside the list would scroll it), as `DynamicTypeUITests`
+    /// does on the CI. The close is VERIFIED on `profileList`: the covered timeline
+    /// stays in the tree, so its tab bar proves nothing.
     private func leavePreferencesAndHub() {
-        let back = sheetNavigationBar().buttons.firstMatch
-        XCTAssertTrue(back.waitForExistence(timeout: 10), "no Back button on Preferences — \(screenText())")
+        let back = app.navigationBars.firstMatch.buttons.firstMatch
+        XCTAssertTrue(back.waitForExistence(timeout: 15), "no Back button on Preferences — \(screenText())")
         XCTAssertTrue(waitHittable(back), "the Back button of Preferences is not hittable")
         back.tap()
-        XCTAssertTrue(element("profileList").waitForExistence(timeout: 10), "Back did not return to the Me hub")
         XCTAssertTrue(waitUntil(timeout: 10) { !self.element("preferencesHapticsToggle").exists },
                       "Preferences is still on screen after Back")
+        XCTAssertTrue(element("profileList").waitForExistence(timeout: 10), "Back did not return to the Me hub")
         var closed = false
         for attempt in 0..<3 where !closed {
-            let bar = sheetNavigationBar()
+            let bar = app.navigationBars.firstMatch
             let start = bar.exists
                 ? bar.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5))
                 : app.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.12))
@@ -550,8 +544,7 @@ final class ViewerResilienceUITests: XCTestCase {
             closed = waitUntil(timeout: 6) { !self.element("profileList").exists }
         }
         XCTAssertTrue(closed, "the Me sheet did not close — \(screenText())")
-        XCTAssertTrue(waitHittable(app.buttons.matching(identifier: "profileAvatar").firstMatch, timeout: 10),
-                      "the shell is not back after the Me sheet")
+        XCTAssertTrue(waitHittable(tile(hapticOffPhoto), timeout: 15), "not back on the timeline after the Me sheet")
     }
 
     // MARK: - AC-58.1: the screen stays on
