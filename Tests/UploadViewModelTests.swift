@@ -561,6 +561,13 @@ final class BackupAlbumsLoadingTests: XCTestCase {
     }
 }
 
+/// Counts the start signals of a pass (a reference, so a `@MainActor` closure
+/// can bump it from inside a `Task`).
+@MainActor
+final class StartCounter {
+    var count = 0
+}
+
 // MARK: - Start / stop acceptance (L-31, AC-64, AC-809)
 
 /// The view plays its start / stop haptic from these signals: `onStart` fires
@@ -594,25 +601,25 @@ final class UploadViewModelHapticSignalTests: XCTestCase {
     func test_AC_809_onStartFiresOnceWhileThePassRuns() async {
         let (vm, source) = makeRunningVM()
         source.exportGate = { _ in try await suspendUntilCancelled() }
-        var starts = 0
+        let starts = StartCounter()
 
-        let run = Task { @MainActor in await vm.startBackup { starts += 1 } }
+        let run = Task { @MainActor in await vm.startBackup { starts.count += 1 } }
         await pollUntil("export en vol") { source.exportedIDs.contains("c1") }
-        XCTAssertEqual(starts, 1, "the signal comes at the start, not at the end")
+        XCTAssertEqual(starts.count, 1, "the signal comes at the start, not at the end")
 
         XCTAssertTrue(vm.cancelBackup())
         await run.value
-        XCTAssertEqual(starts, 1, "the end of a pass plays nothing")
+        XCTAssertEqual(starts.count, 1, "the end of a pass plays nothing")
     }
 
     // AC-809: Resume goes through the same signal.
     @MainActor
     func test_AC_809_resumeSignalsStartOnce() async {
         let (vm, _) = makeRunningVM()
-        var starts = 0
-        vm.resumeUpload { starts += 1 }
+        let starts = StartCounter()
+        vm.resumeUpload { starts.count += 1 }
         await vm.awaitCurrentBackup()
-        XCTAssertEqual(starts, 1)
+        XCTAssertEqual(starts.count, 1)
     }
 
     // AC-809: a refused pass (read-only mode, engine busy) never signals.
@@ -621,18 +628,18 @@ final class UploadViewModelHapticSignalTests: XCTestCase {
         let readOnly = ReadOnlyModeStore.ephemeral()
         readOnly.setEnabled(true)
         let (blocked, _) = makeRunningVM(readOnly: readOnly)
-        var starts = 0
-        let refused = await blocked.startBackup { starts += 1 }
+        let starts = StartCounter()
+        let refused = await blocked.startBackup { starts.count += 1 }
         guard case .refused = refused else { return XCTFail("read-only mode refuses the pass") }
-        XCTAssertEqual(starts, 0)
+        XCTAssertEqual(starts.count, 0)
 
         let (busy, source) = makeRunningVM()
         source.exportGate = { _ in try await suspendUntilCancelled() }
-        let first = Task { @MainActor in await busy.startBackup { starts += 1 } }
+        let first = Task { @MainActor in await busy.startBackup { starts.count += 1 } }
         await pollUntil("export en vol") { source.exportedIDs.contains("c1") }
-        let second = await busy.startBackup { starts += 100 }
+        let second = await busy.startBackup { starts.count += 100 }
         guard case .refused = second else { return XCTFail("a second pass is refused while one owns the engine") }
-        XCTAssertEqual(starts, 1, "the busy refusal signals nothing")
+        XCTAssertEqual(starts.count, 1, "the busy refusal signals nothing")
 
         busy.cancelBackup()
         await first.value

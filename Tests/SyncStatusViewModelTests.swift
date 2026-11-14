@@ -100,14 +100,14 @@ final class SyncStatusViewModelTests: XCTestCase {
         let h = makeHarness(client: client, source: source)
         XCTAssertFalse(h.sut.cancelRun(), "nothing runs: nothing to stop")
 
-        var starts = 0
-        let run = Task { @MainActor in await h.sut.runNow { starts += 1 } }
+        let starts = StartCounter()
+        let run = Task { @MainActor in await h.sut.runNow { starts.count += 1 } }
         await pollUntil("export en vol") { source.exportedIDs.contains("c1") }
-        XCTAssertEqual(starts, 1)
+        XCTAssertEqual(starts.count, 1)
 
         XCTAssertTrue(h.sut.cancelRun())
         await run.value
-        XCTAssertEqual(starts, 1)
+        XCTAssertEqual(starts.count, 1)
     }
 
     private func reactItem(_ id: String) -> AssetReactItem {
