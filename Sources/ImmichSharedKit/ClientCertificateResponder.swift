@@ -11,13 +11,27 @@ import Foundation
 public struct ClientCertificateResponder: Sendable {
     private let store: any ClientIdentityStoring
     private let log: TLSChallengeLog
+    private let canonicalKey: @Sendable (ServerKey) -> ServerKey
 
-    public init(store: any ClientIdentityStoring, log: TLSChallengeLog) {
+    /// `canonicalKey` maps an alias of the server (its local address) to the key
+    /// the identity was saved under (L-26); the log keeps the key of the request.
+    public init(
+        store: any ClientIdentityStoring, log: TLSChallengeLog,
+        canonicalKey: @escaping @Sendable (ServerKey) -> ServerKey = { $0 }
+    ) {
         self.store = store
         self.log = log
+        self.canonicalKey = canonicalKey
     }
 
     public static let live = ClientCertificateResponder(store: KeychainClientIdentityStore(), log: .shared)
+
+    /// The same responder, which first maps the challenging key through `alias`:
+    /// a widget aliases the local address of the server to its account (L-26).
+    public func aliasing(_ alias: @escaping @Sendable (ServerKey) -> ServerKey) -> ClientCertificateResponder {
+        let canonical = canonicalKey
+        return ClientCertificateResponder(store: store, log: log, canonicalKey: { canonical(alias($0)) })
+    }
 
     /// Nil for any other kind of challenge: the caller keeps its own handling.
     public func answer(
@@ -27,7 +41,7 @@ public struct ClientCertificateResponder: Sendable {
             return nil
         }
         let key = ServerKey(protectionSpace: challenge.protectionSpace)
-        guard let identity = store.identity(for: key) else {
+        guard let identity = store.identity(for: canonicalKey(key)) else {
             log.noteClientCertificateMissing(key)
             return (.performDefaultHandling, nil)
         }

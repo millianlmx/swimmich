@@ -68,7 +68,19 @@ final class SharedLinkViewerViewModel {
     /// duplicate a cell (`Identifiable` ids must stay unique in a `ForEach`).
     private var loadedIds: Set<String> = []
 
-    init(client: any ImmichClient, baseURL: URL, externalDomain: String = "") {
+    /// The address a link shown on screen is built on (L-26): the external one,
+    /// whichever address the app is using.
+    private let publicServerURL: URL
+    /// Every address of the server (connection, external, local): a link naming any
+    /// of them is ours.
+    private let serverURLs: [URL]
+
+    init(
+        client: any ImmichClient, baseURL: URL, externalDomain: String = "",
+        publicServerURL: URL? = nil, serverURLs: [URL] = []
+    ) {
+        self.publicServerURL = publicServerURL ?? baseURL
+        self.serverURLs = serverURLs
         self.client = client
         self.baseURL = baseURL
         self.externalDomain = externalDomain
@@ -100,7 +112,7 @@ final class SharedLinkViewerViewModel {
     /// Live URL of what is open, for the ShareLink / pasteboard affordances.
     var publicURL: URL? {
         guard let link else { return nil }
-        return SharedLinkURL(serverURL: baseURL, externalDomain: externalDomain)
+        return SharedLinkURL(serverURL: publicServerURL, externalDomain: externalDomain)
             .url(slug: link.slug, key: link.key)
     }
 
@@ -345,8 +357,9 @@ final class SharedLinkViewerViewModel {
     private func hostMatches(_ host: String) -> Bool {
         let ours = [
             baseURL.host,
+            SharedLinkURL(serverURL: publicServerURL, externalDomain: externalDomain).baseURL.host,
             SharedLinkURL(serverURL: baseURL, externalDomain: externalDomain).baseURL.host
-        ]
+        ] + serverURLs.map(\.host)
         return ours.compactMap { $0?.lowercased() }.contains(host.lowercased())
     }
 }

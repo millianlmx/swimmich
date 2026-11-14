@@ -177,6 +177,36 @@ immich_stub_edit_stacks.py EditStacksUITests/test_AC_41_editStackedOnOriginal --
 immich_stub_edit_stacks.py EditStacksUITests/test_AC_41_settingOffSendsNothing --media L22-edit-off.png --erase --release
 immich_stub_edit_stacks.py EditStacksUITests/test_AC_200_settingOffByDefaultAndPersisted --release
 
+# L-26 adresse locale et externe (AC-49, AC-235, AC-236, AC-238 to AC-242, AC-246,
+# AC-248, AC-250): one stub serves the external address on the worker's
+# port P and the local one on a port the system picks (`bind` on 0, reported as
+# `localPort` by `/__whoami`: a fixed P + 100 can fall in another runner's pool);
+# the scenario switches between them and reads which address every request
+# reached. AC-239 poses the Photos widget (`--erase`: a widget posed earlier would
+# falsify the gallery search) and has a second scenario for the share extension,
+# driven from Photos (`--media`: the photo it shares). AC-241 (widget and extension)
+# runs against a third address of the stub, local and over TLS: a self-signed
+# certificate and a REQUIRED client certificate, made at start-up with `openssl`
+# (it must be on the PATH of the Mac that runs the line). `--erase`: no approval of
+# 127.0.0.1 may survive from a test before. Core: the journey of AC-49, the widget of
+# AC-239 and the TLS scenario of AC-241 (other processes, no unit test shows the
+# handshake); the others double unit tests of the same criteria
+# (ServerEndpointSwitchTests, ServerAddressSelectorTests, NetworkSettingsViewModelTests,
+# WidgetServerAddressTests…).
+immich_stub_server_addresses.py ServerAddressesUITests/test_AC_49
+immich_stub_server_addresses.py ServerAddressesUITests/test_AC_248 --release
+immich_stub_server_addresses.py ServerAddressesUITests/test_AC_236 --release
+immich_stub_server_addresses.py ServerAddressesUITests/test_AC_235 --release
+immich_stub_server_addresses.py ServerAddressesUITests/test_AC_238 --release
+immich_stub_server_addresses.py ServerAddressesUITests/test_AC_240 --release
+immich_stub_server_addresses.py ServerAddressesUITests/test_AC_242 --release
+immich_stub_server_addresses.py ServerAddressesUITests/test_AC_246 --release
+immich_stub_server_addresses.py ServerAddressesUITests/test_AC_250 --release
+immich_stub_server_addresses.py ServerAddressesUITests/test_AC_239 --erase
+immich_stub_server_addresses.py ServerAddressesUITests/test_AC_241 --media L26-share.png --erase
+immich_stub_server_addresses.py ServerAddressesUITests/test_AC_241_2 --media L26-share.png --erase --release
+immich_stub_server_addresses.py ServerAddressesUITests/test_AC_239_shareExtension --media L26-share.png --release
+
 # L-33 date correction with a time zone (AC-66, AC-66.4, AC-66.6): the device is set to Asia/Tokyo by the
 # scenario (TZ), the photo's EXIF zone is Europe/Paris; the picker shows the photo's wall clock, the PUT
 # carries the chosen zone's offset. Core: the journey of AC-66; the two others double unit tests of

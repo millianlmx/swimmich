@@ -366,7 +366,7 @@ final class ContentCollectionsUITests: XCTestCase {
         let allowed: Set<String> = [
             "profilePictureRow", "addAccountButton", "openInBrowserButton", "preferencesRow", "languageRow",
             "backupRow", "notificationsRow", "freeUpSpaceRow", "apiKeysRow", "adminRow", "aboutRow",
-            "customHeadersRow", "appLogsRow", "mediaStatsRow", "downloadInfoRow", "clientCertificateRow",
+            "networkSettingsRow", "customHeadersRow", "appLogsRow", "mediaStatsRow", "downloadInfoRow", "clientCertificateRow",
             "changePasswordRow", "appLockToggle", "deviceSessionsRow", "readOnlyModeToggle", "logoutButton",
         ]
         var found = Set<String>()
@@ -388,7 +388,7 @@ final class ContentCollectionsUITests: XCTestCase {
         XCTAssertEqual(found.subtracting(accounts), allowed, "the Me sheet's entries differ from the list: \(found.sorted())")
 
         let pushed = ["profilePictureRow", "preferencesRow", "languageRow", "backupRow", "notificationsRow",
-                      "freeUpSpaceRow", "apiKeysRow", "adminRow", "aboutRow", "customHeadersRow", "appLogsRow",
+                      "freeUpSpaceRow", "apiKeysRow", "adminRow", "aboutRow", "networkSettingsRow", "customHeadersRow", "appLogsRow",
                       "mediaStatsRow", "downloadInfoRow", "clientCertificateRow", "changePasswordRow",
                       "deviceSessionsRow"]
         for row in pushed {

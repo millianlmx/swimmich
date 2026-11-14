@@ -230,6 +230,9 @@ public struct WidgetDataProvider: Sendable {
     /// `PublicLogText.describe(error)`: its shape, never its text. A test
     /// injects a collector to read the very line the app would publish.
     private let publicLog: (@Sendable (String) -> Void)?
+    /// Chooses the local or the external address of the server for each
+    /// refresh, by the app's rule (L-26).
+    private let endpoints: WidgetEndpointResolver
 
     private var transport: any WidgetDataTransport { activeTransport ?? makeTransport() }
 
@@ -237,13 +240,15 @@ public struct WidgetDataProvider: Sendable {
         sessionStore: any WidgetSessionStoring = WidgetSessionStore(),
         transport: @escaping @Sendable () -> any WidgetDataTransport = { URLSessionWidgetTransport() },
         deadline: Duration = WidgetDataProvider.defaultDeadline,
-        publicLog: (@Sendable (String) -> Void)? = nil
+        publicLog: (@Sendable (String) -> Void)? = nil,
+        endpoints: WidgetEndpointResolver? = nil
     ) {
         self.sessionStore = sessionStore
         self.makeTransport = transport
         self.activeTransport = nil
         self.deadline = deadline
         self.publicLog = publicLog
+        self.endpoints = endpoints ?? WidgetEndpointResolver.live(sessionStore: sessionStore)
     }
 
     private init(running base: WidgetDataProvider, with transport: any WidgetDataTransport) {
@@ -252,6 +257,7 @@ public struct WidgetDataProvider: Sendable {
         self.activeTransport = transport
         self.deadline = base.deadline
         self.publicLog = base.publicLog
+        self.endpoints = base.endpoints
     }
 
     private func publishFailure(_ line: String) {
@@ -299,10 +305,11 @@ public struct WidgetDataProvider: Sendable {
     private func loadMemories(
         limit: Int, offset: Int, target: WidgetRenderTarget, cutoff: ContinuousClock.Instant
     ) async -> WidgetMemoryFeed {
-        guard let session = sessionStore.load() else {
+        guard let stored = sessionStore.load() else {
             logger.error("no widget session in the keychain — sign in in the app, or the widget process cannot read the shared group")
             return .empty.empty(.signedOut, hint: "keychain")
         }
+        let session = await endpoints.resolve(stored)
         do {
             let payload: [MemoryPayload] = try await get(
                 path: "/api/memories",
@@ -329,10 +336,11 @@ public struct WidgetDataProvider: Sendable {
     private func wall(
         isFavorite: Bool?, limit: Int, target: WidgetRenderTarget, cutoff: ContinuousClock.Instant
     ) async -> PhotoWall {
-        guard let session = sessionStore.load() else {
+        guard let stored = sessionStore.load() else {
             logger.error("no widget session in the keychain — sign in in the app, or the widget process cannot read the shared group")
             return .empty(.signedOut, hint: "keychain")
         }
+        let session = await endpoints.resolve(stored)
         // Both routes must carry the same filters (visibility + favorite): the
         // server applies its defaults (timeline + archive, every asset) to a
         // filter left out. `visibility=timeline` keeps archived photos off the

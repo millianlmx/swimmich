@@ -158,6 +158,9 @@ final class DependencyContainer {
     /// Every server's custom HTTP headers (L-09): the one registry the API
     /// client, the realtime socket, the offline store and the editor read.
     nonisolated let customHeaders: CustomHeadersRegistry = .shared
+    /// Which address of the active account the app talks to (L-26): the local one
+    /// when it answers as this server, the external one otherwise.
+    let serverEndpoints: ServerEndpointSwitch
     /// "What's New" seen-state (gap G23). One store per process: the automatic
     /// sheet, the About row that reopens it and `AuthViewModel`'s
     /// add-an-account write must all agree on which batch has been presented.
@@ -188,7 +191,11 @@ final class DependencyContainer {
         // asset in place so a scenario holds a really edited photo.
         UITestPhotoEditHook.runIfRequested()
         #endif
-        let responder = ClientCertificateResponder(store: identities, log: .shared)
+        let responder = ClientCertificateResponder(
+            store: identities, log: .shared,
+            // The local address presents the certificate saved for the connection address (L-26).
+            canonicalKey: { ServerAddressBook.shared.canonicalKey(for: $0) }
+        )
         self.clientCertificateResponder = responder
         let trustStore = TrustedServerStoreImpl()
         self.trustedServers = trustStore
@@ -219,6 +226,19 @@ final class DependencyContainer {
             customHeaders: customHeaders
         )
         self.realtime = realtime
+        self.serverEndpoints = ServerEndpointSwitch(
+            client: libraryClient, realtime: realtime,
+            store: UserDefaultsServerAddressSettingsStore(defaults: .standard),
+            probe: URLSessionServerAddressProbe(
+                session: { [serverSessions] in serverSessions.probe },
+                trustRefused: { TLSChallengeLog.shared.trustWasRefused(host: $0) },
+                localNetworkCheck: NWConnectionLocalNetworkCheck()
+            ),
+            monitor: SystemNetworkPathMonitor(),
+            addressBook: .shared, customHeaders: customHeaders, appLog: appLog,
+            // Test only: the simulator does not apply the local-network permission.
+            localNetworkDeniedOverride: UserDefaults.standard.bool(forKey: "uiTestLocalNetworkDenied")
+        )
         let reloadWidgets: @Sendable () -> Void = { WidgetCenter.shared.reloadAllTimelines() }
         self.reloadWidgets = reloadWidgets
         self.clientCertificates = ClientCertificateService(
@@ -314,7 +334,8 @@ final class DependencyContainer {
                 serverSessions: serverSessions
             ),
             customHeaders: customHeaders,
-            identities: clientIdentities
+            identities: clientIdentities,
+            endpoints: serverEndpoints
         )
     }
 
@@ -333,7 +354,10 @@ final class DependencyContainer {
     /// `nonisolated` on purpose: `VideoPlaybackViewModel` takes it as a default
     /// argument, which is evaluated in the caller's (nonisolated) context.
     nonisolated var videoTransport: VideoAppTransport {
-        VideoAppTransport(session: { [serverSessions] in serverSessions.video }, identities: clientIdentities)
+        VideoAppTransport(
+            session: { [serverSessions] in serverSessions.video }, identities: clientIdentities,
+            canonicalKey: { ServerAddressBook.shared.canonicalKey(for: $0) }
+        )
     }
 
     func makeTimelineViewModel() -> TimelineViewModel {
@@ -396,7 +420,11 @@ final class DependencyContainer {
         SharedLinkViewerViewModel(
             client: libraryClient,
             baseURL: baseURL,
-            externalDomain: externalDomain
+            externalDomain: externalDomain,
+            // Links shown here are built on the external address; a link naming any
+            // address of this server is ours (L-26).
+            publicServerURL: serverEndpoints.publicURL ?? baseURL,
+            serverURLs: serverEndpoints.knownURLs
         )
     }
 
@@ -513,6 +541,16 @@ final class DependencyContainer {
         UserApiKeysViewModel(client: libraryClient)
     }
 
+    /// L-26: the "Network" setting of the active account. The session the widgets
+    /// and the extension read is republished by `ServerEndpointSwitch.onSettingsSaved`.
+    func makeNetworkSettingsViewModel(accountURL: URL) -> NetworkSettingsViewModel {
+        NetworkSettingsViewModel(
+            endpoints: serverEndpoints, trustStore: trustedServers, accountURL: accountURL,
+            // Test only (`-uiTestNetworkControls YES`): a button that stands for a change of network.
+            showsTestControls: UserDefaults.standard.bool(forKey: "uiTestNetworkControls")
+        )
+    }
+
     /// L-09: the editor of one server's custom HTTP headers. `onSaved` is what
     /// nudges the session (`AuthViewModel.customHeadersDidChange`).
     func makeCustomHeadersViewModel(
@@ -538,7 +576,8 @@ final class DependencyContainer {
             albumId: albumId,
             selectedAssetIds: selectedAssetIds,
             albumTitle: albumTitle,
-            baseURL: baseURL,
+            // The address in use when asked, not the one at creation (L-26).
+            baseURL: { ServerAddressBook.shared.activeURL ?? baseURL },
             token: token,
             photos: photos,
             session: { [serverSessions] in serverSessions.roadTrip }
@@ -621,7 +660,7 @@ final class DependencyContainer {
     /// the same reason as `makeSharedLinkViewerViewModel`: the container knows
     /// the client, but the connected server and its bearer token only exist
     /// once the app is authenticated.
-    func makeProfilePictureViewModel(baseURL: URL?, token: String?) -> ProfilePictureViewModel {
+    func makeProfilePictureViewModel(baseURL: @escaping @MainActor () -> URL?, token: String?) -> ProfilePictureViewModel {
         ProfilePictureViewModel(client: libraryClient, baseURL: baseURL, token: token)
     }
 
