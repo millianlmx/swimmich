@@ -727,9 +727,11 @@ final class SearchCriteriaUITests: XCTestCase {
         row.tap()
         let stepper = element("preferencesColumnsStepper")
         XCTAssertTrue(stepper.waitForExistence(timeout: 15), "the Columns stepper is missing")
-        let label = steps > 0 ? "Increment" : "Decrement"
+        // The simulators run in French: the stepper's buttons read "Incrémenter" / "Décrémenter".
+        let labels = steps > 0 ? ["Increment", "Incrémenter"] : ["Decrement", "Décrémenter"]
+        let label = labels[0]
         for _ in 0..<abs(steps) {
-            let button = stepper.buttons[label]
+            let button = stepper.buttons.matching(NSPredicate(format: "label IN %@", labels)).firstMatch
             XCTAssertTrue(button.waitForExistence(timeout: 5), "no \(label) button on the Columns stepper")
             button.tap()
             columnsDelta += steps > 0 ? 1 : -1

@@ -171,6 +171,10 @@ struct SearchView: View {
                     placement: .navigationBarDrawer(displayMode: .always),
                     prompt: searchPrompt
                 )
+                // While the field is active iOS hides the navigation bar's items:
+                // the Filters button and the text-mode menu would be out of reach
+                // as soon as something is typed.
+                .searchPresentationToolbarBehavior(.avoidHidingContent)
                 .onChange(of: vm.query) { _, _ in vm.queryDidChange() }
                 .searchSuggestions { searchSuggestions }
                 .task {
