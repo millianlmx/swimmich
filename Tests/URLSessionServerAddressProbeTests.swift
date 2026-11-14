@@ -96,6 +96,34 @@ final class URLSessionServerAddressProbeTests: XCTestCase {
         XCTAssertEqual(Set(ProbeURLProtocol.requests.compactMap { $0.url?.path }), ["/api/server/ping", "/api/server/version"])
     }
 
+    /// `renewSessions()` swaps the probe session and invalidates the old one: a probe made
+    /// afterwards must run on the new session, so the closure is read at each probe.
+    func test_AC_246_probeReadsTheSessionAtEachProbe() async {
+        final class Source: @unchecked Sendable {
+            private let lock = NSLock()
+            private var _session: URLSession
+            private var _reads = 0
+            init(_ session: URLSession) { _session = session }
+            var reads: Int { lock.lock(); defer { lock.unlock() }; return _reads }
+            func read() -> URLSession { lock.lock(); defer { lock.unlock() }; _reads += 1; return _session }
+            func swap(to session: URLSession) { lock.lock(); _session = session; lock.unlock() }
+        }
+        ProbeURLProtocol.reset(Self.immich)
+        let first = makeSession()
+        let source = Source(first)
+        let probing = URLSessionServerAddressProbe(session: { source.read() }, localNetworkCheck: FakeLocalNetworkCheck(denied: false))
+        XCTAssertEqual(source.reads, 0, "the session is not read at construction")
+
+        let before = await probing.probe(base, headers: [], deadline: .seconds(2))
+        XCTAssertEqual(before, .immich(version: "1.119.0"))
+        XCTAssertGreaterThanOrEqual(source.reads, 1)
+
+        first.invalidateAndCancel()
+        source.swap(to: makeSession())
+        let after = await probing.probe(base, headers: [], deadline: .seconds(2))
+        XCTAssertEqual(after, .immich(version: "1.119.0"), "an invalidated session would have given .unreachable")
+    }
+
     func test_AC_246_anotherJSONBodyIsNotImmich() async {
         ProbeURLProtocol.reset { request in
             request.url?.path.hasSuffix("/ping") == true ? .init(body: Data(#"{"status":"ok"}"#.utf8)) : .init(body: Self.version)
