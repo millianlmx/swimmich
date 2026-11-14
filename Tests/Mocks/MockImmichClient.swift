@@ -72,6 +72,10 @@ final class MockImmichClient: ImmichClient, @unchecked Sendable {
     /// `3.2.0` (or later) version here.
     var serverVersionResponse: ServerVersionResponseDto?
     var serverVersionError: Error?
+    /// Whether `serverVersion()` is one of the `requestCount` requests. The
+    /// search view model probes the version before every metadata request;
+    /// suites that count *search* requests turn this off.
+    var versionProbeCountsAsRequest = true
 
     var logoutResponse: LogoutResponseDto?
     var validateResponse: ValidateAccessTokenResponseDto?
@@ -228,6 +232,10 @@ final class MockImmichClient: ImmichClient, @unchecked Sendable {
     /// Awaited in `removeAssetsFromAlbum` after `lastRemoveAssetsIds` is recorded, before the error check.
     var removeAssetsFromAlbumGate: ((BulkIdsDto) async throws -> Void)?
     var lastSmartSearchDto: SmartSearchDto?
+    /// Every `searchSmart` call, recorded before any gate or error.
+    private(set) var searchSmartCalls: [SmartSearchDto] = []
+    /// Awaited after recording and before the error check, like `searchMetadataGate`.
+    var searchSmartGate: ((SmartSearchDto) async throws -> Void)?
     var smartSearchResponse: SearchResponseDto?
     var smartSearchError: Error?
     var exploreResponse: [SearchExploreResponseDto]?
@@ -471,7 +479,7 @@ final class MockImmichClient: ImmichClient, @unchecked Sendable {
     }
 
     func serverVersion() async throws -> ServerVersionResponseDto {
-        bump()
+        if versionProbeCountsAsRequest { bump() }
         if let e = globalError ?? serverVersionError { throw e }
         return serverVersionResponse ?? ServerVersionResponseDto(major: 1, minor: 120, patch: 0, prerelease: nil)
     }
@@ -719,6 +727,8 @@ final class MockImmichClient: ImmichClient, @unchecked Sendable {
     func searchSmart(dto: SmartSearchDto) async throws -> SearchResponseDto {
         bump()
         lastSmartSearchDto = dto
+        searchSmartCalls.append(dto)
+        if let gate = searchSmartGate { try await gate(dto) }
         if let e = globalError ?? smartSearchError { throw e }
         return smartSearchResponse ?? SearchResponseDto(
             assets: SearchAssetResponseDto(count: 0, items: [], nextPage: nil)
