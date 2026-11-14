@@ -347,8 +347,18 @@ final class BackupRemainderUITests: XCTestCase {
         ))
     }
 
+    /// Returns to the previous screen: the first hittable button of the most
+    /// recently added navigation bar, since a covered screen's bar can also be
+    /// in the tree (see `AlbumSyncUITests.goBack`).
     private func goBack() {
-        app.navigationBars.buttons.element(boundBy: 0).tap()
+        for bar in app.navigationBars.allElementsBoundByIndex.reversed() {
+            let back = bar.buttons.firstMatch
+            if back.exists && back.isHittable {
+                back.tap()
+                return
+            }
+        }
+        app.swipeRight()
     }
 
     /// One line that says what the screen holds, for an assertion message: the CI
@@ -409,8 +419,22 @@ final class BackupRemainderUITests: XCTestCase {
             return button.exists && button.isHittable
         }
 
-        // The list now says everything is backed up.
-        let remainderRow = row("backupRemainderRow", swiping: "down")
+        // The list now says everything is backed up. Reopen the Backup screen from
+        // the hub so it opens at the top, the entry fully on screen: an entry
+        // scrolled back into view sits under the bar's edge, and a tap there
+        // pushes nothing.
+        goBack()
+        // The hub comes back where it was when Backup was opened, its row on
+        // screen: no swipe here, a downward swipe would dismiss the sheet.
+        let backupRow = app.buttons.matching(identifier: "backupRow").firstMatch
+        XCTAssertTrue(backupRow.waitForExistence(timeout: 15) && backupRow.isHittable,
+                      "no way back to the Me hub — \(diagnostics())")
+        backupRow.tap()
+        let remainderRow = app.buttons.matching(identifier: "backupRemainderRow").firstMatch
+        let entryDeadline = Date().addingTimeInterval(20)
+        while !(remainderRow.exists && remainderRow.isHittable), Date() < entryDeadline {
+            Thread.sleep(forTimeInterval: 0.5)
+        }
         XCTAssertTrue(remainderRow.exists && remainderRow.isHittable, "the entry must be reachable — \(diagnostics())")
         remainderRow.tap()
         // The diagnostic comes BEFORE the assertion: with `continueAfterFailure`
