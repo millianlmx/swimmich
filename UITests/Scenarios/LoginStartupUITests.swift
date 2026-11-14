@@ -285,11 +285,19 @@ final class LoginStartupUITests: XCTestCase {
     }
 
     /// The Photos tab with its first tile; "What's New" closed (and so seen).
+    /// The sheet must be GONE before the caller goes on: its `onDismiss` is what
+    /// marks it seen (a `terminate()` that comes first leaves it unseen, and it
+    /// covers the next launch), and a sheet presented while it is still leaving
+    /// is dropped by UIKit.
     private func reachShell() {
         XCTAssertTrue(tabButton("Photos").waitForExistence(timeout: 40),
                       "the sign-in did not reach the shell — \(screenText())")
         let done = element("whatsNewDoneButton")
-        if done.waitForExistence(timeout: 10) { done.tap() }
+        if done.waitForExistence(timeout: 10) {
+            done.tap()
+            XCTAssertTrue(done.waitForNonExistence(timeout: 10), "What's New did not close — \(screenText())")
+            Thread.sleep(forTimeInterval: 1)
+        }
         XCTAssertTrue(tile(1).waitForExistence(timeout: 40), "the timeline never rendered — \(screenText())")
     }
 
@@ -375,12 +383,18 @@ final class LoginStartupUITests: XCTestCase {
         springboard.buttons.matching(labelPredicate(["Cancel", "Annuler", "Abbrechen"])).firstMatch
     }
 
-    /// Opens the Me sheet and scrolls the hub until `identifier` exists.
+    /// Opens the Me sheet and scrolls the hub until `identifier` exists. The tap
+    /// is repeated once when the sheet did not come: a presentation asked while
+    /// another one is still settling is dropped by UIKit.
     private func openMe(scrollingTo identifier: String) -> XCUIElement {
         let avatar = app.buttons.matching(identifier: "profileAvatar").firstMatch
         XCTAssertTrue(avatar.waitForExistence(timeout: 20), "Profile avatar missing")
         avatar.tap()
-        sleep(4) // the sheet animates in; its Form publishes rows only after
+        if !element("profileList").waitForExistence(timeout: 10) {
+            avatar.tap()
+        }
+        XCTAssertTrue(element("profileList").waitForExistence(timeout: 20), "the Me sheet did not open — \(screenText())")
+        sleep(2) // the sheet animates in; its Form publishes rows only after
         let target = element(identifier)
         for _ in 0..<8 where !target.exists {
             app.swipeUp()
@@ -452,25 +466,6 @@ final class LoginStartupUITests: XCTestCase {
             Thread.sleep(forTimeInterval: 0.6)
         }
         return logRows().first(where: accepts) ?? ""
-    }
-
-    /// The system pasteboard, read from the runner (the "Allow Paste" prompt is answered from SpringBoard).
-    private func readClipboard() -> String {
-        var value: String?
-        let done = DispatchSemaphore(value: 0)
-        DispatchQueue.global().async {
-            value = UIPasteboard.general.string
-            done.signal()
-        }
-        let springboard = XCUIApplication(bundleIdentifier: "com.apple.springboard")
-        let deadline = Date().addingTimeInterval(15)
-        while done.wait(timeout: .now() + 0.5) == .timedOut && Date() < deadline {
-            for label in ["Allow Paste", "Autoriser le collage", "Einfügen erlauben"] {
-                let button = springboard.alerts.buttons[label]
-                if button.exists { button.tap() }
-            }
-        }
-        return value ?? ""
     }
 
     /// The log screen is open: its list and its share button are there.
@@ -767,6 +762,11 @@ final class LoginStartupUITests: XCTestCase {
         XCTAssertTrue(rowElement.waitForExistence(timeout: 10), "the failing row vanished")
         rowElement.tap()
         XCTAssertTrue(element("copyLogBlock_message").waitForExistence(timeout: 15), "the detail never opened")
+        // The pasteboard is not read back: the test runner is a background app
+        // while the app is in front, and iOS gives it nothing. What a copy button
+        // writes is its block's text (`AppLogDetailView`), so the block's text is
+        // what is checked, and the button's switch to its "copied" state proves
+        // the copy ran.
         for section in ["message", "details", "stack"] {
             let copy = element("copyLogBlock_\(section)")
             for _ in 0..<6 where copy.exists && !copy.isHittable {
@@ -777,11 +777,13 @@ final class LoginStartupUITests: XCTestCase {
                 XCTAssertNotEqual(section, "message", "the failing line has no message block")
                 continue
             }
+            let block = element("logBlockText_\(section)")
+            XCTAssertTrue(block.exists, "the \(section) block has no text")
+            XCTAssertFalse(block.label.isEmpty, "the \(section) block is empty")
+            assertClean(block.label, "the \(section) block")
+            let before = copy.label
             copy.tap()
-            Thread.sleep(forTimeInterval: 0.8)
-            let copied = readClipboard()
-            XCTAssertFalse(copied.isEmpty, "the \(section) block copied nothing")
-            assertClean(copied, "the copied \(section) block")
+            XCTAssertTrue(waitUntil(5) { copy.label != before }, "the \(section) copy button did not copy (label: \(copy.label))")
         }
         for text in app.staticTexts.allElementsBoundByIndex.map(\.label) { assertClean(text, "a block on screen") }
 
@@ -864,9 +866,10 @@ final class LoginStartupUITests: XCTestCase {
         XCTAssertTrue(element("timelineLoadErrorState").waitForExistence(timeout: 3),
                       "no error state within 3 s — \(screenText())")
         XCTAssertFalse(element("timelineLoadingSkeleton").exists, "the skeleton shows next to the error state")
-        mute("off")
         let retry = element("timelineRetryButton")
-        XCTAssertTrue(retry.waitForExistence(timeout: 5), "no retry button")
+        XCTAssertTrue(retry.exists, "no retry button on the error state — \(screenText())")
+        mute("off")
+        XCTAssertTrue(retry.waitForExistence(timeout: 5), "the retry button went away once the server came back — \(screenText())")
         retry.tap()
         XCTAssertTrue(element(firstPhotoTile).waitForExistence(timeout: 30), "Try Again did not load the timeline — \(screenText())")
         assertAbsent(["serverURLField", "loginTitle"], "after Try Again")
@@ -1033,13 +1036,19 @@ final class LoginStartupUITests: XCTestCase {
         revoke(true)
         openCold(link(3))
         XCTAssertTrue(element("loginTitle").waitForExistence(timeout: 40), "no sign-in step after the refused token — \(screenText())")
-        revoke(false)
+        // The link may have asked for its photo while the token was being refused
+        // (once, answered 401), or may have arrived after the refusal and been
+        // dropped at once: whichever, nothing more may ask for it from here on.
         waitForLoginOptions()
+        let requestsBeforeSignIn = count("GET", "/api/assets/\(photo(3))")
+        XCTAssertLessThanOrEqual(requestsBeforeSignIn, 1, "the linked photo was requested more than once before the sign-in")
+        revoke(false)
         signIn()
         reachShell()
         XCTAssertTrue(tabButton("Photos").isSelected, "the new sign-in did not land on Photos")
         XCTAssertFalse(element("viewerBackButton").waitForExistence(timeout: 5), "the link was replayed after the new sign-in")
-        XCTAssertEqual(count("GET", "/api/assets/\(photo(3))"), 1, "the linked photo was requested more than once")
+        XCTAssertEqual(count("GET", "/api/assets/\(photo(3))"), requestsBeforeSignIn,
+                       "the linked photo was requested again after the new sign-in")
     }
 
     // MARK: - AC-346

@@ -206,6 +206,12 @@ private struct AuthenticatedRoot: View {
     @State private var coverDismissalRequest: UUID?
     /// What's New was closed by a widget link: its dismissal must not mark it seen.
     @State private var whatsNewYieldedToLink = false
+    /// What's New is on screen: its content appeared and its dismissal is not over.
+    @State private var whatsNewOnScreen = false
+    /// The photo of a link that closed What's New, held until the sheet has left:
+    /// UIKit drops a cover presented while a sheet is still coming in or going
+    /// out, and the viewer would never open (L-28, AC-344).
+    @State private var linkedAssetAfterWhatsNew: LinkedAssetRequest?
     /// A widget link reached this root: no automatic What's New in this launch.
     @State private var widgetLinkReceived = false
     @Binding private var pendingWidgetLink: PendingWidgetLink?
@@ -454,12 +460,18 @@ private struct AuthenticatedRoot: View {
         // swipe-down is a "seen" too, and the sheet cannot come back at the next
         // launch. The stack is the sheet's: `WhatsNewView` declares none.
         .sheet(isPresented: $showWhatsNew, onDismiss: {
+            whatsNewOnScreen = false
             // Closed by a widget link, it is not seen: it returns at the next launch.
             if whatsNewYieldedToLink { whatsNewYieldedToLink = false } else { whatsNew.markSeen() }
+            if let request = linkedAssetAfterWhatsNew {
+                linkedAssetAfterWhatsNew = nil
+                pendingLinkedAsset = request
+            }
         }) {
             NavigationStack {
                 WhatsNewView(vm: whatsNew, onDone: { showWhatsNew = false })
             }
+            .onAppear { whatsNewOnScreen = true }
         }
         // Evaluated on the first authenticated frame and again on an account
         // change (the seen-release is account state, not process state). The
@@ -506,7 +518,14 @@ private struct AuthenticatedRoot: View {
         case .photos: selection = .photos
         case .memories: selection = .memories
         }
-        if let request = route.viewerAsset { pendingLinkedAsset = request }
+        // What's New still on screen (coming in or going out): the viewer waits
+        // for its `onDismiss`. A later link replaces a photo still waiting.
+        if whatsNewOnScreen {
+            linkedAssetAfterWhatsNew = route.viewerAsset
+        } else if let request = route.viewerAsset {
+            linkedAssetAfterWhatsNew = nil
+            pendingLinkedAsset = request
+        }
         if route.startsBackup { container.startManualBackup() }
     }
 
