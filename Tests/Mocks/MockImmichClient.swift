@@ -616,6 +616,43 @@ final class MockImmichClient: ImmichClient, @unchecked Sendable {
         return base
     }
 
+    // MARK: Asset edits
+
+    /// Edit lists per asset id (a `put` writes it, a `delete` empties it); missing id → empty list.
+    var assetEditsResponse: [String: AssetEditsResponseDto] = [:]
+    var getAssetEditsError: Error?
+    var getAssetEditsCalls: [String] = []
+    var putAssetEditsCalls: [(id: String, edits: [AssetEditItem])] = []
+    var putAssetEditsError: Error?
+    var deleteAssetEditsCalls: [String] = []
+    var deleteAssetEditsError: Error?
+
+    func getAssetEdits(id: String) async throws -> AssetEditsResponseDto {
+        bump()
+        getAssetEditsCalls.append(id)
+        if let e = globalError { throw e }
+        if let e = getAssetEditsError { throw e }
+        return assetEditsResponse[id] ?? AssetEditsResponseDto(assetId: id, edits: [])
+    }
+
+    func putAssetEdits(id: String, edits: [AssetEditItem]) async throws -> AssetEditsResponseDto {
+        bump()
+        putAssetEditsCalls.append((id: id, edits: edits))
+        if let e = globalError { throw e }
+        if let e = putAssetEditsError { throw e }
+        let response = AssetEditsResponseDto(assetId: id, edits: edits)
+        assetEditsResponse[id] = response
+        return response
+    }
+
+    func deleteAssetEdits(id: String) async throws {
+        bump()
+        deleteAssetEditsCalls.append(id)
+        if let e = globalError { throw e }
+        if let e = deleteAssetEditsError { throw e }
+        assetEditsResponse[id] = AssetEditsResponseDto(assetId: id, edits: [])
+    }
+
     /// Star-rating writes (star-ratings): every `(id, rating)` call in order,
     /// plus per-call canned answers when a test needs a specific response.
     var ratingUpdates: [(id: String, rating: Int?)] = []
@@ -1752,6 +1789,8 @@ final class MockImmichClient: ImmichClient, @unchecked Sendable {
     private(set) var lastDownloadInfoAlbumId: String?
     var originalRequestError: Error?
     private(set) var lastOriginalRequestAssetId: String?
+    /// The `edited` flag of every `originalRequest`, in call order.
+    private(set) var originalRequestEditedLog: [Bool] = []
     var downloadArchiveRequestError: Error?
     private(set) var lastArchiveName: String?
     private(set) var lastArchiveAssetIds: [String]?
@@ -1770,11 +1809,12 @@ final class MockImmichClient: ImmichClient, @unchecked Sendable {
         return downloadInfoResponse
     }
 
-    func originalRequest(assetId: String) throws -> URLRequest {
+    func originalRequest(assetId: String, edited: Bool) throws -> URLRequest {
         downloadCallOrder.append("original")
         lastOriginalRequestAssetId = assetId
+        originalRequestEditedLog.append(edited)
         if let e = originalRequestError { throw e }
-        return URLRequest(url: URL(string: "https://example.com/api/assets/\(assetId)/original")!)
+        return URLRequest(url: URL(string: "https://example.com/api/assets/\(assetId)/original?edited=\(edited)")!)
     }
 
     func downloadArchiveRequest(archiveName: String, assetIds: [String], edited: Bool) throws -> URLRequest {

@@ -57,16 +57,17 @@ final class SaveToLibraryViewModel {
         self.presentShare = presentShare
     }
 
-    /// Saves the asset into the user's Photos library. Images go through
+    /// Saves the asset into the user's Photos library — the original, or with `edited` the server's
+    /// edited rendering (L-21, chosen by the user for an edited photo). Images go through
     /// `saveImage(data:)`; videos are staged to a temp file (real extension
     /// from the Content-Type) then `saveVideo(at:)`, with the temp dir removed
     /// afterwards.
-    func saveToPhotos() async {
+    func saveToPhotos(edited: Bool = false) async {
         isSaving = true
         errorMessage = nil
         defer { isSaving = false }
         do {
-            let (data, contentType) = try await transferOriginal()
+            let (data, contentType) = try await transferOriginal(edited: edited)
             if asset.isVideo {
                 let ext = AssetFileTransfer.fileExtension(forMime: contentType)
                 let name = "\(AssetFileTransfer.baseName(originalName: originalName, datePrefix: datePrefix)).\(ext)"
@@ -87,15 +88,15 @@ final class SaveToLibraryViewModel {
         }
     }
 
-    /// Downloads the original into a unique temp file and presents it through
-    /// the injected share presenter ("Save to Files" etc.). The temp dir is
+    /// Downloads the ORIGINAL (never the edited version, L-21) into a unique temp file and presents it
+    /// through the injected share presenter ("Save to Files" etc.). The temp dir is
     /// removed once the presentation completes.
     func downloadOriginal() async {
         isDownloading = true
         errorMessage = nil
         defer { isDownloading = false }
         do {
-            let (data, contentType) = try await transferOriginal()
+            let (data, contentType) = try await transferOriginal(edited: false)
             let ext = AssetFileTransfer.fileExtension(forMime: contentType)
             let base = AssetFileTransfer.baseName(originalName: originalName, datePrefix: datePrefix)
             let fileURL = try AssetFileTransfer.writeTempFile(data: data, name: "\(base).\(ext)")
@@ -109,15 +110,21 @@ final class SaveToLibraryViewModel {
         }
     }
 
-    /// Downloads the ORIGINAL file (`/api/assets/{id}/original`) with the
-    /// Bearer token. Also resolves the server-side original base name once for
-    /// file naming (silently falls back to a date-based name).
-    private func transferOriginal() async throws -> (Data, String?) {
+    /// Downloads the file (`/api/assets/{id}/original?edited=…`) with the Bearer token. `edited` is
+    /// always sent (L-21): `false` is the original as uploaded, `true` the server's edited rendering.
+    /// Also resolves the server-side original base name once for file naming (silently falls back to a
+    /// date-based name).
+    private func transferOriginal(edited: Bool) async throws -> (Data, String?) {
         if originalName == nil {
             originalName = (try? await client.getAsset(id: asset.id))?.originalFileName
         }
-        let url = ImmichAssetURL.original(assetId: asset.id, baseURL: baseURL)
+        let url = ImmichAssetURL.original(assetId: asset.id, baseURL: baseURL, edited: edited)
         return try await AssetFileTransfer.fetchData(from: url, token: token, session: session())
+    }
+
+    /// Whether "Save to Photos" asks "edited version or original": the photo's record says it is edited.
+    func offersEditedChoice() async -> Bool {
+        await AssetEditsSupport.isEditedOnServer(assetId: asset.id, client: client)
     }
 
     private var datePrefix: String {
