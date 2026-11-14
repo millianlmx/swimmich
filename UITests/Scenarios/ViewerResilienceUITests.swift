@@ -254,22 +254,90 @@ final class ViewerResilienceUITests: XCTestCase {
         return (image.value as? String) ?? ""
     }
 
-    /// Pages from `from` to `to` by swiping on the shown photo itself, again while
-    /// `to` is not the page on screen: one swipe on the app can land on chrome or
-    /// be taken for the start of a drag, and the pager only builds the page it shows.
-    private func swipeToNextPage(from: String, to: String) {
-        let target = element("viewerImage_\(to)")
-        for attempt in 1...3 {
-            let current = element("viewerImage_\(from)")
-            if current.exists, current.isHittable { current.swipeLeft() } else { app.swipeLeft() }
-            if waitUntil(timeout: 5, { target.exists && target.isHittable }) { return }
-            shot("swipe-\(attempt)-not-on-\(to.suffix(4))")
+    /// The pager's order, read from the stub at run time: the timeline's buckets
+    /// in the order `/api/timeline/buckets` lists them, each bucket's `id` column
+    /// sorted like the grid (`TimelineViewModel.gridOrdered`: `fileCreatedAt`
+    /// newest first), ties kept in the bucket's own order.
+    private func pagerOrder() -> [String] {
+        let bucketsBody = get("/api/timeline/buckets").body
+        guard let buckets = try? JSONSerialization.jsonObject(with: Data(bucketsBody.utf8)) as? [[String: Any]] else {
+            XCTFail("the stub's /api/timeline/buckets is not a list — \(bucketsBody)")
+            return []
         }
-        let pages = elements(withPrefix: "viewerImage_").allElementsBoundByIndex.map(\.identifier)
-        XCTFail("the pager never showed \(to) — viewerImage_* in the tree: \(pages), "
-                + "probe of \(from.suffix(4)): \(imageProbeValue(from)), retry cards: "
-                + "\(elements(withPrefix: "viewerImageRetry_").count), loading: "
-                + "\(elements(withPrefix: "viewerImageLoading_").count)")
+        var order: [String] = []
+        for bucket in buckets {
+            guard let day = bucket["timeBucket"] as? String else { continue }
+            let body = get("/api/timeline/bucket?timeBucket=\(day)").body
+            guard let columns = try? JSONSerialization.jsonObject(with: Data(body.utf8)) as? [String: Any],
+                  let ids = columns["id"] as? [String] else {
+                XCTFail("the stub's bucket \(day) has no id column — \(body)")
+                return []
+            }
+            let created = columns["fileCreatedAt"] as? [String] ?? Array(repeating: "", count: ids.count)
+            let rows = ids.indices.sorted { a, b in
+                created[a] != created[b] ? created[a] > created[b] : a < b
+            }
+            order += rows.map { ids[$0] }
+        }
+        return order
+    }
+
+    private func filmstripTree() -> String {
+        let pages = elements(withPrefix: "viewerImage_").allElementsBoundByIndex
+            .map { "\($0.identifier)\($0.isHittable ? "*" : "")" }
+        let cells = elements(withPrefix: "viewerFilmstripCell_").allElementsBoundByIndex
+            .map { "\($0.identifier)\($0.isHittable ? "*" : "")" }
+        return "viewerImage_* in the tree: \(pages), viewerFilmstripCell_* in the tree: \(cells) (* = hittable)"
+    }
+
+    /// A page is the one on screen when it is hittable and centred in the window;
+    /// a page the pager keeps built off screen is neither.
+    private func isShownPage(_ page: XCUIElement) -> Bool {
+        let window = app.windows.firstMatch.frame
+        return page.exists && page.isHittable && abs(page.frame.midX - window.midX) < window.width / 4
+    }
+
+    /// Goes to page `to` by touching its filmstrip cell. Under XCUITest a swipe
+    /// never turns the viewer's pager, even on a page with no failure (the
+    /// AC-57.3 witness was red with a swipe), so the scenarios page through the
+    /// filmstrip. The cell index is not guessed: it is the shown page's index in
+    /// the pager order (`pagerOrder()`) plus one, and that next page must be `to`.
+    private func goToPage(_ to: String) {
+        let prefix = "viewerImage_"
+        let shown = elements(withPrefix: prefix).allElementsBoundByIndex.first { isShownPage($0) }
+        guard let shown else {
+            XCTFail("no page on screen before going to \(to) — \(filmstripTree())")
+            return
+        }
+        let from = String(shown.identifier.dropFirst(prefix.count))
+        let order = pagerOrder()
+        guard let current = order.firstIndex(of: from) else {
+            XCTFail("the shown page \(from) is not in the pager order \(order)")
+            return
+        }
+        let n = current + 1
+        guard order.indices.contains(n), order[n] == to else {
+            XCTFail("\(to) is not the page after \(from) in the pager order \(order)")
+            return
+        }
+
+        // The chrome holds the filmstrip; a single tap on the photo brings it back.
+        let cell = element("viewerFilmstripCell_\(n)")
+        if !waitHittable(cell, timeout: 3) { shown.tap() }
+        guard waitHittable(cell, timeout: 10) else {
+            shot("filmstrip-no-cell-\(n)")
+            XCTFail("viewerFilmstripCell_\(n) (page \(to)) never became tappable — \(filmstripTree())")
+            return
+        }
+        cell.tap()
+
+        // Then `to` must be the page on screen, not merely a page in the tree.
+        let target = element("\(prefix)\(to)")
+        let reached = waitUntil(timeout: 10) { self.isShownPage(target) }
+        if !reached {
+            shot("filmstrip-not-on-\(to.suffix(4))")
+            XCTFail("the filmstrip cell \(n) did not show \(to) — \(filmstripTree())")
+        }
     }
 
     private func viewerProbe() -> [String: String] {
@@ -334,7 +402,7 @@ final class ViewerResilienceUITests: XCTestCase {
                       "the failure card stayed over the loaded photo")
 
         // AC-57.3: the next page is not touched by the first one's failure.
-        swipeToNextPage(from: retry, to: neighbour)
+        goToPage(neighbour)
         XCTAssertTrue(waitUntil(timeout: 20) { self.imageProbeValue(self.neighbour).hasPrefix("loaded") },
                       "the next photo did not load — probe reads \(imageProbeValue(neighbour))")
         XCTAssertEqual(elements(withPrefix: "viewerImageRetry_").count, 0, "a failure card followed the swipe")
@@ -347,10 +415,10 @@ final class ViewerResilienceUITests: XCTestCase {
         shot("failed-bare")
     }
 
-    /// AC-57.3 witness: the same swipe from …0002 to …0003, with a preview that
+    /// AC-57.3 witness: the same move from …0002 to …0003, with a preview that
     /// answers from the start (no failure, no retry). It tells a pager that does
-    /// not turn after a failure and a retry apart from a swipe the CI simulator
-    /// never turns into a page change.
+    /// not turn after a failure and a retry apart from a navigation the CI
+    /// simulator never performs.
     func test_AC_57_3_swipeWitness() throws {
         reset()
         launchSignedIn(extraArguments: ["-uiTestImageProbe", "YES"])
@@ -358,7 +426,7 @@ final class ViewerResilienceUITests: XCTestCase {
         XCTAssertTrue(waitUntil(timeout: 20) { self.imageProbeValue(self.retry).hasPrefix("loaded 32x32") },
                       "the preview never displayed — probe reads \(imageProbeValue(retry))")
         XCTAssertEqual(elements(withPrefix: "viewerImageRetry_").count, 0, "a failure card with a preview that answers")
-        swipeToNextPage(from: retry, to: neighbour)
+        goToPage(neighbour)
         XCTAssertTrue(waitUntil(timeout: 20) { self.imageProbeValue(self.neighbour).hasPrefix("loaded") },
                       "the next photo did not load — probe reads \(imageProbeValue(neighbour))")
     }
