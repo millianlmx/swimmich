@@ -293,13 +293,16 @@ struct SearchView: View {
                 Image(systemName: "xmark.circle.fill")
                     .font(.pvCaption)
                     .foregroundStyle(Color.textSecondaryPV)
+                    // HIG: a touch target of at least 44 × 44 pt (the glyph alone is 15).
+                    .frame(minWidth: 44, minHeight: 44)
                     .contentShape(Rectangle())
             }
             .buttonStyle(.plain)
             .accessibilityIdentifier("searchFilterChipRemove_\(constraint.field.rawValue)")
             .accessibilityLabel("Remove filter")
         }
-        .padding(.horizontal, PVSpacing.s12)
+        // The cross's 44 pt frame closes the capsule on the right.
+        .padding(.leading, PVSpacing.s12)
         .frame(minHeight: PVSpacing.s32)
         .background(Color.bgSecondary, in: Capsule())
         .overlay(Capsule().stroke(Color.separatorPV, lineWidth: 1))

@@ -399,6 +399,41 @@ final class SearchCriteriaTests: XCTestCase {
         XCTAssertNil(dto.originalFileName)
     }
 
+    /// The path the screen really takes: a mode picked in the menu while the
+    /// field is empty, then the text typed (`queryDidChange`, debounced), never
+    /// `search()` called by hand. A pick made with no text sends nothing, and
+    /// the typing alone must then reach the server in that mode's shape.
+    func test_AC_212_menuPickThenTypedTextSearches() async throws {
+        for mode in [SearchViewModel.SearchMode.metadata, .filename, .description] {
+            let mock = makeMock()
+            let vm = SearchViewModel(client: mock)
+            vm.debounceInterval = .milliseconds(10)
+
+            await vm.selectSearchMode(mode)
+            XCTAssertTrue(mock.searchMetadataCalls.isEmpty, "\(mode): a pick with no text sends nothing")
+            vm.query = "img_12"
+            vm.queryDidChange()
+
+            let deadline = ContinuousClock.now + .seconds(2)
+            while mock.searchMetadataCalls.isEmpty, ContinuousClock.now < deadline {
+                try await Task.sleep(for: .milliseconds(20))
+            }
+
+            let dto = try XCTUnwrap(mock.searchMetadataCalls.first, "\(mode): the typed text never reached the server")
+            switch mode {
+            case .filename:
+                XCTAssertEqual(dto.originalFileName, "img_12")
+                XCTAssertNil(dto.query)
+            case .description:
+                XCTAssertEqual(dto.description, "img_12")
+                XCTAssertNil(dto.query)
+            default:
+                XCTAssertEqual(dto.query, "img_12")
+            }
+            XCTAssertEqual(vm.searchMode, mode, "typing never changes a mode picked in the menu")
+        }
+    }
+
     func test_AC_212_backToSmartSendsQueryAndTimeline() async throws {
         let mock = makeMock()
         let vm = SearchViewModel(client: mock)
