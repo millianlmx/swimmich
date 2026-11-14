@@ -33,6 +33,8 @@ final class AssetEditsUITests: XCTestCase {
 
     /// The first of the stub's six timeline photos: 4000×3000, EXIF orientation 1.
     private let photo = "aaaaaaaa-1111-4111-8111-000000000001"
+    /// The second of the stub's timeline photos: never seeded, so never edited.
+    private let secondPhoto = "aaaaaaaa-1111-4111-8111-000000000002"
 
     // MARK: - Helpers (copied, see the type's doc)
 
@@ -1082,5 +1084,282 @@ final class AssetEditsUITests: XCTestCase {
         let answer = element(choice)
         XCTAssertTrue(answer.waitForExistence(timeout: 20), "the question was never asked — \(screenText())")
         answer.tap()
+    }
+
+    // MARK: - AC-187
+
+    /// The downloads of a photo: `GET …/original` WITHOUT the thumbhash `c`, which the viewer's display
+    /// of the original always carries.
+    private func downloads(of id: String) -> [[String: Any]] {
+        entries("GET") { $0 == "/api/assets/\(id)/original" }.filter { self.param($0, "c") == nil }
+    }
+
+    private func archives() -> [[String: Any]] { entries("POST") { $0 == "/api/download/archive" } }
+
+    private func infos() -> [[String: Any]] { entries("POST") { $0 == "/api/download/info" } }
+
+    private func bodyEdited(_ entry: [String: Any]) -> Bool? {
+        (entry["body"] as? [String: Any])?["edited"] as? Bool
+    }
+
+    private func bodyIds(_ entry: [String: Any]) -> Set<String> {
+        Set(((entry["body"] as? [String: Any])?["assetIds"] as? [String]) ?? [])
+    }
+
+    private func servedEdited(_ entry: [String: Any]) -> [String]? { entry["edited_served"] as? [String] }
+
+    /// The catalogue label of the selection bar's download action, in en, fr, de, es and it. iOS may file
+    /// an action under its own overflow button, where an item can lose its identifier: it is then
+    /// recognised by its label, compared for EQUALITY.
+    private static let barLabels: [String: [String]] = [
+        "downloadSelectionButton": ["Download", "Télécharger", "Herunterladen", "Descargar", "Scarica"],
+        "selectionCancelButton": ["Cancel", "Annuler", "Abbrechen", "Cancelar", "Annulla"],
+        "favoriteSelectedButton": ["Favorite", "Favori", "Favorit", "Favorito", "Preferito"],
+        "deleteSelectedButton": ["Delete", "Supprimer", "Löschen", "Eliminar", "Elimina"],
+        "addToAlbumButton": ["Add to Album", "Ajouter à l'album", "Zu Album hinzufügen", "Añadir a álbum", "Aggiungi all'album"],
+        "archiveButton": ["Archive", "Archiver", "Archivieren", "Archivar", "Archivia"],
+        "unarchiveButton": ["Unarchive", "Désarchiver", "Dearchivieren", "Desarchivar", "Rimuovi dall'archivio"],
+        "moveToLockedFolderButton": ["Move to Locked Folder", "Déplacer vers le dossier verrouillé",
+                                     "In den gesperrten Ordner verschieben", "Mover a la carpeta bloqueada",
+                                     "Sposta nella cartella bloccata"],
+        "stackButton": ["Stack", "Pile", "Stapel", "Pila", "Gruppo"],
+    ]
+
+    /// The element's own identifier, else the action whose label equals its label.
+    private func canonicalId(of element: XCUIElement) -> String? {
+        if !element.identifier.isEmpty { return element.identifier }
+        let label = element.label
+        return Self.barLabels.first { $0.value.contains(label) }?.key
+    }
+
+    private func selectionBar() -> XCUIElement {
+        app.navigationBars.containing(.button, identifier: "selectionCancelButton").firstMatch
+    }
+
+    /// The system's overflow button of the bar: of its buttons that carry no identifier and are no known
+    /// action, the one furthest right.
+    private func overflowButton(in bar: XCUIElement) -> XCUIElement? {
+        bar.buttons.allElementsBoundByIndex
+            .filter { canonicalId(of: $0) == nil && $0.isHittable }
+            .max { $0.frame.maxX < $1.frame.maxX }
+    }
+
+    /// The menu's actions while the overflow is open: below the bar, recognised by identifier or label.
+    private func overflowActions(below bar: XCUIElement) -> [String] {
+        let barBottom = bar.frame.maxY
+        let items = app.buttons.allElementsBoundByIndex
+            .filter { $0.frame.minY >= barBottom - 1 && $0.isHittable }
+            .compactMap { element -> (CGFloat, String)? in
+                guard let id = canonicalId(of: element), Self.barLabels[id] != nil else { return nil }
+                return (element.frame.minY, id)
+            }
+        return items.sorted { $0.0 < $1.0 }.map(\.1)
+    }
+
+    /// An action of the selection bar, in the bar or in the overflow iOS makes of it.
+    private func tapBarAction(_ id: String) {
+        let bar = selectionBar()
+        XCTAssertTrue(bar.waitForExistence(timeout: 20), "no selection bar — \(screenText())")
+        func inBar() -> XCUIElement? {
+            bar.buttons.allElementsBoundByIndex.first { canonicalId(of: $0) == id && $0.isHittable }
+        }
+        if waitUntil(3, { inBar() != nil }), let button = inBar() {
+            button.tap()
+            return
+        }
+        if let overflow = overflowButton(in: bar) {
+            overflow.tap()
+            let found = waitUntil(15) { overflowActions(below: bar).contains(id) }
+            if found,
+               let item = app.buttons.allElementsBoundByIndex.first(where: {
+                   $0.frame.minY >= bar.frame.maxY - 1 && canonicalId(of: $0) == id && $0.isHittable
+               }) {
+                item.tap()
+                return
+            }
+        }
+        XCTFail("no `\(id)` in the selection bar or its overflow — \(screenText())")
+    }
+
+    /// Enters the timeline's selection mode and selects the photos.
+    private func selectInTimeline(_ ids: [String]) {
+        let select = element("selectButton")
+        XCTAssertTrue(select.waitForExistence(timeout: 30), "no Select button — \(screenText())")
+        select.tap()
+        for id in ids { tile(id).tap() }
+    }
+
+    /// Answers the question "which version?" with `choice`; the alert goes away and does not come back.
+    private func answer(_ choice: String) {
+        let button = element(choice)
+        XCTAssertTrue(button.waitForExistence(timeout: 15), "the question was never asked — \(screenText())")
+        button.tap()
+        XCTAssertTrue(element("downloadChoiceEdited").waitForNonExistence(timeout: 5),
+                      "the question stayed up after the answer — \(screenText())")
+    }
+
+    private func assertNoQuestion(_ context: String) {
+        XCTAssertFalse(element("downloadChoiceEdited").waitForExistence(timeout: 5), "a question \(context)")
+    }
+
+    /// The download queue holds no `queued` or `running` row: its panel is gone. Called only once the
+    /// journal showed the archive request, so the row was at least running. It opens no detail screen,
+    /// which an idle queue makes unreachable, and does not prove the file is on disk.
+    private func waitQueueIdle() {
+        XCTAssertTrue(element("downloadPanel").waitForNonExistence(timeout: 20),
+                      "the download queue never went idle — \(describe())")
+    }
+
+    /// Answers the system alert Photos raises the first time something is saved.
+    private func allowPhotosIfAsked() {
+        let springboard = XCUIApplication(bundleIdentifier: "com.apple.springboard")
+        let hosts: [XCUIApplication] = [springboard, app]
+        for host in hosts {
+            let alert = host.alerts.firstMatch
+            guard alert.waitForExistence(timeout: 6) else { continue }
+            for label in ["Allow Full Access", "Allow", "OK", "Autoriser"] {
+                let button = alert.buttons[label]
+                if button.exists { button.tap(); return }
+            }
+            XCTFail("the Photos alert offers no allowance — it offers: "
+                    + "\(alert.buttons.allElementsBoundByIndex.map(\.label))")
+            return
+        }
+    }
+
+    /// Taps "Save to Photos" in the share sheet and answers the question with `choice`, or checks there is
+    /// none when `choice` is nil.
+    private func saveToPhotos(answer choice: String?) {
+        let save = element("saveToPhotosButton")
+        for _ in 0..<4 where !save.waitForExistence(timeout: 5) { app.swipeUp() }
+        XCTAssertTrue(save.exists, "no Save to Photos button — \(screenText())")
+        save.tap()
+        if let choice { answer(choice) } else { assertNoQuestion("on Save to Photos") }
+        allowPhotosIfAsked()
+    }
+
+    /// Waits until the photo was downloaded `count` times, then until Save to Photos reads `saved`.
+    private func waitSaved(count: Int, of id: String) {
+        XCTAssertTrue(waitUntil(30) { self.downloads(of: id).count == count },
+                      "expected \(count) download(s) of the photo — \(describe())")
+        let save = element("saveToPhotosButton")
+        let saved = waitUntil(30) {
+            (save.value as? String) == "saved" || self.element("saveSectionError").exists
+        }
+        let error = element("saveSectionError")
+        XCTAssertFalse(error.exists, "the save failed: \(error.exists ? error.label : "") — \(describe())")
+        XCTAssertTrue(saved, "the save never finished — value \(save.value as? String ?? "nil")")
+    }
+
+    /// A selection of two photos on a v3.4.0 server whose timeline says nothing about edits: the question
+    /// is asked once per download, and each archive asks the server for the answer given. The two files
+    /// differ. The second selection waits for the first archive's row to finish (decision #2).
+    func test_AC_187_selectionAsksOnceAndCarriesEachAnswer() throws {
+        launchSignedIn(config: try seedConfig([crop(0, 375, 4000, 2250), rotate(90)]))
+        let both = [photo, secondPhoto]
+
+        selectInTimeline(both)
+        tapBarAction("downloadSelectionButton")
+        answer("downloadChoiceEdited")
+        XCTAssertTrue(waitUntil(20) { self.archives().count == 1 }, "no archive for the edited choice — \(describe())")
+        let first = archives()[0]
+        XCTAssertEqual(bodyEdited(first), true, "\(describe())")
+        XCTAssertEqual(bodyIds(first), Set(both), "\(describe())")
+        XCTAssertEqual(servedEdited(first), [photo], "only the edited photo comes edited — \(describe())")
+        let log = journal()
+        let infoAt = log.firstIndex { ($0["path"] as? String) == "/api/download/info" && self.bodyIds($0) == Set(both) }
+        let archiveAt = log.firstIndex { ($0["path"] as? String) == "/api/download/archive" }
+        XCTAssertNotNil(infoAt, "the archive was never announced by download/info — \(describe())")
+        if let infoAt, let archiveAt { XCTAssertLessThan(infoAt, archiveAt, "download/info comes before the archive — \(describe())") }
+        XCTAssertTrue(element("selectButton").waitForExistence(timeout: 15), "the selection was not left — \(screenText())")
+        waitQueueIdle()
+
+        selectInTimeline(both)
+        tapBarAction("downloadSelectionButton")
+        answer("downloadChoiceOriginal")
+        XCTAssertTrue(waitUntil(20) { self.archives().count == 2 }, "no archive for the original choice — \(describe())")
+        let second = archives()[1]
+        XCTAssertEqual(bodyEdited(second), false, "the original is asked explicitly — \(describe())")
+        XCTAssertEqual(bodyIds(second), Set(both), "\(describe())")
+        XCTAssertEqual(servedEdited(second), [], "\(describe())")
+        let files = archives().map { $0["sha"] as? String }
+        XCTAssertNotNil(files[0])
+        XCTAssertNotEqual(files[0], files[1], "the two archives must differ — \(describe())")
+
+        Thread.sleep(forTimeInterval: 3)
+        XCTAssertEqual(archives().count, 2, "one archive per answer — \(describe())")
+        XCTAssertEqual(infos().count, 2, "one announcement per answer — \(describe())")
+    }
+
+    /// The same selection on a server that does not serve `/edits`: no question, the original, explicitly.
+    func test_AC_187_oldServerSelectionDownloadsOriginalWithoutQuestion() {
+        launchSignedIn(config: "version=2.0.0")
+
+        selectInTimeline([photo, secondPhoto])
+        tapBarAction("downloadSelectionButton")
+        assertNoQuestion("on a server without /edits")
+        XCTAssertTrue(waitUntil(20) { self.archives().count == 1 }, "no archive — \(describe())")
+        let archive = archives()[0]
+        XCTAssertEqual(bodyEdited(archive), false, "\(describe())")
+        XCTAssertEqual(bodyIds(archive), Set([photo, secondPhoto]), "\(describe())")
+        XCTAssertEqual(servedEdited(archive), [], "\(describe())")
+        XCTAssertTrue(element("selectButton").waitForExistence(timeout: 15), "the selection was not left — \(screenText())")
+        XCTAssertTrue(journal().allSatisfy { !(($0["path"] as? String) ?? "").contains("/edits") },
+                      "an old server must never be asked for /edits — \(describe())")
+    }
+
+    /// In the viewer, Save to Photos and Download to Files ask the question for a photo whose record says
+    /// edited, every time; Download original never does. A photo whose record says it is not edited is
+    /// never asked about.
+    func test_AC_187_viewerAsksOnlyForAnEditedRecord() throws {
+        // A: the record says edited.
+        launchSignedIn(config: try seedConfig([crop(0, 375, 4000, 2250), rotate(90)]))
+        tile(photo).tap()
+        let share = element("viewerShareButton")
+        XCTAssertTrue(share.waitForExistence(timeout: 20), "the viewer has no share button — \(screenText())")
+        share.tap()
+
+        saveToPhotos(answer: "downloadChoiceEdited")
+        waitSaved(count: 1, of: photo)
+        XCTAssertEqual(param(downloads(of: photo)[0], "edited"), "true", "\(describe())")
+
+        saveToPhotos(answer: "downloadChoiceOriginal")
+        waitSaved(count: 2, of: photo)
+        XCTAssertEqual(param(downloads(of: photo)[1], "edited"), "false", "\(describe())")
+        let files = downloads(of: photo).map { $0["sha"] as? String }
+        XCTAssertNotNil(files[0])
+        XCTAssertNotEqual(files[0], files[1], "the two files received must differ — \(describe())")
+
+        downloadToFiles(choosing: "downloadChoiceEdited")
+        XCTAssertTrue(waitUntil(20) { self.downloads(of: self.photo).count == 3 }, "no third download — \(describe())")
+        XCTAssertEqual(param(downloads(of: photo)[2], "edited"), "true", "\(describe())")
+
+        let original = element("downloadOriginalButton")
+        XCTAssertTrue(original.waitForExistence(timeout: 20), "no Download original — \(screenText())")
+        original.tap()
+        assertNoQuestion("on Download original")
+        XCTAssertTrue(waitUntil(20) { self.downloads(of: self.photo).count == 4 }, "no fourth download — \(describe())")
+        XCTAssertEqual(downloads(of: photo).map { self.param($0, "edited") }, ["true", "false", "true", "false"],
+                       "\(describe())")
+
+        // B: the record says it is not edited.
+        app.terminate()
+        launchSignedIn()
+        tile(photo).tap()
+        let plainShare = element("viewerShareButton")
+        XCTAssertTrue(plainShare.waitForExistence(timeout: 20), "the viewer has no share button — \(screenText())")
+        plainShare.tap()
+
+        saveToPhotos(answer: nil)
+        waitSaved(count: 1, of: photo)
+        XCTAssertEqual(param(downloads(of: photo)[0], "edited"), "false", "\(describe())")
+
+        let toFiles = element("downloadToFilesButton")
+        XCTAssertTrue(toFiles.waitForExistence(timeout: 20), "no Download to Files — \(screenText())")
+        XCTAssertTrue(waitUntil(20) { toFiles.isEnabled }, "Download to Files stayed disabled")
+        toFiles.tap()
+        assertNoQuestion("on Download to Files")
+        XCTAssertTrue(waitUntil(20) { self.downloads(of: self.photo).count == 2 }, "no second download — \(describe())")
+        XCTAssertEqual(param(downloads(of: photo)[1], "edited"), "false", "\(describe())")
     }
 }
