@@ -47,7 +47,7 @@ final class AppLockWindowControllerTests: XCTestCase {
         notifications: NotificationCenter = .default
     ) async -> (vm: AppLockViewModel, controller: AppLockWindowController) {
         let suite = UserDefaults(suiteName: Self.suiteName)!
-        let vm = await makeActivatedAppLock(then: { false })
+        let vm = await makeActivatedAppLock(then: { .failed(.cancelled) })
         let controller = AppLockWindowController(
             appLock: vm,
             language: AppLanguageStore(defaults: suite),

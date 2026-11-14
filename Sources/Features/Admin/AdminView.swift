@@ -68,20 +68,19 @@ struct AdminView: View {
                 Task { await vm.createUser(name: newUserName, email: newUserEmail, password: newUserPassword, isAdmin: newUserIsAdmin) }
             }
         }
-        .confirmationDialog(
+        // An alert, not a confirmationDialog: on iOS 26 a confirmationDialog is a popover that drops Cancel.
+        .alert(
             "Delete user?",
-            isPresented: Binding(get: { pendingDeleteUser != nil }, set: { if !$0 { pendingDeleteUser = nil } }),
-            titleVisibility: .visible
+            isPresented: Binding(get: { pendingDeleteUser != nil }, set: { if !$0 { pendingDeleteUser = nil } })
         ) {
             Button("Delete (force)", role: .destructive) {
                 if let u = pendingDeleteUser { Task { await vm.deleteUser(u, force: true) } }
             }
             Button("Cancel", role: .cancel) {}
         }
-        .confirmationDialog(
+        .alert(
             "Delete library and all its assets?",
-            isPresented: Binding(get: { pendingDeleteLibrary != nil }, set: { if !$0 { pendingDeleteLibrary = nil } }),
-            titleVisibility: .visible
+            isPresented: Binding(get: { pendingDeleteLibrary != nil }, set: { if !$0 { pendingDeleteLibrary = nil } })
         ) {
             Button("Delete", role: .destructive) {
                 if let l = pendingDeleteLibrary { Task { await vm.deleteLibrary(l) } }

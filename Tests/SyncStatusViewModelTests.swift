@@ -91,6 +91,25 @@ final class SyncStatusViewModelTests: XCTestCase {
         )
     }
 
+    // AC-809: "Run now" signals the start once the engine accepted the pass;
+    // "Stop" says whether a stop was accepted.
+    @MainActor
+    func test_AC_809_runNowSignalsStartAndCancelRunReportsAcceptance() async {
+        let (client, source) = library(["c1"])
+        source.exportGate = { _ in try await suspendUntilCancelled() }
+        let h = makeHarness(client: client, source: source)
+        XCTAssertFalse(h.sut.cancelRun(), "nothing runs: nothing to stop")
+
+        var starts = 0
+        let run = Task { @MainActor in await h.sut.runNow { starts += 1 } }
+        await pollUntil("export en vol") { source.exportedIDs.contains("c1") }
+        XCTAssertEqual(starts, 1)
+
+        XCTAssertTrue(h.sut.cancelRun())
+        await run.value
+        XCTAssertEqual(starts, 1)
+    }
+
     private func reactItem(_ id: String) -> AssetReactItem {
         AssetReactItem(
             id: id, ownerId: "owner", ratio: 0.75, isFavorite: false, visibility: "timeline",

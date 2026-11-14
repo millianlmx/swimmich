@@ -694,13 +694,20 @@ final class AlbumDetailViewModel {
         }
     }
 
-    func revokeSharedLink(id: String) async {
+    /// Bumped once per accepted revocation (the sheet plays a warning haptic).
+    private(set) var sharedLinkRevokeFeedbackTick = 0
+
+    @discardableResult
+    func revokeSharedLink(id: String) async -> Bool {
         do {
             try await client.deleteSharedLink(id: id)
             sharedLinks.removeAll { $0.id == id }
             actionErrorMessage = nil
+            sharedLinkRevokeFeedbackTick &+= 1
+            return true
         } catch {
             actionErrorMessage = error.userFacingMessage
+            return false
         }
     }
 

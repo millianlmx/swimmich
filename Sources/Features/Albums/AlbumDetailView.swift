@@ -343,10 +343,10 @@ struct AlbumDetailView: View {
                 .presentationDetents([.medium, .large])
                 .presentationDragIndicator(.visible)
         }
-        .confirmationDialog(
+        // An alert, not a confirmationDialog: on iOS 26 a confirmationDialog is a popover that drops Cancel.
+        .alert(
             "Delete this album? The photos themselves are not deleted.",
-            isPresented: $presentingDeleteConfirm,
-            titleVisibility: .visible
+            isPresented: $presentingDeleteConfirm
         ) {
             Button("Delete Album", role: .destructive) {
                 Task {

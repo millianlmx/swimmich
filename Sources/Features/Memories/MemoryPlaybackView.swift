@@ -132,10 +132,10 @@ struct MemoryPlaybackView: View {
                 )
             }
         }
-        .confirmationDialog(
+        // An alert, not a confirmationDialog: on iOS 26 a confirmationDialog is a popover that drops Cancel.
+        .alert(
             "Delete this memory?",
-            isPresented: $confirmingDelete,
-            titleVisibility: .visible
+            isPresented: $confirmingDelete
         ) {
             Button("Delete Memory", role: .destructive) {
                 Task {

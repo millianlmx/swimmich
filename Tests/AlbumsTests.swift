@@ -248,6 +248,25 @@ final class AlbumsTests: XCTestCase {
         XCTAssertFalse(vm.sharedLinks.contains { $0.id == "link-1" })
     }
 
+    // AC-64 / AC-806: the album's link sheet bumps its own tick, on success only.
+    func test_AC_64_albumRevokeSuccessBumpsFeedback() async {
+        let mock = MockImmichClient()
+        mock.sharedLinksResponse = [makeSharedLink(id: "link-1"), makeSharedLink(id: "link-2")]
+        let vm = AlbumDetailViewModel(client: mock, albumId: "alb")
+        await vm.loadSharedLinks()
+        XCTAssertEqual(vm.sharedLinkRevokeFeedbackTick, 0)
+
+        let ok = await vm.revokeSharedLink(id: "link-1")
+        XCTAssertTrue(ok)
+        XCTAssertEqual(vm.sharedLinkRevokeFeedbackTick, 1)
+
+        mock.deleteSharedLinkError = NSError(domain: "test", code: 500)
+        let refused = await vm.revokeSharedLink(id: "link-2")
+        XCTAssertFalse(refused)
+        XCTAssertEqual(vm.sharedLinkRevokeFeedbackTick, 1, "a refused revocation plays nothing (AC-806)")
+        XCTAssertEqual(vm.sharedLinks.map(\.id), ["link-2"])
+    }
+
     // MARK: - AC-1091 update shared link
 
     func test_updateSharedLink_sendsDtoAndReplacesRow() async {

@@ -45,14 +45,6 @@ final class SettingsParityUITests: XCTestCase {
     /// opens in the viewer, and the proof the app is talking to THIS stub.
     private let assetId = "aaaaaaaa-1111-4111-8111-000000000001"
 
-    /// The five languages the catalog carries for the confirmation dialog's
-    /// "Reset". Matched as a set, never as one literal: the repo's own simulator
-    /// is German, a slot that has never launched the app is French and the
-    /// shared devices have been both — a scenario pinned to one of them lies on
-    /// the other. Everything else is asserted by IDENTIFIER, and the pickers'
-    /// options are the enums' own verbatim words (see `pickerValue`).
-    private let resetLabels = ["Reset", "Zurücksetzen", "Restablecer", "Réinitialiser", "Reimposta"]
-
     override func setUpWithError() throws {
         continueAfterFailure = false
         app = XCUIApplication()
@@ -647,19 +639,15 @@ final class SettingsParityUITests: XCTestCase {
             XCTFail("the Preferences form has no Reset row:\n\(app.debugDescription)")
         }
         reset.tap()
-        // Destructive and confirmed: the dialog is an action sheet, and its
-        // buttons are in the app's own tree (the form's Reset row is still there
-        // behind it, hence the dialog-scoped query).
-        let dialog = app.sheets.firstMatch
-        XCTAssertTrue(dialog.waitForExistence(timeout: 10), "Reset did not raise a confirmation")
-        let confirm = dialog.buttons.matching(labelPredicate(resetLabels)).firstMatch
+        // Destructive and confirmed: the confirmation is an alert (a
+        // confirmationDialog would drop Cancel on iOS 26), found by identifier.
+        let confirm = app.buttons["preferencesResetConfirm"]
         if !confirm.waitForExistence(timeout: 10) {
             shot("p13c-reset-sans-bouton")
-            XCTFail("no Reset button in the confirmation dialog — its buttons are: "
-                    + "\(dialog.buttons.allElementsBoundByIndex.map(\.label))")
+            XCTFail("Reset did not raise a confirmation with a Reset button")
         }
         confirm.tap()
-        XCTAssertTrue(waitUntil(10) { !dialog.exists }, "the confirmation stayed up after Reset")
+        XCTAssertTrue(waitUntil(10) { !confirm.exists }, "the confirmation stayed up after Reset")
         shot("p13-reset-confirme")
         // The rows asserted below were off screen while the form was scrolled to
         // its last section.

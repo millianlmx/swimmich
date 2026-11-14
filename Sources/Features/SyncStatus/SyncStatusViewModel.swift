@@ -94,12 +94,13 @@ final class SyncStatusViewModel {
 
     /// Picks the queue back up and waits for the run to settle, so the button's
     /// busy state lives exactly as long as the work does.
-    func runNow() async {
-        upload.resumeUpload()
+    func runNow(onStart: (@MainActor () -> Void)? = nil) async {
+        upload.resumeUpload(onStart: onStart)
         await upload.awaitCurrentBackup()
     }
 
-    func cancelRun() { upload.cancelBackup() }
+    @discardableResult
+    func cancelRun() -> Bool { upload.cancelBackup() }
 
     func reconcileNow() async { await upload.reconcileNow() }
 

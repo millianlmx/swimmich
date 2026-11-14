@@ -18,6 +18,8 @@ struct SyncStatusView: View {
     @Environment(\.dismiss) private var dismiss
     @State private var showResetLedgerConfirm = false
     @State private var showClearOfflineConfirm = false
+    @State private var startTick = 0
+    @State private var stopTick = 0
 
     var body: some View {
         ScrollView {
@@ -58,20 +60,22 @@ struct SyncStatusView: View {
         }
         .task { await vm.refresh() }
         .refreshable { await vm.refresh() }
-        .confirmationDialog(
+        // Alerts, not confirmationDialogs: on iOS 26 a confirmationDialog is a
+        // popover anchored to its source and drops the cancel button.
+        .alert(
             "Reset tracked assets?",
-            isPresented: $showResetLedgerConfirm,
-            titleVisibility: .visible
+            isPresented: $showResetLedgerConfirm
         ) {
             Button("Reset tracking", role: .destructive) { vm.resetLedger() }
+                .accessibilityIdentifier("syncStatusResetLedgerConfirm")
             Button("Cancel", role: .cancel) {}
+                .accessibilityIdentifier("syncStatusResetLedgerCancel")
         } message: {
             Text("The next backup will re-check every photo.")
         }
-        .confirmationDialog(
+        .alert(
             "Clear offline cache?",
-            isPresented: $showClearOfflineConfirm,
-            titleVisibility: .visible
+            isPresented: $showClearOfflineConfirm
         ) {
             Button("Purge offline cache", role: .destructive) {
                 Task { await vm.clearOfflineCache() }
@@ -81,6 +85,10 @@ struct SyncStatusView: View {
         } message: {
             Text("Downloaded files will need to be downloaded again.")
         }
+        // A pass the engine accepted starts with one tap, an accepted stop ends
+        // with one; refusals and the end of a pass play nothing (AC-809).
+        .appSensoryFeedback(.start, trigger: startTick, probe: "backupStart.syncStatus")
+        .appSensoryFeedback(.stop, trigger: stopTick, probe: "backupStop.syncStatus")
         .offlinePurgeResultAlert(vm.offlinePurgeResult, dismiss: { vm.dismissOfflinePurgeResult() })
     }
 
@@ -246,7 +254,7 @@ struct SyncStatusView: View {
         VStack(spacing: PVSpacing.s8) {
             if vm.isRunning {
                 Button {
-                    vm.cancelRun()
+                    if vm.cancelRun() { stopTick &+= 1 }
                 } label: {
                     Label("Stop", systemImage: "stop.circle")
                         .frame(maxWidth: .infinity)
@@ -256,7 +264,7 @@ struct SyncStatusView: View {
                 .accessibilityIdentifier("syncStatusCancel")
             } else {
                 Button {
-                    Task { await vm.runNow() }
+                    Task { await vm.runNow { startTick &+= 1 } }
                 } label: {
                     Label("Run now", systemImage: "arrow.triangle.2.circlepath")
                         .frame(maxWidth: .infinity)

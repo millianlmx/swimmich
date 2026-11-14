@@ -148,6 +148,35 @@ final class PartnersViewModelTests: XCTestCase {
         XCTAssertNil(vm.errorMessage)
     }
 
+    // AC-64 / AC-806: a warning tick once the server accepted "stop sharing".
+    @MainActor
+    func test_AC_64_stopSharingSuccessBumpsFeedback() async {
+        let mock = MockImmichClient()
+        mock.partnersSharedByResponse = [partner(id: "p1")]
+        let vm = PartnersViewModel(client: mock)
+        await vm.load()
+        XCTAssertEqual(vm.stopSharingFeedbackTick, 0)
+
+        await vm.remove(partnerId: "p1")
+        XCTAssertEqual(vm.stopSharingFeedbackTick, 1)
+    }
+
+    @MainActor
+    func test_AC_806_stopSharingRefusedOrIgnoredDoesNotBumpFeedback() async {
+        let mock = MockImmichClient()
+        mock.partnersSharedByResponse = [partner(id: "p1")]
+        mock.partnersSharedWithResponse = [partner(id: "incoming")]
+        let vm = PartnersViewModel(client: mock)
+        await vm.load()
+
+        await vm.remove(partnerId: "incoming")
+        XCTAssertEqual(vm.stopSharingFeedbackTick, 0, "an incoming row is not stoppable from here")
+
+        mock.partnersError = Boom()
+        await vm.remove(partnerId: "p1")
+        XCTAssertEqual(vm.stopSharingFeedbackTick, 0, "a refused request plays nothing")
+    }
+
     @MainActor
     func test_remove_ignoresIncomingPartner() async {
         let mock = MockImmichClient()

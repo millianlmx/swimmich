@@ -33,6 +33,18 @@ enum APIError: Error, LocalizedError, Equatable {
         }
     }
 
+    /// The server answered a request with a 4xx: it understood and refused it
+    /// (a wrong PIN, say). Network loss, 5xx, 401 and every client-side
+    /// condition are not refusals, so they raise no "refused" feedback.
+    var isServerRefusal: Bool {
+        switch self {
+        case .serverError(let code, _), .http(let code):
+            return (400...499).contains(code)
+        default:
+            return false
+        }
+    }
+
     /// Maps a raw URL response error to the APIError domain.
     static func from(_ error: Error) -> APIError {
         if let api = error as? APIError { return api }

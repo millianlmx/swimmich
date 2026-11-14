@@ -77,10 +77,10 @@ struct OfflineAssetsView: View {
         .navigationBarTitleDisplayMode(.inline)
         .task { await vm.load() }
         .refreshable { await vm.refresh() }
-        .confirmationDialog(
+        // An alert, not a confirmationDialog: on iOS 26 a confirmationDialog is a popover that drops Cancel.
+        .alert(
             "Remove all offline photos?",
-            isPresented: $showClearAllConfirm,
-            titleVisibility: .visible
+            isPresented: $showClearAllConfirm
         ) {
             Button("Clear All Offline Photos", role: .destructive) {
                 Task { await vm.clearAll() }

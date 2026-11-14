@@ -37,6 +37,8 @@ struct LockedFolderView: View {
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .background(Color.bgPrimary)
         .animation(PVMotion.movement(PVMotion.standard, reduceMotion: reduceMotion), value: vm.gate)
+        // A PIN the server refused: error tap on every refusal (AC-807).
+        .appSensoryFeedback(.error, trigger: vm.pinRefusalFeedbackTick, probe: "lockedFolderPINRefused")
         .task { await vm.refreshGate() }
     }
 }

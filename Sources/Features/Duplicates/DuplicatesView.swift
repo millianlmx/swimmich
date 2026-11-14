@@ -29,13 +29,13 @@ struct DuplicatesView: View {
         .navigationTitle("Duplicates")
         .navigationBarTitleDisplayMode(.inline)
         .task { await vm.load() }
-        .confirmationDialog(
+        // An alert, not a confirmationDialog: on iOS 26 a confirmationDialog is a popover that drops Cancel.
+        .alert(
             Self.deletePrompt(count: pendingCount),
             isPresented: Binding(
                 get: { pendingDeleteId != nil },
                 set: { if !$0 { pendingDeleteId = nil } }
-            ),
-            titleVisibility: .visible
+            )
         ) {
             Button("Delete", role: .destructive) {
                 if let id = pendingDeleteId {

@@ -319,8 +319,7 @@ final class DeviceSessionsUITests: XCTestCase {
         let labelClause = labels.map { _ in "label == %@" }.joined(separator: " OR ")
         let predicate = NSPredicate(format: "(\(labelClause)) AND NOT (identifier BEGINSWITH %@)",
                                     argumentArray: labels + ["deviceSessionRevokeButton_"])
-        for candidate in [app.sheets.buttons.matching(predicate).firstMatch,
-                          app.alerts.buttons.matching(predicate).firstMatch,
+        for candidate in [app.alerts.buttons.matching(predicate).firstMatch,
                           app.buttons.matching(predicate).firstMatch] {
             if candidate.waitForExistence(timeout: timeout) { return candidate }
         }

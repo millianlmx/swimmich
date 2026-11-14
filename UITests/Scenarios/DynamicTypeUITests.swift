@@ -1185,13 +1185,33 @@ final class DynamicTypeUITests: XCTestCase {
         XCTAssertTrue(element("AppLockOverlay").waitForExistence(timeout: 30), "the lock did not show — \(screenText())")
         sleep(2)
         FaceID.noMatch()
-        if cancel.waitForExistence(timeout: 10) { cancel.tap() }
+        // The prompt must be up (the failure reason depends on it): Cancel on it
+        // is what ends the evaluation with `.userCancel`.
+        XCTAssertTrue(cancel.waitForExistence(timeout: 10), "the Face ID prompt never showed — \(screenText())")
+        cancel.tap()
         sleep(1)
 
         XCTAssertTrue(element("appLockTitle").waitForExistence(timeout: 10), "no lock title — \(screenText())")
+        // The reason of the cancelled evaluation, and the retry that follows it (AC-63).
+        let reason = element("appLockFailureReason")
+        XCTAssertTrue(reason.waitForExistence(timeout: 10), "no failure reason after Cancel — \(screenText())")
+        XCTAssertEqual(reason.label, "Face ID didn't recognize you, or the request was cancelled. Try again.",
+                       "the lock screen shows another reason")
+        let unlock = element("appLockUnlockButton")
+        XCTAssertTrue(unlock.label.contains("Try Again"), "the button does not read Try Again: '\(unlock.label)'")
+        XCTAssertFalse(unlock.label.contains("Unlock"), "the button still reads Unlock: '\(unlock.label)'")
         assertInWindow("appLockTitle")
+        assertInWindow("appLockFailureReason")
         scrollToHittable("appLockUnlockButton")
         assertNoOverlap()
+
+        // Try Again launches Face ID again; a matching face lifts the lock.
+        unlock.tap()
+        XCTAssertTrue(cancel.waitForExistence(timeout: 15), "Try Again did not raise the Face ID prompt — \(screenText())")
+        Thread.sleep(forTimeInterval: 1)
+        FaceID.match()
+        XCTAssertTrue(element("AppLockOverlay").waitForNonExistence(timeout: 20),
+                      "the lock stayed after a matching face — \(screenText())")
     }
 
     /// AC-26.4: the share extension (system text size, see the file header).

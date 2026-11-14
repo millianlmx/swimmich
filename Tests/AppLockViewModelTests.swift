@@ -1,3 +1,4 @@
+import LocalAuthentication
 import SwiftUI
 import XCTest
 @testable import ImmichSwiftUI
@@ -17,7 +18,7 @@ final class AppLockViewModelTests: XCTestCase {
     func test_AC_108a_initEnabledIsLocked() {
         resetDefaults()
         UserDefaults.standard.set(true, forKey: AppLockViewModel.enabledKey)
-        let vm = AppLockViewModel(evaluator: { true })
+        let vm = AppLockViewModel(evaluator: { .success })
         XCTAssertTrue(vm.isEnabled)
         XCTAssertTrue(vm.isLocked, "fresh launch with feature on must start locked (AC-113)")
     }
@@ -27,7 +28,7 @@ final class AppLockViewModelTests: XCTestCase {
     func test_AC_108b_disableUnlocks() {
         resetDefaults()
         UserDefaults.standard.set(true, forKey: AppLockViewModel.enabledKey)
-        let vm = AppLockViewModel(evaluator: { true })
+        let vm = AppLockViewModel(evaluator: { .success })
         XCTAssertTrue(vm.isLocked)
 
         vm.disable()
@@ -39,7 +40,7 @@ final class AppLockViewModelTests: XCTestCase {
     // AC-108(c): enabled + lock() → isLocked=true.
     @MainActor
     func test_AC_108c_lockSetsIsLocked() async {
-        let vm = await makeActivatedAppLock(then: { true })
+        let vm = await makeActivatedAppLock(then: { .success })
         XCTAssertFalse(vm.isLocked, "activation alone does not lock")
 
         vm.lock()
@@ -50,7 +51,7 @@ final class AppLockViewModelTests: XCTestCase {
     @MainActor
     func test_AC_108d_authenticateSuccessUnlocks() async {
         resetDefaults()
-        let vm = await makeActivatedAppLock(then: { true })
+        let vm = await makeActivatedAppLock(then: { .success })
         vm.lock()
         XCTAssertTrue(vm.isLocked)
 
@@ -64,7 +65,7 @@ final class AppLockViewModelTests: XCTestCase {
     @MainActor
     func test_AC_108e_authenticateFailureStaysLocked() async {
         resetDefaults()
-        let vm = await makeActivatedAppLock(then: { false })
+        let vm = await makeActivatedAppLock(then: { .failed(.cancelled) })
         vm.lock()
         XCTAssertTrue(vm.isLocked)
 
@@ -92,7 +93,7 @@ final class AppLockViewModelTests: XCTestCase {
             }
         }
         let latch = Latch()
-        let evaluator: @Sendable () async -> Bool = { await latch.wait() }
+        let evaluator: @Sendable () async -> AppLockEvaluation = { await latch.wait() ? .success : .failed(.cancelled) }
 
         let vm = await makeActivatedAppLock(then: evaluator)
         XCTAssertTrue(vm.isEnabled)
@@ -141,12 +142,13 @@ private actor PromptProbe {
         self.result = result
     }
 
-    func evaluate() async -> Bool {
+    func evaluate() async -> AppLockEvaluation {
         calls += 1
-        guard blocking else { return result }
-        if let early { return early }
+        guard blocking else { return result ? .success : .failed(.cancelled) }
+        if let early { return early ? .success : .failed(.cancelled) }
         isWaiting = true
-        return await withCheckedContinuation { continuation = $0 }
+        let answer = await withCheckedContinuation { continuation = $0 }
+        return answer ? .success : .failed(.cancelled)
     }
 
     func release(_ value: Bool) {
@@ -335,7 +337,7 @@ extension AppLockViewModelTests {
     func test_AC_20_persistedEnabledSurvivesUpgrade() {
         resetDefaults()
         UserDefaults.standard.set(true, forKey: AppLockViewModel.enabledKey)
-        let vm = AppLockViewModel(evaluator: { true })
+        let vm = AppLockViewModel(evaluator: { .success })
         XCTAssertTrue(vm.isEnabled)
         XCTAssertTrue(vm.isLocked)
         XCTAssertEqual(vm.cover, .lock)
@@ -491,7 +493,7 @@ extension AppLockViewModelTests {
         await waitUntilPromptIsShown(probe)
         XCTAssertFalse(keyIsOn)
 
-        let relaunched = AppLockViewModel(evaluator: { true }, availability: { true })
+        let relaunched = AppLockViewModel(evaluator: { .success }, availability: { true })
         XCTAssertFalse(relaunched.isEnabled)
         XCTAssertFalse(relaunched.isLocked)
         XCTAssertEqual(relaunched.cover, .none)
@@ -532,7 +534,7 @@ extension AppLockViewModelTests {
     func test_Activation_AC_36_noMethodEnablesWithoutAuthentication() async {
         for (available, evaluates) in [(false, true), (true, false)] {
             resetDefaults()
-            let vm = AppLockViewModel(evaluator: { evaluates }, availability: { available })
+            let vm = AppLockViewModel(evaluator: { evaluates ? .success : .failed(.cancelled) }, availability: { available })
             func assertOff(_ step: String) {
                 XCTAssertFalse(vm.isEnabled, "available=\(available) after \(step)")
                 XCTAssertFalse(keyIsOn, "available=\(available) after \(step)")
@@ -552,5 +554,163 @@ extension AppLockViewModelTests {
             _ = await vm.requestEnable()
             assertOff("requestEnable again")
         }
+    }
+}
+
+// MARK: - Why Face ID failed (AC-63, AC-803, AC-804)
+
+/// Answers each evaluation from a queue (then `.success`), counting the calls.
+private actor ScriptedAuthenticator {
+    private var queue: [AppLockEvaluation]
+    private(set) var calls = 0
+
+    init(_ queue: [AppLockEvaluation]) { self.queue = queue }
+
+    func next() -> AppLockEvaluation {
+        calls += 1
+        return queue.isEmpty ? .success : queue.removeFirst()
+    }
+}
+
+/// An evaluation held open until the test answers it (a prompt on screen).
+private actor OpenPrompt {
+    private var continuation: CheckedContinuation<AppLockEvaluation, Never>?
+    private(set) var isWaiting = false
+
+    func wait() async -> AppLockEvaluation {
+        isWaiting = true
+        return await withCheckedContinuation { continuation = $0 }
+    }
+
+    func answer(_ value: AppLockEvaluation) {
+        continuation?.resume(returning: value)
+        continuation = nil
+    }
+}
+
+extension AppLockViewModelTests {
+    // AC-63: a failed attempt leaves the lock up with a reason and "Try Again",
+    // and "Try Again" runs the evaluator again.
+    @MainActor
+    func test_AC_63_failedEvaluationSetsReasonAndRetryRelaunches() async {
+        let script = ScriptedAuthenticator([.failed(.notRecognized), .success])
+        let vm = await makeActivatedAppLock(then: { await script.next() })
+        vm.lock()
+        XCTAssertNil(vm.failure, "no reason before any attempt")
+        XCTAssertEqual(vm.unlockButtonTitle, "Unlock")
+
+        let first = await vm.authenticate()
+        XCTAssertFalse(first)
+        XCTAssertEqual(vm.failure, .notRecognized)
+        XCTAssertEqual(vm.unlockButtonTitle, "Try Again")
+        XCTAssertEqual(vm.cover, .lock)
+        XCTAssertTrue(vm.isLocked)
+
+        let retry = await vm.authenticate()
+        XCTAssertTrue(retry)
+        let calls = await script.calls
+        XCTAssertEqual(calls, 2, "Try Again must run the evaluator a second time")
+        XCTAssertFalse(vm.isLocked)
+        XCTAssertNil(vm.failure)
+        XCTAssertEqual(vm.cover, .none)
+    }
+
+    // AC-803: LocalAuthentication's answer maps to one of four named reasons,
+    // a generic one, or "not a failure" (system interruption).
+    func test_AC_803_laErrorCodesMapToReasons() {
+        let cases: [(LAError.Code, AppLockEvaluation)] = [
+            (.authenticationFailed, .failed(.notRecognized)),
+            (.userCancel, .failed(.cancelled)),
+            (.userFallback, .failed(.cancelled)),
+            (.biometryLockout, .failed(.lockedOut)),
+            (.passcodeNotSet, .failed(.passcodeNotSet)),
+            (.systemCancel, .interrupted),
+            (.appCancel, .interrupted),
+            (.invalidContext, .failed(.other)),
+        ]
+        for (code, expected) in cases {
+            XCTAssertEqual(
+                AppLockEvaluation.from(success: false, error: LAError(code)),
+                expected,
+                "LAError.\(code.rawValue)"
+            )
+        }
+        XCTAssertEqual(
+            AppLockEvaluation.from(success: false, error: NSError(domain: "elsewhere", code: LAError.userCancel.rawValue)),
+            .failed(.other),
+            "a code from another domain is not an LAError"
+        )
+        XCTAssertEqual(AppLockEvaluation.from(success: false, error: nil), .failed(.other))
+        XCTAssertEqual(AppLockEvaluation.from(success: true, error: nil), .success)
+    }
+
+    // AC-803: the five reasons are distinct texts.
+    func test_AC_803_everyReasonHasItsOwnText() {
+        let reasons: [AppLockFailure] = [.notRecognized, .cancelled, .lockedOut, .passcodeNotSet, .other]
+        let texts = Set(reasons.map { String(localized: $0.reason) })
+        XCTAssertEqual(texts.count, reasons.count)
+        XCTAssertFalse(texts.contains(""))
+    }
+
+    // AC-803: the reason follows the latest attempt.
+    @MainActor
+    func test_AC_803_eachFailureReplacesTheReason() async {
+        let script = ScriptedAuthenticator([.failed(.cancelled), .failed(.lockedOut), .failed(.passcodeNotSet)])
+        let vm = await makeActivatedAppLock(then: { await script.next() })
+        vm.lock()
+        for expected in [AppLockFailure.cancelled, .lockedOut, .passcodeNotSet] {
+            await vm.authenticate()
+            XCTAssertEqual(vm.failure, expected)
+        }
+    }
+
+    // AC-804: the system interrupts the prompt (app backgrounded) → no reason,
+    // and the next `.active` prompts again.
+    @MainActor
+    func test_AC_804_interruptionShowsNoReasonAndRepromptsOnActive() async {
+        let open = OpenPrompt()
+        let vm = await makeActivatedAppLock(then: { await open.wait() })
+        vm.lock()
+        async let outcome = vm.authenticate()
+        var attempts = 0
+        while attempts < 400, !(await open.isWaiting) {
+            attempts += 1
+            try? await Task.sleep(nanoseconds: 5_000_000)
+        }
+        vm.scenePhaseChanged(to: .background)
+        await open.answer(.interrupted)
+        let ok = await outcome
+        XCTAssertFalse(ok)
+        XCTAssertNil(vm.failure, "an interruption is not a failure to report")
+        XCTAssertTrue(vm.isLocked)
+        XCTAssertNotNil(vm.scenePhaseChanged(to: .active), "the prompt starts again on the next .active")
+    }
+
+    // AC-804: a success clears the reason, and the next lock does not bring it back.
+    @MainActor
+    func test_AC_804_successClearsReasonForNextLock() async {
+        let script = ScriptedAuthenticator([.failed(.cancelled), .success])
+        let vm = await makeActivatedAppLock(then: { await script.next() })
+        vm.lock()
+        await vm.authenticate()
+        XCTAssertEqual(vm.failure, .cancelled)
+        await vm.authenticate()
+        XCTAssertNil(vm.failure)
+        XCTAssertFalse(vm.isLocked)
+        XCTAssertEqual(vm.cover, .none)
+
+        vm.lock()
+        XCTAssertNil(vm.failure, "no stale reason on the next lock")
+        XCTAssertEqual(vm.unlockButtonTitle, "Unlock")
+    }
+
+    // AC-63: a refused activation never shows a reason (the lock is not up).
+    @MainActor
+    func test_AC_63_failedActivationShowsNoReason() async {
+        resetDefaults()
+        let vm = AppLockViewModel(evaluator: { .failed(.notRecognized) }, availability: { true })
+        let result = await vm.requestEnable()
+        XCTAssertEqual(result, .notAuthenticated)
+        XCTAssertNil(vm.failure)
     }
 }

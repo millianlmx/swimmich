@@ -560,3 +560,95 @@ final class BackupAlbumsLoadingTests: XCTestCase {
         XCTAssertEqual(vm.albums.map(\.id), ["a1", BackupAlbum.SmartID.videos])
     }
 }
+
+// MARK: - Start / stop acceptance (L-31, AC-64, AC-809)
+
+/// The view plays its start / stop haptic from these signals: `onStart` fires
+/// once, when the engine accepts a pass; `cancelBackup()` says whether a stop
+/// was accepted. Refusals and the end of a pass signal nothing.
+final class UploadViewModelHapticSignalTests: XCTestCase {
+
+    @MainActor
+    private func makeRunningVM(
+        readOnly: ReadOnlyModeStore = .ephemeral()
+    ) -> (UploadViewModel, MockBackupAssetSource) {
+        let client = MockImmichClient()
+        client.bulkUploadCheckResponse = AssetBulkUploadCheckResponse(results: [.init(id: "c1", action: "accept")])
+        let source = MockBackupAssetSource()
+        source.candidates = [makeCandidate(id: "c1", fileName: "photo.jpg")]
+        source.dataProvider = { _ in Data(repeating: 0, count: 8) }
+        let settings = BackupSettingsStore(suiteName: "vm-haptic-\(UUID().uuidString)")
+        let engine = BackupEngine(client: client, source: source, environment: MockBackupEnvironment())
+        let vm = UploadViewModel(
+            client: client, photos: MockPhotoLibraryService(), engine: engine, settings: settings,
+            scheduler: MockBackupScheduler(), activityService: MockBackupLiveActivityService(),
+            notifications: MockNotificationService(),
+            readOnly: readOnly
+        )
+        return (vm, source)
+    }
+
+    // AC-809: Run now → one start signal, given while the pass is still going,
+    // and nothing more when the pass ends.
+    @MainActor
+    func test_AC_809_onStartFiresOnceWhileThePassRuns() async {
+        let (vm, source) = makeRunningVM()
+        source.exportGate = { _ in try await suspendUntilCancelled() }
+        var starts = 0
+
+        let run = Task { @MainActor in await vm.startBackup { starts += 1 } }
+        await pollUntil("export en vol") { source.exportedIDs.contains("c1") }
+        XCTAssertEqual(starts, 1, "the signal comes at the start, not at the end")
+
+        XCTAssertTrue(vm.cancelBackup())
+        await run.value
+        XCTAssertEqual(starts, 1, "the end of a pass plays nothing")
+    }
+
+    // AC-809: Resume goes through the same signal.
+    @MainActor
+    func test_AC_809_resumeSignalsStartOnce() async {
+        let (vm, _) = makeRunningVM()
+        var starts = 0
+        vm.resumeUpload { starts += 1 }
+        await vm.awaitCurrentBackup()
+        XCTAssertEqual(starts, 1)
+    }
+
+    // AC-809: a refused pass (read-only mode, engine busy) never signals.
+    @MainActor
+    func test_AC_809_refusedPassNeverSignals() async {
+        let readOnly = ReadOnlyModeStore.ephemeral()
+        readOnly.setEnabled(true)
+        let (blocked, _) = makeRunningVM(readOnly: readOnly)
+        var starts = 0
+        let refused = await blocked.startBackup { starts += 1 }
+        guard case .refused = refused else { return XCTFail("read-only mode refuses the pass") }
+        XCTAssertEqual(starts, 0)
+
+        let (busy, source) = makeRunningVM()
+        source.exportGate = { _ in try await suspendUntilCancelled() }
+        let first = Task { @MainActor in await busy.startBackup { starts += 1 } }
+        await pollUntil("export en vol") { source.exportedIDs.contains("c1") }
+        let second = await busy.startBackup { starts += 100 }
+        guard case .refused = second else { return XCTFail("a second pass is refused while one owns the engine") }
+        XCTAssertEqual(starts, 1, "the busy refusal signals nothing")
+
+        busy.cancelBackup()
+        await first.value
+    }
+
+    // AC-809: Stop signals only when a pass is active and accepts it.
+    @MainActor
+    func test_AC_809_cancelBackupReportsAcceptance() async {
+        let (vm, source) = makeRunningVM()
+        XCTAssertFalse(vm.cancelBackup(), "no pass running: nothing to stop")
+
+        source.exportGate = { _ in try await suspendUntilCancelled() }
+        let run = Task { @MainActor in await vm.runBackup(manual: true) }
+        await pollUntil("export en vol") { source.exportedIDs.contains("c1") }
+        XCTAssertTrue(vm.cancelBackup())
+        await run.value
+        XCTAssertFalse(vm.cancelBackup(), "the pass is over: nothing to stop")
+    }
+}

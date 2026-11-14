@@ -67,12 +67,14 @@ struct SharedLinkSheet: View {
                         showRevokeConfirm = false
                     }
                 }
+                .accessibilityIdentifier("sharedLinkRevokeConfirm")
                 Button("Cancel", role: .cancel) {
                     withAnimation(PVMotion.movement(PVMotion.snappy, reduceMotion: reduceMotion)) {
                         pendingRevokeId = nil
                         showRevokeConfirm = false
                     }
                 }
+                .accessibilityIdentifier("sharedLinkRevokeCancel")
             }
             .alert("Error", isPresented: Binding(
                 get: { vm.actionErrorMessage != nil },
@@ -82,6 +84,7 @@ struct SharedLinkSheet: View {
             } message: {
                 Text(vm.actionErrorMessage ?? "")
             }
+            .appSensoryFeedback(.warning, trigger: vm.sharedLinkRevokeFeedbackTick, probe: "albumSharedLinkRevoke")
         }
     }
 
@@ -225,6 +228,7 @@ struct SharedLinkSheet: View {
                             showRevokeConfirm = true
                         }
                     }
+                    .accessibilityIdentifier("sharedLinkRevoke-\(link.id)")
                 }
                 .tint(.red)
                 .listSectionSeparator(.hidden)

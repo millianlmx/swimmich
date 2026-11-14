@@ -142,9 +142,12 @@ struct PreferencesView: View {
         .navigationBarTitleDisplayMode(.inline)
         // Destructive and confirmed: the reset is not undoable, and it is a
         // swipe away from a row the user may have tapped by accident.
-        .confirmationDialog("Reset Preferences?", isPresented: $showResetConfirm) {
+        // An alert, not a confirmationDialog: on iOS 26 a confirmationDialog is a popover that drops Cancel.
+        .alert("Reset Preferences?", isPresented: $showResetConfirm) {
             Button("Reset", role: .destructive) { vm.resetToDefaults() }
+                .accessibilityIdentifier("preferencesResetConfirm")
             Button("Cancel", role: .cancel) {}
+                .accessibilityIdentifier("preferencesResetCancel")
         }
     }
 

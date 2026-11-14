@@ -70,6 +70,10 @@ final class SharedLinksViewModel {
         isRefreshing = false
     }
 
+    /// Bumped once per accepted revocation; the view plays a warning haptic on
+    /// each change (AC-806). A refused request or Cancel never bumps it.
+    private(set) var revokeFeedbackTick = 0
+
     // MARK: - Revoke
 
     /// Revokes a shared link. Returns `true` when the link was removed, `false`
@@ -81,6 +85,7 @@ final class SharedLinksViewModel {
             // try-then-mutate: remove only on success.
             sharedLinks.removeAll { $0.id == id }
             actionErrorMessage = nil
+            revokeFeedbackTick &+= 1
             return true
         } catch {
             actionErrorMessage = error.userFacingMessage

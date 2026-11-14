@@ -124,13 +124,13 @@ struct DeviceSessionsView: View {
         } message: {
             Text("Enter the 6-digit PIN of your account to reach locked photos.")
         }
-        .confirmationDialog(
+        // An alert, not a confirmationDialog: on iOS 26 a confirmationDialog is a popover that drops Cancel.
+        .alert(
             pendingRevokePrompt,
             isPresented: Binding(
                 get: { vm.pendingRevocation != nil },
                 set: { if !$0 { vm.pendingRevocation = nil } }
-            ),
-            titleVisibility: .visible
+            )
         ) {
             Button(role: .destructive) {
                 if let session = vm.pendingRevocation {
@@ -146,10 +146,9 @@ struct DeviceSessionsView: View {
         } message: {
             Text("This device will have to sign in again.")
         }
-        .confirmationDialog(
+        .alert(
             vm.revokeAllPrompt,
-            isPresented: $showRevokeAllConfirm,
-            titleVisibility: .visible
+            isPresented: $showRevokeAllConfirm
         ) {
             Button(role: .destructive) {
                 Task { await vm.revokeAllOthers() }
@@ -163,6 +162,8 @@ struct DeviceSessionsView: View {
             // signing the others out leaves this device exactly where it is.
             Text("Your current device stays signed in.")
         }
+        // A PIN the server refused: error tap (AC-807).
+        .appSensoryFeedback(.error, trigger: vm.pinRefusalFeedbackTick, probe: "sessionPINRefused")
     }
 
     // MARK: - States

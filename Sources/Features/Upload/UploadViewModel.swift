@@ -395,6 +395,34 @@ final class UploadViewModel {
         only assetIDs: [String] = [],
         onProgress: ((_ processed: Int, _ total: Int) -> Void)? = nil
     ) async -> BackupRunResult {
+        await performRun(
+            overrideSettings: overrideSettings,
+            manual: manual,
+            only: assetIDs,
+            onProgress: onProgress,
+            onStart: nil
+        )
+    }
+
+    /// A manual pass whose caller wants to know the instant the engine accepted
+    /// it (the "Run now" button's start haptic, AC-809).
+    @discardableResult
+    func startBackup(onStart: @escaping @MainActor () -> Void) async -> BackupRunResult {
+        await performRun(manual: true, onStart: onStart)
+    }
+
+    /// The run itself. `onStart` is called once, synchronously, after the three
+    /// refusals (read-only mode, Photos access for a manual pass, engine busy)
+    /// and right before `engine.run`: nothing suspends between the busy guard
+    /// and that call, and a manual pass skips the engine's environment gates,
+    /// so the engine cannot refuse at that point. Never called for a refusal.
+    private func performRun(
+        overrideSettings: BackupSettings? = nil,
+        manual: Bool = false,
+        only assetIDs: [String] = [],
+        onProgress: ((_ processed: Int, _ total: Int) -> Void)? = nil,
+        onStart: (@MainActor () -> Void)? = nil
+    ) async -> BackupRunResult {
         // Read-only mode: ONE refusal for the whole run — the manual CTA and
         // the automatic chain both come through this method — instead of a
         // failed `uploadAsset` per candidate.
@@ -425,6 +453,7 @@ final class UploadViewModel {
             onProgress?(processed, total)
         }
         activityService.start(makeActivitySnapshot())
+        onStart?()
         let started = await engine.run(
             settings: overrideSettings ?? settings.snapshot(),
             manual: manual,
@@ -481,8 +510,14 @@ final class UploadViewModel {
         return .completed(outcome)
     }
 
-    func cancelBackup() {
+    /// Stops the running pass. `true` when a pass was active and accepted the
+    /// stop; `false` (nothing happens) when none runs or one is already stopping,
+    /// so the screens play their stop haptic only for an accepted stop (AC-809).
+    @discardableResult
+    func cancelBackup() -> Bool {
+        guard engine.isRunActive, !engine.isCancelling else { return false }
         engine.cancel()
+        return true
     }
 
     /// Number of assets the last run couldn't finish — the badge the "Upload
@@ -522,8 +557,8 @@ final class UploadViewModel {
     }
 
     /// Resume upload from where it left off (used when interrupted).
-    func resumeUpload() {
-        currentBackupTask = Task { _ = await runBackup(manual: true) }
+    func resumeUpload(onStart: (@MainActor () -> Void)? = nil) {
+        currentBackupTask = Task { _ = await performRun(manual: true, onStart: onStart) }
     }
 
     /// Awaits the in-flight backup task, if any (test/coordination helper).
@@ -659,59 +694,69 @@ struct BackupSettingsView: View {
     @State var detail: UploadDetailViewModel
     /// Legend dot, scaled with the caption text it labels.
     @ScaledMetric(relativeTo: .footnote) private var dotSize: CGFloat = 7
+    /// Bumped when a pass starts / a stop is accepted, to play the haptic.
+    @State private var startTick = 0
+    @State private var stopTick = 0
 
     var body: some View {
         @Bindable var vm = vm
-        NavigationStack {
-            Form {
-                Section {
-                    LabeledContent("Server", value: auth.serverURLString)
-                    LabeledContent("User", value: auth.userEmail ?? "—")
-                }
-                backupSection
-                albumSection
-                reorganizeSection
-                progressSection
-                trackingSection
-                serverCheckSection
-                resetTrackingSection
+        // No `NavigationStack`: the hub (`ProfileView`) pushes this screen into
+        // its own stack, so the one bar and its back button to "Me" are the hub's.
+        Form {
+            Section {
+                LabeledContent("Server", value: auth.serverURLString)
+                LabeledContent("User", value: auth.userEmail ?? "—")
             }
-            .labeledContentStyle(.pvAdaptive)
-            .navigationTitle(Text(verbatim: ""))
-            .navigationBarTitleDisplayMode(.inline)
-            .toolbar {
-                ToolbarItem(placement: .principal) {
-                    ImmichAppBar(title: "Backup")
-                }
-            }
-            .immichAppBarTitleHeader("Backup")
-            .task {
-                await vm.loadAlbums()
-            }
-            .confirmationDialog(
-                "Reset backup tracking?",
-                isPresented: $vm.showResetTrackingConfirm,
-                titleVisibility: .visible
-            ) {
-                Button("Reset tracking", role: .destructive) {
-                    vm.resetBackupTracking()
-                }
-                Button("Cancel", role: .cancel) {}
-            } message: {
-                Text("The next backup will re-check every photo against the server. Nothing is deleted — already-uploaded photos are simply skipped again.")
-            }
-            .alert(
-                "Reorganization failed",
-                isPresented: Binding(
-                    get: { vm.albumSyncError != nil },
-                    set: { if !$0 { vm.albumSyncError = nil } }
-                )
-            ) {
-                Button("OK", role: .cancel) { vm.albumSyncError = nil }
-            } message: {
-                Text(vm.albumSyncError ?? "")
+            backupSection
+            albumSection
+            reorganizeSection
+            progressSection
+            trackingSection
+            serverCheckSection
+            resetTrackingSection
+        }
+        .labeledContentStyle(.pvAdaptive)
+        .navigationTitle(Text(verbatim: ""))
+        .navigationBarTitleDisplayMode(.inline)
+        .toolbar {
+            ToolbarItem(placement: .principal) {
+                ImmichAppBar(title: "Backup")
             }
         }
+        .immichAppBarTitleHeader("Backup")
+        .task {
+            await vm.loadAlbums()
+        }
+        // An alert, not a confirmationDialog: on iOS 26 a confirmationDialog is a
+        // popover anchored to its source and drops the cancel button.
+        .alert(
+            "Reset backup tracking?",
+            isPresented: $vm.showResetTrackingConfirm
+        ) {
+            Button("Reset tracking", role: .destructive) {
+                vm.resetBackupTracking()
+            }
+            .accessibilityIdentifier("resetTrackingConfirm")
+            Button("Cancel", role: .cancel) {}
+                .accessibilityIdentifier("resetTrackingCancel")
+        } message: {
+            Text("The next backup will re-check every photo against the server. Nothing is deleted — already-uploaded photos are simply skipped again.")
+        }
+        .alert(
+            "Reorganization failed",
+            isPresented: Binding(
+                get: { vm.albumSyncError != nil },
+                set: { if !$0 { vm.albumSyncError = nil } }
+            )
+        ) {
+            Button("OK", role: .cancel) { vm.albumSyncError = nil }
+        } message: {
+            Text(vm.albumSyncError ?? "")
+        }
+        // A pass the engine accepted starts with one tap, a stop it accepted ends
+        // with one; refusals and the end of a pass play nothing (AC-809).
+        .appSensoryFeedback(.start, trigger: startTick, probe: "backupStart.settings")
+        .appSensoryFeedback(.stop, trigger: stopTick, probe: "backupStop.settings")
     }
 
     /// What Immich has recorded as backed up. Read-only: the two actions that
@@ -720,6 +765,7 @@ struct BackupSettingsView: View {
     private var trackingSection: some View {
         Section {
             LabeledContent("Tracked photos", value: "\(vm.trackedAssetCount)")
+                .accessibilityIdentifier("backupTrackedPhotos")
         } header: {
             Text("Backup tracking")
         } footer: {
@@ -751,8 +797,8 @@ struct BackupSettingsView: View {
     /// one section, one button — modelled on `serverCheckSection`, the
     /// non-destructive maintenance action already in this Form.
     ///
-    /// No `NavigationStack` here: `BackupSettingsView` wraps its own `Form` in
-    /// one, and a second would draw a second bar.
+    /// No `NavigationStack` here (nor in `BackupSettingsView`): the hub's stack
+    /// pushes this screen, and a second one would draw a second bar.
     @ViewBuilder
     private var reorganizeSection: some View {
         Section {
@@ -989,14 +1035,14 @@ struct BackupSettingsView: View {
             }
             if vm.running {
                 Button(vm.engine.isCancelling ? "Cancelling…" : "Cancel", role: .destructive) {
-                    vm.cancelBackup()
+                    if vm.cancelBackup() { stopTick &+= 1 }
                 }
                 .disabled(vm.engine.isCancelling)
                 .accessibilityIdentifier("cancelBackupButton")
                 .alignmentGuide(.listRowSeparatorLeading) { _ in 0 }
             } else {
                 Button {
-                    Task { await vm.runBackup(manual: true) }
+                    Task { await vm.startBackup { startTick &+= 1 } }
                 } label: {
                     Label("Run now", systemImage: "arrow.up.circle")
                 }
@@ -1007,7 +1053,7 @@ struct BackupSettingsView: View {
                 .accessibilityIdentifier("runBackupButton")
                 if vm.canResume {
                     Button {
-                        vm.resumeUpload()
+                        vm.resumeUpload { startTick &+= 1 }
                     } label: {
                         Label("Resume last backup", systemImage: "arrow.clockwise.circle.fill")
                     }

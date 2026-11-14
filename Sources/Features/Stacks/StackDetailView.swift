@@ -53,7 +53,8 @@ struct StackDetailView: View {
                 }
             }
         }
-        .confirmationDialog("Unstack these photos?", isPresented: $confirmingUnstack, titleVisibility: .visible) {
+        // An alert, not a confirmationDialog: on iOS 26 a confirmationDialog is a popover that drops Cancel.
+        .alert("Unstack these photos?", isPresented: $confirmingUnstack) {
             Button("Unstack", role: .destructive) {
                 Task { await vm.deleteStack(id: stackId) }
             }

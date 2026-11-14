@@ -37,9 +37,11 @@ struct AppLockCoverView: View {
                     Color.clear
                         .containerRelativeFrame(.vertical)
                     if isLock {
-                        AppLockPrompt {
-                            Task { _ = await appLock.authenticate() }
-                        }
+                        AppLockPrompt(
+                            onUnlock: { Task { _ = await appLock.authenticate() } },
+                            reason: appLock.failure?.reason,
+                            buttonTitle: appLock.unlockButtonTitle
+                        )
                     } else {
                         AppLockGlyph()
                     }
@@ -51,6 +53,12 @@ struct AppLockCoverView: View {
         .accessibilityElement(children: .contain)
         .accessibilityIdentifier(isLock ? "AppLockOverlay" : "AppLockPrivacyMask")
         .animation(PVMotion.movement(PVMotion.gentle, reduceMotion: reduceMotion), value: appLock.cover)
+        .animation(PVMotion.movement(PVMotion.gentle, reduceMotion: reduceMotion), value: appLock.failure)
+        // VoiceOver reads the reason as soon as it appears (AC-803).
+        .onChange(of: appLock.failure) { _, failure in
+            guard let failure else { return }
+            AccessibilityNotification.Announcement(String(localized: failure.reason)).post()
+        }
     }
 }
 
@@ -62,9 +70,13 @@ private struct AppLockGlyph: View {
     }
 }
 
-/// The lock's content: glyph, title, Unlock. The title wraps at large text sizes.
+/// The lock's content: glyph, title, the reason the last attempt failed (when
+/// there is one) and the single Unlock / Try Again button. Everything wraps at
+/// large text sizes; the parent scrolls when the content outgrows the screen.
 struct AppLockPrompt: View {
     let onUnlock: () -> Void
+    var reason: LocalizedStringResource?
+    var buttonTitle: LocalizedStringResource = "Unlock"
 
     var body: some View {
         VStack(spacing: PVSpacing.s24) {
@@ -74,8 +86,17 @@ struct AppLockPrompt: View {
                 .multilineTextAlignment(.center)
                 .fixedSize(horizontal: false, vertical: true)
                 .accessibilityIdentifier("appLockTitle")
+            if let reason {
+                Text(reason)
+                    .font(.pvBody)
+                    .foregroundStyle(Color.textSecondaryPV)
+                    .multilineTextAlignment(.center)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .accessibilityIdentifier("appLockFailureReason")
+                    .transition(.opacity)
+            }
             Button(action: onUnlock) {
-                Label("Unlock", systemImage: "faceid")
+                Label { Text(buttonTitle) } icon: { Image(systemName: "faceid") }
             }
             .buttonStyle(PVPrimaryButtonStyle())
             .accessibilityIdentifier("appLockUnlockButton")

@@ -228,8 +228,13 @@ final class PartnersViewModel {
             try await client.removePartner(id: partnerId)
             sharing.removeAll { $0.id == partnerId }
             errorMessage = nil
+            stopSharingFeedbackTick &+= 1
         } catch {
             errorMessage = error.userFacingMessage
         }
     }
+
+    /// Bumped when the server accepted "stop sharing"; the view plays a warning
+    /// haptic on each change (AC-806).
+    private(set) var stopSharingFeedbackTick = 0
 }

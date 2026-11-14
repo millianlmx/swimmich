@@ -115,7 +115,9 @@ final class UploadDetailViewModel {
 
     func retryAllFailed() async { await upload.retryAllFailed() }
 
-    func cancel() { upload.cancelBackup() }
+    /// Stops the pass; `true` when it was accepted (the view's stop haptic).
+    @discardableResult
+    func cancel() -> Bool { upload.cancelBackup() }
 
     // MARK: - Formatting
 

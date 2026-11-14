@@ -422,6 +422,72 @@ final class AppStringsTests: XCTestCase {
         }
     }
 
+    /// AC-802: every title, button and message of the confirmation alerts
+    /// (L-31 converted them from dialogs) is translated in the four shipped
+    /// languages.
+    func test_AC_802_confirmationStringsTranslated() throws {
+        let strings = try XCTUnwrap(try Self.loadCatalog()["strings"] as? [String: Any])
+        let keys = [
+            "Delete user?", "Delete (force)", "Delete library and all its assets?", "Delete",
+            "Delete this album? The photos themselves are not deleted.", "Delete Album",
+            "Remove %@ from this album?", "Remove", "They will no longer be able to view or edit this album.",
+            "Remove all downloaded files?", "Clear all", "The files will need to be downloaded again.",
+            "The suggested copies are kept. This cannot be undone.",
+            "Delete this memory?", "Delete Memory", "The photos stay in your library — only this memory is removed.",
+            "Remove all offline photos?", "Clear All Offline Photos",
+            "Stop sharing with this partner?", "Stop sharing",
+            "They lose access to your library. Your photos stay on the server, and your own timeline is unaffected.",
+            "Delete Permanently?", "Delete this photo?", "Delete Permanently",
+            "This photo will be permanently removed. Action cannot be undone.",
+            "This removes the photo from your library.",
+            "Remove profile picture?", "Remove Photo", "Your avatars go back to your initials.",
+            "This device will have to sign in again.", "Log Out", "Your current device stays signed in.",
+            "Reset Preferences?", "Reset", "Unstack these photos?", "Unstack",
+            "Every photo stays in your timeline — only the grouping is removed.",
+            "Reset tracked assets?", "Reset tracking", "The next backup will re-check every photo.",
+            "Clear offline cache?", "Purge offline cache", "Downloaded files will need to be downloaded again.",
+            "Reset backup tracking?",
+            "The next backup will re-check every photo against the server. Nothing is deleted — already-uploaded photos are simply skipped again.",
+            "Rotate key?", "Rotate", "The current secret stops working immediately. The new secret is shown once.",
+            "Delete key?", "Apps using this key will stop working.",
+            "Cancel",
+        ]
+        for key in keys {
+            let entry = try XCTUnwrap(strings[key] as? [String: Any], "Missing key \(key)")
+            let localizations = try XCTUnwrap(entry["localizations"] as? [String: Any], key)
+            for language in Self.shippedTranslations {
+                let unit = (localizations[language] as? [String: Any])?["stringUnit"] as? [String: Any]
+                XCTAssertEqual(unit?["state"] as? String, "translated", "\(language): \(key)")
+                XCTAssertFalse((unit?["value"] as? String ?? "").isEmpty, "\(language): \(key)")
+            }
+        }
+    }
+
+    /// AC-803: the five lock-screen failure reasons are catalog keys, translated
+    /// in the four shipped languages, and no two share a text.
+    func test_AC_803_faceIDReasonKeysAreTranslatedAndDistinct() throws {
+        let strings = try XCTUnwrap(try Self.loadCatalog()["strings"] as? [String: Any])
+        let keys = [
+            "You weren't recognized. Try again.",
+            "Face ID didn't recognize you, or the request was cancelled. Try again.",
+            "Face ID or Touch ID is locked after too many attempts. Unlock your iPhone with its passcode, then try again.",
+            "This iPhone has no passcode, so Swimmich can't confirm it's you. Set a passcode in Settings, then try again.",
+            "Authentication didn't succeed. Try again.",
+        ]
+        for language in Self.shippedTranslations {
+            var values: [String] = []
+            for key in keys {
+                let entry = try XCTUnwrap(strings[key] as? [String: Any], "Missing key \(key)")
+                let localizations = try XCTUnwrap(entry["localizations"] as? [String: Any], key)
+                let unit = (localizations[language] as? [String: Any])?["stringUnit"] as? [String: Any]
+                XCTAssertEqual(unit?["state"] as? String, "translated", "\(language): \(key)")
+                values.append(unit?["value"] as? String ?? "")
+            }
+            XCTAssertFalse(values.contains(""), language)
+            XCTAssertEqual(Set(values).count, keys.count, "\(language): the reasons must differ")
+        }
+    }
+
     /// True when a key carries something a translator can act on: format
     /// specifiers and punctuation alone do not.
     private static func hasWords(_ key: String) -> Bool {

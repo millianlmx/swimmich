@@ -271,6 +271,47 @@ final class DeviceSessionsViewModelTests: XCTestCase {
         XCTAssertFalse(vm.isElevated)
     }
 
+    // MARK: - Error haptic on a refused PIN (AC-64, AC-807)
+
+    @MainActor
+    func test_AC_64_serverRefusedPINBumpsFeedback() async {
+        let mock = MockImmichClient()
+        mock.unlockAuthSessionError = APIError.serverError(400, "Wrong PIN code")
+        let vm = DeviceSessionsViewModel(client: mock)
+
+        await vm.unlock(pinCode: "123456")
+        XCTAssertEqual(vm.pinRefusalFeedbackTick, 1)
+
+        await vm.unlock(pinCode: "654321")
+        XCTAssertEqual(vm.pinRefusalFeedbackTick, 2, "every refusal plays")
+    }
+
+    @MainActor
+    func test_AC_807_localSixDigitRefusalAndAcceptedPINDoNotBumpFeedback() async {
+        let mock = MockImmichClient()
+        mock.authStatus = status(isElevated: true)
+        let vm = DeviceSessionsViewModel(client: mock)
+
+        await vm.unlock(pinCode: "123")
+        XCTAssertEqual(vm.pinRefusalFeedbackTick, 0, "\"Enter 6 digits\" is refused on the spot, no request")
+        XCTAssertTrue(mock.unlockedPINs.isEmpty)
+
+        await vm.unlock(pinCode: "123456")
+        XCTAssertEqual(mock.unlockedPINs, ["123456"])
+        XCTAssertEqual(vm.pinRefusalFeedbackTick, 0, "an accepted PIN plays no error")
+    }
+
+    @MainActor
+    func test_AC_807_networkAndServerErrorsDoNotBumpFeedback() async {
+        let mock = MockImmichClient()
+        let vm = DeviceSessionsViewModel(client: mock)
+        for error: APIError in [.network(URLError(.timedOut)), .serverError(503, nil), .unauthorized] {
+            mock.unlockAuthSessionError = error
+            await vm.unlock(pinCode: "123456")
+        }
+        XCTAssertEqual(vm.pinRefusalFeedbackTick, 0)
+    }
+
     // MARK: - A probe that fails
 
     /// The unlock went through, but nothing came back to confirm it: the screen

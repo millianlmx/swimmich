@@ -72,3 +72,17 @@ immich_stub_asset_edits.py AssetEditsUITests/test_AC_40_downloadEditedThenOrigin
 immich_stub_edit_stacks.py EditStacksUITests/test_AC_41_editStackedOnOriginal --media L22-edit-on.png --erase
 immich_stub_edit_stacks.py EditStacksUITests/test_AC_41_settingOffSendsNothing --media L22-edit-off.png --erase
 immich_stub_edit_stacks.py EditStacksUITests/test_AC_200_settingOffByDefaultAndPersisted
+
+# L-31 Confirmations as alerts, one bar on the Backup screen, haptics (AC-62, AC-64, AC-805, AC-806, AC-807, AC-809).
+# The backup tests seed a photo into Photos (the pass needs a candidate) on an erased device.
+immich_stub_confirmations.py ConfirmationsUITests/test_AC_62_backupResetTracking --media L31-reset-tracking.png --erase
+immich_stub_confirmations.py ConfirmationsUITests/test_AC_809_backupScreenStartStop --media L31-backup-start-stop.png --erase
+immich_stub_confirmations.py ConfirmationsUITests/test_AC_809_syncStatusStartStop --media L31-sync-status.png --erase
+immich_stub_confirmations.py ConfirmationsUITests/test_AC_806_sharedLinkRevoke
+immich_stub_confirmations.py ConfirmationsUITests/test_AC_64_backupFromMeHasOneBar
+immich_stub_confirmations.py ConfirmationsUITests/test_AC_806_hapticsOffPlaysNothing
+immich_stub_confirmations.py ConfirmationsUITests/test_AC_62_preferencesReset
+immich_stub_confirmations.py ConfirmationsUITests/test_AC_62_partnerStopSharing
+immich_stub_confirmations.py ConfirmationsUITests/test_AC_62_viewerDelete
+immich_stub_confirmations.py ConfirmationsUITests/test_AC_807_lockedFolderWrongPIN
+immich_stub_confirmations.py ConfirmationsUITests/test_AC_807_sessionElevationWrongPIN

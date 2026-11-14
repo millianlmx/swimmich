@@ -43,7 +43,6 @@ final class ShareAndCachesUITests: XCTestCase {
     private let albumPhotoPrefix = "bbbbbbbb-1111-4111-8111-"
 
     private static let welcome = ["Your photo library", "Votre photothèque"]
-    private static let resetLabels = ["Reset", "Zurücksetzen", "Restablecer", "Réinitialiser", "Reimposta"]
 
     /// The character `AppLogEntry.message` puts between a call and its outcome.
     private let arrow = "\u{2192}"
@@ -92,13 +91,10 @@ final class ShareAndCachesUITests: XCTestCase {
         let reset = reveal(element("preferencesResetButton"))
         XCTAssertTrue(reset.waitForExistence(timeout: 10), "the Preferences form has no Reset row")
         reset.tap()
-        let dialog = app.sheets.firstMatch
-        XCTAssertTrue(dialog.waitForExistence(timeout: 10), "Reset did not raise a confirmation")
-        let confirm = dialog.buttons.matching(labelPredicate(Self.resetLabels)).firstMatch
-        XCTAssertTrue(confirm.waitForExistence(timeout: 10),
-                      "no Reset button in the confirmation — buttons: \(dialog.buttons.allElementsBoundByIndex.map(\.label))")
+        let confirm = app.buttons["preferencesResetConfirm"]
+        XCTAssertTrue(confirm.waitForExistence(timeout: 10), "Reset did not raise a confirmation with a Reset button")
         confirm.tap()
-        XCTAssertTrue(waitUntil(timeout: 10) { !dialog.exists }, "the confirmation stayed up after Reset")
+        XCTAssertTrue(waitUntil(timeout: 10) { !confirm.exists }, "the confirmation stayed up after Reset")
         assertSegment("preferencesShareQualityPicker", 1, selected: true, "Reset must bring Preview back")
         leavePreferencesAndHub()
     }

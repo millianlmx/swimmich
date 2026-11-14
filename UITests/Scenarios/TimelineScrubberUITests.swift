@@ -42,7 +42,6 @@ final class TimelineScrubberUITests: XCTestCase {
     private let favoritesLabels = ["Favorites", "Favoris", "Favoriten", "Favoritos", "Preferiti"]
     private let allLabels = ["All", "Tout", "Alle", "Todos", "Tutti"]
     private let archivedLabels = ["Archived", "Archivés", "Archiviert", "Archivados", "Archiviati"]
-    private let resetLabels = ["Reset", "Zurücksetzen", "Restablecer", "Réinitialiser", "Reimposta"]
 
     /// Where the tiles start being "visible": below the status bar and the row
     /// of floating buttons (Select, sync, avatar) that rides over the grid.
@@ -617,15 +616,12 @@ final class TimelineScrubberUITests: XCTestCase {
             XCTFail("the Preferences form has no Reset row:\n\(app.debugDescription)")
         }
         resetRow.tap()
-        let dialog = app.sheets.firstMatch
-        XCTAssertTrue(dialog.waitForExistence(timeout: 10), "Reset did not raise a confirmation")
-        let confirm = dialog.buttons.matching(labelPredicate(resetLabels)).firstMatch
+        let confirm = app.buttons["preferencesResetConfirm"]
         if !confirm.waitForExistence(timeout: 10) {
-            XCTFail("no Reset button in the confirmation dialog — its buttons are: "
-                    + "\(dialog.buttons.allElementsBoundByIndex.map(\.label))")
+            XCTFail("Reset did not raise a confirmation with a Reset button")
         }
         confirm.tap()
-        XCTAssertTrue(waitUntil(10) { !dialog.exists }, "the confirmation stayed up after Reset")
+        XCTAssertTrue(waitUntil(10) { !confirm.exists }, "the confirmation stayed up after Reset")
         scrollFormToTop()
         leavePreferencesAndHub()
     }

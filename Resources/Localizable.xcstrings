@@ -33322,6 +33322,46 @@
         }
       }
     },
+    "You weren't recognized. Try again." : {
+      "localizations" : {
+        "de" : { "stringUnit" : { "state" : "translated", "value" : "Sie wurden nicht erkannt. Versuchen Sie es erneut." } },
+        "es" : { "stringUnit" : { "state" : "translated", "value" : "No te han reconocido. Inténtalo de nuevo." } },
+        "fr" : { "stringUnit" : { "state" : "translated", "value" : "Vous n'avez pas été reconnu. Réessayez." } },
+        "it" : { "stringUnit" : { "state" : "translated", "value" : "Non sei stato riconosciuto. Riprova." } }
+      }
+    },
+    "Face ID didn't recognize you, or the request was cancelled. Try again." : {
+      "localizations" : {
+        "de" : { "stringUnit" : { "state" : "translated", "value" : "Face ID hat Sie nicht erkannt, oder die Anfrage wurde abgebrochen. Versuchen Sie es erneut." } },
+        "es" : { "stringUnit" : { "state" : "translated", "value" : "Face ID no te ha reconocido, o se ha cancelado la solicitud. Inténtalo de nuevo." } },
+        "fr" : { "stringUnit" : { "state" : "translated", "value" : "Face ID ne vous a pas reconnu, ou la demande a été annulée. Réessayez." } },
+        "it" : { "stringUnit" : { "state" : "translated", "value" : "Face ID non ti ha riconosciuto, oppure la richiesta è stata annullata. Riprova." } }
+      }
+    },
+    "Face ID or Touch ID is locked after too many attempts. Unlock your iPhone with its passcode, then try again." : {
+      "localizations" : {
+        "de" : { "stringUnit" : { "state" : "translated", "value" : "Face ID oder Touch ID ist nach zu vielen Versuchen gesperrt. Entsperren Sie Ihr iPhone mit dem Code und versuchen Sie es dann erneut." } },
+        "es" : { "stringUnit" : { "state" : "translated", "value" : "Face ID o Touch ID está bloqueado tras demasiados intentos. Desbloquea tu iPhone con el código y vuelve a intentarlo." } },
+        "fr" : { "stringUnit" : { "state" : "translated", "value" : "Face ID ou Touch ID est bloqué après trop d'essais. Déverrouillez votre iPhone avec son code, puis réessayez." } },
+        "it" : { "stringUnit" : { "state" : "translated", "value" : "Face ID o Touch ID è bloccato dopo troppi tentativi. Sblocca l'iPhone con il codice, poi riprova." } }
+      }
+    },
+    "This iPhone has no passcode, so Swimmich can't confirm it's you. Set a passcode in Settings, then try again." : {
+      "localizations" : {
+        "de" : { "stringUnit" : { "state" : "translated", "value" : "Dieses iPhone hat keinen Code, daher kann Swimmich nicht bestätigen, dass Sie es sind. Legen Sie in den Einstellungen einen Code fest und versuchen Sie es dann erneut." } },
+        "es" : { "stringUnit" : { "state" : "translated", "value" : "Este iPhone no tiene código, así que Swimmich no puede confirmar que eres tú. Define un código en Ajustes y vuelve a intentarlo." } },
+        "fr" : { "stringUnit" : { "state" : "translated", "value" : "Cet iPhone n'a pas de code, Swimmich ne peut donc pas vérifier que c'est vous. Définissez un code dans Réglages, puis réessayez." } },
+        "it" : { "stringUnit" : { "state" : "translated", "value" : "Questo iPhone non ha un codice, quindi Swimmich non può verificare che sei tu. Imposta un codice in Impostazioni, poi riprova." } }
+      }
+    },
+    "Authentication didn't succeed. Try again." : {
+      "localizations" : {
+        "de" : { "stringUnit" : { "state" : "translated", "value" : "Die Authentifizierung war nicht erfolgreich. Versuchen Sie es erneut." } },
+        "es" : { "stringUnit" : { "state" : "translated", "value" : "La autenticación no se ha completado. Inténtalo de nuevo." } },
+        "fr" : { "stringUnit" : { "state" : "translated", "value" : "L'authentification n'a pas abouti. Réessayez." } },
+        "it" : { "stringUnit" : { "state" : "translated", "value" : "Autenticazione non riuscita. Riprova." } }
+      }
+    },
     "Unarchive" : {
       "localizations" : {
         "de" : {
