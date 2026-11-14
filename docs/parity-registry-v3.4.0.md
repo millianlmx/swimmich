@@ -488,7 +488,7 @@ Chaque écran principal a une ligne par aspect. « États » regroupe le chargem
 | L-25 | Lieux : saisie des coordonnées et carte centrée sur ma position | B-29 | planifié | — | — |
 | L-26 | Adresse locale et adresse externe du serveur | B-30 | planifié | — | — |
 | L-27 | Réglages : qualité de partage, niveau du journal et caches | B-31 | planifié | — | — |
-| L-28 | Connexion et démarrage comme le client officiel | B-32 | livré | bff765f53cde | AC-53, AC-54, AC-55, AC-56, AC-330, AC-331, AC-332, AC-333, AC-334, AC-335, AC-336, AC-337, AC-338, AC-339, AC-340, AC-341, AC-342, AC-343, AC-344, AC-345, AC-346 (volets XCUITest de `LoginStartupUITests` compilés, non exécutés au poste harnais) |
+| L-28 | Connexion et démarrage comme le client officiel | B-32 | livré | 5ef6ed304fe6 | AC-53, AC-54, AC-55, AC-56, AC-330, AC-331, AC-332, AC-333, AC-334, AC-335, AC-336, AC-337, AC-338, AC-339, AC-340, AC-341, AC-342, AC-343, AC-344, AC-345, AC-346 (volets XCUITest de `LoginStartupUITests` compilés, non exécutés au poste harnais) |
 | L-29 | Visionneuse : relance des erreurs, haptique, diaporama éveillé et repli vidéo | B-33 | planifié | — | — |
 | L-30 | Widgets photo nets à leur taille réelle | B-35 | planifié | — | — |
 | L-31 | Confirmations avec Annuler, échec Face ID, barre unique et retours haptiques | B-36 | planifié | — | — |
