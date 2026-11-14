@@ -299,6 +299,7 @@ enum ButtonScanner {
             "FreeUpSpaceView.swift|keepSection": Count(count: 1, reason: "La ligne d'album affiche son nom."),
             "LocalLibraryView.swift|body": Count(count: 1, reason: "La ligne d'album de l'appareil affiche son nom (Text passé en paramètre) et son nombre."),
             "MemoriesView.swift|body": Count(count: 1, reason: "La carte de souvenir affiche son titre."),
+            "NetworkSettingsView.swift|body": Count(count: 1, reason: "Bouton de test « Simulate network change » (argument de lancement des XCUITest seulement, jamais montré en production) : son titre Text(verbatim:) est lu tel quel, hors catalogue à dessein."),
             "PartnerRow.swift|body": Count(count: 1, reason: "La zone d'identité affiche le nom du partenaire."),
             "AssetTagsSheet.swift|tagList": Count(count: 1, reason: "La ligne affiche le chemin du tag (Text(verbatim:), donnée du serveur)."),
             "ProfileView.swift|body": Count(count: 1, reason: "La ligne de compte affiche le nom du compte."),
