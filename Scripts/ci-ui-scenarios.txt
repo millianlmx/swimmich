@@ -48,3 +48,9 @@ immich_stub_asset_edits.py AssetEditsUITests/test_AC_188_oldServerSavesCopy
 immich_stub_asset_edits.py AssetEditsUITests/test_AC_189_putErrorShowsMessage
 immich_stub_asset_edits.py AssetEditsUITests/test_AC_39_editedVersionShownThenTheOriginalComesBack
 immich_stub_asset_edits.py AssetEditsUITests/test_AC_40_downloadEditedThenOriginalAsksTwiceWithDifferentFiles
+
+# L-30 widgets photo à leur taille (AC-61.6): the large Photos and Favorites widgets, posed on the Home
+# Screen through SpringBoard, are archived and drawn at the new image sizes (a wall of 4 previews; one
+# favourite on the biggest tile). Erased: a widget posed by an earlier test would falsify the gallery search.
+immich_stub_widgets.py WidgetDisplaySizeUITests/test_AC_61_6_photosLarge --erase
+immich_stub_widgets.py WidgetDisplaySizeUITests/test_AC_61_6_favoritesLargeOneFavorite --erase

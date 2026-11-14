@@ -127,9 +127,9 @@ final class WidgetClientCertificateTests: XCTestCase {
         let factory = TransportFactory()
         let provider = WidgetDataProvider(sessionStore: session, transport: { factory.make() })
 
-        _ = await provider.recentPhotos(limit: 3)
-        _ = await provider.favoritePhotos(limit: 3)
-        _ = await provider.memories(limit: 1, offset: 0)
+        _ = await provider.recentPhotos(limit: 3, target: .medium)
+        _ = await provider.favoritePhotos(limit: 3, target: .medium)
+        _ = await provider.memories(limit: 1, offset: 0, target: .medium)
 
         XCTAssertEqual(factory.transports.count, 3, "one transport per refresh, none kept between refreshes")
         XCTAssertEqual(factory.transports.map(\.finishCount), [1, 1, 1])
@@ -139,8 +139,8 @@ final class WidgetClientCertificateTests: XCTestCase {
         let factory = TransportFactory(hangs: true)
         let provider = WidgetDataProvider(sessionStore: session, transport: { factory.make() }, deadline: .milliseconds(60))
 
-        let wall = await provider.recentPhotos(limit: 3)
-        let feed = await provider.memories(limit: 1, offset: 0)
+        let wall = await provider.recentPhotos(limit: 3, target: .medium)
+        let feed = await provider.memories(limit: 1, offset: 0, target: .medium)
 
         XCTAssertEqual(wall.availability, .unreachable)
         XCTAssertEqual(feed.availability, .unreachable)
