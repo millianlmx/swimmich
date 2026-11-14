@@ -487,7 +487,7 @@ def _shell(method, request):
         if path == "/api/server/ping":
             return Response({"res": "pong"})
         if path == "/api/server/version":
-            return Response({"major": 1, "minor": 119, "patch": 0, "prerelease": None})
+            return Response({"major": 2, "minor": 0, "patch": 0, "prerelease": None})
         if path == "/api/server/config":
             return Response(CONFIG)
         if path == "/api/server/statistics":

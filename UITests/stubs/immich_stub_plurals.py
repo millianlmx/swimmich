@@ -3,7 +3,7 @@
 This stub puts two albums in front of the app: one of ONE photo and one of TWO,
 so the counters and the selection title of an album can be read in the
 singular and in the plural, in every language the app ships. The server keeps
-the shell's version (1.119.0, so older than 3.2.0): the Filters sheet of the
+the shell's version (2.0.0, so older than 3.2.0): the Filters sheet of the
 search then shows its "requires Immich 3.2 or later" notice.
 
 Routes (everything else — OAuth handshake, config, user, the one-day timeline,

@@ -9,6 +9,7 @@ enum ImmichAPI {
     static let oauthAuthorize = SubPath(root: "/oauth/authorize") // P5 oauth
     static let oauthCallback = SubPath(root: "/oauth/callback") // P5 oauth
     static let server = SubPath(root: "/server")
+    static let publicConfig = SubPath(root: "/public/config") // v3.2+ (L-28 reads the sign-in modes from it)
     static let assets = SubPath(root: "/assets")
     static let timeline = SubPath(root: "/timeline")
     static let trash = SubPath(root: "/trash") // AC-311

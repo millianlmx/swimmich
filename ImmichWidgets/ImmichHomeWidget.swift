@@ -8,7 +8,7 @@ import WidgetKit
 /// cache of its own, so this one stays data-free — the Live Activity covers the
 /// progress, the other three widgets cover the content. Its whole job is the
 /// `app.immich://backup` deep link, which the app routes to the Photos tab and
-/// the gated engine.
+/// to a manual backup pass (the one of "Run now").
 struct ImmichHomeWidget: Widget {
     var body: some WidgetConfiguration {
         StaticConfiguration(kind: "ImmichHomeWidget", provider: ImmichHomeTimelineProvider()) { _ in

@@ -65,6 +65,8 @@ private struct LogTextBlock: View {
                 .foregroundStyle(Color.textPrimaryPV)
                 .textSelection(.enabled)
                 .frame(maxWidth: .infinity, alignment: .leading)
+                // The very text the copy button writes (L-28, AC-338).
+                .accessibilityIdentifier("logBlockText_\(section)")
         }
         .padding(PVSpacing.s12)
         .background(Color.bgSecondary, in: RoundedRectangle(cornerRadius: PVRadius.md, style: .continuous))

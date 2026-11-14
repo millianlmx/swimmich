@@ -47,7 +47,7 @@ WHY `/__version` IS GRAFTED RATHER THAN REGISTERED
     wave, which a feature stub must not edit. The one control route this feature
     owns is therefore wrapped around the shell's own, below. Consequence: a
     scenario sets the generation with `GET /__version?major=3&minor=2`, and
-    `/__reset` puts it back to the generation the shell serves (`1.119.0`).
+    `/__reset` puts it back to the generation the shell serves (`2.0.0`).
 """
 import time
 from urllib.parse import parse_qsl
@@ -59,7 +59,7 @@ from immich_stub_base import ME_USER, STATE, TIMELINE_ASSETS, Response, asset, m
 # gets unless it asks for another one. Pre-v3.2.0 on purpose: a stub that
 # defaulted to 3.2.0 would hide the flat route from any other scenario that
 # happens to reuse this file.
-DEFAULT_VERSION = (1, 119, 0)
+DEFAULT_VERSION = (2, 0, 0)
 
 # The opaque token the structured route hands out for page 2. Opaque on purpose,
 # like the real one: a scenario asserts it travels back VERBATIM, and a token

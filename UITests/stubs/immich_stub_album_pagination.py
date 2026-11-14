@@ -11,7 +11,7 @@ body is what catches a pagination that picks its shape from the version.
 Routes (everything else — OAuth handshake, config, user, timeline, the real PNG
 thumbnails of ANY asset id — comes from `immich_stub_base`):
 
-* `GET /api/server/version` — always 3.2.0 (the shell says 1.119.0).
+* `GET /api/server/version` — always 3.2.0 (the shell says 2.0.0).
 * `GET /api/albums` — the one album, `order` "asc", `assetCount` = both pages.
 * `GET /api/albums/<id>` — that same album; the shell answers `[]` on this path,
   which does not decode as an album. Any other id is a 404.

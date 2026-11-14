@@ -14,6 +14,9 @@ struct ServerURLScreen: View {
     @PVReduceMotion private var reduceMotion
     @Environment(AuthViewModel.self) private var auth
     let `continue`: () -> Void
+    /// Opens the application log (L-28): available whatever the status of the
+    /// check, `.checking` included, and without any session.
+    let openLogs: () -> Void
 
     @FocusState private var isFocused: Bool
     @State private var presentingQRScanner = false
@@ -24,6 +27,8 @@ struct ServerURLScreen: View {
     @State private var headersRevision = 0
     /// The client certificate sheet (import, replace, remove) for the typed server.
     @State private var presentingCertificate = false
+    /// The last haptic the server check emitted, for the UI-test probe only.
+    @State private var probeHaptic = "none"
 
     var body: some View {
         @Bindable var auth = auth
@@ -48,6 +53,7 @@ struct ServerURLScreen: View {
                                 .focused($isFocused)
                                 .onSubmit(primaryAction)
                                 .font(.pvBody)
+                                .accessibilityLabel(Text("Server URL"))
                                 .accessibilityIdentifier("serverURLField")
                                 .pvFieldSurface()
 
@@ -97,6 +103,20 @@ struct ServerURLScreen: View {
         .navigationTitle("Server URL")
         .navigationBarTitleDisplayMode(.inline)
         .onAppear { isFocused = true }
+        .toolbar {
+            ToolbarItem(placement: .topBarTrailing) {
+                Button(action: openLogs) {
+                    Label("App Logs", systemImage: "doc.text.magnifyingglass")
+                }
+                .accessibilityIdentifier("serverLogsButton")
+            }
+        }
+        // The end of every validation of the address: a success or a failure
+        // (unreachable, refused certificate, client certificate missing). The
+        // haptic setting silences both through the gate.
+        .appSensoryFeedback(.success, trigger: auth.serverCheckSuccessCount, onEmit: probeEmit(label: "success"))
+        .appSensoryFeedback(.error, trigger: auth.serverCheckFailureCount, onEmit: probeEmit(label: "error"))
+        .overlay(alignment: .topLeading) { probeElement }
         .onChange(of: auth.serverURLString) { _, _ in
             auth.serverStatus = .idle
         }
@@ -250,6 +270,12 @@ struct ServerURLScreen: View {
                     .font(.pvBodyLarge)
                     .foregroundStyle(Color.immichSuccess)
 
+                // Informs, never blocks: "Continue" stays available.
+                if let warning = ServerCompatibility.warning(for: version) {
+                    InlineWarningBadge(message: warning.message)
+                        .accessibilityIdentifier("serverVersionWarning")
+                }
+
                 ServerInfoCard(
                     version: version.map { "\($0.major).\($0.minor).\($0.patch)" },
                     externalDomain: auth.serverConfig?.externalDomain,
@@ -274,6 +300,31 @@ struct ServerURLScreen: View {
                     .accessibilityIdentifier("serverStatusImportCertificateButton")
             }
             .accessibilityIdentifier("serverStatusClientCertificateRequired")
+        }
+    }
+
+    // MARK: - Test probe (UI tests only)
+
+    private func probeEmit(label: String) -> ((SensoryFeedback?) -> Void)? {
+        guard ServerCheckProbe.isEnabled else { return nil }
+        return { played in
+            // Nothing played (haptics off): the probe keeps what it had.
+            guard played != nil else { return }
+            let count = auth.serverCheckCount
+            // Never write state while the view is being updated.
+            Task { @MainActor in probeHaptic = "\(label)#\(count)" }
+        }
+    }
+
+    @ViewBuilder
+    private var probeElement: some View {
+        if ServerCheckProbe.isEnabled {
+            Color.clear
+                .frame(width: 1, height: 1)
+                .allowsHitTesting(false)
+                .accessibilityElement(children: .ignore)
+                .accessibilityIdentifier("serverCheckProbe")
+                .accessibilityValue(Text(verbatim: "checks=\(auth.serverCheckCount) haptic=\(probeHaptic)"))
         }
     }
 
@@ -315,6 +366,14 @@ struct ServerURLScreen: View {
         auth.serverURLString = url.absoluteString
         connect()
     }
+}
+
+/// UI-test switch, off in production (same model as `MemoryPlaybackProbe`):
+/// `-uiTestServerCheckProbe YES` adds the `serverCheckProbe` element, whose
+/// value says how many validations ended and which haptic the gate returned.
+enum ServerCheckProbe {
+    static let defaultsKey = "uiTestServerCheckProbe"
+    static let isEnabled = UserDefaults.standard.bool(forKey: defaultsKey)
 }
 
 /// Identifies the server a headers sheet was opened for (`ServerKey` itself is

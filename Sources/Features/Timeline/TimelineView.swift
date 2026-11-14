@@ -27,6 +27,9 @@ struct TimelineView: View {
     let troubleshoot: AssetTroubleshootViewModel
     @Binding var scrollTargetID: String?
     @Binding var scrollTargetDay: String?
+    /// A widget link naming one photo (L-28): the root sets it, the grid
+    /// resolves it, opens the viewer on it and clears it.
+    @Binding var linkedAsset: LinkedAssetRequest?
     @Environment(AuthViewModel.self) private var auth
     @Environment(\.openProfile) private var openProfile
     @Environment(\.openSyncStatus) private var openSyncStatus
@@ -90,7 +93,8 @@ struct TimelineView: View {
         downloads: DownloadQueueViewModel,
         troubleshoot: AssetTroubleshootViewModel? = nil,
         scrollTargetID: Binding<String?> = .constant(nil),
-        scrollTargetDay: Binding<String?> = .constant(nil)
+        scrollTargetDay: Binding<String?> = .constant(nil),
+        linkedAsset: Binding<LinkedAssetRequest?> = .constant(nil)
     ) {
         _vm = State(initialValue: vm)
         self.stacks = stacks
@@ -100,6 +104,7 @@ struct TimelineView: View {
         self.troubleshoot = troubleshoot ?? DependencyContainer.shared.makeAssetTroubleshootViewModel()
         _scrollTargetID = scrollTargetID
         _scrollTargetDay = scrollTargetDay
+        _linkedAsset = linkedAsset
     }
 
     var body: some View {
@@ -343,6 +348,15 @@ struct TimelineView: View {
                 await vm.load()
             }
         }
+        // The photo of a widget link (L-28). `initial` covers a link that was
+        // set before this view appeared (a cold launch). The resolution runs
+        // outside the view's task on purpose: clearing the request below changes
+        // the identity this observes, which would cancel a task keyed on it.
+        .onChange(of: linkedAsset?.token, initial: true) { _, token in
+            guard token != nil, let request = linkedAsset else { return }
+            linkedAsset = nil
+            Task { await openLinkedAsset(request) }
+        }
         // Seed the grid from the persisted density, once. `baseColumns` is the
         // pinch's reference and `columnCount` is what the grid draws; both start
         // at the stored value so a relaunch comes back at the density the user
@@ -512,6 +526,9 @@ struct TimelineView: View {
                 PVSkeletonGrid(rows: 4, columnCount: columnCount)
                     .padding(.horizontal, PVSpacing.s4)
                     .padding(.top, PVSpacing.s4)
+                    .accessibilityElement(children: .ignore)
+                    .accessibilityLabel(Text("Loading photos…"))
+                    .accessibilityIdentifier("timelineLoadingSkeleton")
             } else if vm.loadErrorMessage != nil {
                 ContentUnavailableView {
                     Label("Couldn't load photos", systemImage: "wifi.exclamationmark")
@@ -520,8 +537,13 @@ struct TimelineView: View {
                 } actions: {
                     Button("Try Again") { Task { await vm.refresh() } }
                         .buttonStyle(PVPrimaryButtonStyle())
+                        .accessibilityIdentifier("timelineRetryButton")
                 }
                 .padding(.top, 80)
+                // A container: the identifier names the state without merging its
+                // children, so "Try Again" keeps `timelineRetryButton`.
+                .accessibilityElement(children: .contain)
+                .accessibilityIdentifier("timelineLoadErrorState")
             } else {
                 ContentUnavailableView {
                     Label("No Photos", systemImage: "photo.on.rectangle.angled")
@@ -722,6 +744,22 @@ struct TimelineView: View {
         zoomSource.presentInstantly {
             viewerOnScreen = true
             viewerItem = PhotoViewerItem(assets: vm.items, index: idx)
+        }
+    }
+
+    /// Opens the viewer on the photo a widget link names (L-28), with no zoom
+    /// out of a thumbnail: the photo may not be in the grid at all. A photo the
+    /// server refuses opens nothing and says nothing.
+    private func openLinkedAsset(_ request: LinkedAssetRequest) async {
+        switch await vm.resolveLinkedAsset(id: request.id, day: request.day) {
+        case .unavailable:
+            return
+        case let .open(assets, index, inTimeline):
+            if inTimeline { requestScroll(to: request.id) }
+            zoomSource.presentInstantly {
+                viewerOnScreen = true
+                viewerItem = PhotoViewerItem(assets: assets, index: index)
+            }
         }
     }
 

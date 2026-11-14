@@ -38,7 +38,7 @@ file adds the three things the feature under test owns.
 
 3. `GET /api/server/version` — overridden to 3.2.0 on purpose. The whole OCR
    half of the search screen is gated on the structured shape
-   (`SearchViewModel.supportsStructuredSearch`), and the shell's own `1.119.0`
+   (`SearchViewModel.supportsStructuredSearch`), and the shell's own `2.0.0`
    would leave the toolbar toggle disabled: a scenario against it would prove
    nothing about the criterion.
 """

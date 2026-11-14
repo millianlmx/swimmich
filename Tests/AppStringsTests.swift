@@ -165,6 +165,8 @@ final class AppStringsTests: XCTestCase {
     /// translation names the server as often as its English key does.
     static let serverReferences: Set<String> = [
         "Compatible with Immich servers.",
+        "This server runs Immich %@. Swimmich supports Immich 2.0.0 and later: some features may not work.",
+        "This server runs Immich %@, newer than the versions Swimmich supports (up to 3.x): some features may not work.",
         "Detected text search requires Immich %@ or later.",
         "If you forget this password, an administrator has to reset it from the Immich web interface.",
         "Photos in the locked folder are hidden everywhere else and open with your Immich PIN — a separate code from this app lock.",

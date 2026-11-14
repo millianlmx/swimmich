@@ -337,7 +337,7 @@ class Handler(BaseHTTPRequestHandler):
 
         routes = {
             "/api/server/ping": {"res": "pong"},
-            "/api/server/version": {"major": 1, "minor": 119, "patch": 0, "prerelease": None},
+            "/api/server/version": {"major": 2, "minor": 0, "patch": 0, "prerelease": None},
             "/api/server/config": CONFIG,
             "/api/users/me": ME_USER,
             "/api/users": [ME_USER],

@@ -20,6 +20,8 @@ struct OnboardingFlowView: View {
 
     enum Step: Hashable {
         case welcome, serverURL, login
+        /// The application log, reachable without a session (L-28).
+        case logs
     }
 
     @State private var path: [Step]
@@ -50,9 +52,22 @@ struct OnboardingFlowView: View {
     private func destination(for step: Step) -> some View {
         switch step {
         case .welcome:   WelcomeScreen(continue: { path.append(.serverURL) })
-        case .serverURL: ServerURLScreen(continue: { path.append(.login) })
-        case .login:     LoginScreen()
+        case .serverURL: ServerURLScreen(continue: { path.append(.login) }, openLogs: { path.append(.logs) })
+        case .login:     LoginScreen(openLogs: { path.append(.logs) })
+        case .logs:      OnboardingAppLogScreen()
         }
+    }
+}
+
+/// The application log on the onboarding stack. It is pushed on the flow's own
+/// `NavigationStack` (no stack of its own: the bar would double), and its view
+/// model is built once, on the process-wide log store — which the masking of
+/// secrets already covers — so going back leaves the typed address untouched.
+private struct OnboardingAppLogScreen: View {
+    @State private var vm = DependencyContainer.shared.makeAppLogViewModel()
+
+    var body: some View {
+        AppLogView(vm: vm)
     }
 }
 
@@ -71,6 +86,18 @@ extension View {
                 .pvFloating(.bar)
                 .padding(.horizontal, PVSpacing.s16)
                 .padding(.bottom, PVSpacing.s8)
+        }
+    }
+
+    /// `onboardingBottomBar`, only when `isPresented`: a screen whose CTA can
+    /// disappear (the sign-in step of a server that refuses the password)
+    /// carries no empty bar.
+    @ViewBuilder
+    func onboardingBottomBar<Content: View>(isPresented: Bool, @ViewBuilder content: () -> Content) -> some View {
+        if isPresented {
+            onboardingBottomBar(content: content)
+        } else {
+            self
         }
     }
 }

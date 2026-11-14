@@ -1,6 +1,118 @@
 {
   "sourceLanguage" : "en",
   "strings" : {
+    "Sign in with SSO" : {
+      "localizations" : {
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Se connecter avec le SSO"
+          }
+        },
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Mit SSO anmelden"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Iniciar sesión con SSO"
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Accedi con SSO"
+          }
+        }
+      }
+    },
+    "Login is disabled on this server." : {
+      "localizations" : {
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "La connexion est désactivée sur ce serveur."
+          }
+        },
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Die Anmeldung ist auf diesem Server deaktiviert."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "El inicio de sesión está desactivado en este servidor."
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "L'accesso è disattivato su questo server."
+          }
+        }
+      }
+    },
+    "This server runs Immich %@. Swimmich supports Immich 2.0.0 and later: some features may not work." : {
+      "localizations" : {
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Ce serveur exécute Immich %@. Swimmich prend en charge Immich 2.0.0 et les versions suivantes : certaines fonctions peuvent ne pas marcher."
+          }
+        },
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Dieser Server verwendet Immich %@. Swimmich unterstützt Immich 2.0.0 und neuer: Einige Funktionen funktionieren möglicherweise nicht."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Este servidor usa Immich %@. Swimmich es compatible con Immich 2.0.0 y posteriores: algunas funciones pueden no funcionar."
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Questo server usa Immich %@. Swimmich supporta Immich 2.0.0 e versioni successive: alcune funzioni potrebbero non funzionare."
+          }
+        }
+      }
+    },
+    "This server runs Immich %@, newer than the versions Swimmich supports (up to 3.x): some features may not work." : {
+      "localizations" : {
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Ce serveur exécute Immich %@, plus récent que les versions prises en charge par Swimmich (jusqu'à 3.x) : certaines fonctions peuvent ne pas marcher."
+          }
+        },
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Dieser Server verwendet Immich %@, neuer als die von Swimmich unterstützten Versionen (bis 3.x): Einige Funktionen funktionieren möglicherweise nicht."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Este servidor usa Immich %@, más reciente que las versiones compatibles con Swimmich (hasta 3.x): algunas funciones pueden no funcionar."
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Questo server usa Immich %@, più recente delle versioni supportate da Swimmich (fino alla 3.x): alcune funzioni potrebbero non funzionare."
+          }
+        }
+      }
+    },
     "Client Certificate" : {
       "localizations" : {
         "fr" : {
