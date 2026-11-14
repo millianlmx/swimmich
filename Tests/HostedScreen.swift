@@ -39,7 +39,7 @@ final class HostedScreen {
         let label: String
         let scrolls: Bool
         let depth: Int
-        var summary: String
+        let summary: String
         var children: [Node] = []
 
         init(kind: Kind, frame: CGRect, identifier: String, label: String, scrolls: Bool, depth: Int, summary: String) {
@@ -77,19 +77,17 @@ final class HostedScreen {
 
     init(_ view: some View, size: DynamicTypeSize, language: String = "en", height: CGFloat = 3000) {
         _ = AccessibilityAutomation.isOn
-        let scene = UIApplication.shared.connectedScenes.compactMap { $0 as? UIWindowScene }.first
-        let width = scene?.screen.bounds.width ?? 402
+        guard let scene = UIApplication.shared.connectedScenes.compactMap({ $0 as? UIWindowScene }).first else {
+            preconditionFailure("the test host has no window scene to host a screen in")
+        }
+        let width = scene.screen.bounds.width
         let locale = Locale(identifier: language == "de" ? "de_DE" : "en_US")
         controller = UIHostingController(rootView: AnyView(
             view
                 .environment(\.dynamicTypeSize, size)
                 .environment(\.locale, locale)
         ))
-        if let scene {
-            window = UIWindow(windowScene: scene)
-        } else {
-            window = UIWindow(frame: .zero)
-        }
+        window = UIWindow(windowScene: scene)
         window.frame = CGRect(x: 0, y: 0, width: width, height: height)
         window.traitOverrides.preferredContentSizeCategory = UIContentSizeCategory(size)
         window.rootViewController = controller
@@ -164,12 +162,9 @@ final class HostedScreen {
         // into its label) but not for the UI automation, which still reads the
         // texts inside it (`automationElements`): the same children XCUITest sees,
         // so a title inside a card or a row is measured on its own frame here too.
-        var automationChildren = -1
         if children.isEmpty, !(object is UIView), let elements = object.automationElements {
             children = elements.compactMap { $0 as? NSObject }
-            automationChildren = children.count
         }
-        result.summary += " auto=\(automationChildren)"
         let inside = scrolls || object is UIScrollView
         for child in children {
             if let childNode = node(for: child, scrolls: inside, depth: depth + 1, visited: &visited) {

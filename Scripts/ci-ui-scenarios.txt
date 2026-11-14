@@ -32,7 +32,12 @@ immich_stub_backup_remainder.py BackupRemainderUITests/test_AC_65_9_rowsReadable
 # L-13 Dynamic Type (AC-26 to AC-26.9). The long walks are cut in several tests
 # (one line each) so the pool spreads them. The share extension follows the
 # SYSTEM text size (AX5) and needs a long-named photo in Photos.
-immich_stub_dynamic_type.py DynamicTypeUITests/test_AC_26_8_albums
+# Three tests of the class are no longer listed: `DynamicTypeScreenTests` (unit
+# tests) measures their screens hosted at AX5 in English and in German, in
+# seconds: test_AC_26_8_albums and test_AC_26_8_links (the German twins of the
+# AC-26.3 walks kept below) and test_AC_26_ax5 (its screens are hosted, its Me
+# hub is walked by test_AC_26_3). A screen joins a walk here only when it cannot
+# be hosted; a new screen gets a hosted test first.
 immich_stub_dynamic_type.py DynamicTypeUITests/test_AC_26_3_albums
 immich_stub_dynamic_type.py DynamicTypeUITests/test_AC_26_3 --smoke
 immich_stub_dynamic_type.py DynamicTypeUITests/test_AC_26_8
@@ -40,11 +45,9 @@ immich_stub_dynamic_type.py DynamicTypeUITests/test_AC_26_9
 immich_stub_dynamic_type.py DynamicTypeUITests/test_AC_26_1_signedIn
 immich_stub_dynamic_type.py DynamicTypeUITests/test_AC_26_1_albums
 immich_stub_dynamic_type.py DynamicTypeUITests/test_AC_26_3_links
-immich_stub_dynamic_type.py DynamicTypeUITests/test_AC_26_8_links
 immich_stub_dynamic_type.py DynamicTypeUITests/test_AC_26_4_panels
 immich_stub_dynamic_type.py DynamicTypeUITests/test_AC_26_4
 immich_stub_dynamic_type.py DynamicTypeUITests/test_AC_26_4_ax5
-immich_stub_dynamic_type.py DynamicTypeUITests/test_AC_26_ax5
 immich_stub_dynamic_type.py DynamicTypeUITests/test_AC_26_1
 immich_stub_dynamic_type.py DynamicTypeUITests/test_AC_26_4_appLock
 immich_stub_dynamic_type.py DynamicTypeUITests/test_AC_26_4_lists

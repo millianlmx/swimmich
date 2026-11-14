@@ -130,8 +130,12 @@ final class DynamicTypeScreenTests: XCTestCase {
             duplicates: container.makeDuplicatesViewModel(),
             lockedFolder: container.makeLockedFolderViewModel(accountID: "dt")
         )
-        return host(AlbumsView(vm: AlbumsViewModel(client: mock), library: library), mock,
-                    size: size, language: language, height: 9000)
+        let view = AlbumsView(vm: AlbumsViewModel(client: mock), library: library)
+            .environment(container.upload)
+            .environment(container.makeOfflineDownloadViewModel(accountID: "dt"))
+            .environment(container.offlineIndex)
+            .environment(container.cloudStatus)
+        return host(view, mock, size: size, language: language, height: 9000)
     }
 
     private func searchScreen(_ mock: MockImmichClient, size: DynamicTypeSize = .accessibility5,
@@ -147,6 +151,8 @@ final class DynamicTypeScreenTests: XCTestCase {
 
     // MARK: - AC-26.3 / AC-26.8: whole screens at AX5, in English and in German
 
+    /// The Albums tab: AX5 in both languages, then the smallest size, and a card
+    /// that grows from XS to L to AX5 (AC-26, AC-26.1, AC-26.3, AC-26.8).
     func test_AC_26_3_albumsScreen() async {
         for language in Self.languages {
             let screen = albumsScreen(makeMock(), language: language)
@@ -155,6 +161,16 @@ final class DynamicTypeScreenTests: XCTestCase {
             screen.assertNoOverlap()
             screen.assertRowGrows(long: "albumCard_dt-album-long", short: "albumCard_dt-album-short")
         }
+        var heights: [CGFloat] = []
+        for size in [DynamicTypeSize.xSmall, .large, .accessibility5] {
+            let screen = albumsScreen(makeMock(), size: size, language: "en")
+            defer { screen.close() }
+            guard await screen.waitFor("albumCard_dt-album-short") else { return }
+            if size == .xSmall { screen.assertNoOverlap() }
+            heights.append(screen.find("albumCard_dt-album-short")?.frame.height ?? 0)
+        }
+        XCTAssertLessThan(heights[0], heights[1], "album card: XS (\(heights[0])) must be smaller than L (\(heights[1]))")
+        XCTAssertLessThan(heights[1], heights[2], "album card: L (\(heights[1])) must be smaller than AX5 (\(heights[2]))")
     }
 
     func test_AC_26_3_addToAlbumSheet() async {
@@ -293,7 +309,6 @@ final class DynamicTypeScreenTests: XCTestCase {
             ("partnerRowName-dt-partner-short", partnersScreen(mock, size: .xSmall, language: "en")),
             ("preferencesResetButton", preferencesScreen(mock, size: .xSmall, language: "en")),
             ("createAlbumNameHeader", createAlbumScreen(mock, size: .xSmall, language: "en")),
-            ("albumCard_dt-album-short", albumsScreen(mock, size: .xSmall, language: "en")),
             ("searchPromptTitle", searchScreen(mock, size: .xSmall, language: "en")),
         ]
         for (landmark, screen) in screens {
@@ -311,7 +326,6 @@ final class DynamicTypeScreenTests: XCTestCase {
             ("partnerRowName-dt-partner-short", { self.partnersScreen(mock, size: $0, language: "en") }),
             ("preferencesGroupPicker", { self.preferencesScreen(mock, size: $0, language: "en") }),
             ("createAlbumNameHeader", { self.createAlbumScreen(mock, size: $0, language: "en") }),
-            ("albumCard_dt-album-short", { self.albumsScreen(mock, size: $0, language: "en") }),
             ("searchPromptTitle", { self.searchScreen(mock, size: $0, language: "en") }),
         ]
         for (landmark, make) in landmarks {
@@ -326,18 +340,5 @@ final class DynamicTypeScreenTests: XCTestCase {
             XCTAssertLessThan(heights[0], heights[1], "\(landmark): XS (\(heights[0])) must be smaller than L (\(heights[1]))")
             XCTAssertLessThan(heights[1], heights[2], "\(landmark): L (\(heights[1])) must be smaller than AX5 (\(heights[2]))")
         }
-    }
-
-    /// PROBE (temporary): prints the trees the next screens are written from.
-    func test_probe_trees() async {
-        let mock = makeMock()
-        let albums = albumsScreen(mock, language: "en")
-        _ = await albums.waitFor("albumCard_dt-album-short")
-        XCTFail("PROBE albums \(albums.dump(limit: 140))")
-        albums.close()
-        let search = searchScreen(mock, language: "en")
-        _ = await search.waitFor("searchPromptTitle")
-        XCTFail("PROBE search \(search.dump(limit: 90))")
-        search.close()
     }
 }
