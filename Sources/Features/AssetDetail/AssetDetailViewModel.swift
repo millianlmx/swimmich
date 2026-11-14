@@ -1,6 +1,15 @@
 import Foundation
 import SwiftUI
 
+/// A saved date correction: the string sent to the server, the zone it was
+/// written in and the wall-clock time the user saw (L-33).
+struct DateCorrection: Equatable, Sendable {
+    let dateTimeOriginal: String
+    let timeZoneIdentifier: String
+    /// Wall-clock date and time, held as the instant whose UTC components read as such.
+    let wallClock: Date
+}
+
 /// Asset detail state. AC-010: PUT /api/assets/:id on toggleFavorite.
 @Observable
 final class AssetDetailViewModel {
@@ -34,6 +43,10 @@ final class AssetDetailViewModel {
     /// Test-visible: last write body sent + asset id targeted (AC-010).
     private(set) var lastUpdateBody: UpdateAssetDto?
     private(set) var lastUpdateAssetId: String?
+
+    /// The last date correction saved for this photo while its viewer stays open.
+    /// Never persisted: a new view model (another photo) starts without one.
+    private(set) var savedDateCorrection: DateCorrection?
 
     /// Star rating (star-ratings) — local-first copy of `exifInfo.rating`.
     /// `nil` = not rated: the server has no `0` (invalid since v3), so clearing
@@ -214,16 +227,21 @@ final class AssetDetailViewModel {
         }
     }
 
-    /// Adjust date/time (gap #3): PUT /api/assets/:id {dateTimeOriginal}.
-    /// The date is encoded as Immich's UTC ISO-8601 (`yyyy-MM-dd'T'HH:mm:ss.SSS'Z'`).
+    /// Adjust date/time (gap #3, L-33): PUT /api/assets/:id {dateTimeOriginal}.
+    /// `correction.dateTimeOriginal` is the wall-clock time with the chosen
+    /// zone's offset (`2024-07-14T10:00:00+09:00`). A success keeps the
+    /// correction so the sheet reopens on it (servers < 2.5 answer with the old
+    /// EXIF time zone); a failure leaves the previous one untouched.
     @MainActor
-    func setDateTime(_ date: Date) async {
-        let body = UpdateAssetDto(dateTimeOriginal: ISO8601.immichFormatter.string(from: date))
+    func setDateTime(_ correction: DateCorrection) async {
+        let body = UpdateAssetDto(dateTimeOriginal: correction.dateTimeOriginal)
         lastUpdateBody = body
         lastUpdateAssetId = asset.id
         do {
             let updated = try await client.updateAsset(id: asset.id, dto: body)
             detail = updated
+            savedDateCorrection = correction
+            errorMessage = nil
         } catch let e {
             errorMessage = e.userFacingMessage
         }

@@ -84,3 +84,10 @@ immich_stub_edit_stacks.py EditStacksUITests/test_AC_200_settingOffByDefaultAndP
 # everything empties both. The AX5 line reads a row at the largest text size: whole file name, no overflow.
 immich_stub_backup_remainder.py BackupRemainderUITests/test_AC_65_remainderFromBackupScreen --media L32-a.png --media L32-b.png --media L32-c.png --erase
 immich_stub_backup_remainder.py BackupRemainderUITests/test_AC_65_9_rowsReadableAtAX5 --content-size accessibility-extra-extra-extra-large --media L32-ax5.png --erase
+
+# L-33 date correction with a time zone (AC-66, AC-66.4, AC-66.6): the device is set to Asia/Tokyo by the
+# scenario (TZ), the photo's EXIF zone is Europe/Paris; the picker shows the photo's wall clock, the PUT
+# carries the chosen zone's offset.
+immich_stub_adjust_date.py AdjustDateUITests/test_AC_66
+immich_stub_adjust_date.py AdjustDateUITests/test_AC_66_4_editedTimeIsWallClock
+immich_stub_adjust_date.py AdjustDateUITests/test_AC_66_6_reopenAfterSave
