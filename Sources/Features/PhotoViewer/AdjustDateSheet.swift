@@ -50,6 +50,7 @@ struct AdjustDateSheet: View {
     /// "Time Zone · Europe/Paris · +02:00 ›" — opens the zone list.
     private var zoneRow: some View {
         let entry = vm.selectedEntry
+        let spoken: String = entry.identifier + ", " + entry.offsetText
         return Button {
             showZones = true
         } label: {
@@ -79,7 +80,7 @@ struct AdjustDateSheet: View {
         .background(RoundedRectangle(cornerRadius: PVRadius.md, style: .continuous).fill(Color.gray.opacity(0.12)))
         .accessibilityElement(children: .ignore)
         .accessibilityLabel("Time Zone")
-        .accessibilityValue("\(entry.identifier), \(entry.offsetText)")
+        .accessibilityValue(spoken)
         .accessibilityIdentifier("adjustDateZoneButton")
     }
 
