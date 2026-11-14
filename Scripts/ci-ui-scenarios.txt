@@ -36,6 +36,18 @@ immich_stub_dynamic_type.py DynamicTypeUITests/test_AC_26
 immich_stub_dynamic_type.py DynamicTypeUITests/test_AC_26_4_shareExtension --content-size accessibility-extra-extra-extra-large --media Summer-holidays-in-the-Gorges-du-Verdon-with-the-whole-family.png
 immich_stub_dynamic_type.py DynamicTypeUITests/test_AC_26_7
 immich_stub_dynamic_type.py DynamicTypeUITests/test_AC_26_5
+immich_stub_search_filters.py SearchCriteriaUITests/test_AC_42
+immich_stub_search_filters.py SearchCriteriaUITests/test_AC_209
+immich_stub_search_filters.py SearchCriteriaUITests/test_AC_210
+immich_stub_search_filters.py SearchCriteriaUITests/test_AC_211
+immich_stub_search_filters.py SearchCriteriaUITests/test_AC_212
+immich_stub_search_filters.py SearchCriteriaUITests/test_AC_213
+immich_stub_search_filters.py SearchCriteriaUITests/test_AC_43
+immich_stub_search_filters.py SearchCriteriaUITests/test_AC_215
+immich_stub_search_filters.py SearchCriteriaUITests/test_AC_218
+immich_stub_search_filters.py SearchCriteriaUITests/test_AC_216
+immich_stub_search_filters.py SearchCriteriaUITests/test_AC_44
+immich_stub_search_filters.py SearchCriteriaUITests/test_AC_217
 
 # L-21 server-side edits (AC-39, AC-40, AC-181, AC-182, AC-188, AC-189): the editor, the edited
 # version shown by the viewer, and the choice of the file to download.
@@ -45,6 +57,10 @@ immich_stub_asset_edits.py AssetEditsUITests/test_AC_188_oldServerSavesCopy
 immich_stub_asset_edits.py AssetEditsUITests/test_AC_189_putErrorShowsMessage
 immich_stub_asset_edits.py AssetEditsUITests/test_AC_39_editedVersionShownThenTheOriginalComesBack
 immich_stub_asset_edits.py AssetEditsUITests/test_AC_40_downloadEditedThenOriginalAsksTwiceWithDifferentFiles
+
+immich_stub_edit_stacks.py EditStacksUITests/test_AC_41_editStackedOnOriginal --media L22-edit-on.png --erase
+immich_stub_edit_stacks.py EditStacksUITests/test_AC_41_settingOffSendsNothing --media L22-edit-off.png --erase
+immich_stub_edit_stacks.py EditStacksUITests/test_AC_200_settingOffByDefaultAndPersisted
 
 # L-26 adresse locale et externe (AC-49, AC-236, AC-248): one stub serves the
 # external address on the worker's port P and the local one on a port the system

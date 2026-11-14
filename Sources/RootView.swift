@@ -71,6 +71,9 @@ struct RootView: View {
         .tint(appSettings.accent.color)
         // App Lock lives in its own window above every sheet, cover and alert.
         .background(AppLockWindowInstaller(appLock: appLock, language: language, appSettings: appSettings))
+        #if DEBUG
+        .overlay(alignment: .topLeading) { UITestPhotoEditProbe() }
+        #endif
     }
 }
 
@@ -270,7 +273,7 @@ private struct AuthenticatedRoot: View {
                 }
             }
             Tab("Search", systemImage: bubbleIcon, value: RootTab.search, role: .search) {
-                SearchView(vm: search, mapVM: map)
+                SearchView(vm: search, mapVM: map, downloads: downloads)
             }
         }
         .immichBottomBar()
