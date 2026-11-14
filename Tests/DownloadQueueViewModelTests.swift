@@ -162,6 +162,121 @@ final class DownloadQueueViewModelTests: XCTestCase {
         XCTAssertEqual(try Data(contentsOf: second), Data("second".utf8))
     }
 
+    // MARK: - Edited version or original (L-21, AC-40, AC-187)
+
+    /// AC-40: the same photo downloaded as "edited version" then as "original": the two requests carry
+    /// `edited=true` then `edited=false`, and the two files received differ.
+    func test_AC_40_editedThenOriginalCarryTheFlagAndGiveDifferentFiles() async throws {
+        stubAsset(id: "a", name: "IMG_0421.HEIC")
+
+        transport.payload = Data("edited bytes".utf8)
+        await vm.enqueue(asset: makeAsset(id: "a"), edited: true)
+        await settle()
+        let editedFile = try XCTUnwrap(vm.items.first { $0.id == "a" }?.destinationURL)
+
+        transport.payload = Data("original bytes".utf8)
+        await vm.enqueue(asset: makeAsset(id: "a"), edited: false)
+        await settle()
+        let originalFile = try XCTUnwrap(vm.items.first { $0.id == "a" }?.destinationURL)
+        addTeardownBlock { try? FileManager.default.removeItem(at: editedFile) }
+
+        XCTAssertEqual(client.originalRequestEditedLog, [true, false])
+        XCTAssertNotEqual(editedFile, originalFile)
+        XCTAssertEqual(try Data(contentsOf: editedFile), Data("edited bytes".utf8))
+        XCTAssertEqual(try Data(contentsOf: originalFile), Data("original bytes".utf8))
+    }
+
+    /// A retry repeats the choice the row was queued with.
+    func test_AC_40_retryKeepsTheEditedChoice() async {
+        stubAsset(id: "a", name: "a.jpg")
+        transport.failures = ["/assets/a/original": APIError.serverError(500, nil)]
+        await vm.enqueue(asset: makeAsset(id: "a"), edited: true)
+        await settle()
+        XCTAssertEqual(vm.status(for: "a"), .failed)
+
+        transport.failures = [:]
+        vm.retry(assetId: "a")
+        await settle()
+
+        XCTAssertEqual(vm.status(for: "a"), .completed)
+        XCTAssertEqual(client.originalRequestEditedLog, [true, true])
+    }
+
+    /// AC-187: a batch asks the archive with the user's choice, and without a choice it is the original.
+    func test_AC_187_archiveCarriesTheChoice() async {
+        client.downloadInfoResponse = DownloadInfoResponse(
+            totalSize: 12_000, archives: [DownloadInfoResponse.Archive(assetIds: ["a", "b"], size: 12_000)])
+        await vm.enqueue(assets: [makeAsset(id: "a"), makeAsset(id: "b")], edited: true)
+        await settle()
+        XCTAssertEqual(client.lastArchiveEdited, true)
+
+        vm.clearCompleted()
+        await vm.enqueue(assets: [makeAsset(id: "a"), makeAsset(id: "b")])
+        await settle()
+        XCTAssertEqual(client.lastArchiveEdited, false, "no choice means the original, sent explicitly")
+    }
+
+    /// AC-187: a selection is asked once, on a server that serves `/edits` and takes `edited` in the
+    /// archive (v2.6.0 and later); an older or unreadable server, and videos alone, download the original
+    /// without a question.
+    func test_AC_187_selectionChoiceFollowsTheServer() async {
+        let photos = [makeAsset(id: "a"), makeAsset(id: "b")]
+
+        client.serverVersionResponse = ServerVersionResponseDto(major: 3, minor: 4, patch: 0, prerelease: nil)
+        let current = await vm.offersEditedChoice(forSelectionOf: photos)
+        XCTAssertTrue(current, "v3.4.0 serves /edits and takes edited in the archive")
+
+        client.serverVersionResponse = ServerVersionResponseDto(major: 2, minor: 0, patch: 0, prerelease: nil)
+        let old = await vm.offersEditedChoice(forSelectionOf: photos)
+        XCTAssertFalse(old, "2.0.0 has no /edits")
+
+        client.serverVersionResponse = ServerVersionResponseDto(major: 2, minor: 5, patch: 0, prerelease: nil)
+        let beforeArchiveFlag = await vm.offersEditedChoice(forSelectionOf: photos)
+        XCTAssertFalse(beforeArchiveFlag, "2.5.0 serves /edits but ignores edited in the archive")
+
+        client.serverVersionResponse = ServerVersionResponseDto(major: 2, minor: 6, patch: 0, prerelease: nil)
+        let first = await vm.offersEditedChoice(forSelectionOf: photos)
+        XCTAssertTrue(first)
+
+        client.serverVersionError = URLError(.notConnectedToInternet)
+        let unreadable = await vm.offersEditedChoice(forSelectionOf: photos)
+        XCTAssertFalse(unreadable, "an unreadable version means the original, without a question")
+    }
+
+    func test_AC_187_aSelectionOfVideosIsNeverAsked() async {
+        client.serverVersionResponse = ServerVersionResponseDto(major: 3, minor: 4, patch: 0, prerelease: nil)
+        let video = AssetReactItem(
+            id: "v", ownerId: "owner", ratio: 1.78, isFavorite: false, visibility: "timeline",
+            isTrashed: false, isImage: false, thumbhash: nil,
+            createdAt: "2024-07-01T10:00:00.000Z", fileCreatedAt: "2024-07-01T10:00:00.000Z",
+            localOffsetHours: 0, duration: 1000, livePhotoVideoId: nil, projectionType: nil,
+            city: nil, country: nil, latitude: nil, longitude: nil, stack: []
+        )
+        let asked = await vm.offersEditedChoice(forSelectionOf: [video, video])
+        XCTAssertFalse(asked)
+    }
+
+    /// AC-187: the viewer asks only for a photo whose record says it is edited.
+    func test_AC_187_viewerChoiceFollowsTheRecord() async {
+        stubAsset(id: "a", name: "a.jpg")
+        let plain = await vm.offersEditedChoice(forViewerAsset: makeAsset(id: "a"))
+        XCTAssertFalse(plain, "isEdited false offers nothing")
+
+        var edited = client.getAssetResponse["a"]!
+        edited.isEdited = true
+        client.getAssetResponse["a"] = edited
+        let retouched = await vm.offersEditedChoice(forViewerAsset: makeAsset(id: "a"))
+        XCTAssertTrue(retouched)
+
+        client.getAssetResponse["a"]?.isEdited = nil
+        let legacy = await vm.offersEditedChoice(forViewerAsset: makeAsset(id: "a"))
+        XCTAssertFalse(legacy, "a server before v2.5.0 sends no isEdited")
+
+        client.globalError = URLError(.notConnectedToInternet)
+        let unreadable = await vm.offersEditedChoice(forViewerAsset: makeAsset(id: "a"))
+        XCTAssertFalse(unreadable)
+    }
+
     // MARK: - A batch
 
     func test_batch_announcesTheBatchBeforeAskingForTheArchive() async {

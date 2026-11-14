@@ -1,6 +1,7 @@
 import Foundation
 import CoreImage
 import CoreGraphics
+import ImageIO
 import simd
 
 // MARK: - EditPipeline
@@ -8,12 +9,15 @@ import simd
 // Pure, non-isolated, unit-testable functions implementing the non-destructive edit
 // pipeline (cahier §5). No UIKit, no CIContext — operates on `CIImage` only.
 //
-// Pipeline order (FM-1, FM-5):
+// Pipeline order (matches the server's semantics, so a saved edit looks like its preview):
+//   0. `orientation`: the EXIF orientation of the raw buffer is applied first
 //   1. Color filters: exposure → color(contrast+saturation combined) → warmth
-//   2. Crop (cropRect normalized UIKit-space → CoreImage pixels, Y-axis flip)
-//   3. Rotate (totalRotationDeg around crop center if cropRect!=nil, else original extent center)
+//   2. Crop (cropRect: normalized, raw-buffer space → oriented image, then CoreImage pixels, Y-axis flip)
+//   3. Mirror (horizontal, then vertical, around the center of the cropped image)
+//   4. Quarter turns (`orientationSteps` × 90°, clockwise on screen)
+//   5. Straighten (`straightenDeg`)
 //
-// Neutral state = identity (extent unchanged).
+// Neutral state with `.up` = identity (extent unchanged).
 
 enum EditPipeline {
 
@@ -56,24 +60,28 @@ enum EditPipeline {
 
     // MARK: Apply (AC-607, AC-619)
 
-    /// Applies the full pipeline to a `CIImage`. Pure function, deterministic.
-    /// FM-1 (filter order), FM-4 (Y-flip crop), FM-5 (crop→rotate order).
-    static func applyEditState(to image: CIImage, state: EditState) -> CIImage {
+    /// Applies the full pipeline to a `CIImage` of raw pixels whose EXIF orientation is `orientation`.
+    /// Pure function, deterministic.
+    static func applyEditState(to image: CIImage,
+                               state: EditState,
+                               orientation: CGImagePropertyOrientation = .up) -> CIImage {
+        // 0. EXIF orientation
+        var output = orientation == .up ? image : image.oriented(orientation)
+
         // 1. Color filters
-        var output = image
         for filter in buildEditFilters(for: state) {
             filter.setValue(output, forKey: kCIInputImageKey)
             guard let filtered = filter.outputImage else { continue }
             output = filtered
         }
 
-        // 2. Crop (normalized UIKit-space → CoreImage pixels, Y-axis flip)
-        if let crop = state.cropRect {
+        // 2. Crop (raw-buffer space → oriented image → CoreImage pixels, Y-axis flip)
+        if let crop = state.cropRect.map({ AssetEditsMapping.orientedRect($0, orientation) }) {
             let extent = output.extent
             if extent.width > 0 && extent.height > 0 {
-                let xPx = crop.origin.x * extent.width
+                let xPx = extent.minX + crop.origin.x * extent.width
                 // UIKit top-left vs CoreImage bottom-left → flip Y.
-                let yPx = (1.0 - crop.origin.y - crop.height) * extent.height
+                let yPx = extent.minY + (1.0 - crop.origin.y - crop.height) * extent.height
                 let wPx = crop.width * extent.width
                 let hPx = crop.height * extent.height
                 let pixelRect = CGRect(x: xPx, y: yPx, width: wPx, height: hPx)
@@ -87,18 +95,34 @@ enum EditPipeline {
             }
         }
 
-        // 3. Rotate — totalRotationDeg around the center of the (possibly cropped) extent.
-        let totalDeg = state.totalRotationDeg
-        if totalDeg != 0 {
+        // 3. Mirror, around the center of the (possibly cropped) extent.
+        if state.mirrorHorizontal {
+            output = output.transformed(by: CGAffineTransform(a: -1, b: 0, c: 0, d: 1,
+                                                              tx: 2 * output.extent.midX, ty: 0))
+        }
+        if state.mirrorVertical {
+            output = output.transformed(by: CGAffineTransform(a: 1, b: 0, c: 0, d: -1,
+                                                              tx: 0, ty: 2 * output.extent.midY))
+        }
+
+        // 4. Quarter turns, clockwise on screen. CoreImage's y axis points up, so (x, y) → (y, -x).
+        //    Integer matrices keep the extent exact.
+        switch ((state.orientationSteps % 4) + 4) % 4 {
+        case 1: output = output.transformed(by: CGAffineTransform(a: 0, b: -1, c: 1, d: 0, tx: 0, ty: 0))
+        case 2: output = output.transformed(by: CGAffineTransform(a: -1, b: 0, c: 0, d: -1, tx: 0, ty: 0))
+        case 3: output = output.transformed(by: CGAffineTransform(a: 0, b: 1, c: -1, d: 0, tx: 0, ty: 0))
+        default: break
+        }
+
+        // 5. Straighten around the center of the extent. A positive angle turns counter-clockwise
+        //    on screen (CoreImage's y axis points up): the sign the slider has always had.
+        if state.straightenDeg != 0 {
             let center = CGPoint(x: output.extent.midX, y: output.extent.midY)
-            let radians = totalDeg * .pi / 180.0
-            // Translate(-C) → Rotate → Translate(+C).
-            // t.concatenating(u) applies u first, then t. Compose accordingly.
-            let toOrigin = CGAffineTransform(translationX: -center.x, y: -center.y)
-            let rotation = CGAffineTransform(rotationAngle: radians)
-            let fromOrigin = CGAffineTransform(translationX: center.x, y: center.y)
-            let combined = fromOrigin.concatenating(rotation.concatenating(toOrigin))
-            output = output.transformed(by: combined)
+            let radians = CGFloat(state.straightenDeg * .pi / 180.0)
+            let rotation = CGAffineTransform(translationX: center.x, y: center.y)
+                .rotated(by: radians)
+                .translatedBy(x: -center.x, y: -center.y)
+            output = output.transformed(by: rotation)
         }
 
         return output

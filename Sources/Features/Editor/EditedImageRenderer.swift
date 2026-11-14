@@ -11,6 +11,7 @@ enum EditorSaveError: Error, Equatable {
     case renderFailed
     case fileWriteFailed
     case uploadRejected
+    case editsRejected
     case photosAccessDenied
 }
 
@@ -104,8 +105,8 @@ enum EditedImageRenderer {
                           state: EditState,
                           metadata: EditedCopyMetadata,
                           to url: URL) throws {
-        let edited = EditPipeline.applyEditState(to: CIImage(cgImage: cgImage), state: state)
-            .oriented(propertyOrientation(orientation))
+        let edited = EditPipeline.applyEditState(to: CIImage(cgImage: cgImage), state: state,
+                                                 orientation: propertyOrientation(orientation))
         let output = opaqueOutput(edited)
 
         let colorSpace: CGColorSpace
