@@ -12,6 +12,7 @@ private final class FakeScreen: ReloadableScreen {
 final class ReloadAfterEvaluationTests: XCTestCase {
     private let reloadable: [RootTab] = [.photos, .memories, .albums, .shared]
 
+    @MainActor
     private struct Rig {
         let photos = FakeScreen()
         let memories = FakeScreen()
