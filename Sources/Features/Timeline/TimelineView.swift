@@ -540,9 +540,6 @@ struct TimelineView: View {
                         .accessibilityIdentifier("timelineRetryButton")
                 }
                 .padding(.top, 80)
-                // A bare identifier on the container would replace the retry
-                // button's own (`timelineRetryButton`, AC-341).
-                .accessibilityElement(children: .contain)
                 .accessibilityIdentifier("timelineLoadErrorState")
             } else {
                 ContentUnavailableView {
