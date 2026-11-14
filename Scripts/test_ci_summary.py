@@ -91,7 +91,7 @@ class CiSummaryTests(unittest.TestCase):
         for number, notice in enumerate(out, 1):
             self.assertTrue(notice.startswith("::notice::ci.sh results, scope all, part %d/3, 120 job(s)" % number))
         for n in range(120):
-            self.assertEqual(sum(("%0Ajob%d:" % n) in notice for notice in out), 1, n)
+            self.assertEqual(sum(("%0A" + "job%d:" % n) in notice for notice in out), 1, n)
 
         out = run(600)
         self.assertEqual(len(out), 10)
