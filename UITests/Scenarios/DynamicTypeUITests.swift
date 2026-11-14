@@ -1210,6 +1210,18 @@ final class DynamicTypeUITests: XCTestCase {
         // once a face was refused. So a relaunched prompt is proven by refusing a
         // face (Cancel appears, as at the first prompt), and the last one by a
         // matching face, which alone can lift the lock.
+        // Local to this test: the CI's gate selects only the lines of a class
+        // whose test functions changed (Scripts/ci_ui_select.py).
+        func tapTryAgain() {
+            // Resolved anew each time (the AX5 layout may have scrolled), and
+            // touched once it is hittable.
+            scrollToHittable("appLockUnlockButton")
+            let button = element("appLockUnlockButton")
+            XCTAssertTrue(waitUntil(10) { button.exists && button.isHittable },
+                          "Try Again is not hittable on the lock screen — \(screenText())")
+            XCTAssertTrue(button.label.contains("Try Again"), "the button does not read Try Again: '\(button.label)'")
+            button.tap()
+        }
         tapTryAgain()
         Thread.sleep(forTimeInterval: 2)
         FaceID.noMatch()
@@ -1225,17 +1237,6 @@ final class DynamicTypeUITests: XCTestCase {
         FaceID.match()
         XCTAssertTrue(element("AppLockOverlay").waitForNonExistence(timeout: 20),
                       "the second Try Again did not lift the lock on a matching face — \(screenText())")
-    }
-
-    /// The lock screen's single button, resolved anew (the AX5 layout may have
-    /// scrolled) and touched once it is hittable.
-    private func tapTryAgain() {
-        scrollToHittable("appLockUnlockButton")
-        let button = element("appLockUnlockButton")
-        XCTAssertTrue(waitUntil(10) { button.exists && button.isHittable },
-                      "Try Again is not hittable on the lock screen — \(screenText())")
-        XCTAssertTrue(button.label.contains("Try Again"), "the button does not read Try Again: '\(button.label)'")
-        button.tap()
     }
 
     /// AC-26.4: the share extension (system text size, see the file header).
