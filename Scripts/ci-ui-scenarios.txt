@@ -87,7 +87,8 @@ immich_stub_dynamic_type.py DynamicTypeUITests/test_AC_26_4_shareExtension --con
 immich_stub_dynamic_type.py DynamicTypeUITests/test_AC_26_7
 immich_stub_dynamic_type.py DynamicTypeUITests/test_AC_26_5 --release
 # L-23 Search criteria and selection. Core: one filter journey, the two server generations of
-# AC-43, AC-215 (no unit test proves it) and the selection of AC-44.
+# AC-43, AC-215 (no unit test proves it), the selection of AC-44, and the shared selection bar
+# (AC-44.1 download choice, AC-44.2 the bar read on the timeline and on the results).
 immich_stub_search_filters.py SearchCriteriaUITests/test_AC_42 --smoke
 immich_stub_search_filters.py SearchCriteriaUITests/test_AC_209 --release
 immich_stub_search_filters.py SearchCriteriaUITests/test_AC_210 --release
@@ -100,6 +101,14 @@ immich_stub_search_filters.py SearchCriteriaUITests/test_AC_218 --release
 immich_stub_search_filters.py SearchCriteriaUITests/test_AC_216 --release
 immich_stub_search_filters.py SearchCriteriaUITests/test_AC_44
 immich_stub_search_filters.py SearchCriteriaUITests/test_AC_217 --release
+immich_stub_search_filters.py SearchCriteriaUITests/test_AC_44_1
+immich_stub_search_filters.py SearchCriteriaUITests/test_AC_44_2
+
+# L-23b: the timeline's selection bar after its factorisation (AC-44.3). Release: second proofs of
+# the shared bar, beside the search lines above.
+immich_stub_archive.py ArchiveUITests/test_AC5_AC6_archivedSelectionUnarchives --release
+immich_stub_read_only_mode.py ReadOnlyModeUITests/test_readOnlyMode --media media-a.png --media media-b.png --erase --release
+immich_stub_plurals.py PluralsUITests/test_AC_32_1_timelineSelectionTitle --erase --release
 
 # L-27 Share quality, log level and caches (AC-50, AC-52, AC-270 to AC-280). Core: AC-50 and
 # AC-275, which no unit test proves, and the long press of AC-272.
