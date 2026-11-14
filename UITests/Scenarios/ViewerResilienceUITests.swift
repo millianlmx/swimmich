@@ -19,7 +19,7 @@ import XCTest
 /// Targets identifiers and the stub's data, never a localized label. The two
 /// exceptions, both in English because the scenario fixes `-AppleLanguages (en)`:
 /// the VoiceOver label of the details spinner, which is the point of AC-57.6, and
-/// the delete dialog's buttons when iOS does not expose their identifiers.
+/// the delete dialog's buttons and title when iOS does not expose their identifiers.
 ///
 /// Run it with the launcher, never by hand:
 ///
@@ -240,8 +240,28 @@ final class ViewerResilienceUITests: XCTestCase {
 
     // MARK: - Probes
 
+    /// The probe of `viewerImage_<id>`, or "" while that page is not in the tree.
+    /// Reading `.value` of a missing element fails the test on the spot ("Failed to
+    /// get matching snapshot"), so a polling wait must check `exists` first.
     private func imageProbeValue(_ id: String) -> String {
-        (element("viewerImage_\(id)").value as? String) ?? ""
+        let image = element("viewerImage_\(id)")
+        guard image.exists else { return "" }
+        return (image.value as? String) ?? ""
+    }
+
+    /// Pages from `from` to `to` by swiping on the shown photo itself, again while
+    /// `to` is not the page on screen: one swipe on the app can land on chrome or
+    /// be taken for the start of a drag, and the pager only builds the page it shows.
+    private func swipeToNextPage(from: String, to: String) {
+        let target = element("viewerImage_\(to)")
+        for attempt in 1...3 {
+            let current = element("viewerImage_\(from)")
+            if current.exists, current.isHittable { current.swipeLeft() } else { app.swipeLeft() }
+            if waitUntil(timeout: 5, { target.exists && target.isHittable }) { return }
+            shot("swipe-\(attempt)-not-on-\(to.suffix(4))")
+        }
+        let pages = elements(withPrefix: "viewerImage_").allElementsBoundByIndex.map(\.identifier)
+        XCTFail("the pager never showed \(to) — viewerImage_* in the tree: \(pages)")
     }
 
     private func viewerProbe() -> [String: String] {
@@ -306,7 +326,7 @@ final class ViewerResilienceUITests: XCTestCase {
                       "the failure card stayed over the loaded photo")
 
         // AC-57.3: the next page is not touched by the first one's failure.
-        app.swipeLeft()
+        swipeToNextPage(from: retry, to: neighbour)
         XCTAssertTrue(waitUntil(timeout: 20) { self.imageProbeValue(self.neighbour).hasPrefix("loaded") },
                       "the next photo did not load — probe reads \(imageProbeValue(neighbour))")
         XCTAssertEqual(elements(withPrefix: "viewerImageRetry_").count, 0, "a failure card followed the swipe")
@@ -362,9 +382,40 @@ final class ViewerResilienceUITests: XCTestCase {
             byId.tap()
             return
         }
-        let byLabel = app.buttons.matching(NSPredicate(format: "label == %@", label))
-        XCTAssertTrue(byLabel.firstMatch.waitForExistence(timeout: 5), "no \(label) in the confirmation — \(screenText())")
-        byLabel.allElementsBoundByIndex.last?.tap()
+        // The viewer's own Delete button reads "Delete" too: never the one to answer with.
+        let byLabel = app.buttons.matching(NSPredicate(format: "label == %@ AND identifier != %@",
+                                                       label, "viewerDeleteButton"))
+        if confirm || byLabel.firstMatch.waitForExistence(timeout: 3) {
+            XCTAssertTrue(byLabel.firstMatch.waitForExistence(timeout: 5),
+                          "no \(label) in the confirmation — \(dialogButtons())")
+            byLabel.allElementsBoundByIndex.last?.tap()
+            return
+        }
+        dismissDeleteDialogOutside()
+    }
+
+    /// iOS 26 can present the delete dialog without its Cancel row: tapping outside
+    /// it is then the user's way to cancel, and it ends the same way (no delete, no
+    /// haptic). The dialog must be up — its title, the one part the CI run showed
+    /// (English, the scenario fixes the language), tells where it is — and must be
+    /// gone after the tap.
+    private func dismissDeleteDialogOutside() {
+        let title = app.staticTexts["Delete this photo?"]
+        guard title.exists else {
+            shot("delete-dialog-missing")
+            XCTFail("the delete confirmation never showed — \(dialogButtons()) — \(screenText())")
+            return
+        }
+        shot("delete-dialog-without-cancel")
+        // Tap the half of the screen the dialog is not in.
+        let dialogInLowerHalf = title.frame.midY > app.frame.midY
+        app.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: dialogInLowerHalf ? 0.25 : 0.8)).tap()
+        XCTAssertTrue(waitUntil(timeout: 5) { !title.exists },
+                      "a tap outside did not close the delete confirmation — \(dialogButtons())")
+    }
+
+    private func dialogButtons() -> String {
+        "buttons: \(app.buttons.allElementsBoundByIndex.map { "\($0.identifier)|\($0.label)" })"
     }
 
     func test_AC_58_haptics() throws {
@@ -384,6 +435,7 @@ final class ViewerResilienceUITests: XCTestCase {
         Thread.sleep(forTimeInterval: 1.5)
         XCTAssertEqual(viewerProbe()["haptic"], "success#2", "Cancel played a haptic")
         XCTAssertTrue(element("viewerBackButton").exists, "Cancel closed the viewer")
+        XCTAssertTrue(element("viewerImage_\(timelinePhoto)").exists, "Cancel removed the photo")
         tapDeleteAndAnswer(confirm: true)
         waitForViewerProbe(["haptic": "warning#3"])
         closeViewer()
@@ -391,7 +443,7 @@ final class ViewerResilienceUITests: XCTestCase {
         // The Folders screen: no callbacks from the surface, the viewer drives its own writes.
         selectTab("Albums")
         let folders = element("foldersRow")
-        for _ in 0..<5 where !folders.isHittable { app.swipeUp() }
+        for _ in 0..<5 where !(folders.exists && folders.isHittable) { app.swipeUp() }
         XCTAssertTrue(folders.waitForExistence(timeout: 20), "no Folders tile — \(screenText())")
         folders.tap()
         let folderRow = element("folderRow_/stub")
