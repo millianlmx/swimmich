@@ -5,14 +5,20 @@ import Metal
 import Observation
 import Photos
 
-/// Step shown while the edited photo is being saved (copy upload or Photos).
+/// Step shown while the edited photo is being saved (copy upload, Photos, or server edits).
 /// Extensible: only `PhotoEditorView` switches on it.
 enum EditorSaveStep: Equatable {
-    case rendering, uploading, savingToPhotos
+    case rendering, uploading, savingToPhotos, savingEdits
 }
 
 enum EditorDismissReason: Equatable {
-    case cancelled, savedCopy
+    case cancelled, savedCopy, savedEdits, removedEdits
+}
+
+/// What "Save" will do with the current state. `.unavailable`: the server's saved edits could not be
+/// read, so neither a server save nor a copy is safe for a crop/rotation/mirror state.
+enum EditorSaveMode: Equatable {
+    case server, copy, unavailable
 }
 
 /// Non-destructive photo editor ViewModel (cahier §5).
@@ -63,6 +69,22 @@ final class PhotoEditorViewModel {
     /// True after a successful copy save: the draft is gone and must not be rewritten on close.
     @ObservationIgnored private var draftRetired = false
 
+    /// What the server can do with this photo's edits, read by `loadState()`.
+    private enum EditsCapability: Equatable {
+        /// Known: no server-side edit is possible (old server, ineligible photo, route absent, or the
+        /// switch is off). The editor saves a copy.
+        case unsupported
+        /// The server's state could not be read (network, 5xx, unreadable version or record).
+        case unknown
+        /// `/edits` answered: `baseline` is the state the server's list stands for.
+        case supported(baseline: EditState)
+    }
+    private var editsCapability: EditsCapability = .unsupported
+    /// True once `loadState()` has read the draft and the server's state. Controls wait for it.
+    private(set) var isContextLoaded = false
+    /// The server record read by `loadState()`, source of the EXIF size and orientation of the edits.
+    @ObservationIgnored private var assetRecord: AssetResponseDto?
+
     /// Test-visible counter of render passes. AC-605 verifies mutation → render.
     @ObservationIgnored private(set) var renderCounter: Int = 0
 
@@ -93,10 +115,39 @@ final class PhotoEditorViewModel {
         editState.hasEdits
     }
 
-    /// Gates both save actions (Save and Save to Photos): they share the same conditions.
+    /// Gates "Save to Photos" and the copy upload: they share the same conditions.
     var isSaving: Bool { saveStep != nil }
-    var canSave: Bool { originalImage != nil && editState.hasEdits && !isSaving }
+    var canSaveToPhotos: Bool { originalImage != nil && editState.hasEdits && !isSaving }
     var canCancel: Bool { !isSaving }
+
+    /// What Save does now. Before the context is loaded it is `.copy` and not shown.
+    var saveMode: EditorSaveMode {
+        switch editsCapability {
+        case .unsupported: return .copy
+        case .unknown: return editState.isServerExpressible ? .unavailable : .copy
+        case .supported: return editState.isServerExpressible ? .server : .copy
+        }
+    }
+
+    /// Save button. `.server`: only when the edit list would change.
+    var canSave: Bool {
+        guard originalImage != nil, !isSaving, isContextLoaded else { return false }
+        switch saveMode {
+        case .server: return serverEdits(for: editState) != serverEdits(for: baselineState)
+        case .copy: return editState.hasEdits
+        case .unavailable: return false
+        }
+    }
+
+    /// The state the server's saved edits stand for (`.neutral` when there are none or they are unknown).
+    private var baselineState: EditState {
+        if case let .supported(baseline) = editsCapability { return baseline }
+        return .neutral
+    }
+
+    private func serverEdits(for state: EditState) -> [AssetEditItem] {
+        AssetEditsMapping.edits(for: state, exif: assetRecord?.exifInfo ?? ExifResponseDto())
+    }
 
     // MARK: Init
 
@@ -187,9 +238,12 @@ final class PhotoEditorViewModel {
             return
         }
         let input = CIImage(cgImage: cgImage)
-        let output = EditedImageRenderer.opaqueOutput(EditPipeline.applyEditState(to: input, state: editState))
+        let edited = EditPipeline.applyEditState(to: input, state: editState,
+                                                 orientation: EditedImageRenderer.propertyOrientation(original.imageOrientation))
+        let output = EditedImageRenderer.opaqueOutput(edited)
         if let cgOut = ciContext.createCGImage(output, from: EditedImageRenderer.renderRect(output.extent)) {
-            previewImage = UIImage(cgImage: cgOut, scale: original.scale, orientation: original.imageOrientation)
+            // The pipeline already applied the EXIF orientation.
+            previewImage = UIImage(cgImage: cgOut, scale: original.scale, orientation: .up)
         } else {
             previewImage = original
         }
@@ -259,7 +313,26 @@ final class PhotoEditorViewModel {
         editState.orientationSteps = (editState.orientationSteps + 3) % 4
     }
 
-    /// Resets all edits to neutral. AC-606.
+    /// Mirrors the photo left to right AS SEEN ON SCREEN: after a quarter turn the stored flag is the
+    /// vertical one (the mirror is applied before the rotation).
+    func mirrorHorizontally() {
+        if editState.orientationSteps % 2 == 0 {
+            editState.mirrorHorizontal.toggle()
+        } else {
+            editState.mirrorVertical.toggle()
+        }
+    }
+
+    /// Mirrors the photo top to bottom as seen on screen.
+    func mirrorVertically() {
+        if editState.orientationSteps % 2 == 0 {
+            editState.mirrorVertical.toggle()
+        } else {
+            editState.mirrorHorizontal.toggle()
+        }
+    }
+
+    /// Resets all edits to neutral (mirror included). AC-606.
     func resetToOriginal() {
         editState = .neutral
     }
@@ -276,11 +349,59 @@ final class PhotoEditorViewModel {
     /// Returns nil (and changes nothing) when `!canSave`, so a second call never double-uploads.
     @discardableResult
     func saveCopyToServer() -> Task<Void, Never>? {
-        guard canSave else { return nil }
+        guard canSaveToPhotos else { return nil }
         errorMessage = nil
         savedToPhotos = false
         saveStep = .rendering
         return Task { await performSave() }
+    }
+
+    /// The Save button. `.server`: replaces (or, back to the original, deletes) the photo's edit list on
+    /// the server — no file is rendered or uploaded. `.copy`: `saveCopyToServer()`. Returns nil (and
+    /// changes nothing) when `!canSave`.
+    @discardableResult
+    func save() -> Task<Void, Never>? {
+        guard canSave else { return nil }
+        if saveMode == .copy { return saveCopyToServer() }
+        errorMessage = nil
+        savedToPhotos = false
+        saveStep = .savingEdits
+        return Task { await performServerSave() }
+    }
+
+    private func performServerSave() async {
+        let edits = serverEdits(for: editState)
+        do {
+            if edits.isEmpty {
+                try await client.deleteAssetEdits(id: assetId)
+            } else {
+                _ = try await client.putAssetEdits(id: assetId, edits: edits)
+            }
+        } catch {
+            // Never a silent copy: the user chose to change the photo, and the state stays intact.
+            errorMessage = message(for: Self.classifyEditsError(error))
+            saveStep = nil
+            return
+        }
+
+        draftRetired = true
+        do {
+            try await store.delete(assetId: assetId)
+        } catch {
+            logDraftFailure("Edit draft delete failed", error)
+        }
+        dismissReason = edits.isEmpty ? .removedEdits : .savedEdits
+        saveStep = nil
+    }
+
+    private static func classifyEditsError(_ error: Error) -> Error {
+        switch error as? APIError {
+        case .serverError(let code, _) where (400..<500).contains(code),
+             .http(let code) where (400..<500).contains(code):
+            return EditorSaveError.editsRejected
+        default:
+            return error
+        }
     }
 
     /// Renders the edited original at full resolution to a temp JPEG and writes it to the
@@ -288,7 +409,7 @@ final class PhotoEditorViewModel {
     /// Returns nil (and changes nothing) when `!canSave`.
     @discardableResult
     func saveToPhotos() -> Task<Void, Never>? {
-        guard canSave else { return nil }
+        guard canSaveToPhotos else { return nil }
         errorMessage = nil
         savedToPhotos = false
         saveStep = .savingToPhotos
@@ -427,6 +548,7 @@ final class PhotoEditorViewModel {
         case .renderFailed: return String(localized: "Couldn't render the edited photo.")
         case .fileWriteFailed: return String(localized: "Couldn't write the edited photo to storage.")
         case .uploadRejected: return String(localized: "The server refused the edited photo.")
+        case .editsRejected: return String(localized: "The server refused the edits.")
         case .photosAccessDenied:
             return String(localized: "Access to Photos is denied. Allow it in Settings to save the edited photo.")
         case nil: return error.userFacingMessage
@@ -435,33 +557,69 @@ final class PhotoEditorViewModel {
 
     // MARK: Persistence (AC-616)
 
-    /// Persists state to disk. If `!hasEdits`, deletes the stored file instead of writing
-    /// an orphan — preserves "Revenir à l'original" guarantee across app kills (loop 3 challenger
-    /// SIGNIFICANT resolution). No-op until the stored draft has been read (or the state mutated)
-    /// and after a successful copy save; failures go to the app log.
+    /// Persists state to disk. A state equal to the one the server stands for (`.neutral` without
+    /// server edits) deletes the stored file instead of writing an orphan — preserves "Revenir à
+    /// l'original" across app kills. No-op until the stored draft has been read (or the state mutated),
+    /// after a successful save, and while the server's state is unknown (a draft written blind could
+    /// later win over, then erase, the server's edits); failures go to the app log.
     @discardableResult
     func saveState() -> Task<Void, Never> {
-        guard draftSettled, !draftRetired else { return Task {} }
+        guard draftSettled, !draftRetired, editsCapability != .unknown else { return Task {} }
+        let isBaseline = editState == baselineState
         return Task { [store, assetId, editState, weak self] in
             do {
-                if editState.hasEdits {
-                    try await store.save(state: editState, forAssetId: assetId)
-                } else {
+                if isBaseline {
                     try await store.delete(assetId: assetId)
+                } else {
+                    try await store.save(state: editState, forAssetId: assetId)
                 }
             } catch {
-                let what = editState.hasEdits ? "Edit draft save failed" : "Edit draft delete failed"
+                let what = isBaseline ? "Edit draft delete failed" : "Edit draft save failed"
                 self?.logDraftFailure(what, error)
             }
         }
     }
 
-    /// Restores previously saved state on entry. AC-616.
+    /// Reads the draft, the server's version, record and edit list; then opens on the draft, else on
+    /// the server's edits. AC-616.
     func loadState() async {
-        if let restored = await store.load(assetId: assetId) {
-            editState = restored
-        }
+        let draft = await store.load(assetId: assetId)
+        async let version = try? client.serverVersion()
+        async let record = try? client.getAsset(id: assetId)
+        let (readVersion, readRecord) = await (version, record)
+        assetRecord = readRecord
+        editsCapability = await readCapability(version: readVersion, record: readRecord)
+        let opening = draft ?? baselineState
+        if opening != editState { editState = opening }
         draftSettled = true
+        isContextLoaded = true
+    }
+
+    private func readCapability(version: ServerVersionResponseDto?, record: AssetResponseDto?) async -> EditsCapability {
+        if let version, !AssetEditsSupport.isSupported(version) { return .unsupported }
+        if let record, !Self.canBeEditedOnServer(record) { return .unsupported }
+        guard version != nil, let record else { return .unknown }
+        do {
+            let list = try await client.getAssetEdits(id: assetId)
+            let exif = record.exifInfo ?? ExifResponseDto()
+            return .supported(baseline: AssetEditsMapping.state(from: list.edits, exif: exif))
+        } catch {
+            switch error as? APIError {
+            case .serverError(404, _), .http(404): return .unsupported
+            default: return .unknown
+            }
+        }
+    }
+
+    /// The server's own refusals (`editAsset`): images only, no Live Photo, panorama, GIF or SVG, and
+    /// known EXIF dimensions.
+    private static func canBeEditedOnServer(_ record: AssetResponseDto) -> Bool {
+        let ext = (record.originalFileName as NSString).pathExtension.lowercased()
+        return record.type == "IMAGE"
+            && record.livePhotoVideoId == nil
+            && record.exifInfo?.projectionType == nil
+            && ext != "gif" && ext != "svg"
+            && AssetEditsMapping.orientedSize(record.exifInfo) != nil
     }
 
     private func logDraftFailure(_ message: String, _ error: Error) {

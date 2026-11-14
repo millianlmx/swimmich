@@ -158,10 +158,10 @@ final class DownloadQueueViewModel {
 
     // MARK: - Enqueueing
 
-    /// Queues the server's original for a single asset — the viewer's
-    /// "Download to Files".
-    func enqueue(asset: AssetReactItem) async {
-        await enqueue(assets: [asset])
+    /// Queues a single asset — the viewer's "Download to Files". `edited` (L-21) is the user's choice
+    /// between the server's edited rendering and the original; it is always sent explicitly.
+    func enqueue(asset: AssetReactItem, edited: Bool = false) async {
+        await enqueue(assets: [asset], edited: edited)
     }
 
     /// Queues a whole selection.
@@ -172,12 +172,12 @@ final class DownloadQueueViewModel {
     /// refuses a batch it was never told about ("assets must have been
     /// previously requested via the getDownloadInfo endpoint"). A single
     /// asset has no batch to announce and goes straight to `/original`.
-    func enqueue(assets: [AssetReactItem]) async {
+    func enqueue(assets: [AssetReactItem], edited: Bool = false) async {
         guard !assets.isEmpty else { return }
         errorMessage = nil
 
         guard assets.count > 1 else {
-            await enqueueOriginal(assets[0])
+            await enqueueOriginal(assets[0], edited: edited)
             return
         }
 
@@ -194,7 +194,7 @@ final class DownloadQueueViewModel {
                         isArchive: true,
                         expectedBytes: archive.size
                     ),
-                    plan: .archive(name: name, assetIds: archive.assetIds)
+                    plan: .archive(name: name, assetIds: archive.assetIds, edited: edited)
                 )
             }
         } catch {
@@ -205,7 +205,7 @@ final class DownloadQueueViewModel {
     /// The one-asset path: the name comes from the server (a timeline cell
     /// carries none), the length from its EXIF block so the row is determinate
     /// before the first byte.
-    private func enqueueOriginal(_ asset: AssetReactItem) async {
+    private func enqueueOriginal(_ asset: AssetReactItem, edited: Bool) async {
         do {
             let dto = try await client.getAsset(id: asset.id)
             let ext = (dto.originalFileName as NSString).pathExtension
@@ -223,11 +223,30 @@ final class DownloadQueueViewModel {
                     fileName: name,
                     expectedBytes: dto.exifInfo?.fileSizeInByte.map(Int64.init) ?? 0
                 ),
-                plan: .asset(id: asset.id)
+                plan: .asset(id: asset.id, edited: edited)
             )
         } catch {
             errorMessage = error.userFacingMessage
         }
+    }
+
+    // MARK: - Edited version or original (L-21)
+
+    /// Whether downloading this selection first asks "edited version or original". A grid item does
+    /// not say whether its photo is edited, and `edited=true` serves the original of a photo without
+    /// edits, so the choice is offered as soon as the selection holds a photo, on a server that serves
+    /// `/edits` and takes `edited` in the archive request (v2.6.0 and later). Anywhere else — an old
+    /// server, an unreadable version, only videos — the original is downloaded without a question.
+    func offersEditedChoice(forSelectionOf assets: [AssetReactItem]) async -> Bool {
+        guard assets.contains(where: { !$0.isVideo }) else { return false }
+        let version = try? await client.serverVersion()
+        return AssetEditsSupport.acceptsEditedArchive(version)
+    }
+
+    /// Whether the viewer's "Download to Files" asks the question: only if the photo's own record says
+    /// it is edited.
+    func offersEditedChoice(forViewerAsset asset: AssetReactItem) async -> Bool {
+        await AssetEditsSupport.isEditedOnServer(assetId: asset.id, client: client)
     }
 
     /// Adds the row — or raises the one already there: a row's key IS the
@@ -342,12 +361,12 @@ final class DownloadQueueViewModel {
     /// bearer token — the queue never assembles a URL itself.
     private func request(for plan: DownloadPlan) throws -> URLRequest {
         switch plan {
-        case let .asset(id):
-            return try client.originalRequest(assetId: id)
-        case let .archive(name, assetIds):
-            // `edited: false` — the originals as stored, the same bytes the
-            // offline cache and the viewer's share sheet fetch.
-            return try client.downloadArchiveRequest(archiveName: name, assetIds: assetIds, edited: false)
+        case let .asset(id, edited):
+            return try client.originalRequest(assetId: id, edited: edited)
+        case let .archive(name, assetIds, edited):
+            // `edited` is the user's choice (L-21), sent explicitly: `false` is the originals as stored,
+            // `true` the server's edited rendering (the original for a photo without edits).
+            return try client.downloadArchiveRequest(archiveName: name, assetIds: assetIds, edited: edited)
         }
     }
 
@@ -427,8 +446,8 @@ final class DownloadQueueViewModel {
     /// What a row needs to build its request, kept so a retry repeats the same
     /// call instead of re-announcing the batch.
     private enum DownloadPlan: Sendable {
-        case asset(id: String)
-        case archive(name: String, assetIds: [String])
+        case asset(id: String, edited: Bool)
+        case archive(name: String, assetIds: [String], edited: Bool)
     }
 
     /// The ZIP the server is about to build. An archive has no name of its

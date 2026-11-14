@@ -159,7 +159,12 @@ final class OfflineDownloadViewModel {
     ///
     /// Credentials are per-call: the server may change while this view model
     /// (bound to one account) lives, so it cannot hold them.
-    func downloadAsset(_ asset: AssetReactItem, baseURL: URL, token: String?) async {
+    ///
+    /// `edited` (L-21): the copy follows the version the app displays. `true` (the default) asks for the
+    /// server's edited rendering — the original for a photo without edits; `false` is for the
+    /// re-download after the edits were removed. The file keeps its path: the screens re-read it through
+    /// `OfflineAssetIndex` (`cachedAt` changes with each download).
+    func downloadAsset(_ asset: AssetReactItem, baseURL: URL, token: String?, edited: Bool = true) async {
         guard !downloadingIDs.contains(asset.id) else { return }
         downloadingIDs.insert(asset.id)
         progressByID[asset.id] = 0
@@ -178,7 +183,7 @@ final class OfflineDownloadViewModel {
             let info = try await store.download(
                 accountID: accountID,
                 assetID: asset.id,
-                url: ImmichAssetURL.original(assetId: asset.id, baseURL: baseURL),
+                url: ImmichAssetURL.original(assetId: asset.id, baseURL: baseURL, edited: edited),
                 token: token,
                 fileName: dto.originalFileName,
                 isVideo: asset.isVideo,
