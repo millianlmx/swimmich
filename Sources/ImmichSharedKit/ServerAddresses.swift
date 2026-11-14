@@ -311,3 +311,94 @@ public enum ServerAddressSelector {
         }
     }
 }
+
+// MARK: - Widgets and share extension
+
+/// Picks, for one widget refresh, one widget intent or one share, the address
+/// the request goes to (L-26 part 2). The widgets and the share extension run
+/// without the app, so they apply the app's rule themselves on the session it
+/// published: the local address only when the switch is on and it answered as
+/// this very server within `deadline`; the external address (`baseURL`)
+/// otherwise, silently — a refused "local network" permission included.
+public struct WidgetEndpointResolver: Sendable {
+    private let probe: any ServerAddressProbing
+    private let deadline: Duration
+
+    public init(probe: any ServerAddressProbing, deadline: Duration = .seconds(2)) {
+        self.probe = probe
+        self.deadline = deadline
+    }
+
+    /// The probe the widgets and the extension use: their own trust policy
+    /// (`WidgetTrustDelegate`, hosts approved in the app, client certificate of
+    /// the account on both addresses), no cache, no cookie.
+    public static func live(
+        sessionStore: any WidgetSessionStoring = WidgetSessionStore(),
+        clientCertificates: ClientCertificateResponder = .live
+    ) -> WidgetEndpointResolver {
+        WidgetEndpointResolver(probe: WidgetAddressProbe(sessionStore: sessionStore, clientCertificates: clientCertificates))
+    }
+
+    /// `session` itself when it stays on its external address, else a copy
+    /// whose `baseURL` is the local address.
+    public func resolve(_ session: WidgetSession) async -> WidgetSession {
+        guard session.autoSwitch == true,
+              let raw = session.localURL, case .valid(let local) = ServerAddressInput.normalized(raw),
+              let external = URL(string: session.baseURL)
+        else { return session }
+        let headers = session.customHeaders ?? []
+        async let localResult = bounded(local, headers: headers)
+        async let externalResult = bounded(external, headers: headers)
+        let (localProbe, externalProbe) = await (localResult, externalResult)
+        var externalVersion: String?
+        if case .immich(let version) = externalProbe { externalVersion = version }
+        let choice = ServerAddressSelector.choose(
+            settings: session.addressSettings, accountURL: external,
+            local: localProbe, externalVersion: externalVersion
+        )
+        return choice.usesLocal ? session.retargeted(to: choice.url) : session
+    }
+
+    /// An implementation that never answers cannot hold a refresh.
+    private func bounded(_ url: URL, headers: [CustomHTTPHeader]) async -> ServerAddressProbeResult {
+        let probe = self.probe
+        let deadline = self.deadline
+        return await withTaskGroup(of: ServerAddressProbeResult.self) { group in
+            group.addTask { await probe.probe(url, headers: headers, deadline: deadline) }
+            group.addTask {
+                try? await Task.sleep(for: deadline + .milliseconds(100))
+                return .unreachable
+            }
+            let first = await group.next() ?? .unreachable
+            group.cancelAll()
+            return first
+        }
+    }
+}
+
+/// `URLSessionServerAddressProbe` on a session of the widget's own, made for one
+/// probe and released after it: a client certificate changed in the app is the
+/// one the next probe presents.
+struct WidgetAddressProbe: ServerAddressProbing {
+    let sessionStore: any WidgetSessionStoring
+    let clientCertificates: ClientCertificateResponder
+
+    static func configuration() -> URLSessionConfiguration {
+        let configuration = URLSessionConfiguration.ephemeral
+        configuration.urlCache = nil
+        configuration.requestCachePolicy = .reloadIgnoringLocalCacheData
+        configuration.httpShouldSetCookies = false
+        configuration.httpCookieStorage = nil
+        return configuration
+    }
+
+    func probe(_ base: URL, headers: [CustomHTTPHeader], deadline: Duration) async -> ServerAddressProbeResult {
+        let seconds = Double(deadline.components.seconds) + Double(deadline.components.attoseconds) / 1e18
+        let session = URLSessionWidgetTransport.makeSession(
+            sessionStore: sessionStore, timeout: seconds,
+            configuration: Self.configuration(), clientCertificates: clientCertificates
+        )
+        defer { session.invalidateAndCancel() }
+        return await URLSessionServerAddressProbe(session: { session }).probe(base, headers: headers, deadline: deadline)
+    }
+}

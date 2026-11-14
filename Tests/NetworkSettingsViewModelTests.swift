@@ -23,7 +23,7 @@ final class NetworkSettingsViewModelTests: XCTestCase {
         let probe: ScriptedServerAddressProbe
         let store: InMemoryServerAddressSettingsStore
         let trust: FakeTrustStore
-        let externalChanged: TestBox<Int>
+        let settingsSaved: TestBox<Int>
     }
 
     private func makeRig(settings: ServerAddressSettings = .empty, testControls: Bool = false, denied: Bool = false) -> Rig {
@@ -38,12 +38,12 @@ final class NetworkSettingsViewModelTests: XCTestCase {
         )
         endpoints.activate(accountID: accountID, accountURL: account, token: "tok", connectRealtime: false)
         let trust = FakeTrustStore()
-        let changed = TestBox(0)
+        let saved = TestBox(0)
+        endpoints.onSettingsSaved = { saved.value += 1 }
         let vm = NetworkSettingsViewModel(
-            endpoints: endpoints, trustStore: trust, accountURL: account, showsTestControls: testControls,
-            onExternalChanged: { changed.value += 1 }
+            endpoints: endpoints, trustStore: trust, accountURL: account, showsTestControls: testControls
         )
-        return Rig(vm: vm, endpoints: endpoints, client: client, probe: probe, store: store, trust: trust, externalChanged: changed)
+        return Rig(vm: vm, endpoints: endpoints, client: client, probe: probe, store: store, trust: trust, settingsSaved: saved)
     }
 
     // MARK: - AC-235
@@ -106,7 +106,7 @@ final class NetworkSettingsViewModelTests: XCTestCase {
         XCTAssertEqual(rig.store.settings(for: accountID).externalURL, vpn.absoluteString)
         XCTAssertEqual(rig.client.configuredBaseURL, vpn)
         XCTAssertEqual(rig.vm.externalStatus, .unreachable)
-        XCTAssertEqual(rig.externalChanged.value, 1, "the session of the widgets is told")
+        XCTAssertEqual(rig.settingsSaved.value, 1, "the session of the widgets is published again")
     }
 
     func test_AC_235_emptyExternalAddressGoesBackToTheConnectionAddress() async {

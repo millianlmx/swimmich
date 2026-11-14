@@ -42,6 +42,10 @@ final class ServerEndpointSwitch: ServerEndpointSwitching {
     @ObservationIgnored private var generation = 0
     @ObservationIgnored private var evaluationTask: Task<Void, Never>?
     @ObservationIgnored private var outcomeCounter = 0
+    /// Called after the settings of the active account were stored (an edit in
+    /// "Network", a new known version): the widgets and the share extension hold
+    /// a copy of them in their session, which the app publishes again.
+    @ObservationIgnored var onSettingsSaved: (@MainActor () -> Void)?
 
     init(
         client: any ImmichClient, realtime: RealtimeService, store: any ServerAddressSettingsStoring,
@@ -139,6 +143,7 @@ final class ServerEndpointSwitch: ServerEndpointSwitching {
         guard let accountID, settings.lastKnownVersion != version else { return }
         settings.lastKnownVersion = version
         store.save(settings, for: accountID)
+        onSettingsSaved?()
     }
 
     /// Reads the version on the address in use (the external address, or a local
@@ -167,6 +172,7 @@ final class ServerEndpointSwitch: ServerEndpointSwitching {
         loadSettings(accountID: accountID, accountURL: accountURL, settings: next)
         updateBook()
         learnServers()
+        onSettingsSaved?()
         let hasLocal = localURL != nil
         if !(settings.autoSwitch && hasLocal) {
             applyExternal(reconnectSocket: true)

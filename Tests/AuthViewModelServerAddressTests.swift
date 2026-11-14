@@ -68,8 +68,8 @@ final class AuthViewModelServerAddressTests: XCTestCase {
         )
         let published = PublishedSessionSpy()
         let auth = AuthViewModel(
-            client: mock, keychain: keychain, defaults: defaults, realtime: realtime,
-            widgetSession: published, reloadWidgets: {}, endpoints: endpoints
+            client: mock, keychain: keychain, defaults: defaults, trustStore: TrustedServerStoreImpl(defaults: defaults),
+            realtime: realtime, widgetSession: published, reloadWidgets: {}, endpoints: endpoints
         )
         return Fixture(
             auth: auth, mock: mock, store: store, probe: probe, endpoints: endpoints,
@@ -131,7 +131,7 @@ final class AuthViewModelServerAddressTests: XCTestCase {
 
     // MARK: - AC-239
 
-    func test_AC_239_publishedSessionUsesExternal() async {
+    func test_AC_239_publishedSessionCarriesBothAddresses() async {
         let fx = makeFixture(settings: switchOn)
         fx.probe.answer(account, .immich(version: version))
         fx.probe.answer(local, .immich(version: version))
@@ -141,7 +141,38 @@ final class AuthViewModelServerAddressTests: XCTestCase {
 
         fx.auth.publishWidgetSession()
 
-        XCTAssertEqual(fx.published.load()?.baseURL, account.absoluteString, "widgets and the extension never get the local address")
+        let published = fx.published.load()
+        XCTAssertEqual(published?.baseURL, account.absoluteString, "the session starts from the external address")
+        XCTAssertEqual(published?.localURL, local.absoluteString, "widgets and the extension choose the local one themselves")
+        XCTAssertEqual(published?.autoSwitch, true)
+        XCTAssertEqual(published?.lastKnownVersion, version)
+        XCTAssertEqual(published?.accountURL, account.absoluteString)
+    }
+
+    func test_AC_239_savedSettingsArePublishedAgain() async {
+        let fx = makeFixture()
+        await fx.auth.restoreSession()
+        XCTAssertNil(fx.published.load()?.localURL)
+        fx.probe.answer(account, .immich(version: version))
+        fx.probe.answer(local, .unreachable)
+
+        await fx.endpoints.save(switchOn)
+
+        XCTAssertEqual(fx.published.load()?.localURL, local.absoluteString, "an edit in Network reaches the widgets")
+        XCTAssertEqual(fx.published.load()?.autoSwitch, true)
+        XCTAssertEqual(fx.published.load()?.baseURL, account.absoluteString)
+    }
+
+    func test_AC_241_publishedSessionTrustsTheApprovedLocalHost() async {
+        let fx = makeFixture(settings: switchOn)
+        fx.probe.answer(account, .immich(version: version))
+        fx.probe.answer(local, .immich(version: version))
+        await fx.auth.restoreSession()
+        TrustedServerStoreImpl(defaults: fx.defaults).add("192.168.1.10")
+
+        fx.auth.publishWidgetSession()
+
+        XCTAssertEqual(fx.published.load()?.trustedHostSet, ["192.168.1.10"], "an approval given in the app reaches the widgets")
     }
 
     // MARK: - AC-240

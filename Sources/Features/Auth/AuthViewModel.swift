@@ -168,6 +168,9 @@ final class AuthViewModel: AuthSessionDelegate {
         self.savedAccounts = Self.loadSavedAccounts(from: defaults)
         self.client.authDelegate = self
         refreshClientCertificateState()
+        // The widgets and the share extension choose between the local and the
+        // external address from the settings in their session (L-26).
+        self.endpoints.onSettingsSaved = { [weak self] in self?.publishWidgetSession() }
     }
 
     // MARK: - Session restore (relaunch)
@@ -222,15 +225,21 @@ final class AuthViewModel: AuthSessionDelegate {
     /// the previous account's photos.
     func publishWidgetSession() {
         guard let token = accessToken, let accountURL else { return }
-        // Widgets and the share extension employ the external address (L-26): the
-        // local one is chosen from the app's own evaluation, which they cannot read.
+        // Widgets and the share extension start from the external address and
+        // choose the local one themselves, by the app's rule, from the settings
+        // published here (L-26, `WidgetEndpointResolver`).
         let published = endpoints.externalURL ?? accountURL
+        let settings = endpoints.settings
+        let localURL = endpoints.localURL
         // The widget cannot read this process' trust store (a different
         // container), so a host whose certificate the user accepted travels
         // with the session — without it a self-signed server is unreachable
-        // from the widget even though the app opens it fine.
-        let host = published.host
-        let trustedHosts = (host.flatMap { trustStore.contains($0) ? $0 : nil }).map { [$0] } ?? []
+        // from the widget even though the app opens it fine. Both addresses.
+        var trustedHosts: [String] = []
+        for host in [published.host, localURL?.host].compactMap({ $0 })
+        where trustStore.contains(host) && !trustedHosts.contains(host) {
+            trustedHosts.append(host)
+        }
         widgetSession.save(WidgetSession(
             baseURL: published.absoluteString,
             token: token,
@@ -245,7 +254,11 @@ final class AuthViewModel: AuthSessionDelegate {
             // the active server's headers travel with the session. `nil` (not
             // `[]`) when there are none, so the stored JSON is the one of a
             // build without custom headers.
-            customHeaders: Self.nonEmpty(customHeaders.headers(for: accountURL))
+            customHeaders: Self.nonEmpty(customHeaders.headers(for: accountURL)),
+            localURL: localURL?.absoluteString,
+            autoSwitch: localURL == nil ? nil : settings.autoSwitch,
+            lastKnownVersion: settings.lastKnownVersion,
+            accountURL: accountURL.absoluteString
         ))
         reloadWidgets()
     }

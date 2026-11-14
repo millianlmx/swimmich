@@ -177,10 +177,8 @@ struct NetworkSettingsView: View {
 struct NetworkSettingsScreen: View {
     @State private var vm: NetworkSettingsViewModel
 
-    init(accountURL: URL, onExternalChanged: @escaping () -> Void) {
-        _vm = State(initialValue: DependencyContainer.shared.makeNetworkSettingsViewModel(
-            accountURL: accountURL, onExternalChanged: onExternalChanged
-        ))
+    init(accountURL: URL) {
+        _vm = State(initialValue: DependencyContainer.shared.makeNetworkSettingsViewModel(accountURL: accountURL))
     }
 
     var body: some View {

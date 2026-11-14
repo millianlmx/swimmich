@@ -13,7 +13,6 @@ final class NetworkSettingsViewModel {
     private let endpoints: any ServerEndpointSwitching
     private let trustStore: TrustedServerStore
     private let accountURL: URL
-    private let onExternalChanged: () -> Void
 
     /// Shows the "Simulate network change" control (UI tests only).
     let showsTestControls: Bool
@@ -29,13 +28,12 @@ final class NetworkSettingsViewModel {
 
     init(
         endpoints: any ServerEndpointSwitching, trustStore: TrustedServerStore, accountURL: URL,
-        showsTestControls: Bool, onExternalChanged: @escaping () -> Void
+        showsTestControls: Bool
     ) {
         self.endpoints = endpoints
         self.trustStore = trustStore
         self.accountURL = accountURL
         self.showsTestControls = showsTestControls
-        self.onExternalChanged = onExternalChanged
         localText = endpoints.settings.localURL ?? ""
         externalText = (endpoints.externalURL ?? accountURL).absoluteString
         autoSwitch = endpoints.settings.autoSwitch
@@ -83,7 +81,6 @@ final class NetworkSettingsViewModel {
             externalText = url.absoluteString
         }
         await persist(settings)
-        onExternalChanged()
         if case .untrusted(let host)? = externalStatus { pendingUntrustedHost = host }
     }
 

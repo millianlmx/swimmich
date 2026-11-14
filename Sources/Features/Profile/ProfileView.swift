@@ -204,11 +204,7 @@ struct ProfileView: View {
                 Section {
                     if let accountURL = auth.accountURL {
                         NavigationLink {
-                            NetworkSettingsScreen(
-                                accountURL: accountURL,
-                                // The widgets and the share extension are told the external address.
-                                onExternalChanged: { auth.publishWidgetSession() }
-                            )
+                            NetworkSettingsScreen(accountURL: accountURL)
                         } label: {
                             Label("Network", systemImage: "network")
                         }

@@ -26,6 +26,13 @@ public struct ClientCertificateResponder: Sendable {
 
     public static let live = ClientCertificateResponder(store: KeychainClientIdentityStore(), log: .shared)
 
+    /// The same responder, which first maps the challenging key through `alias`:
+    /// a widget aliases the local address of the server to its account (L-26).
+    public func aliasing(_ alias: @escaping @Sendable (ServerKey) -> ServerKey) -> ClientCertificateResponder {
+        let canonical = canonicalKey
+        return ClientCertificateResponder(store: store, log: log, canonicalKey: { canonical(alias($0)) })
+    }
+
     /// Nil for any other kind of challenge: the caller keeps its own handling.
     public func answer(
         _ challenge: URLAuthenticationChallenge
