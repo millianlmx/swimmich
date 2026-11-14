@@ -231,7 +231,8 @@ final class RouteCompatUITests: XCTestCase {
                           "the job list is a read: it must stay available")
             runJob("pause")
 
-            let writes = requests().dropFirst(mark).filter { $0.method != "GET" }
+            // A search is a read sent as a POST: the mode lets it through.
+            let writes = requests().dropFirst(mark).filter { $0.method != "GET" && !$0.path.hasPrefix("/api/search/") }
             XCTAssertEqual(writes.map { "\($0.method) \($0.path)" }, [], "a write left the app in read-only mode at \(version)")
             XCTAssertTrue(requests().dropFirst(mark).contains { $0.path == (version == "2.0.0" ? "/api/jobs" : "/api/queues") })
         }
@@ -409,11 +410,16 @@ final class RouteCompatUITests: XCTestCase {
     /// pushed screen (People), whose bar has no avatar.
     private func openProfile() {
         dismissWhatsNewIfPresent()
+        // Still open from the previous step, on a pushed page (Administration):
+        // back to the hub's root.
+        let back = app.navigationBars.buttons.matching(identifier: "BackButton").firstMatch
+        for _ in 0..<3 where !element("profileList").exists && back.exists { back.tap() }
+        if element("profileList").waitForExistence(timeout: 2) { return }
         app.tabBars.buttons.matching(labelPredicate(["Photos", "Fotos"])).firstMatch.tap()
         let avatar = app.buttons.matching(identifier: "profileAvatar").firstMatch
         XCTAssertTrue(avatar.waitForExistence(timeout: 15), "Profile avatar missing")
         avatar.tap()
-        Thread.sleep(forTimeInterval: 3)
+        XCTAssertTrue(element("profileList").waitForExistence(timeout: 20), "the Me hub never opened")
     }
 
     private func openAdministration() {
@@ -429,7 +435,15 @@ final class RouteCompatUITests: XCTestCase {
         openProfile()
         reveal("readOnlyModeToggle")
         let toggle = element("readOnlyModeToggle")
-        if (toggle.value as? String == "1") != enabled { toggle.tap() }
+        let wanted = enabled ? "1" : "0"
+        // A tap on the row's label does not flip the switch: its right end does
+        // (or, at large text sizes, its lower left), checked on the value.
+        for point in [CGVector(dx: 0.92, dy: 0.5), CGVector(dx: 0.13, dy: 0.85), CGVector(dx: 0.5, dy: 0.5)]
+        where toggle.value as? String != wanted {
+            toggle.coordinate(withNormalizedOffset: point).tap()
+            _ = waitUntil(timeout: 3) { toggle.value as? String == wanted }
+        }
+        XCTAssertEqual(toggle.value as? String, wanted, "the read-only switch did not turn \(enabled ? "on" : "off")")
         dismissMeSheet()
     }
 
@@ -475,7 +489,9 @@ final class RouteCompatUITests: XCTestCase {
     private func switchToAccount(containing text: String) {
         openProfile()
         reveal("addAccountButton")
-        let row = app.buttons.matching(NSPredicate(format: "identifier BEGINSWITH 'savedAccountRow_' AND label CONTAINS %@", text)).firstMatch
+        // The row shows the account's name; its identifier carries the server's
+        // address (`savedAccountRow_<url>|<email>`).
+        let row = app.buttons.matching(NSPredicate(format: "identifier BEGINSWITH 'savedAccountRow_' AND identifier CONTAINS %@", text)).firstMatch
         XCTAssertTrue(row.waitForExistence(timeout: 10), "no saved account on \(text)")
         row.tap()
         XCTAssertTrue(element("assetTile_aaaaaaaa-1111-4111-8111-000000000001").waitForExistence(timeout: 40))
@@ -520,13 +536,13 @@ final class RouteCompatUITests: XCTestCase {
         app.descendants(matching: .any).matching(identifier: identifier).firstMatch
     }
 
+    /// Scrolls the Me hub down to `identifier`. Never back up: a swipe down on
+    /// the hub at its top dismisses the sheet, which then hid every row.
     private func reveal(_ identifier: String) {
         let target = element(identifier)
-        for direction in [true, false] {
-            for _ in 0..<14 where !target.exists {
-                if direction { app.swipeUp() } else { app.swipeDown() }
-                Thread.sleep(forTimeInterval: 0.7)
-            }
+        for _ in 0..<14 where !(target.exists && target.isHittable) {
+            app.swipeUp()
+            Thread.sleep(forTimeInterval: 0.7)
         }
     }
 

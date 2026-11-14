@@ -34,8 +34,9 @@ final class AuthViewModel: AuthSessionDelegate {
 
     /// Test only (`-uiTestSessionToken <token>`, with the other `auth*` keys on the
     /// launch arguments): a UI scenario starts signed in, as a sign-in would have
-    /// left the device, without walking the onboarding it does not test. Never
-    /// written outside tests.
+    /// left the device (token, `auth*` defaults, account registry), so a later
+    /// launch without the arguments keeps the session; without walking the
+    /// onboarding it does not test. Never written outside tests.
     static let uiTestSessionTokenKey = "uiTestSessionToken"
 
     /// Must match the `CFBundleURLTypes` scheme *and* the value whitelisted at
@@ -153,11 +154,23 @@ final class AuthViewModel: AuthSessionDelegate {
         self.userName = defaults.string(forKey: Self.userNameDefaultsKey)
         self.userId = defaults.string(forKey: Self.userIdDefaultsKey)
         self.isAdmin = defaults.bool(forKey: Self.isAdminDefaultsKey)
-        if let token = defaults.string(forKey: Self.uiTestSessionTokenKey) { keychain.saveToken(token) }
+        let testSessionToken = defaults.string(forKey: Self.uiTestSessionTokenKey)
+        if let testSessionToken {
+            keychain.saveToken(testSessionToken)
+            // Launch arguments live in the arguments domain, gone at the next
+            // launch: written to the app's own, as a sign-in leaves them.
+            for key in [Self.serverURLDefaultsKey, Self.userEmailDefaultsKey,
+                        Self.userNameDefaultsKey, Self.userIdDefaultsKey] {
+                defaults.set(defaults.string(forKey: key), forKey: key)
+            }
+            defaults.set(defaults.bool(forKey: Self.isAdminDefaultsKey), forKey: Self.isAdminDefaultsKey)
+        }
         self.accessToken = keychain.getToken()
         self.savedAccounts = Self.loadSavedAccounts(from: defaults)
         self.client.authDelegate = self
         refreshClientCertificateState()
+        // The account registry too, as `applySession` fills it on a sign-in.
+        if testSessionToken != nil { addCurrentAccountToSaved() }
     }
 
     // MARK: - Session restore (relaunch)
