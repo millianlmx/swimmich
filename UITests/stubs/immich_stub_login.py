@@ -14,7 +14,7 @@ day of six photos, real thumbnails). Every control is a plain `GET`, answered
 under `/control/` (the shell answers `/__…` itself, before the router); a
 `GET /__reset` restores the defaults: version 2.0.0, password 1, oauth 1,
 buttonText "Continue with Immich SSO", features `ok`, no revocation, no mute,
-no delay, no asset status override.
+no delay, no hold (a request still held is released), no asset status override.
 
 CONTROLS
 
@@ -38,6 +38,10 @@ CONTROLS
 * `/control/delay?path=<exact path>&seconds=<n>`: delays one route; each call
   sets or replaces the delay of its own path and leaves the others alone;
   `seconds=0` removes it.
+* `/control/hold?path=<exact path>&on=<0|1>`: `on=1` holds every request of that
+  route until `on=0` releases them (at most 30 s, so a forgotten hold never
+  pins a server thread): the scenario, not a clock, decides when the answer
+  leaves, after it has seen what the app shows meanwhile.
 * `/control/asset?id=<id>&status=<200|400|404>`: status of `GET /api/assets/<id>`
   for that id; its thumbnail and original stay served.
 
@@ -56,9 +60,10 @@ Mute, delay and revocation are therefore done in a wrapper installed on
 `router.handle` itself: the request is already in the journal when it sleeps,
 is dropped or is refused, and a route registered below needs no knowledge of
 any of it. Overriding `StubHandler._dispatch` would run BEFORE the journal.
-Control and `/__…` requests are never muted, delayed nor refused.
+Control and `/__…` requests are never muted, delayed, held nor refused.
 """
 import re
+import threading
 import time
 
 from immich_stub_base import (
@@ -79,8 +84,24 @@ DEFAULTS = {
 }
 
 
+# The held routes and their gates. Outside `STATE`, which the shell wipes before
+# the reset hooks run: a gate dropped there would leave its request held.
+_HOLDS = {}
+_HOLDS_LOCK = threading.Lock()
+
+
+def _release_all():
+    with _HOLDS_LOCK:
+        gates = list(_HOLDS.values())
+        _HOLDS.clear()
+    for gate in gates:
+        gate.set()
+
+
 @router.reset
 def fresh():
+    # A request held by the previous scenario answers now, not 30 s into this one.
+    _release_all()
     for key, value in DEFAULTS.items():
         STATE[key] = dict(value) if isinstance(value, dict) else value
 
@@ -103,6 +124,10 @@ def _seconds(raw):
         return 0.0
 
 
+# The longest a held request waits for its release.
+_HOLD_CAP = 30.0
+
+
 # MARK: - Hooks before routing
 
 _PUBLIC_PREFIXES = ("/api/server/", "/api/auth/login", "/api/oauth/", "/api/public/")
@@ -121,6 +146,10 @@ def _hooked(handle):
             delay = STATE["delays"].get(path)
             if delay:
                 time.sleep(delay)
+            with _HOLDS_LOCK:
+                gate = _HOLDS.get(path)
+            if gate is not None:
+                gate.wait(_HOLD_CAP)
             if STATE["revoked"] and not path.startswith(_PUBLIC_PREFIXES):
                 return Response({"message": "Invalid user token", "error": "Unauthorized",
                                  "statusCode": 401}, status=401)
@@ -173,6 +202,21 @@ def control_delay(req):
     else:
         STATE["delays"].pop(path, None)
     return Response({"delays": STATE["delays"]})
+
+
+@router.get("/control/hold")
+def control_hold(req):
+    path = req.params.get("path", "")
+    with _HOLDS_LOCK:
+        if req.params.get("on") == "1":
+            _HOLDS.setdefault(path, threading.Event())
+            gate = None
+        else:
+            gate = _HOLDS.pop(path, None)
+        held = sorted(_HOLDS)
+    if gate is not None:
+        gate.set()
+    return Response({"holds": held})
 
 
 @router.get("/control/asset")

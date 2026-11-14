@@ -112,6 +112,11 @@ final class LoginStartupUITests: XCTestCase {
         XCTAssertTrue(get("/control/delay?path=\(query(path))&seconds=\(seconds)").contains("delays"), "delay not taken")
     }
 
+    /// `/control/hold`: the route's requests wait until the scenario releases them.
+    private func hold(_ path: String, _ on: Bool) {
+        XCTAssertTrue(get("/control/hold?path=\(query(path))&on=\(on ? 1 : 0)").contains("holds"), "hold not taken")
+    }
+
     private func setAsset(_ id: String, status: Int) {
         XCTAssertTrue(get("/control/asset?id=\(id)&status=\(status)").contains("assetStatus"), "asset status not taken")
     }
@@ -425,11 +430,26 @@ final class LoginStartupUITests: XCTestCase {
     private func setHaptics(on: Bool) {
         openMe(scrollingTo: "preferencesRow").tap()
         let toggle = element("preferencesHapticsToggle")
-        XCTAssertTrue(toggle.waitForExistence(timeout: 15), "the Haptic Feedback toggle is missing — \(screenText())")
+        // Feedback is the last section of the form: below the fold, its row is
+        // not drawn, so it has no element until the form is scrolled to it.
+        XCTAssertTrue(element("preferencesGroupPicker").waitForExistence(timeout: 15),
+                      "the Preferences form never appeared — \(screenText())")
+        for _ in 0..<10 where !(toggle.exists && toggle.isHittable) {
+            app.swipeUp()
+            Thread.sleep(forTimeInterval: 0.8)
+        }
+        XCTAssertTrue(toggle.waitForExistence(timeout: 5) && toggle.isHittable,
+                      "the Haptic Feedback toggle is missing — \(screenText())")
         let wanted = on ? "1" : "0"
         for _ in 0..<3 where (toggle.value as? String) != wanted {
-            // The element is the whole row: its own control sits at the trailing edge.
-            toggle.coordinate(withNormalizedOffset: CGVector(dx: 0.93, dy: 0.5)).tap()
+            // The element may be the whole row: its own switch, when exposed,
+            // is the control; otherwise it sits at the row's trailing edge.
+            let control = toggle.switches.firstMatch
+            if control.exists && control.isHittable {
+                control.tap()
+            } else {
+                toggle.coordinate(withNormalizedOffset: CGVector(dx: 0.93, dy: 0.5)).tap()
+            }
             waitUntil(4) { (toggle.value as? String) == wanted }
         }
         XCTAssertEqual(toggle.value as? String, wanted, "Haptic Feedback never reached \(wanted)")
@@ -924,16 +944,26 @@ final class LoginStartupUITests: XCTestCase {
     }
 
     /// AC-341, third given: a probe that times out, then a first page that arrives → error state, then content, untouched.
+    /// The stub holds the first page until the error state is on screen, then lets it go: the
+    /// scenario, not a clock, puts the page after the error. A fixed 4 s delay against an 8 s
+    /// budget counted from before `launch()` also counted the simulator's launch time, which a
+    /// loaded CI Mac can stretch past the budget.
     func test_AC_341_lateFirstPageReplacesError() throws {
         storeSession()
+        let pagesBefore = count("GET", "/api/timeline/buckets")
         delay("/api/server/ping", seconds: 10)
-        delay("/api/timeline/buckets", seconds: 4)
-        let started = Date()
+        hold("/api/timeline/buckets", true)
         launchStored()
         XCTAssertTrue(element("timelineLoadErrorState").waitForExistence(timeout: 3),
                       "no error state within 3 s of the slow probe — \(screenText())")
-        XCTAssertTrue(element(firstPhotoTile).waitForExistence(timeout: max(1, 8 - Date().timeIntervalSince(started))),
-                      "the late first page did not replace the error within 8 s — \(screenText())")
+        XCTAssertGreaterThan(count("GET", "/api/timeline/buckets"), pagesBefore,
+                             "the first page was not in flight when the error showed")
+        XCTAssertFalse(element(firstPhotoTile).exists, "the content showed while its page was held")
+        hold("/api/timeline/buckets", false)
+        // No touch from here: the page in flight alone must replace the error.
+        XCTAssertTrue(element(firstPhotoTile).waitForExistence(timeout: 5),
+                      "the late first page did not replace the error within 5 s of its answer — \(screenText())")
+        XCTAssertFalse(element("timelineLoadErrorState").exists, "the error state stayed next to the content")
     }
 
     // MARK: - AC-342, AC-343
