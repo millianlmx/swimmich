@@ -291,6 +291,7 @@ enum ButtonScanner {
             "SearchFilterSheet.swift|PVRatingBar.starLabel(": "Même fonction pure que la barre de notation.",
             "SearchPeoplePicker.swift|Text(verbatim: name)": "Nom de la personne (donnée du serveur) ou « Unnamed » traduit : un seul élément VoiceOver nommé d'après la personne.",
             "SearchTagPicker.swift|Text(verbatim: row.tag.path)": "Chemin du tag (donnée du serveur) : un seul élément VoiceOver nommé d'après le tag.",
+            "AdjustDateSheet.swift|Text(verbatim: entry.identifier)": "Identifiant IANA du fuseau (donnée du système, jamais traduit) : un seul élément VoiceOver nommé d'après le fuseau, décalage en valeur.",
             "PhotoViewer.swift|Self.filmstripAccessibilityLabel(": "Fonction pure : Photo N of M ou Video N of M, en clés du catalogue.",
         ],
         opaqueTextBearing: [

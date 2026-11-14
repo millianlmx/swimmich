@@ -193,6 +193,7 @@
 		3C7D0A06D816806EBE848628 /* FreeUpSpaceUITests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A14A4BDD1813503721593F03 /* FreeUpSpaceUITests.swift */; };
 		3C8825E3CF40E4DFCB3F0075 /* DownloadProgressPanel.swift in Sources */ = {isa = PBXBuildFile; fileRef = A93DCDE041388953765AD3C2 /* DownloadProgressPanel.swift */; };
 		3CB1695D1FB2547ED4EA185B /* JpegXLTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2AFCE710550761D5A42C4E4F /* JpegXLTests.swift */; };
+		A1D7A3C0E1F24B6D9C0B1E06 /* AdjustDateUITests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1D7A3C0E1F24B6D9C0B1E05 /* AdjustDateUITests.swift */; };
 		3DB1C3342E395C5031EB84FD /* AdjustLocationUITests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 052F77F15D96318BB31623ED /* AdjustLocationUITests.swift */; };
 		3DBCAE0EC9573E6E46A181D2 /* MapSettingsStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 03FB0288F074A6D4A64930F5 /* MapSettingsStore.swift */; };
 		3EF2031757F37592D479D27E /* BackupAssetSource.swift in Sources */ = {isa = PBXBuildFile; fileRef = A8C247B37D241AEEA2320149 /* BackupAssetSource.swift */; };
@@ -211,6 +212,7 @@
 		45275B9AF85B6DC552A57D35 /* RoadTripFramePlanTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6AFA3FF97E3B0FEE3DDAB35E /* RoadTripFramePlanTests.swift */; };
 		454DFEF604178C1C282D847A /* OAuthPKCE.swift in Sources */ = {isa = PBXBuildFile; fileRef = 962C7C0E8EBEEDBEE164B5D0 /* OAuthPKCE.swift */; };
 		464CC0C811C222B13081CE9C /* PluralCatalogTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 47619C8EA183C6FC0670ECEB /* PluralCatalogTests.swift */; };
+		A1D7A3C0E1F24B6D9C0B1E04 /* AdjustDateViewModelTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1D7A3C0E1F24B6D9C0B1E03 /* AdjustDateViewModelTests.swift */; };
 		46943C598D26AD420047E737 /* AdjustLocationViewModelTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 27413CDE3BF5FC480DF5420E /* AdjustLocationViewModelTests.swift */; };
 		47227556FE798B1445C62644 /* DeviceSessionsViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8DA0C2E634BA4E3671F14F2C /* DeviceSessionsViewModel.swift */; };
 		4748E6D5E5941D3DD2BCC558 /* immich_stub_free_up_space.py in Resources */ = {isa = PBXBuildFile; fileRef = 5674388C6E6D6308091F95AC /* immich_stub_free_up_space.py */; };
@@ -236,6 +238,7 @@
 		502DC18906500F6B062B2016 /* LocalLibraryUITests.swift in Sources */ = {isa = PBXBuildFile; fileRef = B2BE58A959176290845E8EF8 /* LocalLibraryUITests.swift */; };
 		50B2718A15D9ADFAB31ACFA4 /* AppLogRedactionUITests.swift in Sources */ = {isa = PBXBuildFile; fileRef = B976B3792191CF6A9A70458C /* AppLogRedactionUITests.swift */; };
 		51ED07383C80F59475B75171 /* ImmichSharedKit.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 43EFADF0DFF6B6F100CC9AED /* ImmichSharedKit.framework */; };
+		A1D7A3C0E1F24B6D9C0B1E02 /* AdjustDateViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1D7A3C0E1F24B6D9C0B1E01 /* AdjustDateViewModel.swift */; };
 		525134433C262B93C0442BEC /* AdjustLocationViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3F644EF3C758AF65FDB97670 /* AdjustLocationViewModel.swift */; };
 		5257FD93BBB1F2AEBE24BAE2 /* TimelineView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8F3CC41BE0841865DDCC77FE /* TimelineView.swift */; };
 		52A232055B9B2F2EDAA0F8AF /* RecentAssetsViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 017A6AC30B47A83D632B43F5 /* RecentAssetsViewModel.swift */; };
@@ -352,6 +355,7 @@
 		76F1D7FEE1F5741BA64B5395 /* MemoryTitlePresentation.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6239DCCDBEA772B5582CE7B2 /* MemoryTitlePresentation.swift */; };
 		773A2F8FE5D391B22CA4DAA4 /* PinnedHeaderResolverTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 72BCC89BE645699ADC4BDC14 /* PinnedHeaderResolverTests.swift */; };
 		7743BAC5FDCAEC656CB988ED /* ShareItem.swift in Sources */ = {isa = PBXBuildFile; fileRef = AE06C2D2166430F5321E3C07 /* ShareItem.swift */; };
+		A1D7A3C0E1F24B6D9C0B1E08 /* immich_stub_adjust_date.py in Resources */ = {isa = PBXBuildFile; fileRef = A1D7A3C0E1F24B6D9C0B1E07 /* immich_stub_adjust_date.py */; };
 		7779F84C87A6B54FCDA85812 /* immich_stub_adjust_location.py in Resources */ = {isa = PBXBuildFile; fileRef = 2941879991E628BFC378506D /* immich_stub_adjust_location.py */; };
 		77A9A079FA8EC8380FBB9FCF /* ImageCacheService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4EA62A336836E5DEC8EFAC8F /* ImageCacheService.swift */; };
 		77C911D66481ADAC278B8B2F /* immich_stub_person_birthday.py in Resources */ = {isa = PBXBuildFile; fileRef = 1BBFFBCA7F1A04CEFC4D00A9 /* immich_stub_person_birthday.py */; };
@@ -858,6 +862,7 @@
 		0382F4AB250DCB3826D6C3D7 /* ShareConfirmationView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ShareConfirmationView.swift; sourceTree = "<group>"; };
 		03FB0288F074A6D4A64930F5 /* MapSettingsStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MapSettingsStore.swift; sourceTree = "<group>"; };
 		04C420139FECFF13B115B840 /* SyncBadgeUITests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SyncBadgeUITests.swift; sourceTree = "<group>"; };
+		A1D7A3C0E1F24B6D9C0B1E05 /* AdjustDateUITests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AdjustDateUITests.swift; sourceTree = "<group>"; };
 		052F77F15D96318BB31623ED /* AdjustLocationUITests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AdjustLocationUITests.swift; sourceTree = "<group>"; };
 		0570FBC4C4353CF141FDC8A2 /* ShareExtensionViewModelTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ShareExtensionViewModelTests.swift; sourceTree = "<group>"; };
 		05D344B8149F7A84F3F3D49B /* immich_stub_photo_details.py */ = {isa = PBXFileReference; lastKnownFileType = text.script.python; path = immich_stub_photo_details.py; sourceTree = "<group>"; };
@@ -946,6 +951,7 @@
 		265C52E374A8858171E22151 /* MockBackupLiveActivityService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MockBackupLiveActivityService.swift; sourceTree = "<group>"; };
 		26BB69259606C6C36429A474 /* DTOs+Admin.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "DTOs+Admin.swift"; sourceTree = "<group>"; };
 		2733888CA0E8AA03F0B57E68 /* ThumbHashDecoder.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ThumbHashDecoder.swift; sourceTree = "<group>"; };
+		A1D7A3C0E1F24B6D9C0B1E03 /* AdjustDateViewModelTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AdjustDateViewModelTests.swift; sourceTree = "<group>"; };
 		27413CDE3BF5FC480DF5420E /* AdjustLocationViewModelTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AdjustLocationViewModelTests.swift; sourceTree = "<group>"; };
 		27692E2B260CCBE82D1B836A /* LocalizationTestSupport.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LocalizationTestSupport.swift; sourceTree = "<group>"; };
 		27F15786B27F07E89F8E6DC3 /* AssetFileTransfer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AssetFileTransfer.swift; sourceTree = "<group>"; };
@@ -955,6 +961,7 @@
 		28FA8E2BDDFA7D112FF30F16 /* immich_stub_search_filters.py */ = {isa = PBXFileReference; lastKnownFileType = text.script.python; path = immich_stub_search_filters.py; sourceTree = "<group>"; };
 		28FBB9BE49FBEE4E905009E7 /* MemoryPlaybackViewModelTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MemoryPlaybackViewModelTests.swift; sourceTree = "<group>"; };
 		29092E4F33487353A530E0A3 /* EditedImageRendererTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = EditedImageRendererTests.swift; sourceTree = "<group>"; };
+		A1D7A3C0E1F24B6D9C0B1E07 /* immich_stub_adjust_date.py */ = {isa = PBXFileReference; lastKnownFileType = text.script.python; path = immich_stub_adjust_date.py; sourceTree = "<group>"; };
 		2941879991E628BFC378506D /* immich_stub_adjust_location.py */ = {isa = PBXFileReference; lastKnownFileType = text.script.python; path = immich_stub_adjust_location.py; sourceTree = "<group>"; };
 		2970A4FF95065888177A239C /* MapMarkerFilterTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MapMarkerFilterTests.swift; sourceTree = "<group>"; };
 		29FE5CF6D09223C4C30454D9 /* PartnerLibraryUITests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PartnerLibraryUITests.swift; sourceTree = "<group>"; };
@@ -1016,6 +1023,7 @@
 		3F0380C7550B8A39C96AE6C6 /* AlbumDetailView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AlbumDetailView.swift; sourceTree = "<group>"; };
 		3F2B5387F2B1A73E1EACAB47 /* immich_stub_zoom_limit.py */ = {isa = PBXFileReference; lastKnownFileType = text.script.python; path = immich_stub_zoom_limit.py; sourceTree = "<group>"; };
 		3F3F01390EF2D00D962F1DF9 /* ClientCertificateTestSupport.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ClientCertificateTestSupport.swift; sourceTree = "<group>"; };
+		A1D7A3C0E1F24B6D9C0B1E01 /* AdjustDateViewModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AdjustDateViewModel.swift; sourceTree = "<group>"; };
 		3F644EF3C758AF65FDB97670 /* AdjustLocationViewModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AdjustLocationViewModel.swift; sourceTree = "<group>"; };
 		3F926441BB16C6A17BEC1FBD /* AssetLocationMapSheet.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AssetLocationMapSheet.swift; sourceTree = "<group>"; };
 		3FB1D59C3BFF56E3C6C40FFC /* PrivacyInfo.xcprivacy */ = {isa = PBXFileReference; path = PrivacyInfo.xcprivacy; sourceTree = "<group>"; };
@@ -1992,6 +2000,7 @@
 			children = (
 				C2B18628F4D6A34775AFD449 /* AboutLinksTests.swift */,
 				3A58694C1512E94C9B889525 /* ActivityFeedViewModelTests.swift */,
+				A1D7A3C0E1F24B6D9C0B1E03 /* AdjustDateViewModelTests.swift */,
 				27413CDE3BF5FC480DF5420E /* AdjustLocationViewModelTests.swift */,
 				956D755F5478CCB9BDE34CC0 /* AdminViewModelTests.swift */,
 				58D4D8BF7F88745927D69FCB /* AdvancedSettingsViewModelTests.swift */,
@@ -2414,6 +2423,7 @@
 			isa = PBXGroup;
 			children = (
 				3BF0CC0360F60E4EE15C4B20 /* immich_stub_account_storage.py */,
+				A1D7A3C0E1F24B6D9C0B1E07 /* immich_stub_adjust_date.py */,
 				2941879991E628BFC378506D /* immich_stub_adjust_location.py */,
 				155A75580B734AE221CD3AF3 /* immich_stub_album_pagination_three_pages.py */,
 				D2AA2B31DD2DDAA7AC961CC4 /* immich_stub_album_pagination.py */,
@@ -2553,6 +2563,7 @@
 			isa = PBXGroup;
 			children = (
 				83569559947A52EDE790E56F /* AccountStorageUITests.swift */,
+				A1D7A3C0E1F24B6D9C0B1E05 /* AdjustDateUITests.swift */,
 				052F77F15D96318BB31623ED /* AdjustLocationUITests.swift */,
 				0FEA7C783D9158AD24B26DAC /* AlbumPaginationUITests.swift */,
 				D9A4A01FE06D48EAF225D7CD /* AlbumRolesUITests.swift */,
@@ -2712,6 +2723,7 @@
 			children = (
 				4EC41538B408FDCC6115A215 /* AdjustDateSheet.swift */,
 				C61A290672FB6C3338E64F11 /* AdjustLocationSheet.swift */,
+				A1D7A3C0E1F24B6D9C0B1E01 /* AdjustDateViewModel.swift */,
 				3F644EF3C758AF65FDB97670 /* AdjustLocationViewModel.swift */,
 				3F926441BB16C6A17BEC1FBD /* AssetLocationMapSheet.swift */,
 				8FC679752E8B53CD8B13CBCC /* AssetPixelSizeViewModel.swift */,
@@ -3001,6 +3013,7 @@
 			buildActionMask = 2147483647;
 			files = (
 				8F187433FB74F354EA226F0F /* immich_stub_account_storage.py in Resources */,
+				A1D7A3C0E1F24B6D9C0B1E08 /* immich_stub_adjust_date.py in Resources */,
 				7779F84C87A6B54FCDA85812 /* immich_stub_adjust_location.py in Resources */,
 				502B0CD0B1EBD1416199E0DD /* immich_stub_album_pagination.py in Resources */,
 				8EE5B0DA7028F75A1265069C /* immich_stub_album_pagination_three_pages.py in Resources */,
@@ -3136,6 +3149,7 @@
 			files = (
 				FE62C0E0A1F48A4F6B18DA05 /* AboutLinksTests.swift in Sources */,
 				FD76418DA93C59C24B69C915 /* ActivityFeedViewModelTests.swift in Sources */,
+				A1D7A3C0E1F24B6D9C0B1E04 /* AdjustDateViewModelTests.swift in Sources */,
 				46943C598D26AD420047E737 /* AdjustLocationViewModelTests.swift in Sources */,
 				BCAE804BD0E600F3342B0C37 /* AdminViewModelTests.swift in Sources */,
 				54BD05F7E6B825E72B171585 /* AdvancedSettingsViewModelTests.swift in Sources */,
@@ -3321,6 +3335,7 @@
 			buildActionMask = 2147483647;
 			files = (
 				021C7D8BEF6BE24361F97C49 /* AccountStorageUITests.swift in Sources */,
+				A1D7A3C0E1F24B6D9C0B1E06 /* AdjustDateUITests.swift in Sources */,
 				3DB1C3342E395C5031EB84FD /* AdjustLocationUITests.swift in Sources */,
 				F15E5A4EE0F95A36206DE8DB /* AlbumPaginationUITests.swift in Sources */,
 				8493D46A175AD9EDC685EF25 /* AlbumRolesUITests.swift in Sources */,
@@ -3403,6 +3418,7 @@
 				BE99C642918D1FD0FF340460 /* AddToStackSheet.swift in Sources */,
 				D7DDEC5B91B9082C0BBBAD3E /* AdjustDateSheet.swift in Sources */,
 				846E8F4FACDC021346A1AC90 /* AdjustLocationSheet.swift in Sources */,
+				A1D7A3C0E1F24B6D9C0B1E02 /* AdjustDateViewModel.swift in Sources */,
 				525134433C262B93C0442BEC /* AdjustLocationViewModel.swift in Sources */,
 				C101BE12B0150C035F54F42C /* AdminView.swift in Sources */,
 				18C1AA00AE03C93724E1D937 /* AdminViewModel.swift in Sources */,
