@@ -11,7 +11,7 @@ import UIKit
 /// saved on disappear, except after a successful copy save.
 struct PhotoEditorView: View {
     @Bindable var vm: PhotoEditorViewModel
-    var onSavedCopy: () -> Void = {}
+    var onSaved: (EditorDismissReason) -> Void = { _ in }
     @Environment(AuthViewModel.self) private var auth
     @Environment(\.dismiss) private var dismiss
 
@@ -45,6 +45,14 @@ struct PhotoEditorView: View {
                         onRotate90CCW: {
                             vm.rotate90CCW()
                             rotateTick &+= 1
+                        },
+                        onMirrorHorizontally: {
+                            vm.mirrorHorizontally()
+                            rotateTick &+= 1
+                        },
+                        onMirrorVertically: {
+                            vm.mirrorVertically()
+                            rotateTick &+= 1
                         }
                     )
                     AdjustmentSlidersView(
@@ -63,7 +71,7 @@ struct PhotoEditorView: View {
                     .accessibilityIdentifier("revertToOriginalButton")
                 }
                 .padding()
-                .disabled(vm.isSaving)
+                .disabled(vm.isSaving || !vm.isContextLoaded)
             }
             .navigationTitle("Edit")
             .navigationBarTitleDisplayMode(.inline)
@@ -78,7 +86,7 @@ struct PhotoEditorView: View {
                         ProgressView()
                             .accessibilityIdentifier("editorSaveProgress")
                     } else {
-                        Button("Save") { vm.saveCopyToServer() }
+                        Button("Save") { vm.save() }
                             .fontWeight(.semibold)
                             .disabled(!vm.canSave)
                             .accessibilityIdentifier("editorSaveButton")
@@ -87,11 +95,19 @@ struct PhotoEditorView: View {
             }
             .safeAreaInset(edge: .bottom) {
                 VStack(spacing: PVSpacing.s8) {
+                    if vm.isContextLoaded {
+                        Text(modeText(vm.saveMode))
+                            .font(.pvCaption)
+                            .foregroundStyle(Color.textSecondaryPV)
+                            .multilineTextAlignment(.center)
+                            .accessibilityIdentifier("editorSaveModeLabel")
+                            .modifier(SaveModeProbeValue(mode: vm.saveMode))
+                    }
                     Button { vm.saveToPhotos() } label: {
                         Label("Save to Photos", systemImage: "photo.badge.plus")
                     }
                     .buttonStyle(.bordered)
-                    .disabled(!vm.canSave)
+                    .disabled(!vm.canSaveToPhotos)
                     .accessibilityIdentifier("editorSaveToPhotosButton")
                     if let step = vm.saveStep {
                         HStack(spacing: PVSpacing.s8) {
@@ -106,6 +122,7 @@ struct PhotoEditorView: View {
                     }
                     if let err = vm.errorMessage, !err.isEmpty {
                         InlineErrorBadge(message: err)
+                            .accessibilityIdentifier("editorErrorMessage")
                     }
                 }
                 .padding(.horizontal, PVSpacing.s16)
@@ -122,7 +139,7 @@ struct PhotoEditorView: View {
         }
         .onChange(of: vm.dismissReason) { _, reason in
             guard let reason else { return }
-            if reason == .savedCopy { onSavedCopy() }
+            if reason != .cancelled { onSaved(reason) }
             dismiss()
         }
         .task {
@@ -130,7 +147,7 @@ struct PhotoEditorView: View {
             // download never runs `saveState()` against an unread draft.
             await vm.loadState()
             if let baseURL = auth.baseURL {
-                let url = ImmichAssetURL.original(assetId: vm.assetId, baseURL: baseURL)
+                let url = ImmichAssetURL.original(assetId: vm.assetId, baseURL: baseURL, edited: false)
                 await vm.loadOriginal(url: url, token: auth.accessToken)
             }
         }
@@ -145,6 +162,15 @@ struct PhotoEditorView: View {
         case .rendering: return "Rendering edited photo…"
         case .uploading: return "Uploading edited copy…"
         case .savingToPhotos: return "Saving to Photos…"
+        case .savingEdits: return "Saving edits…"
+        }
+    }
+
+    private func modeText(_ mode: EditorSaveMode) -> LocalizedStringKey {
+        switch mode {
+        case .server: return "Saving changes this photo on the server. The original stays available."
+        case .copy: return "Saving creates a new copy. The original is not changed."
+        case .unavailable: return "Couldn't load this photo's saved edits. Close and reopen the editor to try again."
         }
     }
 
@@ -204,6 +230,8 @@ struct RotationSliderView: View {
     @Binding var straightenDeg: Double
     let onRotate90CW: () -> Void
     let onRotate90CCW: () -> Void
+    let onMirrorHorizontally: () -> Void
+    let onMirrorVertically: () -> Void
 
     var body: some View {
         VStack(alignment: .leading, spacing: PVSpacing.s8) {
@@ -225,7 +253,40 @@ struct RotationSliderView: View {
                 }
                 .accessibilityLabel("Rotate right")
                 .accessibilityIdentifier("rotate90CWButton")
+                Button(action: onMirrorHorizontally) {
+                    Image(systemName: "arrow.left.and.right.righttriangle.left.righttriangle.right")
+                }
+                .accessibilityLabel("Flip horizontally")
+                .accessibilityIdentifier("mirrorHorizontalButton")
+                Button(action: onMirrorVertically) {
+                    Image(systemName: "arrow.up.and.down.righttriangle.up.righttriangle.down")
+                }
+                .accessibilityLabel("Flip vertically")
+                .accessibilityIdentifier("mirrorVerticalButton")
             }
+        }
+    }
+}
+
+/// Test-only value of the save-mode line (`server`, `copy`, `unavailable`), exposed under the
+/// `-uiTestImageProbe` launch argument only. Production adds nothing.
+private struct SaveModeProbeValue: ViewModifier {
+    let mode: EditorSaveMode
+
+    @ViewBuilder
+    func body(content: Content) -> some View {
+        if ImageLoadProbe.isEnabled {
+            content.accessibilityValue(Text(verbatim: value))
+        } else {
+            content
+        }
+    }
+
+    private var value: String {
+        switch mode {
+        case .server: return "server"
+        case .copy: return "copy"
+        case .unavailable: return "unavailable"
         }
     }
 }

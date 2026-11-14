@@ -26,11 +26,9 @@ final class AssetPixelSizeViewModel {
         do {
             let dto = try await client.getAsset(id: asset.id)
             hasRead = true
-            // Deliberately without the `isEdited` rule of `AssetReactItem(from:)`:
-            // the viewer and the slideshow, the only surfaces that pass a client,
-            // display the original, which is what the EXIF describes. When L-21
-            // makes them show the edited version, apply that rule here too.
-            pixelSize = PixelSize(exif: dto.exifInfo)
+            // The viewer and the slideshow display the edited version, which the EXIF no longer
+            // describes: an edited record counts as unknown size, the rule of `AssetReactItem(from:)`.
+            pixelSize = dto.isEdited == true ? nil : PixelSize(exif: dto.exifInfo)
         } catch is CancellationError {
             return
         } catch let error as URLError where error.code == .cancelled {

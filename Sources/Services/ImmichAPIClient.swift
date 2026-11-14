@@ -340,6 +340,21 @@ final class ImmichAPIClient: ImmichClient, SessionRenewing, @unchecked Sendable 
         try await sendAuthed(.PUT, path: ImmichAPI.assets.path("/\(id)"), body: AnyEncodable(dto))
     }
 
+    // MARK: - Asset edits
+
+    func getAssetEdits(id: String) async throws -> AssetEditsResponseDto {
+        try await sendAuthed(.GET, path: ImmichAPI.assets.path("/\(id)/edits"))
+    }
+
+    func putAssetEdits(id: String, edits: [AssetEditItem]) async throws -> AssetEditsResponseDto {
+        try await sendAuthed(.PUT, path: ImmichAPI.assets.path("/\(id)/edits"),
+                             body: AnyEncodable(AssetEditsCreateDto(edits: edits)))
+    }
+
+    func deleteAssetEdits(id: String) async throws {
+        _ = try await sendAuthedRaw(.DELETE, path: ImmichAPI.assets.path("/\(id)/edits"), body: nil)
+    }
+
     /// Same verb/path as `updateAsset`, but with a body whose `rating` key is
     /// always present — `null` clears the rating, which `UpdateAssetDto`
     /// (synthesized encoder, `Int?` nil omitted) cannot express.
@@ -1009,8 +1024,12 @@ final class ImmichAPIClient: ImmichClient, SessionRenewing, @unchecked Sendable 
         )
     }
 
-    func originalRequest(assetId: String) throws -> URLRequest {
-        try authenticatedRequest(.GET, path: ImmichAPI.assets.path("/\(assetId)/original"))
+    func originalRequest(assetId: String, edited: Bool) throws -> URLRequest {
+        try authenticatedRequest(
+            .GET,
+            path: ImmichAPI.assets.path("/\(assetId)/original"),
+            query: [URLQueryItem(name: "edited", value: edited ? "true" : "false")]
+        )
     }
 
     func downloadArchiveRequest(archiveName: String, assetIds: [String], edited: Bool) throws -> URLRequest {
@@ -1060,9 +1079,9 @@ final class ImmichAPIClient: ImmichClient, SessionRenewing, @unchecked Sendable 
     /// fetches: the client stops at the request. A missing token throws rather
     /// than returning a request that would answer 401 — whose error body the
     /// transport would otherwise stream to disk as a file.
-    private func authenticatedRequest(_ method: HTTPMethod, path: String) throws -> URLRequest {
+    private func authenticatedRequest(_ method: HTTPMethod, path: String, query: [URLQueryItem] = []) throws -> URLRequest {
         guard let token else { throw APIError.unauthorized }
-        return try baseRequest(method, path: path, query: [], auth: true, token: token)
+        return try baseRequest(method, path: path, query: query, auth: true, token: token)
     }
 
     /// Roots a suffix the server publishes directly under the API root rather

@@ -39,7 +39,7 @@ Feature parity with the Flutter client is tracked in [`docs/mobile-features-vs-f
 | **Shared Links** | CRUD, password, expiration, **public viewer** (open a received link, unlock it, browse it, guest upload) | `Sources/Features/SharedLinks/` |
 | **Memories** | "On this day", moments viewer | `Sources/Features/Memories/` |
 | **Offline Download** | download originals to a durable cache, browse them with the server unreachable, storage budget + eviction | `Sources/Features/Offline/` + `Sources/Services/OfflineAssetStore.swift` |
-| **Photo Editor** | crop, rotate, non-destructive editing | `Sources/Features/Editor/` |
+| **Photo Editor** | crop, rotate, mirror, non-destructive editing: on a server that serves `/api/assets/{id}/edits` (≥ 2.5.0) a crop/quarter-turn/mirror edit is saved as the photo's edit list (no copy), shown everywhere the photo is displayed (`edited=true`: grids, viewer, slideshow, memories, widgets, offline copies), removable, and downloadable as the edited version or the original; otherwise — or for colour adjustments and straightening — the edit is saved as a copy | `Sources/Features/Editor/` + `Sources/Services/ImmichAssetURL.swift` |
 | **RoadTrip** | reader + export of a travel film (opening → slideshow → map route) generated from an album | `Sources/Features/RoadTrip/` |
 | **Auto-Backup** | streaming, server dedup, Live Activity, background, resume | `Sources/Features/Upload/` + `Sources/Services/BackupEngine.swift` |
 | **Admin** | server admin panel | `Sources/Features/Admin/` |

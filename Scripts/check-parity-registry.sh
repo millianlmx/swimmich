@@ -335,8 +335,11 @@ ac2() {
     last=$(printf '%s' "$line" | awk -F"$US" '{ print $7 }')
     case "$st" in
       absent) has_bn "$last" || fail $ac "U-$n absent sans B-<n>" ;;
+      partiel) has_bn "$last" || fail $ac "U-$n partiel sans B-<n>" ;;
+      # `présent` closes the line: `expectations` demands that its lot be livré.
+      "présent") ;;
       "hors périmètre") case "$amont" in *"Recherche négative :"*) ;; *) fail $ac "U-$n hors périmètre sans « Recherche négative : » en preuve amont" ;; esac ;;
-      *) fail $ac "U-$n statut $st : attendu absent ou hors périmètre" ;;
+      *) fail $ac "U-$n statut $st : attendu absent, partiel, présent ou hors périmètre" ;;
     esac
   done
 }
