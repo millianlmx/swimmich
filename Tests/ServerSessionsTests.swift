@@ -2,9 +2,10 @@ import XCTest
 import Security
 @testable import ImmichSwiftUI
 
-/// The sessions built by `ServerSessions` (images, transfers, road trip): TLS trust
+/// The sessions built by `ServerSessions` (images, transfers, road trip, probe): TLS trust
 /// rule, redirect behaviour, configuration and reset. No test touches
-/// `DependencyContainer.shared` or `UserDefaults.standard`.
+/// `DependencyContainer.shared` or `UserDefaults.standard`, except
+/// `test_AC_241_selfSignedTrustIsNotAliased`, which fills and clears `ServerAddressBook.shared`.
 final class ServerSessionsTests: XCTestCase {
     private static let host = "nas.trust.test"
 
@@ -61,12 +62,14 @@ final class ServerSessionsTests: XCTestCase {
         return (made, store)
     }
 
-    private func serverTrustChallenge(host: String = ServerSessionsTests.host) throws -> URLAuthenticationChallenge {
+    private func serverTrustChallenge(
+        host: String = ServerSessionsTests.host, certificateHost: String? = nil
+    ) throws -> URLAuthenticationChallenge {
         let der = try XCTUnwrap(Data(base64Encoded: Self.certificateBase64, options: .ignoreUnknownCharacters))
         let certificate = try XCTUnwrap(SecCertificateCreateWithData(nil, der as CFData))
         // A fresh SecTrust per challenge: the delegate mutates its anchors.
         var created: SecTrust?
-        XCTAssertEqual(SecTrustCreateWithCertificates(certificate, SecPolicyCreateSSL(true, host as CFString), &created), errSecSuccess)
+        XCTAssertEqual(SecTrustCreateWithCertificates(certificate, SecPolicyCreateSSL(true, (certificateHost ?? host) as CFString), &created), errSecSuccess)
         let trust = try XCTUnwrap(created)
         SecTrustSetVerifyDate(trust, Self.verifyDate as CFDate)
         SecTrustSetNetworkFetchAllowed(trust, false)
@@ -315,15 +318,27 @@ final class ServerSessionsTests: XCTestCase {
         XCTAssertNil(cacheRoadTrip.cachedResponse(for: request), "road-trip session reset")
     }
 
+    private func assertProbeConfiguration(_ config: URLSessionConfiguration, file: StaticString = #filePath, line: UInt = #line) {
+        XCTAssertEqual(config.timeoutIntervalForRequest, 2, file: file, line: line)
+        XCTAssertEqual(config.timeoutIntervalForResource, 2, file: file, line: line)
+        XCTAssertFalse(config.waitsForConnectivity, "the system may deny a local connection at once: the probe must not wait", file: file, line: line)
+        XCTAssertNil(config.urlCache, file: file, line: line)
+        XCTAssertEqual(config.requestCachePolicy, .reloadIgnoringLocalCacheData, file: file, line: line)
+        XCTAssertFalse(config.httpShouldSetCookies, file: file, line: line)
+        XCTAssertNil(config.httpCookieStorage, file: file, line: line)
+        XCTAssertFalse(config.urlCredentialStorage === URLCredentialStorage.shared, "ephemeral: no shared credential store", file: file, line: line)
+    }
+
     func test_AC_246_probeSessionNeverCachesWaitsOrCarriesCookies() {
-        let config = ServerSessions.probeConfiguration()
-        XCTAssertEqual(config.timeoutIntervalForRequest, 2)
-        XCTAssertEqual(config.timeoutIntervalForResource, 2)
-        XCTAssertFalse(config.waitsForConnectivity, "the system may deny a local connection at once: the probe must not wait")
-        XCTAssertNil(config.urlCache)
-        XCTAssertEqual(config.requestCachePolicy, .reloadIgnoringLocalCacheData)
-        XCTAssertFalse(config.httpShouldSetCookies)
-        XCTAssertNil(config.httpCookieStorage)
+        XCTAssertTrue(
+            URLSessionConfiguration.default.urlCredentialStorage === URLCredentialStorage.shared,
+            "positive control: a default configuration shares the credential store"
+        )
+        assertProbeConfiguration(ServerSessions.probeConfiguration())
+
+        let (made, _) = makeSessions(trusting: [])
+        assertProbeConfiguration(made.probe.configuration)
+        made.probe.invalidateAndCancel()
     }
 
     func test_AC_246_probeSessionIsRenewedWithTheOthers() {
@@ -332,6 +347,70 @@ final class ServerSessionsTests: XCTestCase {
         made.renewSessions()
         XCTAssertFalse(before === made.probe, "a certificate change replaces the probe session too")
         made.probe.invalidateAndCancel()
+    }
+
+    func test_AC_246_renewedProbeSessionKeepsTrustAndCertificate() throws {
+        let store = makeTrustStore(trusting: [Self.host])
+        let identities = InMemoryClientIdentityStore()
+        try identities.save(try ClientCertificateTestSupport.identityA(), for: ClientCertificateTestSupport.key("https://\(Self.host)"))
+        let made = ServerSessions(
+            trustStore: store,
+            clientCertificates: ClientCertificateResponder(store: identities, log: TLSChallengeLog()),
+            imageCache: URLCache(memoryCapacity: 0, diskCapacity: 0)
+        )
+        sessions.append(made)
+
+        let before = made.probe
+        assertProbeConfiguration(before.configuration)
+        made.renewSessions()
+        let renewed = made.probe
+        XCTAssertFalse(renewed === before)
+        defer { renewed.invalidateAndCancel() }
+
+        assertProbeConfiguration(renewed.configuration)
+        try assertTrusted(renewed)
+        let (disposition, credential) = try answer(
+            of: renewed, for: ClientCertificateTestSupport.clientCertificateChallenge(host: Self.host, port: 443)
+        )
+        XCTAssertEqual(disposition, .useCredential)
+        XCTAssertNotNil(credential?.identity, "the renewed probe session still presents the client certificate")
+    }
+
+    /// The self-signed approval stays per host: an address of the account is not trusted
+    /// because the account's own host is.
+    func test_AC_241_selfSignedTrustIsNotAliased() throws {
+        let account = try XCTUnwrap(URL(string: "https://\(Self.host)"))
+        let local = try XCTUnwrap(URL(string: "https://192.168.1.10"))
+        ServerAddressBook.shared.update(accountURL: account, addresses: [account, local], activeURL: local)
+        defer { ServerAddressBook.shared.clear() }
+
+        let store = makeTrustStore(trusting: [Self.host])
+        let made = ServerSessions(
+            trustStore: store,
+            clientCertificates: ClientCertificateResponder(
+                store: InMemoryClientIdentityStore(), log: TLSChallengeLog(),
+                canonicalKey: { ServerAddressBook.shared.canonicalKey(for: $0) }
+            ),
+            imageCache: URLCache(memoryCapacity: 0, diskCapacity: 0)
+        )
+        sessions.append(made)
+        defer { made.probe.invalidateAndCancel() }
+
+        // The protection space names the local address; the chain is valid for the account's name.
+        func aliasChallenge() throws -> URLAuthenticationChallenge {
+            try serverTrustChallenge(host: "192.168.1.10", certificateHost: Self.host)
+        }
+        for session in [made.images, made.probe] {
+            let (disposition, credential) = try answer(of: session, for: aliasChallenge())
+            XCTAssertEqual(disposition, .cancelAuthenticationChallenge)
+            XCTAssertNil(credential)
+        }
+        try assertTrusted(made.images)
+
+        store.add("192.168.1.10")
+        let (disposition, credential) = try answer(of: made.images, for: aliasChallenge())
+        XCTAssertEqual(disposition, .useCredential, "positive control: approving the local host itself lets it through")
+        XCTAssertNotNil(credential)
     }
 }
 

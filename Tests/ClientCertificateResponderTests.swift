@@ -64,4 +64,51 @@ final class ClientCertificateResponderTests: XCTestCase {
             XCTAssertNil(responder.answer(ClientCertificateTestSupport.challenge(method: method, host: "h", port: 443)), method)
         }
     }
+
+    func test_AC_241_aliasPresentsAccountIdentity() throws {
+        let account = URL(string: "https://photos.example.org")!
+        let local = URL(string: "http://192.168.1.10:2283")!
+        let store = InMemoryClientIdentityStore()
+        try store.save(try ClientCertificateTestSupport.identityA(), for: ClientCertificateTestSupport.key(account.absoluteString))
+        let book = ServerAddressBook()
+        book.update(accountURL: account, addresses: [account, local], activeURL: local)
+        let log = TLSChallengeLog()
+        let responder = ClientCertificateResponder(store: store, log: log, canonicalKey: { book.canonicalKey(for: $0) })
+        let localKey = ClientCertificateTestSupport.key(local.absoluteString)
+        let accountKey = ClientCertificateTestSupport.key(account.absoluteString)
+        log.noteClientCertificateMissing(localKey)
+        log.noteClientCertificateMissing(accountKey)
+
+        let answer = try XCTUnwrap(responder.answer(
+            ClientCertificateTestSupport.clientCertificateChallenge(host: "192.168.1.10", port: 2283, protocolName: NSURLProtectionSpaceHTTP)
+        ))
+        XCTAssertEqual(answer.0, .useCredential)
+        XCTAssertNotNil(answer.1?.identity, "the local address presents the identity saved for the account")
+        XCTAssertFalse(log.clientCertificateWasMissing(for: localKey), "the log keeps the key of the contacted host")
+        XCTAssertTrue(log.clientCertificateWasMissing(for: accountKey), "the account key is not the one touched")
+
+        let foreign = try XCTUnwrap(responder.answer(
+            ClientCertificateTestSupport.clientCertificateChallenge(host: "192.168.1.99", port: 2283, protocolName: NSURLProtectionSpaceHTTP)
+        ))
+        XCTAssertEqual(foreign.0, .performDefaultHandling)
+        XCTAssertNil(foreign.1)
+        XCTAssertTrue(log.clientCertificateWasMissing(for: ClientCertificateTestSupport.key("http://192.168.1.99:2283")))
+    }
+
+    /// Without a `canonicalKey` (the initialiser `.live` uses) the lookup key is the contacted host's own.
+    func test_AC_241_defaultResponderHasNoAlias() throws {
+        let (responder, log) = try makeResponder(attachedTo: "https://photos.example.org")
+
+        let local = try XCTUnwrap(responder.answer(
+            ClientCertificateTestSupport.clientCertificateChallenge(host: "192.168.1.10", port: 2283, protocolName: NSURLProtectionSpaceHTTP)
+        ))
+        XCTAssertEqual(local.0, .performDefaultHandling)
+        XCTAssertNil(local.1)
+        XCTAssertTrue(log.clientCertificateWasMissing(for: ClientCertificateTestSupport.key("http://192.168.1.10:2283")))
+
+        let account = try XCTUnwrap(responder.answer(
+            ClientCertificateTestSupport.clientCertificateChallenge(host: "photos.example.org", port: 443)
+        ))
+        XCTAssertEqual(account.0, .useCredential)
+    }
 }
