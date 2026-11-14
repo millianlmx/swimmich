@@ -955,11 +955,13 @@ final class SearchViewModel {
 
 // MARK: - Selection and batch actions (L-23b)
 
-/// The result grid's multi-selection. The state and the requests are the
-/// timeline's (`TimelineViewModel`, kept private as `batch`): the same owner
+/// The result grid's multi-selection, driven by the shared `BatchSelectionBar`
+/// through the `BatchSelectionModel` contract. The state and the requests are
+/// the timeline's (`TimelineViewModel`, kept private as `batch`): the same owner
 /// split, the same try-then-mutate discipline, the same routes. This extension
-/// only adapts what the grid shows afterwards.
-extension SearchViewModel {
+/// only adapts what the grid shows afterwards, and its signatures are the
+/// contract's, name for name.
+extension SearchViewModel: BatchSelectionModel {
     var selectionMode: Bool { batch.selectionMode }
     var selectedIds: Set<String> { batch.selectedIds }
 
