@@ -670,58 +670,58 @@ struct BackupSettingsView: View {
 
     var body: some View {
         @Bindable var vm = vm
-        NavigationStack {
-            Form {
-                Section {
-                    LabeledContent("Server", value: auth.serverURLString)
-                    LabeledContent("User", value: auth.userEmail ?? "—")
-                }
-                backupSection
-                albumSection
-                reorganizeSection
-                progressSection
-                trackingSection
-                serverCheckSection
-                resetTrackingSection
+        // No `NavigationStack`: the hub (`ProfileView`) pushes this screen into
+        // its own stack, so the one bar and its back button to "Me" are the hub's.
+        Form {
+            Section {
+                LabeledContent("Server", value: auth.serverURLString)
+                LabeledContent("User", value: auth.userEmail ?? "—")
             }
-            .labeledContentStyle(.pvAdaptive)
-            .navigationTitle(Text(verbatim: ""))
-            .navigationBarTitleDisplayMode(.inline)
-            .toolbar {
-                ToolbarItem(placement: .principal) {
-                    ImmichAppBar(title: "Backup")
-                }
+            backupSection
+            albumSection
+            reorganizeSection
+            progressSection
+            trackingSection
+            serverCheckSection
+            resetTrackingSection
+        }
+        .labeledContentStyle(.pvAdaptive)
+        .navigationTitle(Text(verbatim: ""))
+        .navigationBarTitleDisplayMode(.inline)
+        .toolbar {
+            ToolbarItem(placement: .principal) {
+                ImmichAppBar(title: "Backup")
             }
-            .immichAppBarTitleHeader("Backup")
-            .task {
-                await vm.loadAlbums()
+        }
+        .immichAppBarTitleHeader("Backup")
+        .task {
+            await vm.loadAlbums()
+        }
+        .task {
+            await remainder.load()
+        }
+        .confirmationDialog(
+            "Reset backup tracking?",
+            isPresented: $vm.showResetTrackingConfirm,
+            titleVisibility: .visible
+        ) {
+            Button("Reset tracking", role: .destructive) {
+                vm.resetBackupTracking()
             }
-            .task {
-                await remainder.load()
-            }
-            .confirmationDialog(
-                "Reset backup tracking?",
-                isPresented: $vm.showResetTrackingConfirm,
-                titleVisibility: .visible
-            ) {
-                Button("Reset tracking", role: .destructive) {
-                    vm.resetBackupTracking()
-                }
-                Button("Cancel", role: .cancel) {}
-            } message: {
-                Text("The next backup will re-check every photo against the server. Nothing is deleted — already-uploaded photos are simply skipped again.")
-            }
-            .alert(
-                "Reorganization failed",
-                isPresented: Binding(
-                    get: { vm.albumSyncError != nil },
-                    set: { if !$0 { vm.albumSyncError = nil } }
-                )
-            ) {
-                Button("OK", role: .cancel) { vm.albumSyncError = nil }
-            } message: {
-                Text(vm.albumSyncError ?? "")
-            }
+            Button("Cancel", role: .cancel) {}
+        } message: {
+            Text("The next backup will re-check every photo against the server. Nothing is deleted — already-uploaded photos are simply skipped again.")
+        }
+        .alert(
+            "Reorganization failed",
+            isPresented: Binding(
+                get: { vm.albumSyncError != nil },
+                set: { if !$0 { vm.albumSyncError = nil } }
+            )
+        ) {
+            Button("OK", role: .cancel) { vm.albumSyncError = nil }
+        } message: {
+            Text(vm.albumSyncError ?? "")
         }
     }
 
@@ -762,8 +762,8 @@ struct BackupSettingsView: View {
     /// one section, one button — modelled on `serverCheckSection`, the
     /// non-destructive maintenance action already in this Form.
     ///
-    /// No `NavigationStack` here: `BackupSettingsView` wraps its own `Form` in
-    /// one, and a second would draw a second bar.
+    /// No `NavigationStack` here (nor in `BackupSettingsView`): the hub's stack
+    /// pushes this screen, and a second one would draw a second bar.
     @ViewBuilder
     private var reorganizeSection: some View {
         Section {
