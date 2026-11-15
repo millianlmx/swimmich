@@ -28,10 +28,15 @@ import XCTest
 /// * A state the stub cannot provide in the forced language fails loudly: no
 ///   assertion is skipped or relaxed because an element is missing.
 ///
-/// COMPILED, NOT RUN ON CI. `Scripts/ci.sh` builds this bundle
-/// (`build-for-testing`) and runs only the unit bundle. All eleven tests are
-/// compiled-but-not-run there; they are run by hand with the launcher, on an
-/// erased device:
+/// RUN ON CI for the seven tests that select the Search tab
+/// (`test_AC_34_sixSurfacesAnnounceTheirActions`, `test_AC_34_2_labelsInFourLanguages`,
+/// `test_AC_34_3_mapThumbnailIsAButton`, `test_AC_34_4_twoStateButtonsFollowState`,
+/// `test_AC_34_5_ratingStars`, `test_AC_34_6_otherScreens`,
+/// `test_AC_34_11_mapMarkersAreButtons`): each has its own `--release` line, on an
+/// erased device, in `Scripts/ci-ui-scenarios.txt`. `test_AC_34_7_widgetButtonsInFrench`,
+/// `test_AC_34_7_shareExtensionButtons`, `test_AC_34_9_gridThumbnails` and
+/// `test_AC_34_12_filmstripNamesType` are compiled but not run there; they are run by
+/// hand with the launcher, on an erased device:
 ///
 ///     .omp/orchestration/uitest.sh <worktree> /tmp/voiceover.uitest.log \
 ///         UITests/stubs/immich_stub_voiceover.py VoiceOverLabelsUITests/<test> --erase

@@ -48,11 +48,49 @@
 # does not fit replaces a line or is `--release`, and its detailed criteria go to
 # the unit tests.
 
+# Search tab after the redesign: every existing test that selects the Search tab and had no line
+# (the classes' own launch commands give --erase; AdjustLocation and Archive run without it).
+# Release: the night's suite is at its budget of 40 lines. First in the file: a push's gate runs
+# its changed lines in file order, one per free simulator, so test_ocrText (the menu toggle's
+# On/Off title) and test_searchFilters (the Filters sheet and the chips) run first.
+immich_stub_ocr_text.py OcrTextUITests/test_ocrText --erase --release
+immich_stub_search_filters.py SearchFiltersUITests/test_searchFilters --erase --release
+immich_stub_voiceover.py VoiceOverLabelsUITests/test_AC_34_sixSurfacesAnnounceTheirActions --erase --release
+immich_stub_voiceover.py VoiceOverLabelsUITests/test_AC_34_2_labelsInFourLanguages --erase --release
+immich_stub_voiceover.py VoiceOverLabelsUITests/test_AC_34_3_mapThumbnailIsAButton --erase --release
+immich_stub_voiceover.py VoiceOverLabelsUITests/test_AC_34_4_twoStateButtonsFollowState --erase --release
+immich_stub_voiceover.py VoiceOverLabelsUITests/test_AC_34_5_ratingStars --erase --release
+immich_stub_voiceover.py VoiceOverLabelsUITests/test_AC_34_6_otherScreens --erase --release
+immich_stub_voiceover.py VoiceOverLabelsUITests/test_AC_34_11_mapMarkersAreButtons --erase --release
+immich_stub_floating_controls.py FloatingControlsUITests/test_AC_30_4_controlsOnWhitePhotoAndLightMapKeepTheirIdentifiers --erase --release
+immich_stub_map_settings.py MapSettingsUITests/test_mapSettings --erase --release
+immich_stub_plurals.py PluralsUITests/test_AC_32_6_versionNoticeInFiveLanguages --erase --release
+immich_stub_list_states.py ListStatesUITests/test_AC_31 --erase --release
+immich_stub_list_states.py ListStatesUITests/test_AC_142 --erase --release
+immich_stub_jpeg_xl.py JpegXLUITests/test_AC_97_thumbnailDecodedInTimelineAlbumSearch --erase --release
+immich_stub_collections.py ContentCollectionsUITests/test_AC_24 --erase --release
+immich_stub_collections.py ContentCollectionsUITests/test_AC_133 --erase --release
+immich_stub_collections.py ContentCollectionsUITests/test_AC_141 --erase --release
+immich_stub_adjust_location.py AdjustLocationUITests/test_AC_48 --release
+immich_stub_adjust_location.py AdjustLocationUITests/test_AC_48_refusedExplainsAndTheMapStays --release
+immich_stub_adjust_location.py AdjustLocationUITests/test_AC_230 --release
+immich_stub_adjust_location.py AdjustLocationUITests/test_AC_230_alreadyAllowedShowsTheDotWithoutAsking --release
+immich_stub_adjust_location.py AdjustLocationUITests/test_AC_230_servicesOffExplainsAndTheMapStays --release
+immich_stub_adjust_location.py AdjustLocationUITests/test_AC_230_noFixExplainsAndTheMapStays --release
+immich_stub_adjust_location.py AdjustLocationUITests/test_AC_234_theMapCentersOnReducedAccuracyWithoutAskingForMore --release
+immich_stub_archive.py ArchiveUITests/test_AC10_searchViewerUnarchives --release
+immich_stub_archive.py ArchiveUITests/test_AC18_mapViewerResolvesArchivedPhoto --release
+immich_stub_locked_folder.py AppLockUITests/test_AC_21_searchKeyboardNotOverLock --erase --release
+# ViewerZoomUITests films the simulator through UITests/stubs/tools/sim_video_watcher.sh (its class doc); CI does not start it.
+immich_stub_viewer_zoom.py ViewerZoomUITests/test_AC_27_1 --erase --release
+immich_stub_viewer_zoom.py ViewerZoomUITests/test_AC_27_3 --erase --release
+immich_stub_viewer_zoom.py ViewerZoomUITests/test_AC_27_5 --erase --release
+
 # Search redesign (AC-2 to AC-26): the Results screen's bar (Filters, Search options, sync, avatar),
 # its menu, the chips over "No results". Release: one line per test; the
 # view model's bodies are proven by SearchViewModelTests (AC-13.1, AC-21).
-# First in the file: a push's gate runs its changed lines in file order, two at
-# a time, so test_AC_9 (the menu toggle's VoiceOver value) and test_AC_2 run first.
+# A push's gate runs its changed lines in file order, one per free simulator: the block above
+# comes first; within this one, test_AC_9 (the menu toggle's VoiceOver reading) and test_AC_2 lead.
 immich_stub_search_filters.py SearchRedesignUITests/test_AC_9 --release
 immich_stub_search_filters.py SearchRedesignUITests/test_AC_2 --release
 immich_stub_search_filters.py SearchRedesignUITests/test_AC_3 --release
