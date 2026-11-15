@@ -44,6 +44,10 @@ final class LockedFolderViewModel {
     var isBusy = false
     var failedAttempts = 0
     var errorMessage: String?
+    /// Bumped on each PIN the server refused (4xx), including the attempt that
+    /// reaches the limit; never for the exhausted-door guard (no request),
+    /// setup or Face ID. The door plays an error haptic on each change (AC-807).
+    private(set) var pinRefusalFeedbackTick = 0
 
     /// The device can evaluate `.deviceOwnerAuthentication` — decides whether
     /// the Face ID controls exist at all (the setup door's toggle).
@@ -250,6 +254,7 @@ final class LockedFolderViewModel {
             // PIN is the only failure this route has for a signed-in session,
             // and "Wrong PIN" is what the user can act on.
             failedAttempts += 1
+            if APIError.from(error).isServerRefusal { pinRefusalFeedbackTick &+= 1 }
             pinEntry = ""
             errorMessage = failedAttempts >= Self.maxAttempts
                 ? String(localized: "Too many attempts")

@@ -1188,13 +1188,58 @@ final class DynamicTypeUITests: XCTestCase {
         XCTAssertTrue(element("AppLockOverlay").waitForExistence(timeout: 30), "the lock did not show — \(screenText())")
         sleep(2)
         FaceID.noMatch()
-        if cancel.waitForExistence(timeout: 10) { cancel.tap() }
+        // The prompt must be up (the failure reason depends on it): Cancel on it
+        // is what ends the evaluation with `.userCancel`.
+        XCTAssertTrue(cancel.waitForExistence(timeout: 10), "the Face ID prompt never showed — \(screenText())")
+        cancel.tap()
         sleep(1)
 
         XCTAssertTrue(element("appLockTitle").waitForExistence(timeout: 10), "no lock title — \(screenText())")
+        // The reason of the cancelled evaluation, and the retry that follows it (AC-63).
+        let reason = element("appLockFailureReason")
+        XCTAssertTrue(reason.waitForExistence(timeout: 10), "no failure reason after Cancel — \(screenText())")
+        XCTAssertEqual(reason.label, "Face ID didn't recognize you, or the request was cancelled. Try again.",
+                       "the lock screen shows another reason")
+        let unlockLabel = element("appLockUnlockButton").label
+        XCTAssertTrue(unlockLabel.contains("Try Again"), "the button does not read Try Again: '\(unlockLabel)'")
+        XCTAssertFalse(unlockLabel.contains("Unlock"), "the button still reads Unlock: '\(unlockLabel)'")
         assertInWindow("appLockTitle")
+        assertInWindow("appLockFailureReason")
         scrollToHittable("appLockUnlockButton")
         assertNoOverlap()
+
+        // Try Again launches Face ID again, at every touch (AC-63). The system
+        // Face ID sheet shows NO button while it scans: its Cancel only appears
+        // once a face was refused. So a relaunched prompt is proven by refusing a
+        // face (Cancel appears, as at the first prompt), and the last one by a
+        // matching face, which alone can lift the lock.
+        // Local to this test: the CI's gate selects only the lines of a class
+        // whose test functions changed (Scripts/ci_ui_select.py).
+        func tapTryAgain() {
+            // Resolved anew each time (the AX5 layout may have scrolled), and
+            // touched once it is hittable.
+            scrollToHittable("appLockUnlockButton")
+            let button = element("appLockUnlockButton")
+            XCTAssertTrue(waitUntil(10) { button.exists && button.isHittable },
+                          "Try Again is not hittable on the lock screen — \(screenText())")
+            XCTAssertTrue(button.label.contains("Try Again"), "the button does not read Try Again: '\(button.label)'")
+            button.tap()
+        }
+        tapTryAgain()
+        Thread.sleep(forTimeInterval: 2)
+        FaceID.noMatch()
+        XCTAssertTrue(cancel.waitForExistence(timeout: 15),
+                      "the first Try Again did not raise the Face ID prompt — \(screenText())")
+        cancel.tap()
+        XCTAssertTrue(cancel.waitForNonExistence(timeout: 10), "the relaunched prompt did not close on Cancel")
+        XCTAssertTrue(element("appLockFailureReason").waitForExistence(timeout: 10),
+                      "no failure reason after the second Cancel — \(screenText())")
+
+        tapTryAgain()
+        Thread.sleep(forTimeInterval: 2)
+        FaceID.match()
+        XCTAssertTrue(element("AppLockOverlay").waitForNonExistence(timeout: 20),
+                      "the second Try Again did not lift the lock on a matching face — \(screenText())")
     }
 
     /// AC-26.4: the share extension (system text size, see the file header).

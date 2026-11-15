@@ -63,4 +63,66 @@ extension View {
     ) -> some View {
         modifier(AppSensoryFeedbackModifier(feedback: feedback, trigger: trigger, onEmit: onEmit))
     }
+
+    /// Same gate, observable by UI tests: with `-uiTestHapticProbe YES` a
+    /// one-point element `hapticProbe.<probe>` reads "<last played> calls=<n>"
+    /// (`none` when the setting silenced the feedback). In production
+    /// (`HapticProbe.isEnabled == false`) this is exactly the plain gate.
+    @ViewBuilder
+    func appSensoryFeedback<T: Equatable>(
+        _ feedback: SensoryFeedback,
+        trigger: T,
+        probe: String
+    ) -> some View {
+        if HapticProbe.isEnabled {
+            modifier(HapticProbeModifier(feedback: feedback, trigger: trigger, probe: probe))
+        } else {
+            appSensoryFeedback(feedback, trigger: trigger)
+        }
+    }
+}
+
+/// UI-test probe of the haptic gate (L-31). Off unless the app is launched with
+/// `-uiTestHapticProbe YES`.
+enum HapticProbe {
+    static let defaultsKey = "uiTestHapticProbe"
+    static let isEnabled = UserDefaults.standard.bool(forKey: defaultsKey)
+
+    static func label(for played: SensoryFeedback?) -> String {
+        guard let played else { return "none" }
+        switch played {
+        case .success: return "success"
+        case .warning: return "warning"
+        case .error: return "error"
+        case .start: return "start"
+        case .stop: return "stop"
+        default: return "other"
+        }
+    }
+}
+
+private struct HapticProbeModifier<T: Equatable>: ViewModifier {
+    let feedback: SensoryFeedback
+    let trigger: T
+    let probe: String
+    @State private var lastLabel = "none"
+    @State private var calls = 0
+
+    func body(content: Content) -> some View {
+        content
+            .appSensoryFeedback(feedback, trigger: trigger) { played in
+                Task { @MainActor in
+                    lastLabel = HapticProbe.label(for: played)
+                    calls += 1
+                }
+            }
+            .overlay(alignment: .topLeading) {
+                Color.clear
+                    .frame(width: 1, height: 1)
+                    .allowsHitTesting(false)
+                    .accessibilityElement(children: .ignore)
+                    .accessibilityIdentifier("hapticProbe.\(probe)")
+                    .accessibilityValue(Text(verbatim: "\(lastLabel) calls=\(calls)"))
+            }
+    }
 }
