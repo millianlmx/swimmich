@@ -1,0 +1,6 @@
+series: after
+state: filters-sheet
+buttons: 9
+controls: searchFilterDone | searchFilterPeople | searchFilterReset | searchFilterStar1 | searchFilterStar2 | searchFilterStar3 | searchFilterStar4 | searchFilterStar5 | searchFilterTags
+field_at_top: no
+chips: no
