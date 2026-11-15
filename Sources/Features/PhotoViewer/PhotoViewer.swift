@@ -337,6 +337,13 @@ struct PhotoViewer: View {
     /// demand from the top-bar button so the slideshow always starts on the
     /// photo that is on screen.
     @State private var slideshowVM: SlideshowViewModel?
+    /// Screen-lock seam handed to the slideshow; read by the test probe.
+    var idleTimer: any IdleTimerControlling = DependencyContainer.shared.idleTimer
+    @State private var favoriteFeedbackTick = 0
+    @State private var deleteFeedbackTick = 0
+    /// Test probe only (`-uiTestViewerProbe`): last haptic returned by the gate, and how many.
+    @State private var probeHaptic = "none"
+    @State private var probeHapticCount = 0
 
     // MARK: Zoom transition state (L-14) — all inert without a zoom source.
     @State private var zoomPhase: ViewerZoomPhase
@@ -525,6 +532,8 @@ struct PhotoViewer: View {
             }
             .animation(PVMotion.movement(PVMotion.standard, reduceMotion: reduceMotion), value: share.isDownloading)
             .appSensoryFeedback(.success, trigger: editedCopyTick)
+            .appSensoryFeedback(ViewerActionFeedback.favorite, trigger: favoriteFeedbackTick, onEmit: probeEmit)
+            .appSensoryFeedback(ViewerActionFeedback.delete, trigger: deleteFeedbackTick, onEmit: probeEmit)
             // The chrome RESERVES layout space (not an overlay): the top bar and
             // the filmstrip+bottom bar inset the pager, so the photo fits the box
             // "screen width × height between the top buttons and the filmstrip".
@@ -718,6 +727,8 @@ struct PhotoViewer: View {
                 .zIndex(10)
             }
         }
+        // Above the slideshow: the probe also reports the idle-timer flag.
+        .overlay(alignment: .topLeading) { probeElement }
         // The map hands over items of unknown visibility: read the displayed
         // page's from the server (re-runs on a page change, and on a return to
         // a page whose read failed). No Archive/Unarchive button until resolved.
@@ -788,7 +799,8 @@ struct PhotoViewer: View {
                                 showOcr: showOcr && asset.isImage,
                                 client: client,
                                 placeholder: asset.id == openingAssetID ? openingImage : nil,
-                                onDisplayedFrameChange: displayedFrameReporter(for: asset.id)
+                                onDisplayedFrameChange: displayedFrameReporter(for: asset.id),
+                                offersRetry: true
                             )
                             if asset.livePhotoVideoId != nil {
                                 livePhotoOverlay(asset)
@@ -1317,10 +1329,41 @@ struct PhotoViewer: View {
     /// here (top bar button), never stored while inactive — closing the
     /// overlay nils it out, so the next start begins fresh.
     private func presentSlideshow() {
-        let vm = SlideshowViewModel(assets: localAssets, startIndex: selectedIndex, appSettings: appSettings)
+        let vm = SlideshowViewModel(
+            assets: localAssets, startIndex: selectedIndex, appSettings: appSettings, idleTimer: idleTimer
+        )
         // No `vm.start()` here — `SlideshowView.onAppear` starts the loop,
         // avoiding a double start (and the VM is created fresh each time).
         slideshowVM = vm
+    }
+
+    // MARK: - Test probe (`-uiTestViewerProbe`)
+
+    /// Reports what the haptic gate returned; nil (and no modifier work) without the probe.
+    private var probeEmit: ((SensoryFeedback?) -> Void)? {
+        guard ViewerProbe.isEnabled else { return nil }
+        return { played in
+            guard let label = ViewerProbe.label(for: played) else { return }
+            // Never write state while the view is being updated.
+            Task { @MainActor in
+                probeHapticCount += 1
+                probeHaptic = "\(label)#\(probeHapticCount)"
+            }
+        }
+    }
+
+    @ViewBuilder
+    private var probeElement: some View {
+        if ViewerProbe.isEnabled {
+            // Read for re-evaluation only: the value shown is the system's.
+            let _ = idleTimer.isIdleTimerDisabled
+            Color.clear
+                .frame(width: 1, height: 1)
+                .allowsHitTesting(false)
+                .accessibilityElement(children: .ignore)
+                .accessibilityIdentifier("viewerProbe")
+                .accessibilityValue(Text(verbatim: "haptic=\(probeHaptic) idle=\(UIApplication.shared.isIdleTimerDisabled ? "on" : "off")"))
+        }
     }
 
     // MARK: - Info panel
@@ -1495,6 +1538,8 @@ struct PhotoViewer: View {
 
     /// Favorite — uses the surface VM callback when provided, else self-contained.
     private func toggleFavorite(_ asset: AssetReactItem) {
+        // At the gesture, whichever path runs below and whatever the server answers.
+        favoriteFeedbackTick &+= 1
         let newValue = !favoriteIDs.contains(asset.id)
         if newValue {
             favoriteIDs.insert(asset.id)
@@ -1573,6 +1618,7 @@ struct PhotoViewer: View {
             pendingDeleteIndex = nil
             return
         }
+        deleteFeedbackTick &+= 1
         let asset = localAssets[index]
         pendingDeleteIndex = nil
         if deleteIsPermanent {
@@ -1709,6 +1755,30 @@ struct PhotoViewer: View {
     /// Long-form localized date for the tapped photo ("July 29, 2024").
     private func headerDate(for asset: AssetReactItem) -> String {
         LongDateFormatter.format(isoPrefix: asset.fileCreatedAt)
+    }
+}
+
+/// The two haptics the viewer owns (L-29), played at the gesture: a favorite
+/// toggle (added or removed) and a confirmed delete. The "Haptic Feedback"
+/// setting silences both through `appSensoryFeedback`.
+enum ViewerActionFeedback {
+    static let favorite: SensoryFeedback = .success
+    static let delete: SensoryFeedback = .warning
+}
+
+/// UI-test switch, off in production (same model as `ImageLoadProbe`):
+/// `-uiTestViewerProbe YES` adds the `viewerProbe` element that reads the
+/// haptic the gate actually returned and the system idle-timer flag.
+enum ViewerProbe {
+    static let defaultsKey = "uiTestViewerProbe"
+    static let isEnabled = UserDefaults.standard.bool(forKey: defaultsKey)
+
+    /// Names what the haptic gate returned (`nil`: nothing was played).
+    static func label(for played: SensoryFeedback?) -> String? {
+        guard let played else { return nil }
+        if played == ViewerActionFeedback.favorite { return "success" }
+        if played == ViewerActionFeedback.delete { return "warning" }
+        return "other"
     }
 }
 

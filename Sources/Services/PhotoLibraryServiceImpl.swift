@@ -537,19 +537,22 @@ extension PhotoLibraryServiceImpl: BackupAssetSource {
             // (which can legitimately take minutes) and delete its half-written temp
             // file. Instead, a stall watchdog trips only after `stallInterval`
             // with neither a progress tick nor completion — so a download that keeps
-            // making progress is never dropped, only a truly hung request is. It
-            // does not cancel the request: the download lands in the library and
-            // the deferred asset is picked up by the next run.
+            // making progress is never dropped, only a truly hung request is. The
+            // `catch` below cancels the abandoned request so that no download keeps
+            // running behind the app's back (a stack of them made Photos pull the
+            // whole library); the deferred asset is retried by the next run.
             let watchdog = StallWatchdog(interval: stallInterval) {
                 gate.finish(with: .failure(BackupExportError.cloudDownloadPending))
             }
             watchdog.pet()
             let requestID = source.requestData(
                 { fraction in
+                    guard !gate.isSettled else { return }
                     watchdog.pet()
                     onState(.downloadingFromICloud(fraction: fraction))
                 },
                 { data in
+                    guard !gate.isSettled else { return }
                     watchdog.pet()
                     if let writeError = writer.append(data) {
                         request.cancel()
@@ -572,6 +575,11 @@ extension PhotoLibraryServiceImpl: BackupAssetSource {
                 }
                 return dest
             } catch {
+                // Only the watchdog fails the gate with a `BackupExportError`. The
+                // gate is already settled, so whatever Photos delivers in answer
+                // to the cancellation cannot change the outcome. Cancelling first
+                // guarantees no request of this call is alive when it returns.
+                if error is BackupExportError { request.cancel() }
                 _ = writer.close()
                 try? FileManager.default.removeItem(at: dest)
                 // Whatever error Photos reports after `cancelDataRequest`, a
@@ -866,6 +874,14 @@ final class ContinuationGate<Value>: @unchecked Sendable {
     private var continuation: CheckedContinuation<Value, Error>?
     private var pending: Result<Value, Error>?
     private var settled = false
+
+    /// True from the first `finish` on. Lets late callbacks of an abandoned
+    /// request drop themselves instead of writing or reporting progress.
+    var isSettled: Bool {
+        lock.lock()
+        defer { lock.unlock() }
+        return settled
+    }
 
     var value: Value {
         get async throws {

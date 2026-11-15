@@ -32,7 +32,7 @@ La parité avec le client Flutter est suivie dans [`docs/mobile-features-vs-flut
 | Domaine | Contenu | Code |
 |---|---|---|
 | **Timeline** | buckets par jour, zoom de grille, vignettes | `Sources/Features/Timeline/` |
-| **Visionneuse** | plein écran, zoom, filmstrip, vidéo, diaporama, panneau EXIF, stacks, visages | `Sources/Features/PhotoViewer/` |
+| **Visionneuse** | plein écran, zoom, filmstrip, vidéo, diaporama, panneau EXIF, stacks, visages ; « Réessayer » sur une photo qui ne se charge pas et sur le panneau de détails ; retour haptique sur le favori et la suppression (suit le réglage Retour haptique) ; l'écran reste allumé tant que le diaporama est affiché ; une vidéo dont la copie hors ligne est illisible est lue depuis le flux transcodé du serveur | `Sources/Features/PhotoViewer/` |
 | **Recherche** | sémantique (CLIP), lieux (carte), filtres par personnes, tags, « hors album », favoris et archive, recherche de texte dans le nom de fichier ou la description, densité de grille réglée dans les préférences, sélection multiple des résultats avec les actions de lot de la timeline | `Sources/Features/Search/` |
 | **Albums** | CRUD, partage, flux d'activité | `Sources/Features/Albums/` |
 | **Personnes, tags, doublons, corbeille** | gestion des visages, tags, détection de doublons, restauration | `Sources/Features/People/`, `Tags/`, `Duplicates/`, `Trash/` |
@@ -54,7 +54,7 @@ MVVM strict en 4 couches. Les protocoles de `Core/Protocols/` sont **immuables**
 | Couche | Rôle | Contenu |
 |---|---|---|
 | `Sources/Core/Types/` | DTOs de l'API | `DTOs*.swift`, `SearchDTOs.swift`, `APIError.swift`, … |
-| `Sources/Core/Protocols/` | Contrats (seul point d'injection) | `ImmichClient`, `PhotoLibraryService`, `BackupAssetSource`, `BackupLedgerStoring`, `KeychainStore`, `TrustedServerStore`, `AppLockService`, `VideoPlaybackEngine` |
+| `Sources/Core/Protocols/` | Contrats (seul point d'injection) | `ImmichClient`, `PhotoLibraryService`, `BackupAssetSource`, `BackupLedgerStoring`, `KeychainStore`, `TrustedServerStore`, `AppLockService`, `VideoPlaybackEngine`, `IdleTimerControlling` |
 | `Sources/Services/` | Implémentations | `ImmichAPIClient`, `PhotoLibraryServiceImpl`, `BackupEngine`, `BackupLedger`, `MultipartBody`, `ImageCache`, `AuthenticatedAsyncImage`, `RealtimeService` (Socket.IO), `KeychainStoreImpl`, … |
 | `Sources/Features/<Feature>/` | MVVM par feature | `<Feature>ViewModel.swift` (`@Observable`, `@MainActor`) + `<Feature>View.swift` (stateless) |
 

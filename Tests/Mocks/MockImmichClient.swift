@@ -1490,9 +1490,15 @@ final class MockImmichClient: ImmichClient, @unchecked Sendable {
         return uploadResponse ?? AssetMediaResponseDto(id: "new-asset", status: "created")
     }
 
+    /// Awaited in `bulkUploadCheck` after the chunk is recorded, before the error
+    /// check: holds a batch in its server check, while `currentAssetID` is still
+    /// the last asset the export loop visited.
+    var bulkUploadCheckGate: (() async throws -> Void)?
+
     func bulkUploadCheck(_ request: AssetBulkUploadCheckRequest) async throws -> AssetBulkUploadCheckResponse {
         bump()
         bulkUploadCheckChunks.append(request.assets)
+        if let gate = bulkUploadCheckGate { try await gate() }
         if let e = globalError { throw e }
         if let responder = bulkUploadCheckResponder { return responder(request.assets) }
         return bulkUploadCheckResponse ?? AssetBulkUploadCheckResponse(results: [])

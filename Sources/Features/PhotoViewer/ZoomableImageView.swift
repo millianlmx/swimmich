@@ -61,6 +61,9 @@ struct ZoomableImageView: View {
     /// Reports the frame the image is drawn in (`.global`, zoom and pan
     /// included) each time it changes. The viewer closes onto it.
     var onDisplayedFrameChange: ((CGRect) -> Void)? = nil
+    /// Full-screen pages offer "Try Again" when the image fails to load
+    /// (viewer pager, shared-link pager). Off elsewhere: no extra state or layer.
+    var offersRetry: Bool = false
 
     @State private var scale: CGFloat = 1
     @State private var lastScale: CGFloat = 1
@@ -70,6 +73,9 @@ struct ZoomableImageView: View {
     @State private var dimensions: AssetPixelSizeViewModel?
     @State private var decodedSize: CGSize?
     @State private var pageFrame: CGRect = .zero
+    /// One per page (the pager gives each page `.id(asset.id)`): a failure never
+    /// reaches another page.
+    @State private var imageLoad = ViewerImageLoadViewModel()
 
     /// Image-quality preference (gap G22): original file or the server's
     /// `.fullsize` rendition. Read at render time, so a page already on screen
@@ -116,6 +122,12 @@ struct ZoomableImageView: View {
                 viewport: proxy.size,
                 displayScale: displayScale
             )
+            // The result of THIS attempt only: a late answer of an older one is dropped by the model.
+            let attempt = imageLoad.attempt
+            let model = imageLoad
+            let outcomeReport: ((ImageSourceOutcome) -> Void)? = offersRetry
+                ? { outcome in model.record(outcome, forAttempt: attempt) }
+                : nil
             // Explicit full frame: GeometryReader aligns its child top-leading,
             // so a content-sized `.fit` image would sit at the top, not centered.
             // The frame fills the page and centers the fitted image in both axes.
@@ -136,7 +148,9 @@ struct ZoomableImageView: View {
                     scale, maxScale, offset.width, offset.height, fitted.width, fitted.height
                 ),
                 onImageSize: { decodedSize = $0 },
-                placeholder: placeholder
+                placeholder: placeholder,
+                reloadToken: offersRetry ? imageLoad.attempt : 0,
+                onSourceOutcome: outcomeReport
             )
             .accessibilityIdentifier("viewerImage_\(asset.id)")
             .frame(width: proxy.size.width, height: proxy.size.height)
@@ -214,6 +228,21 @@ struct ZoomableImageView: View {
                         viewportSize: proxy.size
                     )
                     .transition(.opacity)
+                }
+            }
+            // Retry state of the full-screen page: OUTSIDE the `scaleEffect`
+            // like the OCR layer, so it never zooms. The provisional image
+            // stays visible under it (decision #6).
+            .overlay {
+                if offersRetry {
+                    if imageLoad.showsRetry {
+                        ViewerImageFailureView(assetID: asset.id, retry: { imageLoad.retry() })
+                    } else if imageLoad.showsRetryProgress {
+                        ProgressView()
+                            .controlSize(.large)
+                            .tint(.white) // DS-exempt: loading state on black
+                            .pvLoadingIndicator("viewerImageLoading_\(asset.id)")
+                    }
                 }
             }
         }

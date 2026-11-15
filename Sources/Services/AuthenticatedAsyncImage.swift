@@ -34,6 +34,12 @@ enum ImageLoadState: Equatable {
     }
 }
 
+/// Outcome of one load of the requested source (offline copy, memory cache or
+/// network), independent of any provisional image shown meanwhile.
+enum ImageSourceOutcome: Equatable {
+    case loaded, failed
+}
+
 /// UI-test probe switch (`-uiTestImageProbe YES`). Off in production and in
 /// every existing scenario: the loader then adds no accessibility modifier.
 enum ImageLoadProbe {
@@ -111,6 +117,14 @@ struct AuthenticatedAsyncImage: View {
     /// the provisional cached thumbnail. The viewer fits its zoom geometry to it.
     var onImageSize: ((CGSize) -> Void)? = nil
 
+    /// Bumping it re-runs the load and makes the request bypass the URL cache
+    /// (the viewer's "Try Again").
+    var reloadToken: Int = 0
+
+    /// Result of the *requested* source, whatever provisional image is on
+    /// screen. Once per `load()`; silent on cancellation and when `url` is nil.
+    var onSourceOutcome: ((ImageSourceOutcome) -> Void)? = nil
+
     @State private var image: UIImage?
     @State private var placeholderImage: UIImage?
     @State private var didFail = false
@@ -127,7 +141,9 @@ struct AuthenticatedAsyncImage: View {
         thumbhash: String? = nil,
         probeExtra: String? = nil,
         onImageSize: ((CGSize) -> Void)? = nil,
-        placeholder: UIImage? = nil
+        placeholder: UIImage? = nil,
+        reloadToken: Int = 0,
+        onSourceOutcome: ((ImageSourceOutcome) -> Void)? = nil
     ) {
         self.url = url
         self.token = token
@@ -138,6 +154,8 @@ struct AuthenticatedAsyncImage: View {
         self.thumbhash = thumbhash
         self.probeExtra = probeExtra
         self.onImageSize = onImageSize
+        self.reloadToken = reloadToken
+        self.onSourceOutcome = onSourceOutcome
         // A caller-provided provisional image (the viewer's flying image) wins
         // over the ThumbHash: `load()` never clears `placeholderImage`, so it
         // stays under the real image until that one is ready.
@@ -181,9 +199,15 @@ struct AuthenticatedAsyncImage: View {
     /// edit was saved or removed, L-21), so the file's modification date is part of the key: the
     /// replaced file is decoded again. Read with `FileManager`, which does not cache the value.
     private var loadKey: String {
-        guard let localFileURL else { return url?.absoluteString ?? "" }
-        let modified = (try? FileManager.default.attributesOfItem(atPath: localFileURL.path))?[.modificationDate] as? Date
-        return "\(localFileURL.path)|\(modified?.timeIntervalSinceReferenceDate ?? 0)"
+        let base: String
+        if let localFileURL {
+            let modified = (try? FileManager.default.attributesOfItem(atPath: localFileURL.path))?[.modificationDate] as? Date
+            base = "\(localFileURL.path)|\(modified?.timeIntervalSinceReferenceDate ?? 0)"
+        } else {
+            base = url?.absoluteString ?? ""
+        }
+        // The default token keeps every other screen's key unchanged.
+        return reloadToken == 0 ? base : "\(base)#\(reloadToken)"
     }
 
     /// `UIImage` isn't `Sendable`, so the detached hop hands back a box.
@@ -226,6 +250,7 @@ struct AuthenticatedAsyncImage: View {
                 self.image = local
                 loadState = ImageLoadState(loaded: local)
                 onImageSize?(local.size)
+                onSourceOutcome?(.loaded)
                 return
             }
         }
@@ -242,6 +267,7 @@ struct AuthenticatedAsyncImage: View {
             self.image = cached
             loadState = ImageLoadState(loaded: cached)
             onImageSize?(cached.size)
+            onSourceOutcome?(.loaded)
             return
         }
 
@@ -250,16 +276,20 @@ struct AuthenticatedAsyncImage: View {
         let epoch = await ImageCache.shared.epoch
         guard let img = await Self.fetchImage(
             for: url, token: token, customHeaders: CustomHeadersRegistry.shared.headers(for: url),
-            session: Self.imageSession, cache: Self.imageDiskCache
+            session: Self.imageSession, cache: Self.imageDiskCache, reload: reloadToken > 0
         ) else {
             if self.image == nil { didFail = true; loadState = .failed }
+            // Silent on cancellation: the view left, or a newer load owns the outcome.
+            if !Task.isCancelled { onSourceOutcome?(.failed) }
             return
         }
+        if Task.isCancelled { return }
         // Populate the memory tier for subsequent hits.
         await ImageCache.shared.store(img, for: url, epoch: epoch)
         self.image = img
         loadState = ImageLoadState(loaded: img)
         onImageSize?(img.size)
+        onSourceOutcome?(.loaded)
     }
 
     /// Disk then network tiers of the image pipeline, without any view state.
@@ -268,13 +298,16 @@ struct AuthenticatedAsyncImage: View {
     /// is served without a request. A network answer is copied there too.
     static func fetchImage(
         for url: URL, token: String?, customHeaders: [CustomHTTPHeader], session: URLSession, cache: URLCache,
-        addressBook: ServerAddressBook = .shared
+        reload: Bool = false, addressBook: ServerAddressBook = .shared
     ) async -> UIImage? {
         if let onDisk = canonicalDiskImage(for: url, cache: cache, addressBook: addressBook) {
             return onDisk
         }
         do {
             var request = URLRequest(url: url)
+            // An explicit retry must reach the server: the session's
+            // `.returnCacheDataElseLoad` would replay a cached failure.
+            if reload { request.cachePolicy = .reloadIgnoringLocalCacheData }
             ServerRequestAuthorization.apply(token: token, custom: customHeaders, to: &request)
             // Tiers 2+3 — URLCache dedup + network.
             let (data, response) = try await session.data(for: request)
