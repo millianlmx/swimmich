@@ -206,15 +206,18 @@ final class ReadmeScreenshotsUITests: XCTestCase {
 
         // 3. Albums: the four album cards.
         openTab(["Albums"])
-        XCTAssertTrue(element("albumCard_\(albumID(4))").waitForExistence(timeout: 20), "the albums did not load")
-        XCTAssertFalse(element("albumsEmptyState").exists, "Albums shows its empty state")
-        // The Library section tops the scroll view and pushes the cards below the fold: scroll until all four fit.
+        // The Library section tops the scroll view and its 12 tiles push the album cards below the fold; the
+        // cards sit in a LazyVGrid, so one that is off screen is not in the accessibility tree at all. Wait for
+        // the screen itself, then scroll until all four cards exist and fit together.
+        XCTAssertTrue(element("albumsLibrarySection").waitForExistence(timeout: 20), "the Albums tab did not open")
         let cards = (1...4).map { element("albumCard_\(albumID($0))") }
         let fourCardsOnScreen = { cards.allSatisfy { $0.exists && $0.isHittable } }
-        for _ in 0..<6 where !fourCardsOnScreen() {
+        for _ in 0..<8 where !fourCardsOnScreen() {
             app.swipeUp()
-            _ = waitUntil(1.5, fourCardsOnScreen)
+            _ = waitUntil(2, fourCardsOnScreen)
         }
+        XCTAssertFalse(element("albumsEmptyState").exists, "Albums shows its empty state")
+        XCTAssertFalse(element("albumsRetryButton").exists, "Albums shows its error state")
         XCTAssertTrue(fourCardsOnScreen(), "albums: the four album cards never fit on screen together")
         try capture("albums")
 
