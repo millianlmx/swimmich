@@ -116,8 +116,6 @@ final class VoiceOverLabelsUITests: XCTestCase {
         "Slideshow": ["en": "Slideshow", "fr": "Diaporama", "de": "Diashow", "es": "Presentación", "it": "Presentazione"],
         "on": ["en": "on", "fr": "Activé", "de": "Ein", "es": "Activado", "it": "Attivato"],
         "off": ["en": "off", "fr": "Désactivé", "de": "Aus", "es": "Desactivado", "it": "Disattivato"],
-        "On": ["en": "On", "fr": "Activé", "de": "Ein", "es": "Activado", "it": "Attivato"],
-        "Off": ["en": "Off", "fr": "Désactivé", "de": "Aus", "es": "Desactivado", "it": "Disattivato"],
         "Item": ["en": "Item", "fr": "Élément", "de": "Objekt", "es": "Elemento", "it": "Elemento"],
         "Item, %@": ["en": "Item, %@", "fr": "Élément, %@", "de": "Objekt, %@", "es": "Elemento, %@", "it": "Elemento, %@"],
         "Video %lld of %lld": ["en": "Video %lld of %lld", "fr": "Vidéo %lld sur %lld", "de": "Video %lld von %lld", "es": "Vídeo %lld de %lld", "it": "Video %lld di %lld"],
@@ -129,7 +127,7 @@ final class VoiceOverLabelsUITests: XCTestCase {
         "Smart": ["en": "Smart", "fr": "Intelligent", "de": "Intelligent", "es": "Inteligente", "it": "Intelligente"],
         "Metadata": ["en": "Metadata", "fr": "Métadonnées", "de": "Metadaten", "es": "Metadatos", "it": "Metadati"],
         "Save search…": ["en": "Save search…", "fr": "Enregistrer la recherche…", "de": "Suche speichern…", "es": "Guardar búsqueda…", "it": "Salva ricerca…"],
-        "Search typed text in detected text": ["en": "Search typed text in detected text", "fr": "Chercher le texte saisi dans le texte détecté", "de": "Eingegebenen Text im erkannten Text suchen", "es": "Buscar el texto escrito en el texto detectado", "it": "Cerca il testo digitato nel testo rilevato"],
+        "Search typed text in detected text: Off": ["en": "Search typed text in detected text: Off", "fr": "Chercher le texte saisi dans le texte détecté : désactivé", "de": "Eingegebenen Text im erkannten Text suchen: Aus", "es": "Buscar el texto escrito en el texto detectado: desactivado", "it": "Cerca il testo digitato nel testo rilevato: disattivato"],
         "Invite a partner": ["en": "Invite a partner", "fr": "Inviter un partenaire", "de": "Partner einladen", "es": "Invitar a un socio", "it": "Invita un partner"],
         "Stop sharing with %@": ["en": "Stop sharing with %@", "fr": "Ne plus partager avec %@", "de": "Teilen mit %@ beenden", "es": "Dejar de compartir con %@", "it": "Interrompi condivisione con %@"],
         "Copy link": ["en": "Copy link", "fr": "Copier le lien", "de": "Link kopieren", "es": "Copiar enlace", "it": "Copia link"],
@@ -296,8 +294,8 @@ final class VoiceOverLabelsUITests: XCTestCase {
                       "the video's Play/Pause did not flip from \"\(before)\" — it reads \"\(videoPlayPause.label)\"")
 
         // The search's detected-text toggle, in the "Search options" menu, is inactive
-        // (the stub's server predates the structured filter): its label reads its
-        // action and its "Off" subtitle (the iOS 26 menu item drops the value).
+        // (the stub's server predates the structured filter): its title reads its
+        // action and its state (the iOS 26 menu item reads only the title).
         relaunch(lang)
         openTab(4)
         let options = button("searchModeMenu")
@@ -306,10 +304,9 @@ final class VoiceOverLabelsUITests: XCTestCase {
         let filter = button("searchOcrFilterToggle")
         XCTAssertTrue(filter.waitForExistence(timeout: 20),
                       "search, detected-text filter inactive: no searchOcrFilterToggle among the app's buttons — \(screenReads())")
-        let action = text("Search typed text in detected text", lang)
-        let off = text("Off", lang)
-        XCTAssertTrue(filter.label.contains(action) && filter.label.contains(off),
-                      "the search's detected-text filter does not read \"\(action)\" and \"\(off)\": label '\(filter.label)'")
+        let expected = text("Search typed text in detected text: Off", lang)
+        XCTAssertTrue(filter.label == expected,
+                      "the search's detected-text filter does not read \"\(expected)\": label '\(filter.label)'")
         closeMenu("searchOcrFilterToggle")
 
         // The change-password screen's reveal: masked offers "Show password", revealed

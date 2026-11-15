@@ -40163,30 +40163,58 @@
         }
       }
     },
-    "Search typed text in detected text" : {
+    "Search typed text in detected text: Off" : {
       "localizations" : {
         "de" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Eingegebenen Text im erkannten Text suchen"
+            "value" : "Eingegebenen Text im erkannten Text suchen: Aus"
           }
         },
         "es" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Buscar el texto escrito en el texto detectado"
+            "value" : "Buscar el texto escrito en el texto detectado: desactivado"
           }
         },
         "fr" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Chercher le texte saisi dans le texte détecté"
+            "value" : "Chercher le texte saisi dans le texte détecté : désactivé"
           }
         },
         "it" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Cerca il testo digitato nel testo rilevato"
+            "value" : "Cerca il testo digitato nel testo rilevato: disattivato"
+          }
+        }
+      }
+    },
+    "Search typed text in detected text: On" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Eingegebenen Text im erkannten Text suchen: Ein"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Buscar el texto escrito en el texto detectado: activado"
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Chercher le texte saisi dans le texte détecté : activé"
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Cerca il testo digitato nel testo rilevato: attivato"
           }
         }
       }

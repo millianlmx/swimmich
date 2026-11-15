@@ -384,29 +384,25 @@ struct SearchView: View {
     /// interpreted, not which grid is shown. Only the metadata route carries
     /// the criterion, and only a server with the v3.2.0 structured filter has a
     /// field for it: on an older one the item stays in the menu, disabled,
-    /// rather than silently searching something else. A check mark and an
-    /// "On"/"Off" subtitle tell its state: the iOS 26 menu item drops
-    /// `.accessibilityValue`, but shows the second `Text` as a subtitle and
-    /// reads it as part of the label. Its label differs from the Filters
-    /// sheet's "Detected text" field, which sets the text itself.
+    /// rather than silently searching something else. The iOS 26 menu item
+    /// reads only its title — no `.accessibilityValue`, no subtitle — so the
+    /// title itself carries the state ("…: On" / "…: Off"), with a check mark
+    /// when on. Its label differs from the Filters sheet's "Detected text"
+    /// field, which sets the text itself.
     private var ocrFilterToggle: some View {
         Button {
             Task { await vm.setOcrFilterEnabled(!vm.ocrFilterEnabled) }
         } label: {
+            let title = Text(vm.ocrFilterEnabled
+                ? LocalizedStringKey("Search typed text in detected text: On")
+                : LocalizedStringKey("Search typed text in detected text: Off"))
             if vm.ocrFilterEnabled {
-                Label {
-                    Text("Search typed text in detected text")
-                    Text("On")
-                } icon: {
-                    Image(systemName: "checkmark")
-                }
+                Label { title } icon: { Image(systemName: "checkmark") }
             } else {
-                Text("Search typed text in detected text")
-                Text("Off")
+                title
             }
         }
         .disabled(vm.searchMode != .metadata || !vm.supportsStructuredSearch)
-        .accessibilityValue(vm.ocrFilterEnabled ? Text("on") : Text("off"))
         .accessibilityIdentifier("searchOcrFilterToggle")
     }
 
