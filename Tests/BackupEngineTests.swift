@@ -2684,7 +2684,9 @@ final class ICloudFirstRunBackupTests: XCTestCase {
     }
 
     /// AC-9 : le progrès tardif du dernier asset reporté, encore « courant » pendant
-    /// l'envoi du dernier lot, est lui aussi ignoré.
+    /// la vérification serveur du dernier lot (processBatch ne réécrit
+    /// `currentAssetID` qu'à l'envoi de chaque élément), est lui aussi ignoré : seule
+    /// la génération le distingue de l'asset courant.
     @MainActor
     func test_ICloudFirstRun_AC9_lateStateOfLastDeferredAssetIsDropped() async {
         resetBackupDirectory()
@@ -2692,7 +2694,7 @@ final class ICloudFirstRunBackupTests: XCTestCase {
         let client = MockImmichClient()
         acceptAll(client)
         let latch = TestLatch()
-        client.uploadGate = { try await latch.wait() }
+        client.bulkUploadCheckGate = { try await latch.wait() }
         let source = MockBackupAssetSource()
         source.candidates = [candidate("B"), candidate("A")]
         source.deferIDs = ["A"]
@@ -2702,7 +2704,9 @@ final class ICloudFirstRunBackupTests: XCTestCase {
         let run = Task { @MainActor in
             await engine.run(settings: BackupSettings(isEnabled: true), manual: true)
         }
-        await pollUntil("envoi de B suspendu") { client.uploads.count == 1 && engine.currentAssetID == "A" }
+        await pollUntil("vérification serveur du dernier lot suspendue") {
+            client.bulkUploadCheckChunks.count == 1 && engine.currentAssetID == "A"
+        }
         let lateOfA = source.onStateByID["A"]
         XCTAssertNotNil(lateOfA)
 
@@ -2715,6 +2719,8 @@ final class ICloudFirstRunBackupTests: XCTestCase {
         latch.open()
         await run.value
         XCTAssertEqual(engine.phase, .done)
+        XCTAssertEqual(engine.uploadedCount, 1)
+        XCTAssertEqual(engine.deferredCount, 1)
     }
 
     /// AC-11 : un asset dont iCloud n'émet son premier progrès qu'au double de
