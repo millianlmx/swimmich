@@ -332,18 +332,21 @@ class TestScreenshots(unittest.TestCase):
 class TestDocumentedCommands(unittest.TestCase):
     @unittest.skipUnless(shutil.which("xcrun") and shutil.which("xcodebuild"), "needs Xcode")
     def test_AC_21_readme_destination_exists_on_this_mac(self):
-        listing = json.loads(subprocess.run(["xcrun", "simctl", "list", "devices", "available", "-j"],
-                                            capture_output=True, text=True, check=True).stdout)
-        names = set()
-        for runtime, devices in listing["devices"].items():
-            match = re.search(r"\.iOS-(\d+)-", runtime)
-            if match and int(match.group(1)) >= 26:
-                names.update(d["name"] for d in devices)
+        # The CI Mac creates its simulators on demand (Scripts/ci.sh), so none is named "iPhone 17" there: what
+        # a Mac must offer is the device type and an iOS 26+ runtime, from which Xcode makes the device.
+        def simctl(*args):
+            return json.loads(subprocess.run(["xcrun", "simctl", "list", *args, "-j"],
+                                             capture_output=True, text=True, check=True).stdout)
+
+        types = {t["name"] for t in simctl("devicetypes")["devicetypes"]}
+        runtimes = [r for r in simctl("runtimes")["runtimes"]
+                    if r.get("isAvailable") and r["name"].startswith("iOS ") and int(r["version"].split(".")[0]) >= 26]
+        self.assertTrue(runtimes, "no iOS 26+ simulator runtime is installed")
         for name in READMES:
             destination = re.search(r"-destination 'platform=iOS Simulator,name=([^']+)'", section(name, "Tests"))
             with self.subTest(name=name):
                 self.assertIsNotNone(destination, "no simulator destination in the Tests section")
-                self.assertIn(destination.group(1), names, "no such simulator on an iOS 26+ runtime")
+                self.assertIn(destination.group(1), types, "no such simulator device type")
 
 
 def write_tool(path, body):
