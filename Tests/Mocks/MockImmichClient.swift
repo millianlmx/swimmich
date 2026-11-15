@@ -81,6 +81,8 @@ final class MockImmichClient: ImmichClient, @unchecked Sendable {
     /// `3.2.0` (or later) version here.
     var serverVersionResponse: ServerVersionResponseDto?
     var serverVersionError: Error?
+    /// Awaited in `serverVersion` after `bump()`, before the error check (L-26).
+    var serverVersionGate: (() async throws -> Void)?
     /// Whether `serverVersion()` is one of the `requestCount` requests. The
     /// search view model probes the version before every metadata request;
     /// suites that count *search* requests turn this off.
@@ -92,6 +94,8 @@ final class MockImmichClient: ImmichClient, @unchecked Sendable {
     var validateTokenCallCount = 0
     /// Awaited in `validateToken` after `bump()` and the recording, before the error check.
     var validateTokenGate: (() async throws -> Void)?
+    /// Awaited in `logout` after `bump()`, before the error check (L-26).
+    var logoutGate: (() async throws -> Void)?
 
     // Locked folder (gap G12)
     /// Awaited in `getAuthStatus` after the call is counted and before the
@@ -489,6 +493,7 @@ final class MockImmichClient: ImmichClient, @unchecked Sendable {
 
     func serverVersion() async throws -> ServerVersionResponseDto {
         if versionProbeCountsAsRequest { bump() }
+        if let gate = serverVersionGate { try await gate() }
         if let e = globalError ?? serverVersionError { throw e }
         return serverVersionResponse ?? ServerVersionResponseDto(major: 1, minor: 120, patch: 0, prerelease: nil)
     }
@@ -516,6 +521,7 @@ final class MockImmichClient: ImmichClient, @unchecked Sendable {
 
     func logout() async throws -> LogoutResponseDto {
         bump()
+        if let gate = logoutGate { try await gate() }
         if let e = globalError { throw e }
         return logoutResponse ?? LogoutResponseDto(successful: true, redirectUri: "")
     }
