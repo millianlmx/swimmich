@@ -165,14 +165,15 @@ immich_stub_widgets.py WidgetDisplaySizeUITests/test_AC_61_6_favoritesLargeOneFa
 
 # L-31 Confirmations as alerts, one bar on the Backup screen, haptics (AC-62, AC-64, AC-805, AC-806, AC-807, AC-809).
 # The backup tests seed a photo into Photos (the pass needs a candidate) on an erased device.
-# Core: the single bar of AC-64/AC-805, which no unit test proves. Release: the others double unit tests
-# of the same criteria (ConfirmationAlertGuardTests, the view models' test_AC_64/806/807/809); the Face ID
-# reason of AC-63 runs in DynamicTypeUITests/test_AC_26_4_appLock above.
+# All release: the night's suite is at its budget of 40 lines. The single bar of AC-64/AC-805 has no unit
+# test, so test_AC_64_backupFromMeHasOneBar is its only execution proof, weekly and on a release tag; the
+# others double unit tests of the same criteria (ConfirmationAlertGuardTests, the view models'
+# test_AC_64/806/807/809). The Face ID reason of AC-63 runs in DynamicTypeUITests/test_AC_26_4_appLock above.
 immich_stub_confirmations.py ConfirmationsUITests/test_AC_62_backupResetTracking --media L31-reset-tracking.png --erase --release
 immich_stub_confirmations.py ConfirmationsUITests/test_AC_809_backupScreenStartStop --media L31-backup-start-stop.png --erase --release
 immich_stub_confirmations.py ConfirmationsUITests/test_AC_809_syncStatusStartStop --media L31-sync-status.png --erase --release
 immich_stub_confirmations.py ConfirmationsUITests/test_AC_806_sharedLinkRevoke --release
-immich_stub_confirmations.py ConfirmationsUITests/test_AC_64_backupFromMeHasOneBar
+immich_stub_confirmations.py ConfirmationsUITests/test_AC_64_backupFromMeHasOneBar --release
 immich_stub_confirmations.py ConfirmationsUITests/test_AC_806_hapticsOffRevokePlaysNothing --release
 immich_stub_confirmations.py ConfirmationsUITests/test_AC_806_hapticsOffStopSharingPlaysNothing --release
 immich_stub_confirmations.py ConfirmationsUITests/test_AC_62_preferencesReset --release
