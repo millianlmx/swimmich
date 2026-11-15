@@ -505,7 +505,7 @@ class TestCaptureJob(unittest.TestCase):
             self.assertIn(wanted, block)
         self.assertNotIn("secrets.", block)
         self.assertNotIn("environment:", block)
-        self.assertEqual([n for n, b in jobs.items() if n != "readme-screenshots" and "contents: write" in b], [])
+        self.assertEqual(sorted(n for n, b in jobs.items() if "contents: write" in b), ["readme-screenshots", "search-captures"])
         self.assertRegex(self.workflow.split("\njobs:")[0], r"(?m)^permissions:\n  contents: read$")
 
 

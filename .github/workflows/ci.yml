@@ -33,6 +33,11 @@ name: CI
 # runner, pushes them to the branch `ci/readme-screenshots` (a push by the job's
 # token starts no workflow) and fails, saying so: the pictures are then committed
 # on the tested branch.
+#
+# The job "Search captures" photographs the Search tab (Scripts/ci-search-captures.sh).
+# The series that Scripts/search-captures-series names (`before` or `after`) is taken
+# and pushed to the branch `ci/search-captures-<series>` by the branch that owns it;
+# the other branches never touch it.
 on:
   push:
   schedule:
@@ -96,7 +101,7 @@ jobs:
     if: ${{ !cancelled() && github.event_name == 'push' }}
     runs-on: [self-hosted, macOS, ARM64, xcode]
     timeout-minutes: 60
-    # The only job that writes to the repository (the workflow default is read-only).
+    # One of the two jobs that write to the repository (with search-captures); the workflow default is read-only.
     permissions:
       contents: write
     steps:
@@ -106,6 +111,24 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ github.token }}
         run: Scripts/ci-readme-screenshots.sh
+
+  search-captures:
+    name: Search captures
+    # The before/after pictures of the Search redesign (Scripts/ci-search-captures.sh).
+    needs: unit-tests
+    if: ${{ !cancelled() && github.event_name == 'push' }}
+    runs-on: [self-hosted, macOS, ARM64, xcode]
+    timeout-minutes: 60
+    # Pushes only its series branch ci/search-captures-<series>.
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Capture the Search screens of the series this branch owns
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: Scripts/ci-search-captures.sh
 
   ui-suite:
     name: UI suite (iOS simulator)

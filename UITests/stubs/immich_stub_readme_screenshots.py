@@ -26,7 +26,10 @@ THE SEARCH
     `POST /api/search/smart` and `/metadata` match the word of `query` against the
     tags of each picture ("nature" gives the butterfly, the flower and the iguana).
     An empty query gives every photo, a word no picture carries gives none; one page.
+    A non-empty `city` keeps only the photos taken in that city (NFC, case-folded:
+    "québec" is Québec); `SearchCapturesUITests` filters by city through the sheet.
 """
+import unicodedata
 from pathlib import Path
 
 from immich_stub_base import Response, asset, bucket_payload, main, router
@@ -171,6 +174,10 @@ def album_detail(req):
 # MARK: - Search
 
 
+def _fold(text):
+    return unicodedata.normalize("NFC", str(text)).casefold()
+
+
 def _results(req):
     body = req.body if isinstance(req.body, dict) else {}
     if body.get("albumIds"):
@@ -179,6 +186,9 @@ def _results(req):
     else:
         word = str(body.get("query") or "").strip().lower()
         numbers = [n for n in range(1, COUNT + 1) if not word or word in photo_of(n)[3]]
+        city = body.get("city")
+        if city:
+            numbers = [n for n in numbers if _fold(photo_of(n)[4]) == _fold(city)]
     req.note(matched=len(numbers))
     items = [asset_dto(n) for n in numbers] if int(body.get("page") or 1) == 1 else []
     return Response({"assets": {"count": len(items), "items": items, "nextPage": None, "nextCursor": None}})
