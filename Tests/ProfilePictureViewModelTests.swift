@@ -15,7 +15,7 @@ final class ProfilePictureViewModelTests: XCTestCase {
     override func setUp() {
         super.setUp()
         client = MockImmichClient()
-        vm = ProfilePictureViewModel(client: client, baseURL: baseURL, token: "token")
+        vm = ProfilePictureViewModel(client: client, baseURL: { [baseURL] in baseURL }, token: "token")
     }
 
     override func tearDown() {
@@ -239,6 +239,23 @@ final class ProfilePictureViewModelTests: XCTestCase {
         XCTAssertEqual(first?.query, "v=t1")
         XCTAssertEqual(vm.avatarURL?.query, "v=t2")
         XCTAssertNotEqual(first, vm.avatarURL)
+    }
+
+    /// L-26: the closure is read at every use, so a switch of address moves the
+    /// avatar to the new origin, path and query kept.
+    func test_AC_49_avatarFollowsActiveAddress() async {
+        var current = URL(string: "https://immich.example.com")!
+        let followed = ProfilePictureViewModel(client: client, baseURL: { current }, token: "token")
+        client.getMyUserResponse = profile(path: "upload/me/a.jpg", changedAt: "t1")
+        await followed.load()
+        XCTAssertEqual(followed.avatarURL?.host, "immich.example.com")
+
+        current = URL(string: "http://192.168.1.10:2283")!
+
+        XCTAssertEqual(followed.avatarURL?.host, "192.168.1.10")
+        XCTAssertEqual(followed.avatarURL?.port, 2283)
+        XCTAssertEqual(followed.avatarURL?.path, "/api/users/me/profile-image")
+        XCTAssertEqual(followed.avatarURL?.query, "v=t1")
     }
 
     func test_avatarURL_isNilWithoutAPhoto() async {

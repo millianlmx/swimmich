@@ -15,7 +15,10 @@ final class RoadTripViewModel {
     let client: any ImmichClient
     let albumId: String
     let albumTitle: String
-    let baseURL: URL
+    /// The address in use, read at every use (L-26): a switch of address during a
+    /// road trip moves the thumbnails to the new one.
+    var baseURL: URL { baseURLProvider() }
+    private let baseURLProvider: @Sendable () -> URL
     let token: String?
     private let photos: PhotoLibraryService
 
@@ -56,7 +59,7 @@ final class RoadTripViewModel {
         albumId: String,
         selectedAssetIds: Set<String>?,
         albumTitle: String,
-        baseURL: URL,
+        baseURL: @escaping @Sendable () -> URL,
         token: String?,
         photos: PhotoLibraryService,
         session: @escaping @Sendable () -> URLSession
@@ -65,7 +68,7 @@ final class RoadTripViewModel {
         self.albumId = albumId
         self.selectedAssetIds = selectedAssetIds
         self.albumTitle = albumTitle
-        self.baseURL = baseURL
+        self.baseURLProvider = baseURL
         self.token = token
         self.photos = photos
         self.session = session
@@ -182,15 +185,16 @@ final class RoadTripViewModel {
         rebuildTimeline()
     }
 
-    private func validAssetIDs(_ assets: [AssetReactItem]) async -> Set<String> {
+    func validAssetIDs(_ assets: [AssetReactItem]) async -> Set<String> {
         let session = self.session
-        let base = baseURL
         let tok = token
         var valid = Set<String>()
         let chunkSize = 8
         var offset = 0
         while offset < assets.count {
             if Task.isCancelled { break }
+            // Read per batch (L-26): a switch of address moves the next batch.
+            let base = baseURL
             let epoch = await ImageCache.shared.epoch
             let chunk = Array(assets[offset..<min(offset + chunkSize, assets.count)])
             let results = await withTaskGroup(of: (String, UIImage?, Double?).self) { group in
@@ -363,14 +367,7 @@ final class RoadTripViewModel {
         lastReportedProgress = 0
         exportState = .rendering(0)
 
-        let config = RoadTripRenderConfig(
-            size: CGSize(width: 1080, height: 1920),
-            fps: 30,
-            baseURL: baseURL,
-            token: token,
-            albumTitle: albumTitle,
-            reduceMotion: reduceMotion
-        )
+        let config = makeRenderConfig(reduceMotion: reduceMotion)
         let renderer = RoadTripVideoRenderer(session: session)
         let clusters = self.clusters
         let photos = self.photos
@@ -401,6 +398,18 @@ final class RoadTripViewModel {
                 }
             }
         }
+    }
+
+    /// The render keeps the address read here, at its start (L-26).
+    func makeRenderConfig(reduceMotion: Bool) -> RoadTripRenderConfig {
+        RoadTripRenderConfig(
+            size: CGSize(width: 1080, height: 1920),
+            fps: 30,
+            baseURL: baseURL,
+            token: token,
+            albumTitle: albumTitle,
+            reduceMotion: reduceMotion
+        )
     }
 
     func cancelExport() {

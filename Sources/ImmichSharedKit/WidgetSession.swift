@@ -38,6 +38,20 @@ public struct WidgetSession: Codable, Equatable, Sendable {
     /// older stored session has no such key and must keep decoding.
     public var customHeaders: [CustomHTTPHeader]?
 
+    /// L-26: the local address of the server and the switch the user set in
+    /// "Network". `baseURL` is the external address; a widget and the share
+    /// extension pick between the two by `ServerAddressSelector`, as the app does
+    /// (`WidgetEndpointResolver`). All optional: a session stored by an earlier
+    /// build has no such key and must keep decoding (it then stays on `baseURL`).
+    public var localURL: String?
+    public var autoSwitch: Bool?
+    /// `"major.minor.patch"` the local address must answer with when the
+    /// external one is mute.
+    public var lastKnownVersion: String?
+    /// The address the user connected with: the key of the custom headers and
+    /// of the client certificate, whichever address a request goes to.
+    public var accountURL: String?
+
     public init(
         baseURL: String,
         token: String,
@@ -45,7 +59,11 @@ public struct WidgetSession: Codable, Equatable, Sendable {
         userId: String? = nil,
         trustedHosts: [String]? = nil,
         deviceId: String? = nil,
-        customHeaders: [CustomHTTPHeader]? = nil
+        customHeaders: [CustomHTTPHeader]? = nil,
+        localURL: String? = nil,
+        autoSwitch: Bool? = nil,
+        lastKnownVersion: String? = nil,
+        accountURL: String? = nil
     ) {
         self.baseURL = baseURL
         self.token = token
@@ -54,9 +72,40 @@ public struct WidgetSession: Codable, Equatable, Sendable {
         self.trustedHosts = trustedHosts
         self.deviceId = deviceId
         self.customHeaders = customHeaders
+        self.localURL = localURL
+        self.autoSwitch = autoSwitch
+        self.lastKnownVersion = lastKnownVersion
+        self.accountURL = accountURL
     }
 
     public var trustedHostSet: Set<String> { Set(trustedHosts ?? []) }
+
+    /// The settings the app published, in the shape `ServerAddressSelector` reads.
+    public var addressSettings: ServerAddressSettings {
+        ServerAddressSettings(
+            localURL: localURL, externalURL: baseURL,
+            autoSwitch: autoSwitch ?? false, lastKnownVersion: lastKnownVersion
+        )
+    }
+
+    /// The key the client certificate of this server is saved under: the one of
+    /// `accountURL` for the local and the external address alike (L-26), the key
+    /// itself for any other server.
+    public func canonicalKey(for key: ServerKey) -> ServerKey {
+        func serverKey(_ text: String?) -> ServerKey? { text.flatMap { URL(string: $0) }.flatMap { ServerKey(url: $0) } }
+        guard let owner = serverKey(accountURL ?? baseURL) else { return key }
+        let aliases: [ServerKey?] = [serverKey(localURL), serverKey(baseURL)]
+        return aliases.contains(key) ? owner : key
+    }
+
+    /// The same session, sent to `url` (the local address the resolver retained).
+    public func retargeted(to url: URL) -> WidgetSession {
+        var copy = self
+        var text = url.absoluteString
+        while text.hasSuffix("/") { text.removeLast() }
+        copy.baseURL = text
+        return copy
+    }
 }
 
 /// Read/write seam for `WidgetSession`. The app writes on sign-in and clears on
@@ -186,7 +235,11 @@ public final class WidgetTrustDelegate: NSObject, URLSessionTaskDelegate, @unche
         didReceive challenge: URLAuthenticationChallenge,
         completionHandler: @escaping (URLSession.AuthChallengeDisposition, URLCredential?) -> Void
     ) {
-        if let (disposition, credential) = clientCertificates.answer(challenge) {
+        // The certificate of the account answers for its local address too (L-26).
+        let responder = sessionStore.load().map { stored in
+            clientCertificates.aliasing { stored.canonicalKey(for: $0) }
+        } ?? clientCertificates
+        if let (disposition, credential) = responder.answer(challenge) {
             completionHandler(disposition, credential)
             return
         }

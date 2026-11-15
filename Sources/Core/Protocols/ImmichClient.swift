@@ -11,12 +11,27 @@ protocol ImmichClient: AnyObject, Sendable {
     /// Configures the server base URL + bearer token. Called by AuthViewModel.
     func configure(baseURL: URL?, token: String?)
 
+    /// Points the client at another address of the SAME server (L-26: the local
+    /// or the external one) and keeps the token and the shared-link visit, which
+    /// are valid on both. `configure` ends that visit; this does not.
+    func retarget(baseURL: URL)
+
     /// Delegate notified on global 401 (FM-4).
     var authDelegate: (any AuthSessionDelegate)? { get set }
 
     func ping() async throws -> ServerPingResponse
+    /// `GET /api/server/ping` with its own, short timeout (L-28): the startup
+    /// reachability probe. Goes through a session of its own, so it never waits
+    /// for a free connection behind the requests of the launch.
+    func ping(timeout: TimeInterval) async throws -> ServerPingResponse
     func serverVersion() async throws -> ServerVersionResponseDto
     func serverConfig() async throws -> ServerConfigDto
+    /// The sign-in modes the server accepts (L-28), read without a token:
+    /// `GET /api/public/config` on a server that serves it (v3.2+), the
+    /// deprecated `GET /api/server/features` otherwise or when the version is
+    /// unknown. Never both for one call. Any failure is thrown as is — the
+    /// caller decides the fallback.
+    func loginOptions(serverVersion: ServerVersionResponseDto?) async throws -> ServerLoginOptions
 
     func login(email: String, password: String) async throws -> LoginResponseDto
     func logout() async throws -> LogoutResponseDto

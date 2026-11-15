@@ -7,6 +7,9 @@ import Foundation
 struct VideoAppTransport {
     let session: @Sendable () -> URLSession
     let identities: any ClientIdentityStoring
+    /// Maps an alias of the server (its local address) to the key its identity is
+    /// saved under (L-26). The URL handed to the loader stays the one in use.
+    var canonicalKey: @Sendable (ServerKey) -> ServerKey = { $0 }
 }
 
 /// Concrete `VideoPlaybackEngine` backed by `AVPlayer` + HLS playback URL.
@@ -60,7 +63,7 @@ final class AVVideoPlaybackEngine: NSObject, VideoPlaybackEngine, @unchecked Sen
         guard let transport,
               let scheme = url.scheme?.lowercased(), scheme == "https" || scheme == "http",
               let key = ServerKey(url: url),
-              transport.identities.hasIdentity(for: key),
+              transport.identities.hasIdentity(for: transport.canonicalKey(key)),
               let loaderURL = AppTransportVideoLoader.loaderURL(for: url)
         else { return (url, false) }
         return (loaderURL, true)

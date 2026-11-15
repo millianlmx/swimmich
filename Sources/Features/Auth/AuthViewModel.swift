@@ -52,6 +52,9 @@ final class AuthViewModel: AuthSessionDelegate {
     var serverURLString: String = "" {
         didSet {
             _cachedBaseURL = nil
+            // Nothing read from the previous server may describe the new one.
+            loginOptionsState = .unknown
+            loginOptionsURL = nil
             refreshClientCertificateState()
         }
     }
@@ -79,6 +82,26 @@ final class AuthViewModel: AuthSessionDelegate {
     var shouldChangePassword: Bool = false
     var isAuthenticated: Bool { accessToken != nil }
 
+    /// A password sign-in the server accepted for a non-administrator account
+    /// it asks to choose a new password (B-42, like the official client's
+    /// `login_form.dart` `onLogin`): the onboarding shows the change-password
+    /// step before the home screen.
+    ///
+    /// Held in memory only: the token reaches the API client (the change needs
+    /// it) but neither the Keychain, the saved accounts nor the widgets, so a
+    /// relaunch never restores a session that skipped the step. A successful
+    /// change applies it (`completeRequiredPasswordChange()`); going back drops
+    /// it (`abandonRequiredPasswordChange()`).
+    private var pendingPasswordChangeLogin: LoginResponseDto?
+    var isPasswordChangeRequired: Bool { pendingPasswordChangeLogin != nil }
+
+    /// The rule of the official client: only a password sign-in of a
+    /// non-administrator whose server sets `shouldChangePassword` goes through
+    /// the step. SSO never calls it (`startOAuthFlow` applies its session).
+    static func requiresPasswordChange(_ response: LoginResponseDto) -> Bool {
+        response.shouldChangePassword && !response.isAdmin
+    }
+
     /// Saved accounts (server URL + identity) for the multi-server /
     /// multi-account switcher (P5 multi-server). Persisted as JSON under
     /// `serverListDefaultsKey`.
@@ -87,7 +110,7 @@ final class AuthViewModel: AuthSessionDelegate {
     /// Stable identity of the active account. Drives the switcher checkmark
     /// and the RootView `.id(...)` that rebuilds the tab subtree on switch.
     var activeAccountID: String? {
-        SavedAccount.makeID(url: baseURL?.absoluteString ?? serverURLString, email: userEmail, userId: userId)
+        SavedAccount.makeID(url: accountURL?.absoluteString ?? serverURLString, email: userEmail, userId: userId)
     }
 
     /// True while `restoreSession()` reconfigures the client + validates the
@@ -100,6 +123,41 @@ final class AuthViewModel: AuthSessionDelegate {
     var errorMessage: String?
     /// True after a 401 on an authenticated session; cleared by a new sign-in.
     private(set) var sessionExpired = false
+
+    // MARK: - Server check feedback (L-28)
+
+    /// How many validations of the typed server address ended, and how each
+    /// ended. The server screen's haptic triggers read the two outcome counters.
+    private(set) var serverCheckCount = 0
+    private(set) var serverCheckSuccessCount = 0
+    private(set) var serverCheckFailureCount = 0
+
+    // MARK: - Sign-in modes (L-28)
+
+    /// What is known about the sign-in modes of the server typed above.
+    enum LoginOptionsState: Equatable {
+        case unknown
+        case loading
+        case loaded(ServerLoginOptions)
+        /// The server's features could not be read (route missing, error,
+        /// undecodable answer): the form falls back to the pre-L-28 behavior.
+        case unreadable
+    }
+
+    /// What the sign-in step shows.
+    struct LoginPresentation: Equatable {
+        let showsPassword: Bool
+        let showsSSO: Bool
+        let ssoLabel: String
+        /// The server accepts neither the password nor SSO.
+        let isLoginDisabled: Bool
+    }
+
+    private(set) var loginOptionsState: LoginOptionsState = .unknown
+    /// The address `loginOptionsState` describes.
+    private var loginOptionsURL: URL?
+    /// The first call of `restoreSession()` is the only one: the launch.
+    private var restoreStarted = false
 
     private let client: any ImmichClient
     private let keychain: KeychainStore
@@ -123,6 +181,9 @@ final class AuthViewModel: AuthSessionDelegate {
     /// refused server trust from a plain network failure (L-10).
     private let challengeLog: TLSChallengeLog
     private let identities: any ClientIdentityStoring
+    /// Which address of the active account the app talks to (L-26). The account
+    /// keeps one identity (`accountURL`); the address in use is `baseURL`.
+    private let endpoints: ServerEndpointSwitch
 
     init(
         client: any ImmichClient,
@@ -135,7 +196,8 @@ final class AuthViewModel: AuthSessionDelegate {
         localData: LocalDataPurger? = nil,
         customHeaders: any CustomHeadersProviding = NoCustomHeaders(),
         challengeLog: TLSChallengeLog = .shared,
-        identities: any ClientIdentityStoring = KeychainClientIdentityStore()
+        identities: any ClientIdentityStoring = KeychainClientIdentityStore(),
+        endpoints: ServerEndpointSwitch? = nil
     ) {
         self.client = client
         self.keychain = keychain
@@ -148,6 +210,12 @@ final class AuthViewModel: AuthSessionDelegate {
         self.customHeaders = customHeaders
         self.challengeLog = challengeLog
         self.identities = identities
+        self.endpoints = endpoints ?? ServerEndpointSwitch(
+            client: client, realtime: realtime,
+            store: UserDefaultsServerAddressSettingsStore(defaults: defaults),
+            probe: URLSessionServerAddressProbe(session: { URLSession(configuration: ServerSessions.probeConfiguration()) }),
+            monitor: nil, addressBook: ServerAddressBook(), customHeaders: customHeaders, appLog: NoopAppLogSink()
+        )
         self.serverURLString = defaults.string(forKey: Self.serverURLDefaultsKey) ?? ""
         self.userEmail = defaults.string(forKey: Self.userEmailDefaultsKey)
         self.userName = defaults.string(forKey: Self.userNameDefaultsKey)
@@ -157,7 +225,13 @@ final class AuthViewModel: AuthSessionDelegate {
         self.accessToken = keychain.getToken()
         self.savedAccounts = Self.loadSavedAccounts(from: defaults)
         self.client.authDelegate = self
+        // A stored session shows the splash only until `RootView`'s `.task`
+        // starts the restore, which lifts it before any request.
+        self.isRestoringSession = accessToken != nil && baseURL != nil
         refreshClientCertificateState()
+        // The widgets and the share extension choose between the local and the
+        // external address from the settings in their session (L-26).
+        self.endpoints.onSettingsSaved = { [weak self] in self?.publishWidgetSession() }
     }
 
     // MARK: - Session restore (relaunch)
@@ -170,20 +244,34 @@ final class AuthViewModel: AuthSessionDelegate {
     /// - Network failure → keeps the session (offline-safe; a real 401 later
     ///   still resets via FM-4).
     func restoreSession() async {
-        guard !isRestoringSession else { return }
-        isRestoringSession = true
-        defer { isRestoringSession = false }
+        guard !restoreStarted else { return }
+        restoreStarted = true
 
-        guard let token = accessToken, let url = baseURL else {
+        guard let token = accessToken, let url = accountURL else {
+            isRestoringSession = false
             resetSession()
             return
         }
         scopeLocalData()
-        client.configure(baseURL: url, token: token)
+        endpoints.activate(accountID: activeID(for: url), accountURL: url, token: token, connectRealtime: false)
+        // The home screen does not wait for the server: the token is validated
+        // in the background of what is already on screen.
+        isRestoringSession = false
         do {
             _ = try await client.validateToken()
+            // The session is valid: the version the server answers with is the reference
+            // the local address is compared to. Never awaited.
+            if accessToken == token, accountURL == url { Task { await endpoints.refreshKnownVersion() } }
         } catch APIError.unauthorized {
+            // Another session took over while the request was in flight: it is
+            // not this one that was refused.
+            guard accountURL == url, accessToken == nil || accessToken == token else { return }
             resetSession()
+            // Both in the same turn, so the root builds the sign-in step in its
+            // "session expired" state whichever of this and the 401 delegate
+            // (`handleSessionExpired`) ran first.
+            errorMessage = UserFacingError.sessionExpiredMessage
+            sessionExpired = true
         } catch {
             // Network / decode: keep the session; don't wipe on transient offline.
         }
@@ -194,8 +282,8 @@ final class AuthViewModel: AuthSessionDelegate {
         if isAuthenticated {
             // The token/URL pair that was just validated; a switch of account
             // during the await must not reconnect with the old token.
-            if accessToken == token, baseURL == url {
-                realtime.connect(baseURL: url, token: token)
+            if accessToken == token, accountURL == url {
+                endpoints.connectRealtime()
             }
             serverConfig = try? await client.serverConfig()
             publishWidgetSession()
@@ -208,15 +296,24 @@ final class AuthViewModel: AuthSessionDelegate {
     /// widget cannot see any of this state otherwise, and a stale mirror shows
     /// the previous account's photos.
     func publishWidgetSession() {
-        guard let token = accessToken, let baseURL else { return }
+        guard let token = accessToken, let accountURL else { return }
+        // Widgets and the share extension start from the external address and
+        // choose the local one themselves, by the app's rule, from the settings
+        // published here (L-26, `WidgetEndpointResolver`).
+        let published = endpoints.externalURL ?? accountURL
+        let settings = endpoints.settings
+        let localURL = endpoints.localURL
         // The widget cannot read this process' trust store (a different
         // container), so a host whose certificate the user accepted travels
         // with the session — without it a self-signed server is unreachable
-        // from the widget even though the app opens it fine.
-        let host = baseURL.host
-        let trustedHosts = (host.flatMap { trustStore.contains($0) ? $0 : nil }).map { [$0] } ?? []
+        // from the widget even though the app opens it fine. Both addresses.
+        var trustedHosts: [String] = []
+        for host in [published.host, localURL?.host].compactMap({ $0 })
+        where trustStore.contains(host) && !trustedHosts.contains(host) {
+            trustedHosts.append(host)
+        }
         widgetSession.save(WidgetSession(
-            baseURL: baseURL.absoluteString,
+            baseURL: published.absoluteString,
             token: token,
             userName: userName,
             userId: userId,
@@ -229,7 +326,11 @@ final class AuthViewModel: AuthSessionDelegate {
             // the active server's headers travel with the session. `nil` (not
             // `[]`) when there are none, so the stored JSON is the one of a
             // build without custom headers.
-            customHeaders: Self.nonEmpty(customHeaders.headers(for: baseURL))
+            customHeaders: Self.nonEmpty(customHeaders.headers(for: accountURL)),
+            localURL: localURL?.absoluteString,
+            autoSwitch: localURL == nil ? nil : settings.autoSwitch,
+            lastKnownVersion: settings.lastKnownVersion,
+            accountURL: accountURL.absoluteString
         ))
         reloadWidgets()
     }
@@ -244,10 +345,10 @@ final class AuthViewModel: AuthSessionDelegate {
     /// at connect) and the widgets' session. The session itself is never reset.
     /// Without a session, or for another server, there is nothing to do.
     func customHeadersDidChange(for key: ServerKey) {
-        guard isAuthenticated, let token = accessToken, let url = baseURL,
+        guard isAuthenticated, accessToken != nil, let url = accountURL,
               ServerKey(url: url) == key
         else { return }
-        realtime.connect(baseURL: url, token: token)
+        endpoints.reconnectRealtime()
         publishWidgetSession()
     }
 
@@ -265,30 +366,51 @@ final class AuthViewModel: AuthSessionDelegate {
         return URL(string: trimmed)
     }
 
-    var baseURL: URL? {
+    /// The identity of the active account: the address it was connected with.
+    /// It keys the token, the offline copies and the caches, and never changes
+    /// when the app switches between the local and the external address.
+    var accountURL: URL? {
         if let cached = _cachedBaseURL { return cached }
         let url = normalizedBaseURL(from: serverURLString)
         _cachedBaseURL = url
         return url
     }
 
+    /// The address the app talks to: the one in use while signed in (the local
+    /// or the external address of the server), the typed one before.
+    var baseURL: URL? {
+        isAuthenticated ? (endpoints.activeURL ?? accountURL) : accountURL
+    }
+
+    /// The address links shared with other people are built on (the external one).
+    var publicServerURL: URL? { endpoints.publicURL ?? accountURL }
+
+    /// The service behind the "Network" setting.
+    var serverAddresses: ServerEndpointSwitch { endpoints }
+
+    private func activeID(for url: URL) -> String {
+        SavedAccount.makeID(url: url.absoluteString, email: userEmail, userId: userId)
+    }
+
     // MARK: - Server discovery
 
     @MainActor
     func connectServer() async {
-        guard let url = baseURL else {
+        guard let url = accountURL else {
             serverStatus = .unreachable
             errorMessage = String(localized: "Enter a valid server URL.")
+            recordServerCheck()
             return
         }
         serverStatus = .checking
         errorMessage = nil
         pendingUntrustedHost = nil
         client.configure(baseURL: url, token: keychain.getToken())
+        var version: ServerVersionResponseDto?
         do {
             let ping = try await client.ping()
             if ping.res == "pong" {
-                let version = try? await client.serverVersion()
+                version = try? await client.serverVersion()
                 serverStatus = .reachable(version: version)
                 serverConfig = try? await client.serverConfig()
                 defaults.set(url.absoluteString, forKey: Self.serverURLDefaultsKey)
@@ -299,7 +421,7 @@ final class AuthViewModel: AuthSessionDelegate {
             // The client wraps URLSession failures in `APIError.network`, so the
             // `URLError` is read out of either shape.
             let urlError = Self.urlError(in: error)
-            if let urlError, Self.isTLSError(urlError)
+            if let urlError, ServerTrustFailure.isTLSError(urlError)
                 || (urlError.code == .cancelled && challengeLog.trustWasRefused(host: url.host ?? "")) {
                 // P5 selfsigned-cert: surface the host so the UI can offer to
                 // trust it explicitly. A refused trust wins over any other
@@ -317,7 +439,95 @@ final class AuthViewModel: AuthSessionDelegate {
                 serverStatus = .unreachable
             }
         }
+        // The outcome is counted as soon as it is known, not after the modes
+        // below: the haptic follows "Server connected", not the extra reads.
+        recordServerCheck()
         refreshClientCertificateState()
+        if case .reachable = serverStatus, baseURL == url {
+            await loadLoginOptions(for: url, version: version)
+        }
+    }
+
+    /// One validation of the server address ended (once per `connectServer()`).
+    private func recordServerCheck() {
+        serverCheckCount += 1
+        if case .reachable = serverStatus {
+            serverCheckSuccessCount += 1
+        } else {
+            serverCheckFailureCount += 1
+        }
+    }
+
+    // MARK: - Sign-in modes (L-28)
+
+    /// The sign-in step reads the modes itself when nobody did for the server
+    /// typed: the sign-in step can be the first screen of the launch (expired
+    /// session), without a pass through the server step.
+    func loadLoginOptionsIfNeeded() async {
+        guard let url = baseURL else { return }
+        if loginOptionsURL == url {
+            switch loginOptionsState {
+            case .loading, .loaded, .unreadable: return
+            case .unknown: break
+            }
+        }
+        let version = try? await client.serverVersion()
+        // Read for `url`: kept only if the address is still the one asked about.
+        let config = serverConfig == nil ? (try? await client.serverConfig()) : nil
+        guard baseURL == url else { return }
+        if let config { serverConfig = config }
+        await loadLoginOptions(for: url, version: version)
+    }
+
+    private func loadLoginOptions(for url: URL, version: ServerVersionResponseDto?) async {
+        loginOptionsURL = url
+        loginOptionsState = .loading
+        let result: LoginOptionsState
+        do {
+            result = .loaded(try await client.loginOptions(serverVersion: version))
+        } catch {
+            // A cancelled read says nothing about the server: ask again at the
+            // next appearance. Any other failure is the documented fallback.
+            result = UserFacingError.isCancellation(error) ? .unknown : .unreadable
+        }
+        guard baseURL == url else { return }
+        loginOptionsState = result
+    }
+
+    /// What the sign-in step shows for the current state of the modes.
+    var loginPresentation: LoginPresentation {
+        let fallbackLabel = Self.nonBlank(serverConfig?.oauthButtonText)
+        if case .loaded(let options) = loginOptionsState {
+            return LoginPresentation(
+                showsPassword: options.passwordLogin,
+                showsSSO: options.oauth,
+                ssoLabel: Self.nonBlank(options.oauthButtonText) ?? fallbackLabel ?? String(localized: "Sign in with SSO"),
+                isLoginDisabled: !options.passwordLogin && !options.oauth
+            )
+        }
+        // Not loaded or unreadable: the behavior before L-28 — the password
+        // form, and SSO when the configuration carries a button text.
+        return LoginPresentation(
+            showsPassword: true,
+            showsSSO: fallbackLabel != nil,
+            ssoLabel: fallbackLabel ?? "",
+            isLoginDisabled: false
+        )
+    }
+
+    /// True while the modes of the typed server are not known yet: the sign-in
+    /// step shows a spinner rather than a form that may be about to change.
+    var loginOptionsPending: Bool {
+        if loginOptionsURL != baseURL { return true }
+        switch loginOptionsState {
+        case .unknown, .loading: return true
+        case .loaded, .unreadable: return false
+        }
+    }
+
+    private static func nonBlank(_ text: String?) -> String? {
+        guard let text, !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return nil }
+        return text
     }
 
     private static func urlError(in error: Error) -> URLError? {
@@ -328,7 +538,7 @@ final class AuthViewModel: AuthSessionDelegate {
 
     /// Re-reads whether the typed server has a client certificate.
     func refreshClientCertificateState() {
-        guard let url = baseURL, let key = ServerKey(url: url) else {
+        guard let url = accountURL, let key = ServerKey(url: url) else {
             serverHasClientCertificate = false
             return
         }
@@ -339,7 +549,7 @@ final class AuthViewModel: AuthSessionDelegate {
     /// state and check the server again, so the status follows without a tap.
     func clientCertificateDidChange() async {
         refreshClientCertificateState()
-        if baseURL != nil { await connectServer() }
+        if accountURL != nil { await connectServer() }
     }
 
     /// Host whose TLS certificate failed validation (P5 selfsigned-cert).
@@ -354,52 +564,77 @@ final class AuthViewModel: AuthSessionDelegate {
         await connectServer()
     }
 
-    /// TLS certificate failures that warrant the explicit trust flow.
-    static func isTLSError(_ error: URLError) -> Bool {
-        switch error.code {
-        case .serverCertificateUntrusted,
-             .serverCertificateHasUnknownRoot,
-             .serverCertificateHasBadDate,
-             .serverCertificateNotYetValid:
-            return true
-        default:
-            return false
-        }
-    }
-
     // MARK: - Auth
 
     @MainActor
     func login(email: String, password: String) async {
-        guard baseURL != nil else {
+        guard accountURL != nil else {
             errorMessage = String(localized: "Connect to a server first.")
             return
         }
+        // A server that refuses the password never receives one.
+        if case .loaded(let options) = loginOptionsState, !options.passwordLogin { return }
         isLoading = true
         errorMessage = nil
         do {
             let response = try await client.login(email: email, password: password)
-            applySession(
-                token: response.accessToken,
-                email: response.userEmail,
-                name: response.name,
-                userId: response.userId,
-                isAdmin: response.isAdmin,
-                shouldChangePassword: response.shouldChangePassword
-            )
+            if Self.requiresPasswordChange(response) {
+                holdForPasswordChange(response)
+            } else {
+                applySession(
+                    token: response.accessToken,
+                    email: response.userEmail,
+                    name: response.name,
+                    userId: response.userId,
+                    isAdmin: response.isAdmin,
+                    shouldChangePassword: response.shouldChangePassword
+                )
+            }
         } catch let e {
             errorMessage = e.userFacingMessage
         }
         isLoading = false
     }
 
+    /// Gives the API client the token of a sign-in that must change its
+    /// password first, and nothing else: no session is applied (B-42).
+    private func holdForPasswordChange(_ response: LoginResponseDto) {
+        sessionExpired = false
+        pendingPasswordChangeLogin = response
+        client.configure(baseURL: baseURL, token: response.accessToken)
+    }
+
+    /// The server accepted the new password: the held sign-in becomes the
+    /// session, and the home screen opens without a second sign-in (the server
+    /// keeps this device's session, `auth.service.ts:143-147`).
+    func completeRequiredPasswordChange() {
+        guard let response = pendingPasswordChangeLogin else { return }
+        pendingPasswordChangeLogin = nil
+        applySession(
+            token: response.accessToken,
+            email: response.userEmail,
+            name: response.name,
+            userId: response.userId,
+            isAdmin: response.isAdmin,
+            shouldChangePassword: false
+        )
+    }
+
+    /// "Back to sign in" from the required step: the held sign-in is signed
+    /// out on the server and forgotten here; the address stays typed.
+    func abandonRequiredPasswordChange() async {
+        guard pendingPasswordChangeLogin != nil else { return }
+        pendingPasswordChangeLogin = nil
+        _ = try? await client.logout()
+        // A sign-in that completed meanwhile owns the client now.
+        guard !isAuthenticated, pendingPasswordChangeLogin == nil else { return }
+        client.configure(baseURL: baseURL, token: nil)
+    }
+
     // MARK: - OAuth (P5)
 
     /// True when the server exposes OAuth (non-empty `oauthButtonText`).
-    var canOAuthLogin: Bool {
-        guard let text = serverConfig?.oauthButtonText else { return false }
-        return !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
-    }
+    var canOAuthLogin: Bool { loginPresentation.showsSSO }
 
     /// Mobile OAuth flow (P5): POST /oauth/authorize for the provider URL →
     /// browser session → POST /oauth/callback with the PKCE verifier → apply
@@ -407,7 +642,7 @@ final class AuthViewModel: AuthSessionDelegate {
     /// current state untouched.
     @MainActor
     func startOAuthFlow() async {
-        guard baseURL != nil, canOAuthLogin else {
+        guard accountURL != nil, canOAuthLogin else {
             errorMessage = String(localized: "OAuth is not enabled on this server.")
             return
         }
@@ -459,7 +694,7 @@ final class AuthViewModel: AuthSessionDelegate {
         self.shouldChangePassword = shouldChangePassword
         sessionExpired = false
         keychain.saveToken(token)
-        defaults.set(baseURL?.absoluteString ?? serverURLString, forKey: Self.serverURLDefaultsKey)
+        defaults.set(accountURL?.absoluteString ?? serverURLString, forKey: Self.serverURLDefaultsKey)
         if let email { defaults.set(email, forKey: Self.userEmailDefaultsKey) }
         if let name { defaults.set(name, forKey: Self.userNameDefaultsKey) }
         if let userId { defaults.set(userId, forKey: Self.userIdDefaultsKey) }
@@ -470,8 +705,14 @@ final class AuthViewModel: AuthSessionDelegate {
         // `restoreSession()` — a relaunch that restores a session after an update
         // is exactly the case the sheet exists for.
         defaults.set(FeatureHighlightCatalog.release, forKey: WhatsNewStore.seenReleaseKey)
-        client.configure(baseURL: baseURL, token: token)
-        if let baseURL { realtime.connect(baseURL: baseURL, token: token) }
+        if let accountURL {
+            endpoints.activate(accountID: activeID(for: accountURL), accountURL: accountURL, token: token, connectRealtime: true)
+            if case .reachable(let version?) = serverStatus {
+                endpoints.recordVersion("\(version.major).\(version.minor).\(version.patch)")
+            }
+        } else {
+            client.configure(baseURL: nil, token: token)
+        }
         publishWidgetSession()
         addCurrentAccountToSaved()
         scopeLocalData()
@@ -486,6 +727,9 @@ final class AuthViewModel: AuthSessionDelegate {
     @MainActor
     func logout() async {
         isLoading = true
+        // The switch stops before the first wait: no evaluation in flight retargets the client or reopens
+        // the socket while the sign-out request and the purge run.
+        endpoints.stop()
         _ = try? await client.logout()
         // The trusted-servers list is emptied first, so a connection opened
         // while the purge runs, and the final connection reset, leave no
@@ -497,6 +741,7 @@ final class AuthViewModel: AuthSessionDelegate {
         for account in savedAccounts { keychain.deleteToken(for: account.id) }
         savedAccounts = []
         defaults.removeObject(forKey: Self.serverListDefaultsKey)
+        endpoints.forgetAll()
         defaults.removeObject(forKey: Self.serverURLDefaultsKey)
         serverURLString = ""
         resetSession()
@@ -507,6 +752,7 @@ final class AuthViewModel: AuthSessionDelegate {
     /// next sign-in skips re-entering the address.
     func resetSession() {
         accessToken = nil
+        pendingPasswordChangeLogin = nil
         userEmail = nil
         userName = nil
         userId = nil
@@ -519,7 +765,8 @@ final class AuthViewModel: AuthSessionDelegate {
         defaults.removeObject(forKey: Self.userNameDefaultsKey)
         defaults.removeObject(forKey: Self.userIdDefaultsKey)
         defaults.removeObject(forKey: Self.isAdminDefaultsKey)
-        client.configure(baseURL: baseURL, token: nil)
+        endpoints.deactivate()
+        client.configure(baseURL: accountURL, token: nil)
         realtime.disconnect()
         scopeLocalData()
     }
@@ -559,7 +806,7 @@ final class AuthViewModel: AuthSessionDelegate {
 
     /// Returns the active session as a `SavedAccount` (nil if no URL yet).
     private func currentAccount() -> SavedAccount? {
-        guard let url = baseURL?.absoluteString else { return nil }
+        guard let url = accountURL?.absoluteString else { return nil }
         return SavedAccount(url: url, email: userEmail, name: userName, userId: userId, isAdmin: isAdmin)
     }
 
@@ -579,6 +826,7 @@ final class AuthViewModel: AuthSessionDelegate {
     /// If it is the active account, the session is reset (onboarding, URL kept).
     func removeSavedAccount(_ account: SavedAccount) {
         keychain.deleteToken(for: account.id)
+        endpoints.forget(accountID: account.id)
         savedAccounts.removeAll { $0.id == account.id }
         persistSavedAccounts()
         if account.id == activeAccountID {
@@ -631,11 +879,11 @@ final class AuthViewModel: AuthSessionDelegate {
         defaults.set(account.name, forKey: Self.userNameDefaultsKey)
         defaults.set(account.userId, forKey: Self.userIdDefaultsKey)
         defaults.set(account.isAdmin, forKey: Self.isAdminDefaultsKey)
-        client.configure(baseURL: url, token: token)
-        realtime.connect(baseURL: url, token: token)
+        endpoints.activate(accountID: activeID(for: url), accountURL: url, token: token, connectRealtime: true)
         publishWidgetSession()
         do {
             _ = try await client.validateToken()
+            if accessToken == token, accountURL == url { Task { await endpoints.refreshKnownVersion() } }
         } catch APIError.unauthorized {
             resetSession()
         } catch {
@@ -668,12 +916,20 @@ final class AuthViewModel: AuthSessionDelegate {
     /// logout (`resetSession()`) wipes them. A 401 while not authenticated
     /// (e.g. a failed sign-in) must not override the message being shown.
     private func handleSessionExpired() {
+        if pendingPasswordChangeLogin != nil {
+            // The held sign-in was refused: back to the sign-in step.
+            pendingPasswordChangeLogin = nil
+            errorMessage = UserFacingError.sessionExpiredMessage
+            client.configure(baseURL: baseURL, token: nil)
+            return
+        }
         guard isAuthenticated else { return }
         isLoading = false
         accessToken = nil
         errorMessage = UserFacingError.sessionExpiredMessage
         sessionExpired = true
-        client.configure(baseURL: baseURL, token: nil)
+        endpoints.deactivate()
+        client.configure(baseURL: accountURL, token: nil)
         realtime.disconnect()
         scopeLocalData()
     }

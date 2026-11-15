@@ -172,6 +172,29 @@ final class UploadViewModelNewFeaturesTests: XCTestCase {
         XCTAssertEqual(engine.phase, .done)
         XCTAssertEqual(engine.uploadedCount, 1)
     }
+
+    // AC-344: the "Back up now" widget starts the pass of "Run now": with the automatic
+    // backup switch and "Back up new photos automatically" both off, it still runs.
+    @MainActor
+    func test_AC_344_widgetBackupRunsWithAutoDetectOff() async {
+        let client = MockImmichClient()
+        client.bulkUploadCheckResponse = AssetBulkUploadCheckResponse(
+            results: [.init(id: "w1", action: "accept")]
+        )
+        let source = MockBackupAssetSource()
+        source.candidates = [makeCandidate(id: "w1", fileName: "widget-photo.jpg")]
+        source.dataProvider = { _ in Data(repeating: 1, count: 64) }
+        let settings = BackupSettingsStore(suiteName: "vm-widget-run-\(UUID().uuidString)")
+        settings.isEnabled = false
+        settings.autoDetectNewPhotos = false
+        let (vm, engine) = makeVM(client: client, source: source, settings: settings)
+
+        vm.startManualBackup()
+        await vm.awaitCurrentBackup()
+
+        XCTAssertEqual(engine.phase, .done)
+        XCTAssertEqual(engine.uploadedCount, 1, "a manual pass, whatever the automatic settings")
+    }
 }
 
 // MARK: - Manual vs automatic gating (core Run-now fix)

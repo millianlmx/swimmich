@@ -27,7 +27,7 @@ struct SharedLinkSheet: View {
     /// Shared tab.
     private var sharedLinkBase: SharedLinkURL {
         SharedLinkURL(
-            serverURL: auth.baseURL ?? URL(string: "https://example.com")!,
+            serverURL: auth.publicServerURL ?? URL(string: "https://example.com")!,
             externalDomain: auth.serverConfig?.externalDomain ?? ""
         )
     }

@@ -15,7 +15,7 @@ import XCTest
 /// The stub (`immich_stub_ocr_text.py`) owns the three facts this hangs on: a
 /// **tilted quadrilateral** per box (four corners, never a bbox), an asset whose
 /// box array is **empty**, and an OCR-active version number — the structured
-/// filter only exists on a v3.2.0 server, and the shell's own `1.119.0` would
+/// filter only exists on a v3.2.0 server, and the shell's own `2.0.0` would
 /// leave the search toggle disabled. See its docstring.
 ///
 /// The search half's criterion is typed into the **Filters sheet's "Detected

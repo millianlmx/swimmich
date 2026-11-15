@@ -113,7 +113,7 @@ struct SharedLinksView: View {
 
     private var linkList: some View {
         let sharedLinkBase = SharedLinkURL(
-            serverURL: auth.baseURL ?? URL(string: "https://example.com")!,
+            serverURL: auth.publicServerURL ?? URL(string: "https://example.com")!,
             externalDomain: auth.serverConfig?.externalDomain ?? ""
         )
         return List {
@@ -560,7 +560,7 @@ struct CreateSharedLinkSheet: View {
 
     private var sharedLinkBase: SharedLinkURL {
         SharedLinkURL(
-            serverURL: auth.baseURL ?? URL(string: "https://example.com")!,
+            serverURL: auth.publicServerURL ?? URL(string: "https://example.com")!,
             externalDomain: auth.serverConfig?.externalDomain ?? ""
         )
     }
