@@ -78,6 +78,29 @@ final class SharedLinksViewModelTests: XCTestCase {
         XCTAssertNotNil(vm.actionErrorMessage)
     }
 
+    // AC-64 / AC-806: one warning tick per accepted revocation, none otherwise.
+    func test_AC_64_revokeSuccessBumpsFeedback() async {
+        let mock = MockImmichClient()
+        mock.sharedLinksResponse = [makeSharedLink(id: "l1"), makeSharedLink(id: "l2")]
+        let vm = SharedLinksViewModel(client: mock)
+        await vm.load()
+        XCTAssertEqual(vm.revokeFeedbackTick, 0)
+        await vm.revoke(id: "l1")
+        XCTAssertEqual(vm.revokeFeedbackTick, 1)
+        await vm.revoke(id: "l2")
+        XCTAssertEqual(vm.revokeFeedbackTick, 2, "each accepted revocation is its own tick")
+    }
+
+    func test_AC_806_revokeFailureDoesNotBumpFeedback() async {
+        let mock = MockImmichClient()
+        mock.sharedLinksResponse = [makeSharedLink(id: "l1")]
+        let vm = SharedLinksViewModel(client: mock)
+        await vm.load()
+        mock.deleteSharedLinkError = Boom()
+        await vm.revoke(id: "l1")
+        XCTAssertEqual(vm.revokeFeedbackTick, 0, "a refused revocation withdraws nothing, so it plays nothing")
+    }
+
     // MARK: - Create album-typed link
 
     func test_createAlbumLink_success() async {

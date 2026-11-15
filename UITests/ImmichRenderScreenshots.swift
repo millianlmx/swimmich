@@ -544,10 +544,11 @@ final class ImmichRenderScreenshots: XCTestCase {
         // Removing is the outgoing-only action.
         outgoingRemove.tap()
         sleep(2)
-        // The identifier can resolve to more than one element inside the
-        // dialog (the Button and its container), so take the first match.
-        let confirm = app.buttons.matching(identifier: "confirmStopSharing").firstMatch
-        let confirmFallback = app.buttons.matching(
+        // An alert: iOS 26 lists an identified alert button twice, so the
+        // button is queried inside the alert and narrowed to its first match.
+        let confirmAlert = app.alerts.firstMatch
+        let confirm = confirmAlert.buttons.matching(identifier: "confirmStopSharing").firstMatch
+        let confirmFallback = confirmAlert.buttons.matching(
             NSPredicate(format: "label CONTAINS 'Stop sharing' OR label CONTAINS 'partage'")
         ).firstMatch
         let destructive = confirm.waitForExistence(timeout: 6) ? confirm : confirmFallback
@@ -817,7 +818,8 @@ final class ImmichRenderScreenshots: XCTestCase {
         XCTAssertTrue(delete.waitForExistence(timeout: 15), "no delete action in the moment view")
         delete.tap()
         sleep(2)
-        let confirmDelete = app.buttons["Delete Memory"]
+        let confirmDelete = app.alerts.firstMatch.buttons
+            .matching(NSPredicate(format: "label == %@", "Delete Memory")).firstMatch
         XCTAssertTrue(confirmDelete.waitForExistence(timeout: 10), "no confirmation for the delete")
         confirmDelete.tap()
         sleep(4)

@@ -496,7 +496,9 @@ final class UserApiKeysUITests: XCTestCase {
         XCTAssertTrue(tapSwipeAction("apiKeyRotateAction_\(laptop)",
                                      labels: ["Rotate", "Faire tourner", "Rotieren", "Rotar"]),
                       "the leading swipe never revealed a Rotate action")
-        let confirmRotate = app.buttons.matching(identifier: "apiKeyRotateConfirmButton").firstMatch
+        // Alerts: iOS 26 lists an identified alert button twice, so each
+        // confirmation button is queried inside the alert.
+        let confirmRotate = app.alerts.firstMatch.buttons.matching(identifier: "apiKeyRotateConfirmButton").firstMatch
         XCTAssertTrue(confirmRotate.waitForExistence(timeout: 10),
                       "the rotation was not put behind a confirmation — screen reads: "
                       + "\(app.staticTexts.allElementsBoundByIndex.map(\.label))")
@@ -529,7 +531,7 @@ final class UserApiKeysUITests: XCTestCase {
         XCTAssertTrue(tapSwipeAction("apiKeyDeleteAction_\(ci)",
                                      labels: ["Delete", "Supprimer", "Löschen", "Eliminar"]),
                       "the trailing swipe never revealed a Delete action")
-        let confirmDelete = app.buttons.matching(identifier: "apiKeyDeleteConfirmButton").firstMatch
+        let confirmDelete = app.alerts.firstMatch.buttons.matching(identifier: "apiKeyDeleteConfirmButton").firstMatch
         XCTAssertTrue(confirmDelete.waitForExistence(timeout: 10),
                       "the revocation was not put behind a confirmation — screen reads: "
                       + "\(app.staticTexts.allElementsBoundByIndex.map(\.label))")
@@ -557,7 +559,7 @@ final class UserApiKeysUITests: XCTestCase {
         XCTAssertTrue(tapSwipeAction("apiKeyRotateAction_\(laptop)",
                                      labels: ["Rotate", "Faire tourner", "Rotieren", "Rotar"]),
                       "the leading swipe never revealed a Rotate action")
-        app.buttons.matching(identifier: "apiKeyRotateConfirmButton").firstMatch.tap()
+        app.alerts.firstMatch.buttons.matching(identifier: "apiKeyRotateConfirmButton").firstMatch.tap()
 
         // The screen must SAY it was refused …
         XCTAssertTrue(waitForText(containing: refusal, timeout: 25),

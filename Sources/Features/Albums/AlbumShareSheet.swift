@@ -44,13 +44,13 @@ struct AlbumShareSheet: View {
             } message: {
                 Text(vm.actionErrorMessage ?? "")
             }
-            .confirmationDialog(
+            // An alert, not a confirmationDialog: on iOS 26 a confirmationDialog is a popover that drops Cancel.
+            .alert(
                 "Remove \(pendingRevokeUser?.name ?? "") from this album?",
                 isPresented: Binding(
                     get: { pendingRevokeUser != nil },
                     set: { if !$0 { pendingRevokeUser = nil } }
-                ),
-                titleVisibility: .visible
+                )
             ) {
                 Button("Remove", role: .destructive) {
                     if let user = pendingRevokeUser {

@@ -87,12 +87,14 @@ struct SharedLinksView: View {
                         }
                     }
                 }
+                .accessibilityIdentifier("sharedLinkRevokeConfirm")
                 Button("Cancel", role: .cancel) {
                     withAnimation(PVMotion.movement(PVMotion.snappy, reduceMotion: reduceMotion)) {
                         pendingRevokeId = nil
                         showRevokeConfirm = false
                     }
                 }
+                .accessibilityIdentifier("sharedLinkRevokeCancel")
             }
             .alert("Error", isPresented: Binding(
                 get: { vm.actionErrorMessage != nil },
@@ -102,6 +104,8 @@ struct SharedLinksView: View {
             } message: {
                 Text(vm.actionErrorMessage ?? "")
             }
+            // A revoked link withdraws an access: warning tap on success only.
+            .appSensoryFeedback(.warning, trigger: vm.revokeFeedbackTick, probe: "sharedLinkRevoke")
         }
     }
 
@@ -209,6 +213,7 @@ struct SharedLinksView: View {
                                 showRevokeConfirm = true
                             }
                         }
+                        .accessibilityIdentifier("sharedLinkRevoke-\(link.id)")
                     }
                     .tint(.red)
                 }

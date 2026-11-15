@@ -75,13 +75,13 @@ struct MemoriesView: View {
                     )
                 }
             }
-            .confirmationDialog(
+            // An alert, not a confirmationDialog: on iOS 26 a confirmationDialog is a popover that drops Cancel.
+            .alert(
                 "Delete this memory?",
                 isPresented: Binding(
                     get: { pendingDelete != nil },
                     set: { if !$0 { pendingDelete = nil } }
-                ),
-                titleVisibility: .visible
+                )
             ) {
                 Button("Delete Memory", role: .destructive) {
                     guard let memory = pendingDelete else { return }
