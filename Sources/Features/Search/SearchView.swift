@@ -313,38 +313,34 @@ struct SearchView: View {
     @ViewBuilder
     private var searchOptionsMenu: some View {
         Menu {
-            Section {
-                ForEach(SearchViewModel.SearchMode.allCases, id: \.self) { mode in
-                    Button {
-                        Task { await vm.selectSearchMode(mode) }
-                    } label: {
-                        if mode == vm.searchMode {
-                            Label(modeTitle(mode), systemImage: "checkmark")
-                        } else {
-                            Text(modeTitle(mode))
-                        }
+            ForEach(SearchViewModel.SearchMode.allCases, id: \.self) { mode in
+                Button {
+                    Task { await vm.selectSearchMode(mode) }
+                } label: {
+                    if mode == vm.searchMode {
+                        Label(modeTitle(mode), systemImage: "checkmark")
+                    } else {
+                        Text(modeTitle(mode))
                     }
-                    .accessibilityIdentifier("searchTextMode_\(mode.rawValue)")
                 }
+                .accessibilityIdentifier("searchTextMode_\(mode.rawValue)")
             }
-            Section {
-                ocrFilterToggle
-                Button {
-                    saveSearchName = vm.query.trimmingCharacters(in: .whitespacesAndNewlines)
-                    showSaveSearch = true
-                } label: {
-                    Label("Save search…", systemImage: "bookmark")
-                }
-                .disabled(vm.query.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
-                .accessibilityIdentifier("searchSaveButton")
-                Button {
-                    vm.enterSelectionMode()
-                } label: {
-                    Label("Select", systemImage: "checkmark.circle")
-                }
-                .disabled(vm.results.isEmpty)
-                .accessibilityIdentifier("searchSelectButton")
+            ocrFilterToggle
+            Button {
+                saveSearchName = vm.query.trimmingCharacters(in: .whitespacesAndNewlines)
+                showSaveSearch = true
+            } label: {
+                Label("Save search…", systemImage: "bookmark")
             }
+            .disabled(vm.query.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+            .accessibilityIdentifier("searchSaveButton")
+            Button {
+                vm.enterSelectionMode()
+            } label: {
+                Label("Select", systemImage: "checkmark.circle")
+            }
+            .disabled(vm.results.isEmpty)
+            .accessibilityIdentifier("searchSelectButton")
         } label: {
             Image(systemName: modeIcon(vm.searchMode))
                 .font(.pvBody.weight(.semibold))

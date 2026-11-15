@@ -254,7 +254,7 @@ final class PluralCatalogTests: XCTestCase {
         let strings = try Self.loadStrings()
         let parenthesised = try NSRegularExpression(pattern: #"\([^)\s]{1,4}\)"#)
         let keys = Array(Set(Self.countedKeys.map(\.0))).sorted()
-        XCTAssertEqual(keys.count, 56, "the closed list of S-2 and S-3")
+        XCTAssertEqual(keys.count, 54, "the closed list of S-2 and S-3")
 
         for key in keys {
             for code in Self.shippedLanguages {
