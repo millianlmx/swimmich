@@ -21,9 +21,12 @@ name: CI
 #
 # Run workflow offers the three (`suite`).
 #
-# On `main` and on `v*` tags, once the gate passes (and, on a tag, the release
-# suite), a last job archives in Release and keeps the IPA signed for the App
-# Store as an artifact. Nothing is uploaded to App Store Connect.
+# On `main`, once the gate passes, a last job archives in Release and keeps the
+# IPA signed for the App Store by the Apple ID of the Mac as an artifact; nothing
+# is sent. On a `v*` tag, once the gate and the release suite pass, the job
+# "App Store upload" signs with the secrets of the GitHub Environment
+# `app-store` (limited to `v*` tags) and sends the build to App Store Connect.
+# Those secrets are read by that job only.
 on:
   push:
   schedule:
@@ -120,13 +123,13 @@ jobs:
   ipa:
     name: Signed IPA
     needs: [unit-tests, ui-suite]
-    # A skipped `ui-suite` (a push to `main`) does not hold the IPA; a failed one
-    # (a tag) does. `always()`: without it a skipped need skips this job.
+    # A skipped `ui-suite` (a push to `main`) does not hold the IPA.
+    # `always()`: without it a skipped need skips this job.
     if: >-
       always()
       && needs.unit-tests.result == 'success'
       && (needs.ui-suite.result == 'success' || needs.ui-suite.result == 'skipped')
-      && (github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/tags/v'))
+      && github.ref == 'refs/heads/main'
     runs-on: [self-hosted, macOS, ARM64, xcode]
     timeout-minutes: 45
     steps:
@@ -137,10 +140,7 @@ jobs:
       # in a new security session codesign cannot reach the login keychain
       # (errSecInternalComponent).
       - name: Archive and export
-        run: |
-          version=""
-          [[ "$GITHUB_REF_TYPE" == "tag" ]] && version="${GITHUB_REF_NAME#v}"
-          Scripts/ipa.sh "$version"
+        run: Scripts/ipa.sh
 
       - name: Keep the IPA
         uses: actions/upload-artifact@v4
@@ -148,3 +148,47 @@ jobs:
           name: swimmich-ipa
           path: build/ipa/Swimmich.ipa
           retention-days: 14
+
+  appstore:
+    name: App Store upload
+    # No `always()`: a gate or release suite that did not succeed skips this job,
+    # and nothing is sent.
+    needs: [unit-tests, ui-suite]
+    if: startsWith(github.ref, 'refs/tags/v')
+    runs-on: [self-hosted, macOS, ARM64, xcode]
+    timeout-minutes: 60
+    # The secrets of the Environment are released to this job only, and only for
+    # a `v*` tag (deployment rule of the Environment, see README, Release).
+    environment: app-store
+    # Not shared with `ipa`: a group holds one waiting job and cancels the
+    # others, so a push to `main` could cancel an upload.
+    concurrency:
+      group: appstore-upload
+      cancel-in-progress: false
+    steps:
+      - uses: actions/checkout@v4
+
+      # Scripts/release.sh signs from the secrets alone, in a temporary keychain,
+      # and names every missing secret before it touches a signing tool.
+      - name: Archive, sign and upload
+        env:
+          APPLE_DISTRIBUTION_P12_BASE64: ${{ secrets.APPLE_DISTRIBUTION_P12_BASE64 }}
+          APPLE_DISTRIBUTION_P12_PASSWORD: ${{ secrets.APPLE_DISTRIBUTION_P12_PASSWORD }}
+          PROFILE_APP_BASE64: ${{ secrets.PROFILE_APP_BASE64 }}
+          PROFILE_WIDGETS_BASE64: ${{ secrets.PROFILE_WIDGETS_BASE64 }}
+          PROFILE_SHARE_EXTENSION_BASE64: ${{ secrets.PROFILE_SHARE_EXTENSION_BASE64 }}
+          ASC_KEY_ID: ${{ secrets.ASC_KEY_ID }}
+          ASC_ISSUER_ID: ${{ secrets.ASC_ISSUER_ID }}
+          ASC_KEY_P8_BASE64: ${{ secrets.ASC_KEY_P8_BASE64 }}
+        run: Scripts/release.sh "$GITHUB_REF_NAME"
+
+      - name: Keep the IPA
+        uses: actions/upload-artifact@v4
+        with:
+          name: swimmich-ipa
+          path: build/ipa/Swimmich.ipa
+          retention-days: 14
+
+      - name: Remove the signing state
+        if: always()
+        run: Scripts/release.sh --cleanup

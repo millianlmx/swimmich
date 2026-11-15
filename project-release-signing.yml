@@ -1,0 +1,43 @@
+# Manual signing of a release build: the Apple Distribution identity of the
+# temporary keychain of Scripts/release.sh and the App Store profile of each
+# bundle. Included by project.yml only when SWIMMICH_RELEASE_SIGNING is set,
+# which Scripts/ipa.sh does in manual mode alone; every ${…} below is read from
+# the environment of that `xcodegen generate`. Only the targets that produce a
+# signed bundle are listed: a setting passed to `xcodebuild` would also reach the
+# targets of the SocketIO package, which take no profile.
+targets:
+  ImmichSwiftUI:
+    settings:
+      configs:
+        Release:
+          CODE_SIGN_STYLE: Manual
+          CODE_SIGN_IDENTITY: ${SWIMMICH_SIGN_IDENTITY}
+          DEVELOPMENT_TEAM: 2MJF39L8VY
+          OTHER_CODE_SIGN_FLAGS: --keychain ${SWIMMICH_SIGN_KEYCHAIN}
+          PROVISIONING_PROFILE_SPECIFIER: ${SWIMMICH_PROFILE_SPECIFIER_APP}
+  ImmichWidgets:
+    settings:
+      configs:
+        Release:
+          CODE_SIGN_STYLE: Manual
+          CODE_SIGN_IDENTITY: ${SWIMMICH_SIGN_IDENTITY}
+          DEVELOPMENT_TEAM: 2MJF39L8VY
+          OTHER_CODE_SIGN_FLAGS: --keychain ${SWIMMICH_SIGN_KEYCHAIN}
+          PROVISIONING_PROFILE_SPECIFIER: ${SWIMMICH_PROFILE_SPECIFIER_WIDGETS}
+  ImmichShareExtension:
+    settings:
+      configs:
+        Release:
+          CODE_SIGN_STYLE: Manual
+          CODE_SIGN_IDENTITY: ${SWIMMICH_SIGN_IDENTITY}
+          DEVELOPMENT_TEAM: 2MJF39L8VY
+          OTHER_CODE_SIGN_FLAGS: --keychain ${SWIMMICH_SIGN_KEYCHAIN}
+          PROVISIONING_PROFILE_SPECIFIER: ${SWIMMICH_PROFILE_SPECIFIER_SHARE}
+  ImmichSharedKit:
+    settings:
+      configs:
+        Release:
+          CODE_SIGN_STYLE: Manual
+          CODE_SIGN_IDENTITY: ${SWIMMICH_SIGN_IDENTITY}
+          DEVELOPMENT_TEAM: 2MJF39L8VY
+          OTHER_CODE_SIGN_FLAGS: --keychain ${SWIMMICH_SIGN_KEYCHAIN}
