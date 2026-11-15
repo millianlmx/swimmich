@@ -373,6 +373,30 @@ final class MotionGuardTests: XCTestCase {
         )
     }
 
+    /// AC-27: the Search results screen — the chips row, the "Search options"
+    /// menu, the Filters sheet — animates only through the gate, and nothing
+    /// in it slides, so "Reduce Motion" turns every change into a cut or a fade.
+    func test_AC_27_searchResultsMotionGoesThroughTheGate() throws {
+        let names = ["SearchView.swift", "SearchFilterSheet.swift"]
+        let files = try names.map { name -> (name: String, text: String) in
+            let url = Self.repoRoot.appendingPathComponent("Sources/Features/Search/\(name)")
+            return (name, try String(contentsOf: url, encoding: .utf8))
+        }
+        let result = Self.audit(files)
+        XCTAssertEqual(result.faults, [], "motion sites that bypass the gate")
+        for name in names {
+            XCTAssertTrue(
+                result.unpassed.keys.filter { $0.hasPrefix("\(name)|") }.isEmpty,
+                "\(name) has motion sites that bypass the gate: \(result.unpassed)"
+            )
+        }
+        for file in files {
+            let text = Self.normalizedLines(file.text).map(\.text).joined(separator: "\n")
+            XCTAssertFalse(text.contains(".move("), "\(file.name) slides a view in")
+            XCTAssertFalse(text.contains(".slide"), "\(file.name) slides a view in")
+        }
+    }
+
     func test_AC_173_exclusionsAreAllUsed() throws {
         let result = Self.audit(try Self.scopedFiles())
         for (k, allowed) in Self.exclusions {

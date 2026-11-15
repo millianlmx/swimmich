@@ -103,7 +103,7 @@ final class SearchViewModel {
     var activeConstraints: [SearchFilter.Constraint] {
         (textModeConstraint.map { [$0] } ?? []) + filter.constraints
     }
-    /// Active constraints — the number the toolbar button badges.
+    /// Active constraints — the number the Filters button badges.
     var activeFilterCount: Int { activeConstraints.count }
     var isFilterActive: Bool { !activeConstraints.isEmpty }
 
@@ -124,11 +124,10 @@ final class SearchViewModel {
 
     /// Star-rating filter (star-ratings) — `nil` = no rating constraint.
     /// Sticky by design: it survives text edits and Explore drill-downs; only
-    /// "Any rating" in the filter menu, the sheet's Clear, or `clearFilters()`
-    /// clear it.
+    /// the sheet's Rating Clear, or `clearFilters()` clear it.
     ///
-    /// A view onto `filter.rating`: the toolbar menu and the Filters sheet edit
-    /// one value, and a rating outside the server's `1...5` scale (including
+    /// A view onto `filter.rating`: the Filters sheet is the one control that
+    /// edits it, and a rating outside the server's `1...5` scale (including
     /// `0`, invalid since v3) means "no constraint" rather than a request the
     /// server would reject.
     var ratingFilter: Int? {
@@ -596,6 +595,18 @@ final class SearchViewModel {
         }
     }
 
+    /// The menu's detected-text toggle. Like a mode pick, it changes how the
+    /// typed text is read, so a text already searched is searched again —
+    /// `queryDidChange()` would skip it as unchanged. Without a text, nothing
+    /// is sent.
+    func setOcrFilterEnabled(_ enabled: Bool) async {
+        guard enabled != ocrFilterEnabled else { return }
+        ocrFilterEnabled = enabled
+        if !query.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            await restartSearch()
+        }
+    }
+
     /// Re-runs the search from the current state even while a read is in
     /// flight (`search()` alone returns when `isLoading`). The generation bump
     /// makes the running read drop its answer; once it has finished, a fresh
@@ -710,7 +721,7 @@ final class SearchViewModel {
         }
 
         let typed = query.trimmingCharacters(in: .whitespacesAndNewlines)
-        // The toolbar toggle reads the query as a detected-text criterion — in
+        // The menu's detected-text toggle reads the query as a detected-text criterion — in
         // Metadata mode only. On a server that has no field for one the toggle
         // changes nothing: emptying the query for a criterion that cannot be
         // sent would turn a search into an unfiltered one.
@@ -733,7 +744,7 @@ final class SearchViewModel {
             break
         }
 
-        // The toolbar's "search by detected text" toggle keeps its meaning:
+        // The "Search options" menu's detected-text toggle keeps its meaning:
         // *the typed query is* the criterion, so that route replaces free
         // text. An OCR criterion typed into the sheet is a filter like any
         // other (`filter.apply` already wrote it) and joins the query instead

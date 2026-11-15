@@ -268,8 +268,8 @@ final class ReadmeScreenshotsUITests: XCTestCase {
         XCTAssertFalse(element("searchEmptyState").exists, "Search shows its empty state")
         try capture("search")
 
-        // 5. Backup: the Me hub's Backup screen, opened from the Photos timeline (in Search results mode the
-        // trailing toolbar group holds seven items and the avatar is not a reachable button).
+        // 5. Backup: the Me hub's Backup screen, opened from the Photos timeline (the capture above is
+        // a Search screen; the walk goes back to Photos for the hub).
         selectPhotosTab()
         let hub = app.buttons.matching(identifier: "profileAvatar").firstMatch
         XCTAssertTrue(hub.waitForExistence(timeout: 15), "Profile avatar missing — \(screenState())")

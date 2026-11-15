@@ -68,6 +68,26 @@ final class AppStringsTests: XCTestCase {
         XCTAssertEqual(incomplete.sorted(), [], "Keys shipped without a translation")
     }
 
+    /// AC-28: the labels the Search redesign adds read in every shipped language.
+    func test_AC_28_searchOptionsKeysInFourLanguages() throws {
+        let strings = try XCTUnwrap(Self.loadCatalog()["strings"] as? [String: Any])
+        let keys = ["Search options", "Search typed text in detected text: On", "Search typed text in detected text: Off", "Save search…"]
+        for key in keys {
+            let entry = try XCTUnwrap(strings[key] as? [String: Any], "no catalog entry for \(key)")
+            let localizations = try XCTUnwrap(entry["localizations"] as? [String: Any], "no localizations for \(key)")
+            for language in Self.shippedTranslations {
+                let unit = try XCTUnwrap(
+                    (localizations[language] as? [String: Any])?["stringUnit"] as? [String: Any],
+                    "\(key): no \(language) string unit"
+                )
+                XCTAssertEqual(unit["state"] as? String, "translated", "\(key): \(language) is not translated")
+                let value = try XCTUnwrap(unit["value"] as? String, "\(key): no \(language) value")
+                XCTAssertFalse(value.isEmpty, "\(key): \(language) is empty")
+                XCTAssertNotEqual(value, key, "\(key): \(language) repeats the English key")
+            }
+        }
+    }
+
     func test_catalog_memoryCardKeysHaveFrenchTranslations() throws {
         let catalog = try Self.loadCatalog()
         let strings = try XCTUnwrap(catalog["strings"] as? [String: Any])

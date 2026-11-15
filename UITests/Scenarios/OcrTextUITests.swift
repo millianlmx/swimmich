@@ -506,12 +506,12 @@ final class OcrTextUITests: XCTestCase {
 
         // The detected-text toggle is a mode of the METADATA search, and it is
         // off the table on a server without the structured filter: the stub
-        // answers 3.2.0, so a disabled toggle here is a real failure.
-        let modeMenu = app.buttons
-            .matching(labelPredicate(["Search mode", "Mode de recherche", "Suchmodus"])).firstMatch
+        // answers 3.2.0, so a disabled toggle here is a real failure. It lives
+        // in the "Search options" menu, with the text modes.
+        let modeMenu = app.buttons.matching(identifier: "searchModeMenu").firstMatch
         if !modeMenu.waitForExistence(timeout: 25) {
             shot("08b-no-search-toolbar")
-            XCTFail("no search-mode menu in the toolbar — buttons read: "
+            XCTFail("no Search options menu in the toolbar — buttons read: "
                     + "\(app.buttons.allElementsBoundByIndex.map(\.label))")
         }
         shot("08-search")
@@ -520,25 +520,39 @@ final class OcrTextUITests: XCTestCase {
                       "the mode menu offers no Metadata option — buttons read: "
                       + "\(app.buttons.allElementsBoundByIndex.map(\.label))")
 
+        // The menu closes on the pick: open it again for the toggle, and again
+        // while the toggle is still disabled (the server's version may not be in).
         let ocrFilter = app.buttons.matching(identifier: "searchOcrFilterToggle").firstMatch
-        XCTAssertTrue(ocrFilter.waitForExistence(timeout: 25),
-                      "no detected-text toggle in the search toolbar — buttons read: "
-                      + "\(app.buttons.allElementsBoundByIndex.map(\.label))")
-        let enabled = XCTWaiter().wait(
-            for: [XCTNSPredicateExpectation(predicate: NSPredicate(format: "isEnabled == true"),
-                                            object: ocrFilter)],
-            timeout: 25)
-        XCTAssertEqual(enabled, .completed,
-                       "the detected-text toggle stayed disabled: either the mode is not Metadata"
-                       + " or the server never answered 3.2.0 (the stub does)")
+        let outsideTheMenu = app.windows.firstMatch.coordinate(withNormalizedOffset: CGVector(dx: 0.1, dy: 0.5))
+        let enabledBy = Date().addingTimeInterval(25)
+        var enabled = false
+        while !enabled && Date() < enabledBy {
+            modeMenu.tap()
+            XCTAssertTrue(ocrFilter.waitForExistence(timeout: 25),
+                          "no detected-text toggle in the Search options menu — buttons read: "
+                          + "\(app.buttons.allElementsBoundByIndex.map(\.label))")
+            enabled = ocrFilter.isEnabled
+            if !enabled {
+                outsideTheMenu.tap()
+                _ = ocrFilter.waitForNonExistence(timeout: 5)
+            }
+        }
+        XCTAssertTrue(enabled,
+                      "the detected-text toggle stayed disabled: either the mode is not Metadata"
+                      + " or the server never answered 3.2.0 (the stub does)")
         ocrFilter.tap()
+        _ = ocrFilter.waitForNonExistence(timeout: 5)
+        modeMenu.tap()
+        XCTAssertTrue(ocrFilter.waitForExistence(timeout: 10), "the Search options menu did not open again")
         XCTAssertTrue(waitForValue(ocrFilter, latchedCopy),
                       "the detected-text toggle did not latch — it reads '\(ocrFilter.value ?? "nil")'")
+        outsideTheMenu.tap()
+        _ = ocrFilter.waitForNonExistence(timeout: 5)
 
         // MARK: - Search: the criterion travels as a structured filter
 
         // The Filters sheet's "Detected text" field is the criterion's only
-        // writer a scenario can reach. The toolbar toggle rewrites the QUERY as
+        // writer a scenario can reach. The menu's toggle rewrites the QUERY as
         // the filter (`SearchViewModel.toggleCarriesCriterion`), but that query
         // cannot survive to a dispatch: iOS 26 hands a `role: .search` tab a
         // bottom search field whose presentation takes the app toolbar — filter
