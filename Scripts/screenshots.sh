@@ -5,62 +5,133 @@
 #
 # It creates a throwaway iPhone 17 simulator on the newest iOS 26+ runtime, starts
 # UITests/stubs/immich_stub_readme_screenshots.py (CC0 sample photos, no real
-# server or account), runs the XCUITest `ReadmeScreenshotsUITests` against it and
-# deletes the simulator. Needs a Mac with Xcode, XcodeGen and python3; nothing else
-# to do by hand. Commit the rewritten PNGs.
+# server or account) on a free port, checks through /__whoami that the port answers
+# the stub this script started and no other server, boots the simulator, adds the
+# CC0 photos to its photo library, builds the app and its UI tests, installs the app
+# and grants it Photos access (`simctl privacy`, after the install: a grant made
+# before it holds nothing), then runs the XCUITest `ReadmeScreenshotsUITests` and
+# deletes the simulator. The five PNGs are deleted only once everything is ready to
+# rewrite them: a script that stops earlier leaves the committed ones untouched.
+# Needs a Mac with Xcode, XcodeGen and python3; nothing else to do by hand. Commit
+# the rewritten PNGs.
 #
-#   SWIMMICH_SCREENSHOT_PORT   port of the stub (default 8421)
+#   SWIMMICH_SCREENSHOT_PORT   port of the stub (default 0: a free port chosen by the system)
 #
 set -euo pipefail
 cd "$(dirname "$0")/.."
 
-PORT="${SWIMMICH_SCREENSHOT_PORT:-8421}"
+PORT="${SWIMMICH_SCREENSHOT_PORT:-0}"
 OUT="$PWD/docs/screenshots"
 NAMES=(timeline viewer albums search backup)
+STUB_NAME="immich_stub_readme_screenshots.py"
+BUILD_DIR=build/screenshots
+STUB_LOG="$BUILD_DIR/stub.log"
+APP_BUNDLE_ID=fr.millianlmx.immich-ios
 
-runtime="$(xcrun simctl list runtimes -j | python3 -c '
+fail() { echo "screenshots.sh: $*" >&2; exit 1; }
+
+runtimes="$(xcrun simctl list runtimes -j)" \
+  || { rc=$?; fail "could not list the simulator runtimes (exit $rc)"; }
+runtime="$(printf '%s' "$runtimes" | python3 -c '
 import json, sys
 found = [r for r in json.load(sys.stdin)["runtimes"]
          if r["isAvailable"] and r["name"].startswith("iOS ") and int(r["version"].split(".")[0]) >= 26]
 if not found:
     sys.exit("screenshots.sh: no iOS 26+ simulator runtime installed")
 print(max(found, key=lambda r: [int(p) for p in r["version"].split(".")])["identifier"])
-')"
+')" || { rc=$?; fail "no usable iOS 26+ simulator runtime (exit $rc)"; }
 
-xcodegen generate --quiet
+xcodegen generate --quiet || { rc=$?; fail "xcodegen generate failed (exit $rc)"; }
 
-udid="$(xcrun simctl create swimmich-screenshots com.apple.CoreSimulator.SimDeviceType.iPhone-17 "$runtime")"
+udid=""
 stub_pid=""
 cleanup() {
   [ -z "$stub_pid" ] || kill "$stub_pid" 2>/dev/null || true
-  xcrun simctl shutdown "$udid" 2>/dev/null || true
-  xcrun simctl delete "$udid" 2>/dev/null || true
+  if [ -n "$udid" ]; then
+    xcrun simctl shutdown "$udid" 2>/dev/null || true
+    xcrun simctl delete "$udid" 2>/dev/null || true
+  fi
 }
 trap cleanup EXIT INT TERM
 
-python3 UITests/stubs/immich_stub_readme_screenshots.py "$PORT" >/dev/null &
+udid="$(xcrun simctl create swimmich-screenshots com.apple.CoreSimulator.SimDeviceType.iPhone-17 "$runtime")" \
+  || { rc=$?; udid=""; fail "could not create the iPhone 17 simulator on $runtime (exit $rc)"; }
+
+# The stub prints one JSON line first, with the port it really got; -u keeps it from sitting in a buffer.
+mkdir -p "$BUILD_DIR"
+python3 -u "UITests/stubs/$STUB_NAME" "$PORT" >"$STUB_LOG" 2>&1 &
 stub_pid=$!
+port=""
 for _ in $(seq 1 50); do
-  curl -fs "http://127.0.0.1:$PORT/api/server/ping" >/dev/null && break
+  kill -0 "$stub_pid" 2>/dev/null || break
+  port="$(head -n 1 "$STUB_LOG" | python3 -c '
+import json, sys
+try:
+    port = json.loads(sys.stdin.readline())["port"]
+except Exception:
+    sys.exit(1)
+print(port if isinstance(port, int) else "")
+' 2>/dev/null)" || port=""
+  [ -z "$port" ] || break
   sleep 0.2
 done
-curl -fs "http://127.0.0.1:$PORT/api/server/ping" >/dev/null \
-  || { echo "screenshots.sh: the stub does not answer on port $PORT" >&2; exit 1; }
+if [ -z "$port" ]; then
+  cat "$STUB_LOG" >&2 || true
+  fail "the stub did not start on port $PORT"
+fi
 
-xcrun simctl boot "$udid"
-xcrun simctl bootstatus "$udid" -b >/dev/null
-xcrun simctl status_bar "$udid" override --time 9:41 --batteryState charged --batteryLevel 100 \
-  --cellularMode active --cellularBars 4 --wifiBars 3
+whoami_json="$(curl -fsS "http://127.0.0.1:$port/__whoami" 2>/dev/null)" || whoami_json=""
+printf '%s' "$whoami_json" | python3 -c '
+import json, sys
+who = json.load(sys.stdin)
+sys.exit(0 if who.get("pid") == int(sys.argv[1]) and who.get("stub") == sys.argv[2]
+         and who.get("port") == int(sys.argv[3]) else 1)
+' "$stub_pid" "$STUB_NAME" "$port" 2>/dev/null \
+  || fail "port $port answers /__whoami with another server, not the stub this script started (pid $stub_pid)"
+
+{
+  xcrun simctl boot "$udid" \
+    && xcrun simctl bootstatus "$udid" -b >/dev/null \
+    && xcrun simctl status_bar "$udid" override --time 9:41 --batteryState charged --batteryLevel 100 \
+         --cellularMode active --cellularBars 4 --wifiBars 3
+} || { rc=$?; fail "could not boot the simulator $udid (exit $rc)"; }
+
+# The simulator's library already holds Apple's sample photos; these CC0 ones make sure the count is not zero.
+photos=()
+for file in UITests/stubs/fixtures/readme/*.jpg; do
+  case "$file" in *-thumb.jpg) ;; *) photos+=("$file") ;; esac
+done
+[ "${#photos[@]}" -gt 0 ] && xcrun simctl addmedia "$udid" "${photos[@]}" \
+  || fail "could not add the sample photos to the simulator"
+
+rc=0
+xcodebuild build-for-testing -quiet -project ImmichSwiftUI.xcodeproj -scheme ImmichSwiftUI \
+  -destination "platform=iOS Simulator,id=$udid" -derivedDataPath "$BUILD_DIR" >"$BUILD_DIR/build.log" 2>&1 || rc=$?
+if [ "$rc" -ne 0 ]; then
+  { grep ' error: ' "$BUILD_DIR/build.log" | head -n 3 | sed 's/^/screenshots.sh: build error: /' >&2; } || true
+  fail "xcodebuild build-for-testing failed (exit $rc), see build/screenshots/build.log"
+fi
+
+{
+  xcrun simctl install "$udid" "$BUILD_DIR/Build/Products/Debug-iphonesimulator/ImmichSwiftUI.app" \
+    && xcrun simctl privacy "$udid" grant photos "$APP_BUNDLE_ID"
+} || fail "could not grant Photos access to $APP_BUNDLE_ID"
 
 mkdir -p "$OUT"
 for name in "${NAMES[@]}"; do rm -f "$OUT/$name.png"; done
+rm -rf "$BUILD_DIR/ReadmeScreenshots.xcresult"
 
-TEST_RUNNER_IMMICH_STUB_URL="http://127.0.0.1:$PORT" TEST_RUNNER_SWIMMICH_SCREENSHOT_DIR="$OUT" \
-  xcodebuild test -quiet -project ImmichSwiftUI.xcodeproj -scheme ImmichSwiftUI \
-  -destination "platform=iOS Simulator,id=$udid" -derivedDataPath build/screenshots \
-  -only-testing:ImmichSwiftUIUITests/ReadmeScreenshotsUITests
+rc=0
+TEST_RUNNER_IMMICH_STUB_URL="http://127.0.0.1:$port" TEST_RUNNER_SWIMMICH_SCREENSHOT_DIR="$OUT" \
+  xcodebuild test-without-building -quiet -project ImmichSwiftUI.xcodeproj -scheme ImmichSwiftUI \
+  -destination "platform=iOS Simulator,id=$udid" -derivedDataPath "$BUILD_DIR" \
+  -only-testing:ImmichSwiftUIUITests/ReadmeScreenshotsUITests \
+  -resultBundlePath "$BUILD_DIR/ReadmeScreenshots.xcresult" || rc=$?
 
+missing=0
 for name in "${NAMES[@]}"; do
-  [ -s "$OUT/$name.png" ] || { echo "screenshots.sh: docs/screenshots/$name.png was not written" >&2; exit 1; }
+  [ -s "$OUT/$name.png" ] || { echo "screenshots.sh: docs/screenshots/$name.png was not written" >&2; missing=1; }
 done
+[ "$missing" -eq 0 ] || exit 1
+[ "$rc" -eq 0 ] || fail "the screenshot scenario failed (see build/screenshots/ReadmeScreenshots.xcresult)"
 echo "screenshots.sh: wrote ${NAMES[*]/%/.png} in docs/screenshots/"

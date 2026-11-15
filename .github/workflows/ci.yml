@@ -27,6 +27,12 @@ name: CI
 # "App Store upload" signs with the secrets of the GitHub Environment
 # `app-store` (limited to `v*` tags) and sends the build to App Store Connect.
 # Those secrets are read by that job only.
+#
+# The job "README screenshots" does nothing once the five pictures of the READMEs
+# are committed under docs/screenshots/. While one is missing it takes them on the
+# runner, pushes them to the branch `ci/readme-screenshots` (a push by the job's
+# token starts no workflow) and fails, saying so: the pictures are then committed
+# on the tested branch.
 on:
   push:
   schedule:
@@ -82,6 +88,24 @@ jobs:
           name: test-results
           path: build/ci/
           retention-days: 7
+
+  readme-screenshots:
+    name: README screenshots
+    # Even when the unit tests failed: they fail precisely while a screenshot is missing.
+    needs: unit-tests
+    if: ${{ !cancelled() && github.event_name == 'push' }}
+    runs-on: [self-hosted, macOS, ARM64, xcode]
+    timeout-minutes: 60
+    # The only job that writes to the repository (the workflow default is read-only).
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Capture the README screenshots when one is missing
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: Scripts/ci-readme-screenshots.sh
 
   ui-suite:
     name: UI suite (iOS simulator)

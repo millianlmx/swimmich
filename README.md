@@ -24,8 +24,8 @@ Swimmich uses the same server API (`/api`) as the official Immich client, with t
 
 1. **Native experience.** The upstream client is built with Flutter: excellent cross-platform parity, but no iOS visual language. Swimmich follows the HIG and iOS 26's Liquid Glass, using `NavigationStack`, native tab bars, and sheets.
 2. **System integrations.** A Live Activity displays backup progress in the Dynamic Island and on the lock screen; BGTaskScheduler maintains a chain of background backups; an App Intent exposes "Back up now" to Siri/Shortcuts; a home screen widget triggers a backup with one tap.
-3. **Performance against real photo libraries.** Backup is fully streamed disk→network: SHA-1 hashed in 1 MB blocks, multipart written to disk, uploaded from a file. RAM stays bounded regardless of asset size — large iCloud videos don't crash the app.
-4. **Sovereignty.** Self-hosted, zero intermediate cloud: the app communicates only with your Immich server.
+3. **Performance against real photo libraries.** Backup is fully streamed disk→network: SHA-1 computed by streaming the exported file in 64 KiB chunks, multipart written to disk, uploaded from a file. RAM stays bounded regardless of asset size — large iCloud videos don't crash the app.
+4. **Sovereignty.** Self-hosted, no intermediate cloud: the app talks to your Immich server, to your SSO provider if you sign in with one, and to Apple services (MapKit maps, reverse geocoding).
 
 Feature parity with the Flutter client is tracked in [`docs/mobile-features-vs-flutter.md`](docs/mobile-features-vs-flutter.md).
 
@@ -43,7 +43,7 @@ Every folder of `Sources/Features/` is listed once, in the row of its domain.
 | **People and tags** | face management with birthdays, hierarchical tags | `Sources/Features/People/`, `Sources/Features/Tags/` |
 | **Folders and stacks** | server folder view, photo stacks | `Sources/Features/Folders/`, `Sources/Features/Stacks/` |
 | **Duplicates and trash** | duplicate review, trash with restore | `Sources/Features/Duplicates/`, `Sources/Features/Trash/` |
-| **Locked folder** | private folder behind the device authentication | `Sources/Features/LockedFolder/` |
+| **Locked folder** | private folder behind a 6-digit PIN checked by the server; Face ID can fill that PIN in | `Sources/Features/LockedFolder/` |
 | **Partners** | partner sharing: invitations and the partner's library | `Sources/Features/Partners/` |
 | **Shared links** | create, password, expiration, **public viewer** (open a received link, unlock it, browse it, guest upload) | `Sources/Features/SharedLinks/` |
 | **Memories** | "On this day", moments viewer | `Sources/Features/Memories/` |
@@ -51,7 +51,7 @@ Every folder of `Sources/Features/` is listed once, in the row of its domain.
 | **Photo editor** | crop, rotate, mirror, saved as the photo's edit list on servers that support it, as a copy otherwise | `Sources/Features/Editor/` |
 | **RoadTrip** | reader and export of a travel film (opening, slideshow, map route) generated from an album | `Sources/Features/RoadTrip/` |
 | **Backup** | streaming, server deduplication, Live Activity, background chain, resume, upload detail, "Remaining to back up", on-device library, sync status, free up space | `Sources/Features/Upload/`, `Sources/Features/UploadDetail/`, `Sources/Features/BackupRemainder/`, `Sources/Features/LocalLibrary/`, `Sources/Features/SyncStatus/`, `Sources/Features/FreeUpSpace/`, `Sources/Services/BackupEngine.swift` |
-| **Sign-in and app lock** | onboarding, password and SSO sign-in, app lock (Face ID) | `Sources/Features/Auth/` |
+| **Sign-in and app lock** | onboarding, password and SSO sign-in, app lock (Face ID, with the device passcode as fallback) | `Sources/Features/Auth/` |
 | **Account and security** | profile and storage indicator ("Me" hub), password change, device sessions, API keys, server admin panel | `Sources/Features/Profile/`, `Sources/Features/Security/`, `Sources/Features/UserApiKeys/`, `Sources/Features/Admin/` |
 | **Network and trust** | local and external server addresses, custom HTTP headers (proxy), client certificate (mutual TLS) | `Sources/Features/NetworkSettings/`, `Sources/Features/CustomHeaders/`, `Sources/Features/ClientCertificate/` |
 | **Preferences and language** | theme, haptics, share quality, English source plus French, German, Spanish and Italian (follows the device, pinnable in the app, locale-aware dates), notification settings, read-only mode | `Sources/Features/Settings/`, `Sources/Features/Notifications/`, `Sources/Features/ReadOnly/`, `Resources/Localizable.xcstrings` |
@@ -61,7 +61,7 @@ Extensions: home screen widgets and the backup Live Activity (`ImmichWidgets/`),
 
 ## Screenshots
 
-Taken on an iPhone 17 simulator against a local stub that serves CC0 sample photos (`UITests/stubs/fixtures/readme/`): no personal photo, server address or account.
+Taken on an iPhone 17 simulator against a local stub that serves CC0 sample photos (`UITests/stubs/fixtures/readme/`): no personal photo, server address or account. The simulator's photo library receives the same CC0 photos, and the Backup screen is taken at rest, with Photos access granted and no thumbnail.
 
 | Photos | Viewer | Albums |
 |:-:|:-:|:-:|
@@ -69,7 +69,7 @@ Taken on an iPhone 17 simulator against a local stub that serves CC0 sample phot
 
 | Search | Backup |
 |:-:|:-:|
-| ![The Search tab: the photos matching the word "nature"](docs/screenshots/search.png) | ![The Backup screen opened from the Me hub](docs/screenshots/backup.png) |
+| ![The Search tab: the photos matching the word "nature"](docs/screenshots/search.png) | ![The Backup screen at rest: Photos access granted, the count of photos left to back up](docs/screenshots/backup.png) |
 
 To regenerate them, on a Mac with Xcode (iOS 26 simulator), XcodeGen and python3:
 
@@ -77,25 +77,25 @@ To regenerate them, on a Mac with Xcode (iOS 26 simulator), XcodeGen and python3
 Scripts/screenshots.sh
 ```
 
-The script creates a throwaway simulator, starts `UITests/stubs/immich_stub_readme_screenshots.py`, runs the scenario `ReadmeScreenshotsUITests` and rewrites the five files of `docs/screenshots/`. Commit the result.
+The script creates a throwaway simulator, starts `UITests/stubs/immich_stub_readme_screenshots.py` on a free port and checks that this port answers that stub and no other server, adds the CC0 photos to the simulator's photo library, installs the app and grants it Photos access with `simctl privacy`, runs the scenario `ReadmeScreenshotsUITests` and rewrites the five files of `docs/screenshots/`. Commit the result. When a push lacks one of the five files, the CI job `README screenshots` takes them on the runner and publishes them on the branch `ci/readme-screenshots`; commit them under `docs/screenshots/`.
 
 ## Architecture
 
-Strict MVVM in 4 layers. Protocols in `Sources/Core/Protocols/` are **immutable** and form the sole injection point; everything else is implementation or presentation.
+Strict MVVM in 4 layers. Protocols in `Sources/Core/Protocols/` are **immutable** and the main injection point; a few process-wide stores are injected as they are; everything else is implementation or presentation.
 
 | Layer | Role | Content |
 |---|---|---|
 | `Sources/Core/Types/` | API DTOs | `SearchDTOs.swift`, `APIError.swift`, `DTOs+SharedLink.swift`, … |
-| `Sources/Core/Protocols/` | Contracts (sole injection point) | `ImmichClient`, `PhotoLibraryService`, `BackupAssetSource`, `BackupLedgerStoring`, `BackupEditLedgerStoring`, `KeychainStore`, `TrustedServerStore`, `AppLockService`, `VideoPlaybackEngine`, `IdleTimerControlling` |
-| `Sources/Services/` | Implementations | `ImmichAPIClient`, `PhotoLibraryServiceImpl`, `BackupEngine`, `BackupLedger`, `BackupEditLedger`, `MultipartBody`, `ImageCache`, `AuthenticatedAsyncImage`, `RealtimeService` (Socket.IO), `KeychainStoreImpl`, … |
+| `Sources/Core/Protocols/` | Contracts (main injection point) | `ImmichClient`, `PhotoLibraryService`, `BackupAssetSource`, `BackupLedgerStoring`, `BackupEditLedgerStoring`, `KeychainStore`, `TrustedServerStore`, `AppLockService`, `VideoPlaybackEngine`, `IdleTimerControlling` |
+| `Sources/Services/` | Implementations | `ImmichAPIClient`, `PhotoLibraryServiceImpl`, `BackupEngine`, `BackupLedger`, `BackupEditLedger`, `ImageCache`, `AuthenticatedAsyncImage`, `RealtimeService` (Socket.IO), `KeychainStoreImpl`, … |
 | `Sources/Features/<Feature>/` | Per-feature MVVM | `<Feature>ViewModel.swift` (`@Observable`, `@MainActor`) + `<Feature>View.swift` (stateless) |
 
 Composition points:
 
-- **`Sources/DependencyContainer.swift`** — composition root: singleton `@MainActor`, `make*ViewModel()` methods injecting protocols via `init(client:)`. No shared view models.
+- **`Sources/DependencyContainer.swift`** — composition root: singleton `@MainActor`, `make*ViewModel()` methods that inject what each view model needs: mostly a protocol via `init(client:)`, sometimes a process-wide store (`AppLogStore`, `WhatsNewStore`) or the view model of the screen that opens it (Backup remainder and upload details take the `UploadViewModel`, download info takes the `OfflineDownloadViewModel`).
 - **`Sources/RootView.swift`** — auth-gated router: onboarding → `AuthenticatedRoot` (TabView). Account switch destroys the full subtree (`.id(activeAccountID)`), no residual state.
-- **`Sources/DesignSystem/`** — `Tokens/` (`Color.immich*`, `bgPrimary`/`bgSecondary`, spacing, motion, fonts) + `Components/` (app bar, buttons, badges, skeletons, floating controls: `pvFloating(.circle|.pill|.bar)`). No hardcoded colors in views.
-- **`Sources/ImmichSharedKit/`** — shared framework app ⇄ extensions: ActivityKit attributes and views for the Live Activity, the widget session.
+- **`Sources/DesignSystem/`** — `Tokens/` (`Color.immich*`, `bgPrimary`/`bgSecondary`, spacing, motion, fonts) + `Components/` (app bar, buttons, badges, skeletons, floating controls: `pvFloating(.circle|.pill|.bar)`). Colors come from these tokens; some feature views still use literal SwiftUI colors (`Color.white`, `Color.red`…), to migrate, not to copy.
+- **`Sources/ImmichSharedKit/`** — shared framework app ⇄ extensions: ActivityKit attributes and views for the Live Activity, the widget session, `MultipartBody` (upload bodies written to disk).
 - **`ImmichWidgets/`** — widget extension (home screen widgets + Live Activity). **`ImmichShareExtension/`** — share extension.
 
 ```mermaid
@@ -110,7 +110,7 @@ flowchart TD
     DS["DesignSystem<br/>Tokens + Components"]
 
     V --> VM
-    VM -->|"init(client:)"| P
+    VM -->|"init(client:, …)"| P
     S -->|conforms to| P
     S --> DTO
     V --> DS
@@ -126,13 +126,13 @@ flowchart TD
 1. **Onboarding:** server URL (typed or QR code scan) → ping `/api/server/ping` + server configuration. A non-blocking notice warns when the server's version is below 2.0.0 or from 4.0.0.
 2. **Login:** the sign-in step shows only the modes the server accepts: `GET /api/public/config` on a server that serves it (v3.2+), the deprecated `GET /api/server/features` otherwise. Password (`/api/auth/login`), SSO — OAuth2/OIDC through `ASWebAuthenticationSession` — or both; a server that accepts neither says so. A password sign-in of a non-administrator whose server sets `shouldChangePassword` goes through the change-password step before the home screen; until the change succeeds the token stays in memory only.
 3. **Token storage and launch:** the token is stored in the Keychain. A launch with a stored session opens the Photos tab at once; `restoreSession()` validates the token behind it (a 401 returns to the sign-in step, "session expired").
-4. **App Lock (Face ID):** locks when the app goes to background, with the overlay `AppLockCoverView`.
+4. **App Lock (Face ID or passcode):** locks when the app goes to background, with the overlay `AppLockCoverView`.
 
 ### Data and Images
 
 - **`ImmichAPIClient`**: all URLs pass through `ImmichAPI`; token in header; thread-safe client; typed errors `APIError`.
 - **Images:** `AuthenticatedAsyncImage`, 4-level pipeline (offline copy when present, memory cache `ImageCache`, disk cache, network with auth headers).
-- **Real-time:** `RealtimeService` (Socket.IO, injectable `RealtimeTransport`) for server events. Each debounced burst posts `.immichAssetsChanged` with its event names (`RealtimeBatch`) and every screen refreshes.
+- **Real-time:** `RealtimeService` (Socket.IO, injectable `RealtimeTransport`) for server events. Each debounced burst posts `.immichAssetsChanged` with its event names (`RealtimeBatch`): the Photos, Albums, People, Memories and Offline lists reload, and the viewer re-reads its photo when an edit is regenerated.
 - **Custom HTTP headers (proxy):** name/value pairs declared per server from the server step of onboarding or Me › Advanced. They live in the shared-group Keychain (`KeychainCustomHeadersStore`), never in the logs, and every request to that server carries them (`CustomHeadersRegistry`), widgets and share extension included. A redirect to another host drops them (`ServerRedirectPolicy`). A `401` carrying `WWW-Authenticate` is the proxy refusing (`APIError.proxyRejected`): the session is kept.
 - **Client certificate (TLS mutual authentication):** a PKCS#12 file imported per server from the server step of onboarding or Me › Advanced. The identity lives in the shared-group Keychain (`KeychainClientIdentityStore`); `ClientCertificateResponder` answers the TLS challenge of every connection of the app, and `WidgetTrustDelegate` those of the widgets and the share extension. A server asking for a certificate nobody can present gives `APIError.clientCertificateRequired`.
 - **Local and external server address:** Me › Advanced › Network declares, per account, a local address, an external address and an automatic switch, off by default (`ServerEndpointSwitch`). With the switch on, the local address is used only when the server answers `GET /api/server/ping` and `GET /api/server/version` with the same version as the external address, within 2 s; otherwise the external one. The account keeps one identity (`ServerAddressBook`); the widgets apply the same rule (`WidgetEndpointResolver`).
@@ -141,15 +141,15 @@ flowchart TD
 
 `BackupEngine` is a phase machine: `checking → uploading → done / cancelled`.
 
-1. **Scan** the photo library (PhotosKit) with filters (screenshots, Camera Roll, WhatsApp).
-2. **Pass 1 — hash:** SHA-1 streamed in 1 MB blocks; never the entire asset in RAM.
+1. **Scan** the photo library (PhotosKit): the whole library by default, or only the albums you select or exclude (smart albums included: Screenshots, Selfies, Bursts, Videos).
+2. **Pass 1 — hash:** SHA-1 streamed from the exported file in 64 KiB chunks; never the entire asset in RAM.
 3. **Server deduplication:** `/api/assets/bulk-upload-check`.
-4. **Pass 2 — upload:** re-export to disk → multipart written to disk → upload from the file. Bounded RAM, large videos are backed up instead of skipped.
+4. **Pass 2 — upload:** each accepted asset is sent from the file exported for pass 1 (no second export or iCloud download): multipart body written to disk, then uploaded from the file. Bounded RAM, large videos are backed up instead of skipped.
 5. **`BackupLedger`:** already-backed-up assets are not re-exported — avoids re-downloading the entire "Optimize Storage" iCloud library on every run.
 6. **iCloud assets:** dedicated states (downloading, retry) with status messages in the UI.
 7. **Also back up edits (opt-in, off by default):** an asset edited in place in Photos has its edited rendering exported, uploaded under the same `deviceAssetId`, then stacked on top of its original with `POST /api/stacks`. The edits already sent are recorded by `BackupEditLedger`, beside the original ledger.
 
-Reliable progress: total fixed after filtering, bar = `processed / total` (each asset counts: uploaded, deduplicated, or failed).
+Reliable progress: total fixed after filtering; the bar is `(processed + ½ × staged) / total`, where processed = uploaded, already on the server, failed or deferred (iCloud original not local yet), and staged = exported and hashed, waiting for its upload.
 
 System surfaces:
 
@@ -183,7 +183,7 @@ xcodebuild test -project ImmichSwiftUI.xcodeproj -scheme ImmichSwiftUI -destinat
 python3 -m unittest discover -s Scripts -p 'test_*.py'
 ```
 
-- Unit tests live in `Tests/`: every view model is tested with a `MockImmichClient` injected via `init(client:)`. End-to-end UI scenarios live in `UITests/Scenarios/`, each with its Python stub under `UITests/stubs/`; `Scripts/ci.sh` runs the ones listed in `Scripts/ci-ui-scenarios.txt`.
+- Unit tests live in `Tests/`: view models are tested with a `MockImmichClient` injected via `init(client:)`, or with the dependency they take (`AdvancedSettingsViewModel` takes a log and an image cache). End-to-end UI scenarios live in `UITests/Scenarios/`, each with its Python stub under `UITests/stubs/`; `Scripts/ci.sh` runs the ones listed in `Scripts/ci-ui-scenarios.txt`.
 - The Python tests of `Scripts/` cover the CI, the release chain, the string catalog audit and these READMEs.
 - **Trap:** the test target sources the entire `Tests/` folder — a new `Tests/*.swift` file is only compiled after `xcodegen generate`. Without regeneration, tests pass "green" by omission.
 
