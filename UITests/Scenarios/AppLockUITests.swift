@@ -583,6 +583,39 @@ final class AppLockUITests: XCTestCase {
                       "the content is not usable after unlock")
     }
 
+    /// AC-804 (B-2): the Face ID prompt open, the device's main button pressed and
+    /// the app brought back: no failure reason is shown and the prompt is raised
+    /// again.
+    ///
+    /// Compiled, NOT listed in `Scripts/ci-ui-scenarios.txt`: its premise (on the
+    /// simulator, going to the background interrupts the prompt with
+    /// `.systemCancel`, which the lock reads as "no reason") is not measured. The
+    /// "no reason when `failure == nil`" half goes through the same
+    /// `reason: appLock.failure?.reason` binding that
+    /// `DynamicTypeUITests.test_AC_26_4_appLock` proves the other way round.
+    func test_AC_804_backgroundDuringPromptShowsNoReason() throws {
+        launchSignedIn()
+        enableAppLock()
+        closeMeSheet()
+        openViewer()
+
+        let springboard = XCUIApplication(bundleIdentifier: "com.apple.springboard")
+        sendToBackgroundAndBack() // the lock shows and launches the prompt by itself
+        XCTAssertTrue(promptButton(springboard).waitForExistence(timeout: 15),
+                      "the prompt was not launched on return — springboard reads:\n\(springboard.debugDescription)")
+
+        // The prompt is open: the main button, then back.
+        XCUIDevice.shared.press(.home)
+        sleep(2)
+        app.activate()
+        XCTAssertTrue(element("AppLockOverlay").waitForExistence(timeout: 30),
+                      "the lock did not show after the second return — \(screenText())")
+        XCTAssertFalse(element("appLockFailureReason").exists,
+                       "an interrupted prompt showed a failure reason — \(screenText())")
+        XCTAssertTrue(promptButton(springboard).waitForExistence(timeout: 15),
+                      "the prompt was not raised again — springboard reads:\n\(springboard.debugDescription)")
+    }
+
     /// AC-17 (B-7): a cold launch is locked before any content, and prompts by itself.
     func test_AC_17_coldLaunchCoveredAndPrompted() throws {
         launchSignedIn()

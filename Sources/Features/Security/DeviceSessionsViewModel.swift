@@ -151,6 +151,10 @@ final class DeviceSessionsViewModel {
         await mutate { try await client.lockAuthSession() }
     }
 
+    /// Bumped on each elevation PIN the server refused (4xx); never for the local
+    /// "Enter 6 digits" refusal, a network error or an accepted PIN (AC-807).
+    private(set) var pinRefusalFeedbackTick = 0
+
     /// Elevates the session with the account PIN. The server reads only a
     /// six-digit `pinCode` (its `pattern` is `^\d{6}$` whatever the field's
     /// description says), and a shorter entry is refused **here** so it never
@@ -162,7 +166,8 @@ final class DeviceSessionsViewModel {
             errorMessage = String(localized: "Enter 6 digits")
             return
         }
-        await mutate { try await client.unlockAuthSession(pinCode: pinCode) }
+        let error = await mutate { try await client.unlockAuthSession(pinCode: pinCode) }
+        if let error, APIError.from(error).isServerRefusal { pinRefusalFeedbackTick &+= 1 }
     }
 
     /// Clears the previous failure before a new attempt, so an error never
@@ -181,9 +186,11 @@ final class DeviceSessionsViewModel {
     /// otherwise. A failed probe never erases a mutation's failure — it raises
     /// `isElevationStale` instead — and it never touches `isElevated`, so a
     /// request that failed can never be read as "unlocked".
-    private func mutate(_ mutation: () async throws -> Void, reloadingList: Bool = false) async {
+    @discardableResult
+    private func mutate(_ mutation: () async throws -> Void, reloadingList: Bool = false) async -> Error? {
         clearError()
         var failure: String?
+        var mutationError: Error?
         do {
             try await mutation()
             if reloadingList {
@@ -192,11 +199,13 @@ final class DeviceSessionsViewModel {
             }
         } catch {
             failure = error.userFacingMessage
+            mutationError = error
         }
         if let probeFailure = await probeElevation() {
             failure = failure ?? probeFailure
         }
         errorMessage = failure
+        return mutationError
     }
 
     /// `GET /api/auth/status` — the elevation's only source. Returns the failure

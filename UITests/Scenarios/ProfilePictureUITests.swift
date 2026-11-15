@@ -749,10 +749,11 @@ final class ProfilePictureUITests: XCTestCase {
         // The confirmation is not decorative: nothing may be destroyed before it
         // is answered.
         // The app's own Remove button carries the SAME words ("Remove Photo" /
-        // "Retirer la photo" — the catalog translates it), so the identifier is
-        // what tells the dialog's button apart from the one that opened it.
-        let confirm = app.buttons.matching(labelPredicate(["Remove Photo", "Retirer la photo",
-                                                           "Supprimer la photo", "Foto entfernen"]))
+        // "Retirer la photo" — the catalog translates it), so the query is scoped
+        // to the confirmation alert (iOS 26 also lists an alert button twice:
+        // `firstMatch` narrows it).
+        let confirm = app.alerts.firstMatch.buttons.matching(labelPredicate(["Remove Photo", "Retirer la photo",
+                                                                              "Supprimer la photo", "Foto entfernen"]))
             .matching(NSPredicate(format: "identifier != 'profilePictureRemoveButton'")).firstMatch
         if !confirm.waitForExistence(timeout: 15) {
             shot("p06b-no-confirmation")

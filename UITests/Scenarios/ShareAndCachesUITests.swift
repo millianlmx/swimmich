@@ -43,7 +43,6 @@ final class ShareAndCachesUITests: XCTestCase {
     private let albumPhotoPrefix = "bbbbbbbb-1111-4111-8111-"
 
     private static let welcome = ["Your photo library", "Votre photothèque"]
-    private static let resetLabels = ["Reset", "Zurücksetzen", "Restablecer", "Réinitialiser", "Reimposta"]
 
     /// The character `AppLogEntry.message` puts between a call and its outcome.
     private let arrow = "\u{2192}"
@@ -92,13 +91,11 @@ final class ShareAndCachesUITests: XCTestCase {
         let reset = reveal(element("preferencesResetButton"))
         XCTAssertTrue(reset.waitForExistence(timeout: 10), "the Preferences form has no Reset row")
         reset.tap()
-        let dialog = app.sheets.firstMatch
-        XCTAssertTrue(dialog.waitForExistence(timeout: 10), "Reset did not raise a confirmation")
-        let confirm = dialog.buttons.matching(labelPredicate(Self.resetLabels)).firstMatch
-        XCTAssertTrue(confirm.waitForExistence(timeout: 10),
-                      "no Reset button in the confirmation — buttons: \(dialog.buttons.allElementsBoundByIndex.map(\.label))")
+        // iOS 26 lists an identified alert button twice: query inside the alert.
+        let confirm = app.alerts.firstMatch.buttons.matching(identifier: "preferencesResetConfirm").firstMatch
+        XCTAssertTrue(confirm.waitForExistence(timeout: 10), "Reset did not raise a confirmation with a Reset button")
         confirm.tap()
-        XCTAssertTrue(waitUntil(timeout: 10) { !dialog.exists }, "the confirmation stayed up after Reset")
+        XCTAssertTrue(waitUntil(timeout: 10) { !confirm.exists }, "the confirmation stayed up after Reset")
         assertSegment("preferencesShareQualityPicker", 1, selected: true, "Reset must bring Preview back")
         leavePreferencesAndHub()
     }
@@ -338,7 +335,7 @@ final class ShareAndCachesUITests: XCTestCase {
         XCTAssertTrue(clear.waitForExistence(timeout: 10), "no 'Clear offline cache' action on Sync Status")
         XCTAssertTrue(waitUntil(timeout: 20) { clear.isEnabled }, "the purge stayed disabled with an offline photo")
         clear.tap()
-        tapElement("syncStatusClearOfflineConfirm", "no confirmation on Sync Status")
+        tapAlertButton("syncStatusClearOfflineConfirm", "no confirmation on Sync Status")
         tapElement("offlinePurgeSucceededDismiss", "no purge result alert on Sync Status", timeout: 30)
         XCTAssertTrue(waitUntil(timeout: 15) { !clear.isEnabled }, "the purge left offline photos counted on Sync Status")
         tapElement("syncStatusDone", "no way out of Sync Status")
@@ -354,7 +351,7 @@ final class ShareAndCachesUITests: XCTestCase {
         let purge = reveal(element("downloadInfoPurgeButton"))
         XCTAssertTrue(purge.waitForExistence(timeout: 20), "no purge on Download Info — \(screenReads())")
         purge.tap()
-        tapElement("downloadInfoPurgeConfirm", "no confirmation on Download Info")
+        tapAlertButton("downloadInfoPurgeConfirm", "no confirmation on Download Info")
         tapElement("offlinePurgeSucceededDismiss", "no purge result alert on Download Info", timeout: 30)
         goBack()
         closeHub()
@@ -366,7 +363,7 @@ final class ShareAndCachesUITests: XCTestCase {
         XCTAssertTrue(reveal(element("offlineAsset_\(photo)")).waitForExistence(timeout: 20),
                       "Offline Storage does not list the downloaded photo — \(screenReads())")
         reveal(element("clearAllOffline")).tap()
-        tapElement("clearAllOfflineConfirm", "no confirmation on Offline Storage")
+        tapAlertButton("clearAllOfflineConfirm", "no confirmation on Offline Storage")
         tapElement("offlinePurgeSucceededDismiss", "no purge result alert on Offline Storage", timeout: 30)
         XCTAssertTrue(waitUntil(timeout: 15) { !self.element("offlineAsset_\(self.photo)").exists },
                       "Offline Storage still lists the photo after its own purge")
@@ -756,6 +753,14 @@ final class ShareAndCachesUITests: XCTestCase {
 
     private func tapElement(_ identifier: String, _ message: String, timeout: TimeInterval = 15) {
         let target = element(identifier)
+        XCTAssertTrue(target.waitForExistence(timeout: timeout), "\(message) — \(screenReads())")
+        target.tap()
+    }
+
+    /// A confirmation button: iOS 26 lists an identified alert button twice in
+    /// the tree, so it is always queried inside the alert.
+    private func tapAlertButton(_ identifier: String, _ message: String, timeout: TimeInterval = 15) {
+        let target = app.alerts.firstMatch.buttons.matching(identifier: identifier).firstMatch
         XCTAssertTrue(target.waitForExistence(timeout: timeout), "\(message) — \(screenReads())")
         target.tap()
     }

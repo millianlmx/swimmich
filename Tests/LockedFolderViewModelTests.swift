@@ -215,6 +215,79 @@ final class LockedFolderViewModelTests: XCTestCase {
         XCTAssertEqual(vm.errorMessage, localizedString("Too many attempts"))
     }
 
+    // MARK: - Error haptic on a refused PIN (AC-64, AC-807)
+
+    func test_AC_64_serverRefusedPINBumpsFeedback() async {
+        client.unlockAuthSessionError = APIError.serverError(400, "Wrong PIN code")
+        vm.pinEntry = "000000"
+
+        await vm.submitPIN()
+
+        XCTAssertEqual(vm.pinRefusalFeedbackTick, 1)
+    }
+
+    func test_AC_807_eachServerRefusalBumpsFeedbackUpToTheLimit() async {
+        client.unlockAuthSessionError = APIError.serverError(400, "Wrong PIN code")
+
+        for expected in 1...5 {
+            vm.pinEntry = "000000"
+            await vm.submitPIN()
+            XCTAssertEqual(vm.pinRefusalFeedbackTick, expected, "refusal \(expected), the one reaching the limit included")
+        }
+        vm.pinEntry = "000000"
+        await vm.submitPIN()
+        XCTAssertEqual(vm.pinRefusalFeedbackTick, 5, "the exhausted door sends no request, so it plays nothing")
+    }
+
+    func test_AC_807_acceptedPINDoesNotBumpFeedback() async {
+        vm.pinEntry = "123456"
+        stubLockedBucket(ids: [])
+
+        await vm.submitPIN()
+
+        XCTAssertEqual(vm.gate, .unlocked)
+        XCTAssertEqual(vm.pinRefusalFeedbackTick, 0)
+    }
+
+    func test_AC_807_networkAndServerErrorsDoNotBumpFeedback() async {
+        for error: APIError in [
+            .network(URLError(.notConnectedToInternet)),
+            .serverError(500, nil),
+            .unauthorized,
+            .http(503),
+        ] {
+            client.unlockAuthSessionError = error
+            vm.pinEntry = "000000"
+            await vm.submitPIN()
+        }
+        XCTAssertEqual(vm.pinRefusalFeedbackTick, 0, "only a 4xx answer is a refusal")
+        XCTAssertEqual(vm.failedAttempts, 4, "the attempt counter is unchanged by the haptic rule")
+    }
+
+    func test_AC_807_faceIDReplayNeverBumpsFeedback() async {
+        pins.storePIN("111111", for: Self.account)
+        client.unlockAuthSessionError = APIError.serverError(400, "Wrong PIN code")
+
+        await vm.unlockWithBiometrics()
+
+        XCTAssertEqual(vm.pinRefusalFeedbackTick, 0)
+    }
+
+    // AC-807: what counts as "the server refused" (decision: 4xx only).
+    func test_AC_807_isServerRefusalClassification() {
+        XCTAssertTrue(APIError.serverError(400, "Wrong PIN code").isServerRefusal)
+        XCTAssertTrue(APIError.serverError(429, "Too many attempts").isServerRefusal)
+        XCTAssertTrue(APIError.http(403).isServerRefusal)
+        XCTAssertFalse(APIError.serverError(500, nil).isServerRefusal)
+        XCTAssertFalse(APIError.http(503).isServerRefusal)
+        XCTAssertFalse(APIError.unauthorized.isServerRefusal)
+        XCTAssertFalse(APIError.network(URLError(.timedOut)).isServerRefusal)
+        XCTAssertFalse(APIError.decoding("x").isServerRefusal)
+        XCTAssertFalse(APIError.readOnlyMode.isServerRefusal)
+        XCTAssertFalse(APIError.proxyRejected.isServerRefusal)
+        XCTAssertFalse(APIError.from(NSError(domain: "test", code: 400)).isServerRefusal, "a foreign error is not a server answer")
+    }
+
     // MARK: - Opening the door with Face ID
 
     func test_unlockWithBiometrics_replaysStoredPIN() async {

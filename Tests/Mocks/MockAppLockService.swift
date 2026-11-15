@@ -89,21 +89,21 @@ final class MockAppLockService: AppLockService, @unchecked Sendable {
     }
 }
 
-/// Answers `true` to the first evaluation (the activation prompt), then
+/// Answers `.success` to the first evaluation (the activation prompt), then
 /// delegates every later one to `next`, so an evaluator counter such as
 /// `PromptProbe.calls` stays at zero after activation.
 private actor ActivationGate {
     private var activationPending = true
-    private let next: @Sendable () async -> Bool
+    private let next: @Sendable () async -> AppLockEvaluation
 
-    init(next: @escaping @Sendable () async -> Bool) {
+    init(next: @escaping @Sendable () async -> AppLockEvaluation) {
         self.next = next
     }
 
-    func evaluate() async -> Bool {
+    func evaluate() async -> AppLockEvaluation {
         if activationPending {
             activationPending = false
-            return true
+            return .success
         }
         return await next()
     }
@@ -113,7 +113,7 @@ private actor ActivationGate {
 /// available, first prompt succeeds): enabled, unlocked, cover `.none`, no
 /// scene phase received. Later evaluations go to `next`.
 @MainActor
-func makeActivatedAppLock(then next: @escaping @Sendable () async -> Bool) async -> AppLockViewModel {
+func makeActivatedAppLock(then next: @escaping @Sendable () async -> AppLockEvaluation) async -> AppLockViewModel {
     UserDefaults.standard.removeObject(forKey: AppLockViewModel.enabledKey)
     let gate = ActivationGate(next: next)
     let vm = AppLockViewModel(evaluator: { await gate.evaluate() }, availability: { true })

@@ -590,13 +590,13 @@ struct PhotoViewer: View {
                     refreshOcr()
                 }
             }
-            .confirmationDialog(
+            // An alert, not a confirmationDialog: on iOS 26 a confirmationDialog is a popover that drops Cancel.
+            .alert(
                 deleteIsPermanent ? "Delete Permanently?" : "Delete this photo?",
                 isPresented: Binding(
                     get: { pendingDeleteIndex != nil },
                     set: { if !$0 { pendingDeleteIndex = nil } }
-                ),
-                titleVisibility: .visible
+                )
             ) {
                 Button(deleteIsPermanent ? "Delete Permanently" : "Delete", role: .destructive) {
                     confirmDelete()

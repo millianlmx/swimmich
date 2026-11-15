@@ -59,10 +59,10 @@ struct ProfilePictureView: View {
         .immichAppBarTitleHeader("Profile Picture")
         .task { await vm.load() }
         .refreshable { await vm.load() }
-        .confirmationDialog(
+        // An alert, not a confirmationDialog: on iOS 26 a confirmationDialog is a popover that drops Cancel.
+        .alert(
             "Remove profile picture?",
-            isPresented: $isConfirmingRemoval,
-            titleVisibility: .visible
+            isPresented: $isConfirmingRemoval
         ) {
             Button("Remove Photo", role: .destructive) {
                 Task { await vm.deletePhoto() }

@@ -95,10 +95,11 @@ struct PartnersView: View {
         .sheet(isPresented: $presentingInvite) {
             InvitePartnerSheet(vm: vm, currentUserId: auth.userId ?? "")
         }
-        .confirmationDialog(
+        // An alert, not a confirmationDialog: on iOS 26 a confirmationDialog is a
+        // popover anchored to its source and drops the cancel button.
+        .alert(
             "Stop sharing with this partner?",
-            isPresented: $showPartnerRemoveConfirm,
-            titleVisibility: .visible
+            isPresented: $showPartnerRemoveConfirm
         ) {
             Button("Stop sharing", role: .destructive) {
                 guard let partner = partnerPendingRemoval else { return }
@@ -111,9 +112,13 @@ struct PartnersView: View {
             Button("Cancel", role: .cancel) {
                 withAnimation(PVMotion.movement(PVMotion.snappy, reduceMotion: reduceMotion)) { partnerPendingRemoval = nil }
             }
+            .accessibilityIdentifier("cancelStopSharing")
         } message: {
             Text("They lose access to your library. Your photos stay on the server, and your own timeline is unaffected.")
         }
+        // Stopping a share withdraws an access: a warning tap once the server
+        // accepted it, nothing on Cancel or on a refusal (AC-806).
+        .appSensoryFeedback(.warning, trigger: vm.stopSharingFeedbackTick, probe: "partnerStopSharing")
         .accessibilityElement(children: .contain)
         .accessibilityIdentifier("partnersScreen")
     }

@@ -547,15 +547,14 @@ final class UploadDetailUITests: XCTestCase {
         let resetTracking = row("resetTrackingButton")
         XCTAssertTrue(resetTracking.waitForExistence(timeout: 10), "no Reset backup tracking button")
         resetTracking.tap()
-        let resetLabels = ["Reset tracking", "Réinitialiser le suivi", "Verfolgung zurücksetzen"]
-        let dialogButton = app.sheets.buttons.matching(labelPredicate(resetLabels)).firstMatch
-        let alertButton = app.alerts.buttons.matching(labelPredicate(resetLabels)).firstMatch
-        if dialogButton.waitForExistence(timeout: 10) {
-            dialogButton.tap()
-        } else if alertButton.waitForExistence(timeout: 5) {
-            alertButton.tap()
+        // An alert (not a sheet: on iOS 26 a confirmation dialog drops Cancel), its
+        // Reset button reached by identifier — its label is localized. iOS 26
+        // lists an identified alert button twice, hence `matching(…).firstMatch`.
+        let confirmReset = app.alerts.firstMatch.buttons.matching(identifier: "resetTrackingConfirm").firstMatch
+        if !confirmReset.waitForExistence(timeout: 10) {
+            XCTFail("the confirmation alert never offered Reset tracking:\n\(app.debugDescription)")
         } else {
-            XCTFail("the confirmation dialog never offered Reset tracking:\n\(app.debugDescription)")
+            confirmReset.tap()
         }
         shot("u08-tracking-reset")
 

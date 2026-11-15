@@ -13,6 +13,8 @@ import SwiftUI
 struct UploadDetailView: View {
     @PVReduceMotion private var reduceMotion
     @Bindable var vm: UploadDetailViewModel
+    /// Bumped when Stop was accepted, to play the haptic (AC-809).
+    @State private var stopTick = 0
 
     var body: some View {
         ScrollView {
@@ -37,6 +39,7 @@ struct UploadDetailView: View {
             }
         }
         .immichAppBarTitleHeader("Upload details")
+        .appSensoryFeedback(.stop, trigger: stopTick, probe: "backupStop.uploadDetail")
     }
 
     // MARK: - Run header
@@ -94,7 +97,7 @@ struct UploadDetailView: View {
 
     private var stopButton: some View {
         Button {
-            vm.cancel()
+            if vm.cancel() { stopTick &+= 1 }
         } label: {
             Label(
                 vm.isCancelling ? "Cancelling…" : "Stop",

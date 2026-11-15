@@ -121,13 +121,13 @@ struct UserApiKeysView: View {
         } message: {
             Text(vm.pendingSecret ?? "")
         }
-        .confirmationDialog(
+        // An alert, not a confirmationDialog: on iOS 26 a confirmationDialog is a popover that drops Cancel.
+        .alert(
             "Rotate key?",
             isPresented: Binding(
                 get: { vm.rotationTarget != nil },
                 set: { if !$0 { vm.rotationTarget = nil } }
-            ),
-            titleVisibility: .visible
+            )
         ) {
             Button("Rotate") {
                 if let key = vm.rotationTarget { Task { await vm.rotate(key) } }
@@ -137,13 +137,12 @@ struct UserApiKeysView: View {
         } message: {
             Text("The current secret stops working immediately. The new secret is shown once.")
         }
-        .confirmationDialog(
+        .alert(
             "Delete key?",
             isPresented: Binding(
                 get: { vm.deletionTarget != nil },
                 set: { if !$0 { vm.deletionTarget = nil } }
-            ),
-            titleVisibility: .visible
+            )
         ) {
             Button("Delete", role: .destructive) {
                 if let key = vm.deletionTarget { Task { await vm.delete(key) } }

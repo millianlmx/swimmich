@@ -77,10 +77,10 @@ struct DownloadInventoryView: View {
         }
         .navigationTitle("Download Info")
         .navigationBarTitleDisplayMode(.inline)
-        .confirmationDialog(
+        // An alert, not a confirmationDialog: on iOS 26 a confirmationDialog is a popover that drops Cancel.
+        .alert(
             "Remove all downloaded files?",
-            isPresented: $confirmPurge,
-            titleVisibility: .visible
+            isPresented: $confirmPurge
         ) {
             Button("Clear all", role: .destructive) { Task { await vm.clearAll() } }
                 .accessibilityIdentifier("downloadInfoPurgeConfirm")

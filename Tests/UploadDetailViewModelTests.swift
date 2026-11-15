@@ -82,6 +82,23 @@ final class UploadDetailViewModelTests: XCTestCase {
         )
     }
 
+    // MARK: - Stop haptic signal (AC-809)
+
+    /// `cancel()` says whether a stop was accepted, so the screen plays its
+    /// haptic only for a pass that was really running.
+    @MainActor
+    func test_AC_809_cancelReportsWhetherAStopWasAccepted() async {
+        let h = makeHarness(candidates: [candidate(id: "c1")])
+        h.source.exportGate = { _ in try await suspendUntilCancelled() }
+        XCTAssertFalse(h.vm.cancel(), "nothing runs: nothing to stop")
+
+        let run = Task { @MainActor in await h.upload.runBackup(manual: true) }
+        await pollUntil("export en vol") { h.source.exportedIDs.contains("c1") }
+        XCTAssertTrue(h.vm.cancel())
+        await run.value
+        XCTAssertFalse(h.vm.cancel(), "the pass is over")
+    }
+
     // MARK: - The restricted run
 
     /// A retry names its assets: the run reads exactly those identifiers, so a

@@ -17,6 +17,44 @@ enum AppLockActivationResult: Equatable {
     case enabled, unavailable, notAuthenticated, inProgress
 }
 
+/// Why an authentication attempt left the app locked (AC-63, AC-803).
+enum AppLockFailure: Equatable {
+    case notRecognized, cancelled, lockedOut, passcodeNotSet, other
+}
+
+extension AppLockFailure {
+    /// Text shown under the lock title (catalog keys, en/fr/de/es/it).
+    var reason: LocalizedStringResource {
+        switch self {
+        case .notRecognized: "You weren't recognized. Try again."
+        case .cancelled: "Face ID didn't recognize you, or the request was cancelled. Try again."
+        case .lockedOut: "Face ID or Touch ID is locked after too many attempts. Unlock your iPhone with its passcode, then try again."
+        case .passcodeNotSet: "This iPhone has no passcode, so Swimmich can't confirm it's you. Set a passcode in Settings, then try again."
+        case .other: "Authentication didn't succeed. Try again."
+        }
+    }
+}
+
+/// Result of one authentication attempt. `.interrupted`: the system or the app
+/// cancelled the prompt (backgrounding), which is not a failure to report.
+enum AppLockEvaluation: Equatable {
+    case success, failed(AppLockFailure), interrupted
+
+    /// Pure mapping of an `evaluatePolicy` reply (or a `canEvaluatePolicy` error).
+    static func from(success: Bool, error: Error?) -> AppLockEvaluation {
+        if success { return .success }
+        guard let laError = error as? LAError else { return .failed(.other) }
+        switch laError.code {
+        case .authenticationFailed: return .failed(.notRecognized)
+        case .userCancel, .userFallback: return .failed(.cancelled)
+        case .biometryLockout: return .failed(.lockedOut)
+        case .passcodeNotSet: return .failed(.passcodeNotSet)
+        case .systemCancel, .appCancel: return .interrupted
+        default: return .failed(.other)
+        }
+    }
+}
+
 /// Concrete app-lock state. Wraps LocalAuthentication with an injectable
 /// evaluator so unit tests never touch LAContext.
 ///
@@ -38,6 +76,14 @@ final class AppLockViewModel: AppLockService {
     var isLocked: Bool = false
     var isAuthenticating: Bool = false
     private(set) var isPrivacyMasked = false
+    /// Why the last authentication failed; nil at launch, after a success, after
+    /// a system interruption and whenever the app locks again (AC-63).
+    private(set) var failure: AppLockFailure?
+
+    /// Title of the lock screen's single button: "Try Again" once a reason shows.
+    var unlockButtonTitle: LocalizedStringResource {
+        failure == nil ? "Unlock" : "Try Again"
+    }
 
     /// Single subscriber: the lock window controller.
     @ObservationIgnored var onCoverChange: ((AppLockCover) -> Void)?
@@ -47,7 +93,7 @@ final class AppLockViewModel: AppLockService {
     @ObservationIgnored private var promptOnNextActive: Bool
     @ObservationIgnored private var lastPhase: ScenePhase?
 
-    private let evaluator: @Sendable () async -> Bool
+    private let evaluator: @Sendable () async -> AppLockEvaluation
     private let availability: @Sendable () -> Bool
 
     var cover: AppLockCover {
@@ -57,7 +103,7 @@ final class AppLockViewModel: AppLockService {
     }
 
     init(
-        evaluator: @Sendable @escaping () async -> Bool = AppLockViewModel.systemEvaluator,
+        evaluator: @Sendable @escaping () async -> AppLockEvaluation = AppLockViewModel.systemAuthenticator,
         availability: @Sendable @escaping () -> Bool = AppLockViewModel.systemAvailability
     ) {
         self.evaluator = evaluator
@@ -81,7 +127,10 @@ final class AppLockViewModel: AppLockService {
         guard availability() else { return .unavailable }
         // `authenticate()` holds `isAuthenticating` for the whole prompt
         // (FM-1), so the `.inactive` it causes neither masks nor locks.
-        guard await authenticate() else { return .notAuthenticated }
+        let activated = await authenticate()
+        // A failed activation never shows a reason: the lock screen is not up.
+        failure = nil
+        guard activated else { return .notAuthenticated }
         UserDefaults.standard.set(true, forKey: Self.enabledKey)
         isEnabled = true
         // The user just authenticated: no lock until the next `.background`.
@@ -95,6 +144,7 @@ final class AppLockViewModel: AppLockService {
     /// Immediate, no authentication (B-30).
     func disable() {
         isEnabled = false
+        failure = nil
         UserDefaults.standard.set(false, forKey: Self.enabledKey)
         // FM-2: turning the feature off must also release any active lock,
         // otherwise the user stays trapped behind the overlay.
@@ -109,6 +159,7 @@ final class AppLockViewModel: AppLockService {
         // (LAContext flips scenePhase to .inactive during evaluation).
         guard !isAuthenticating else { return }
         guard isEnabled else { return }
+        failure = nil
         isLocked = true
         promptOnNextActive = true
         publishCover()
@@ -119,10 +170,20 @@ final class AppLockViewModel: AppLockService {
         guard !isAuthenticating else { return false }
         isAuthenticating = true
         defer { isAuthenticating = false }
-        let ok = await evaluator()
-        if ok { isLocked = false }
+        let outcome = await evaluator()
+        switch outcome {
+        case .success:
+            isLocked = false
+            failure = nil
+        case .failed(let reason):
+            failure = reason
+        case .interrupted:
+            // The system cancelled the prompt (app backgrounded): no reason, the
+            // next `.active` prompts again.
+            failure = nil
+        }
         publishCover()
-        return ok
+        return outcome == .success
     }
 
     /// Returns the prompt task when this transition must start one.
@@ -162,27 +223,33 @@ final class AppLockViewModel: AppLockService {
     /// Reason shown in the system Face ID / passcode prompt.
     nonisolated static let unlockReason: LocalizedStringResource = "Unlock Swimmich"
 
-    /// Production evaluator: Face ID / Touch ID with passcode fallback via
+    /// Production authenticator: Face ID / Touch ID with passcode fallback via
     /// `.deviceOwnerAuthentication` (AC-106). The policy includes the device
     /// passcode, so a device with a passcode but no enrolled biometry still
-    /// prompts (falls back to the passcode screen).
-    /// Returns `false` both when the device cannot authenticate and when the
-    /// user fails or cancels: use `systemAvailability` to tell them apart.
-    static let systemEvaluator: @Sendable () async -> Bool = {
+    /// prompts (falls back to the passcode screen). The outcome says why an
+    /// attempt failed (AC-63); `systemAvailability` tells "cannot authenticate"
+    /// apart before an activation.
+    static let systemAuthenticator: @Sendable () async -> AppLockEvaluation = {
         let context = LAContext()
         context.localizedFallbackTitle = ""
         var policyError: NSError?
         guard context.canEvaluatePolicy(.deviceOwnerAuthentication, error: &policyError) else {
-            return false
+            return AppLockEvaluation.from(success: false, error: policyError)
         }
-        return await withCheckedContinuation { (continuation: CheckedContinuation<Bool, Never>) in
+        return await withCheckedContinuation { (continuation: CheckedContinuation<AppLockEvaluation, Never>) in
             context.evaluatePolicy(
                 .deviceOwnerAuthentication,
                 localizedReason: String(localized: AppLockViewModel.unlockReason)
-            ) { success, _ in
-                continuation.resume(returning: success)
+            ) { success, error in
+                continuation.resume(returning: AppLockEvaluation.from(success: success, error: error))
             }
         }
+    }
+
+    /// Boolean form for callers that only need "did it succeed"
+    /// (`LockedFolderViewModel`'s PIN replay).
+    static let systemEvaluator: @Sendable () async -> Bool = {
+        await systemAuthenticator() == .success
     }
 
     /// Production availability probe: can this device authenticate its owner
