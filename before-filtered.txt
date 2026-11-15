@@ -1,0 +1,6 @@
+series: before
+state: filtered
+buttons: 9
+controls: OverflowBarButtonItem | searchFilterButton | searchModeMenu | searchModeSegment_explore | searchModeSegment_map | searchModeSegment_results | searchOcrFilterToggle | searchRatingFilterMenu | searchSelectButton
+field_at_top: yes
+chips: yes

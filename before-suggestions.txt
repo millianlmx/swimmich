@@ -1,0 +1,6 @@
+series: before
+state: suggestions
+buttons: 16
+controls:  |  |  | Garden flowers | OverflowBarButtonItem | Search | autumn | searchFilterButton | searchModeMenu | searchModeSegment_explore | searchModeSegment_map | searchModeSegment_results | searchOcrFilterToggle | searchRatingFilterMenu | shift | sunset
+field_at_top: yes
+chips: no

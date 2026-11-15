@@ -1,0 +1,2 @@
+430e2a7d50b06ee46b2c55b5c28fa466ee239204 harness/refonte-ui-ux-de-la-recherche-generale
+sources 9cb89d027ec3450113c2f84a20024e32388a542c
