@@ -1,8 +1,8 @@
-# ImmichSwiftUI
+# Swimmich
 
-> Client iOS **natif** (SwiftUI) pour [Immich](https://github.com/immich-app/immich), la plateforme photo/vidéo auto-hébergée. Conçu pour **iOS 26** et son langage visuel Liquid Glass — ce n'est pas un port du client Flutter upstream.
+> **Swimmich** est un client iOS **natif** (SwiftUI) pour [Immich](https://github.com/immich-app/immich), la plateforme photo/vidéo auto-hébergée. Conçu pour **iOS 26** et son langage visuel Liquid Glass — ce n'est pas un port du client Flutter upstream.
 
-ImmichSwiftUI s'appuie sur la même API serveur (`/api`) que le client officiel, avec la même ambition de parité fonctionnelle, mais réécrit pour une expérience 100 % Apple : SwiftUI, intégrations système profondes (Live Activities, Dynamic Island, widgets, App Intents, tâches d'arrière-plan) et une sauvegarde conçue pour de vraies photothèques (streaming disque, RAM bornée).
+Swimmich s'appuie sur la même API serveur (`/api`) que le client Immich officiel, avec la même ambition de parité fonctionnelle, mais réécrit pour une expérience 100 % Apple : SwiftUI, intégrations système profondes (Live Activities, Dynamic Island, widgets, App Intents, tâches d'arrière-plan) et un moteur de sauvegarde conçu pour de vraies photothèques (streaming disque, RAM bornée). L'app s'appelle Swimmich sur l'écran d'accueil ; le projet Xcode, le scheme et les targets gardent le nom `ImmichSwiftUI`.
 
 ---
 
@@ -10,6 +10,7 @@ ImmichSwiftUI s'appuie sur la même API serveur (`/api`) que le client officiel,
 
 - [Pourquoi une app native ?](#pourquoi-une-app-native-)
 - [Fonctionnalités](#fonctionnalités)
+- [Captures d'écran](#captures-décran)
 - [Architecture](#architecture)
 - [Comment l'app fonctionne](#comment-lapp-fonctionne)
 - [Démarrage rapide](#démarrage-rapide)
@@ -21,51 +22,81 @@ ImmichSwiftUI s'appuie sur la même API serveur (`/api`) que le client officiel,
 
 ## Pourquoi une app native ?
 
-1. **Expérience native.** Le client upstream est en Flutter : excellente parité multiplateforme, mais pas de langage visuel iOS. ImmichSwiftUI suit les HIG et le Liquid Glass d'iOS 26, avec `NavigationStack`, tab bar et sheets natifs.
-2. **Intégrations système.** Une Live Activity affiche la progression du backup dans la Dynamic Island et sur l'écran verrouillé ; BGTaskScheduler entretient une chaîne de sauvegardes en arrière-plan ; un App Intent expose « Back up now » à Siri/Shortcuts ; un widget d'accueil lance un backup en un tap.
-3. **Performance face aux vraies photothèques.** Le backup est entièrement streamé disque→réseau : hash SHA-1 par blocs, multipart écrit sur disque, upload par fichier. La RAM reste bornée quelle que soit la taille de l'asset — les grosses vidéos iCloud ne tuent pas l'app.
+1. **Expérience native.** Le client upstream est en Flutter : excellente parité multiplateforme, mais pas de langage visuel iOS. Swimmich suit les HIG et le Liquid Glass d'iOS 26, avec `NavigationStack`, tab bar et sheets natifs.
+2. **Intégrations système.** Une Live Activity affiche la progression de la sauvegarde dans la Dynamic Island et sur l'écran verrouillé ; BGTaskScheduler entretient une chaîne de sauvegardes en arrière-plan ; un App Intent expose « Back up now » à Siri/Shortcuts ; un widget d'accueil lance une sauvegarde en un tap.
+3. **Performance face aux vraies photothèques.** La sauvegarde est entièrement streamée disque→réseau : hash SHA-1 par blocs de 1 Mo, multipart écrit sur disque, envoi depuis un fichier. La RAM reste bornée quelle que soit la taille de l'asset — les grosses vidéos iCloud ne tuent pas l'app.
 4. **Souveraineté.** Self-hosted, zéro cloud intermédiaire : l'app ne parle qu'à ton serveur Immich.
 
 La parité avec le client Flutter est suivie dans [`docs/mobile-features-vs-flutter.md`](docs/mobile-features-vs-flutter.md).
 
 ## Fonctionnalités
 
+Chaque dossier de `Sources/Features/` figure une fois, dans la ligne de son domaine.
+
 | Domaine | Contenu | Code |
 |---|---|---|
-| **Timeline** | buckets par jour, zoom de grille, vignettes | `Sources/Features/Timeline/` |
-| **Visionneuse** | plein écran, zoom, filmstrip, vidéo, diaporama, panneau EXIF, stacks, visages | `Sources/Features/PhotoViewer/` |
-| **Recherche** | sémantique (CLIP), lieux (carte), filtres par personnes, tags, « hors album », favoris et archive, recherche de texte dans le nom de fichier ou la description, densité de grille réglée dans les préférences, sélection multiple des résultats avec les actions de lot de la timeline | `Sources/Features/Search/` |
-| **Albums** | CRUD, partage, flux d'activité | `Sources/Features/Albums/` |
-| **Personnes, tags, doublons, corbeille** | gestion des visages, tags, détection de doublons, restauration | `Sources/Features/People/`, `Tags/`, `Duplicates/`, `Trash/` |
-| **Liens partagés** | CRUD, mot de passe, expiration, **visionneuse publique** (ouvrir un lien reçu, le déverrouiller, le parcourir, upload invité) | `Sources/Features/SharedLinks/` |
+| **Timeline** | photos groupées par jour, zoom de grille, scrubber de dates, sélection multiple avec actions de lot, listes « Recently Taken » et « Recently Added » | `Sources/Features/Timeline/`, `Sources/Features/Recent/` |
+| **Visionneuse** | plein écran, zoom, filmstrip, vidéo, diaporama, panneau d'infos, surcouche de texte détecté, visages, stacks, ajustement de la date et du lieu, tags | `Sources/Features/PhotoViewer/`, `Sources/Features/AssetDetail/` |
+| **Diffusion** | feuille Cast et sélecteur de route AirPlay | `Sources/Features/Cast/` |
+| **Recherche** | recherche sémantique (CLIP) et textuelle, filtres (personnes, tags, « hors album », favoris, archive, note, appareil, dates), carte, recherches enregistrées et récentes, sélection multiple des résultats | `Sources/Features/Search/` |
+| **Albums** | création, édition, partage, flux d'activité, et la section Bibliothèque qui mène aux collections ci-dessous | `Sources/Features/Albums/` |
+| **Personnes et tags** | gestion des visages avec anniversaires, tags hiérarchiques | `Sources/Features/People/`, `Sources/Features/Tags/` |
+| **Dossiers et stacks** | vue des dossiers du serveur, stacks de photos | `Sources/Features/Folders/`, `Sources/Features/Stacks/` |
+| **Doublons et corbeille** | revue des doublons, corbeille avec restauration | `Sources/Features/Duplicates/`, `Sources/Features/Trash/` |
+| **Dossier verrouillé** | dossier privé derrière l'authentification de l'appareil | `Sources/Features/LockedFolder/` |
+| **Partenaires** | partage entre partenaires : invitations et photothèque du partenaire | `Sources/Features/Partners/` |
+| **Liens partagés** | création, mot de passe, expiration, **visionneuse publique** (ouvrir un lien reçu, le déverrouiller, le parcourir, envoi invité) | `Sources/Features/SharedLinks/` |
 | **Souvenirs** | « Ce jour-là », visionneuse de moments | `Sources/Features/Memories/` |
-| **Éditeur photo** | recadrage, rotation, édition non destructive | `Sources/Features/Editor/` |
-| **RoadTrip** | lecteur + export d'un film de voyage (ouverture → diaporama → trajet carte) généré depuis un album | `Sources/Features/RoadTrip/` |
-| **Auto-backup** | streaming, dédup serveur, Live Activity, arrière-plan, reprise | `Sources/Features/Upload/` + `Sources/Services/BackupEngine.swift` |
-| **Admin** | panneau d'administration serveur | `Sources/Features/Admin/` |
-| **Profil** | stockage, verrouillage de l'app (Face ID), choix de la langue | `Sources/Features/Profile/` |
-| **Langue** | anglais (source) + français, allemand, espagnol, italien ; suit l'appareil par défaut, épinglable dans l'app, dates localisées | `Resources/Localizable.xcstrings` + `Sources/Features/Settings/` |
+| **Hors ligne** | téléchargement des originaux dans un cache durable, consultation serveur injoignable, budget de stockage et éviction, panneau de progression des téléchargements | `Sources/Features/Offline/`, `Sources/Features/DownloadPanel/`, `Sources/Services/OfflineAssetStore.swift` |
+| **Éditeur photo** | recadrage, rotation, miroir, enregistré comme liste d'éditions de la photo sur les serveurs qui le permettent, comme copie sinon | `Sources/Features/Editor/` |
+| **RoadTrip** | lecteur et export d'un film de voyage (ouverture, diaporama, trajet sur la carte) généré depuis un album | `Sources/Features/RoadTrip/` |
+| **Sauvegarde** | streaming, déduplication serveur, Live Activity, chaîne en arrière-plan, reprise, détail de l'envoi, « Remaining to back up », photothèque de l'appareil, état de synchronisation, libérer de l'espace | `Sources/Features/Upload/`, `Sources/Features/UploadDetail/`, `Sources/Features/BackupRemainder/`, `Sources/Features/LocalLibrary/`, `Sources/Features/SyncStatus/`, `Sources/Features/FreeUpSpace/`, `Sources/Services/BackupEngine.swift` |
+| **Connexion et verrouillage** | onboarding, connexion par mot de passe et SSO, verrouillage de l'app (Face ID) | `Sources/Features/Auth/` |
+| **Compte et sécurité** | profil et indicateur de stockage (hub « Me »), changement de mot de passe, sessions d'appareils, clés d'API, panneau d'administration du serveur | `Sources/Features/Profile/`, `Sources/Features/Security/`, `Sources/Features/UserApiKeys/`, `Sources/Features/Admin/` |
+| **Réseau et confiance** | adresses locale et externe du serveur, en-têtes HTTP personnalisés (proxy), certificat client (TLS mutuel) | `Sources/Features/NetworkSettings/`, `Sources/Features/CustomHeaders/`, `Sources/Features/ClientCertificate/` |
+| **Préférences et langue** | thème, haptique, qualité de partage, anglais (source) + français, allemand, espagnol, italien (suit l'appareil, épinglable dans l'app, dates localisées), réglages de notifications, mode lecture seule | `Sources/Features/Settings/`, `Sources/Features/Notifications/`, `Sources/Features/ReadOnly/`, `Resources/Localizable.xcstrings` |
+| **Diagnostic et informations** | journal de l'app, statistiques des médias, dépannage d'un asset, « What's New », à propos et licences | `Sources/Features/AppUtilities/`, `Sources/Features/WhatsNew/`, `Sources/Features/About/` |
 
-Extensions : widget d'accueil « Back up now » (`ImmichWidgets/`), Live Activity de backup (Dynamic Island), App Intent `BackupNowAppIntent` (Siri/Shortcuts).
+Extensions : widgets d'accueil et Live Activity de sauvegarde (`ImmichWidgets/`), extension de partage (`ImmichShareExtension/`), App Intent `BackupNowAppIntent` (Siri et Shortcuts).
+
+## Captures d'écran
+
+Prises sur un simulateur iPhone 17 contre un stub local qui sert des photos d'exemple CC0 (`UITests/stubs/fixtures/readme/`) : aucune photo, adresse de serveur ou compte personnels.
+
+| Photos | Visionneuse | Albums |
+|:-:|:-:|:-:|
+| ![L'onglet Photos : les photos d'exemple en grille, groupées par jour](docs/screenshots/timeline.png) | ![La visionneuse : une photo d'exemple en plein écran](docs/screenshots/viewer.png) | ![L'onglet Albums : quatre albums avec leur photo de couverture](docs/screenshots/albums.png) |
+
+| Recherche | Sauvegarde |
+|:-:|:-:|
+| ![L'onglet Recherche : les photos qui correspondent au mot « nature »](docs/screenshots/search.png) | ![L'écran de sauvegarde ouvert depuis le hub Me](docs/screenshots/backup.png) |
+
+Pour les régénérer, sur un Mac avec Xcode (simulateur iOS 26), XcodeGen et python3 :
+
+```bash
+Scripts/screenshots.sh
+```
+
+Le script crée un simulateur jetable, démarre `UITests/stubs/immich_stub_readme_screenshots.py`, lance le scénario `ReadmeScreenshotsUITests` et réécrit les cinq fichiers de `docs/screenshots/`. Commite le résultat.
 
 ## Architecture
 
-MVVM strict en 4 couches. Les protocoles de `Core/Protocols/` sont **immuables** et constituent le seul point d'injection ; tout le reste est implémentation ou présentation.
+MVVM strict en 4 couches. Les protocoles de `Sources/Core/Protocols/` sont **immuables** et constituent le seul point d'injection ; tout le reste est implémentation ou présentation.
 
 | Couche | Rôle | Contenu |
 |---|---|---|
-| `Sources/Core/Types/` | DTOs de l'API | `DTOs*.swift`, `SearchDTOs.swift`, `APIError.swift`, … |
-| `Sources/Core/Protocols/` | Contrats (seul point d'injection) | `ImmichClient`, `PhotoLibraryService`, `BackupAssetSource`, `BackupLedgerStoring`, `KeychainStore`, `TrustedServerStore`, `AppLockService`, `VideoPlaybackEngine` |
-| `Sources/Services/` | Implémentations | `ImmichAPIClient`, `PhotoLibraryServiceImpl`, `BackupEngine`, `BackupLedger`, `MultipartBody`, `ImageCache`, `AuthenticatedAsyncImage`, `RealtimeService` (Socket.IO), `KeychainStoreImpl`, … |
+| `Sources/Core/Types/` | DTOs de l'API | `SearchDTOs.swift`, `APIError.swift`, `DTOs+SharedLink.swift`, … |
+| `Sources/Core/Protocols/` | Contrats (seul point d'injection) | `ImmichClient`, `PhotoLibraryService`, `BackupAssetSource`, `BackupLedgerStoring`, `BackupEditLedgerStoring`, `KeychainStore`, `TrustedServerStore`, `AppLockService`, `VideoPlaybackEngine` |
+| `Sources/Services/` | Implémentations | `ImmichAPIClient`, `PhotoLibraryServiceImpl`, `BackupEngine`, `BackupLedger`, `BackupEditLedger`, `MultipartBody`, `ImageCache`, `AuthenticatedAsyncImage`, `RealtimeService` (Socket.IO), `KeychainStoreImpl`, … |
 | `Sources/Features/<Feature>/` | MVVM par feature | `<Feature>ViewModel.swift` (`@Observable`, `@MainActor`) + `<Feature>View.swift` (stateless) |
 
 Points de composition :
 
 - **`Sources/DependencyContainer.swift`** — composition root : singleton `@MainActor`, méthodes `make*ViewModel()` qui injectent les protocoles via `init(client:)`. Aucun view model partagé.
 - **`Sources/RootView.swift`** — routeur auth-gated : onboarding → `AuthenticatedRoot` (TabView). Un changement de compte détruit le sous-arbre complet (`.id(activeAccountID)`), zéro état résiduel.
-- **`Sources/DesignSystem/`** — `Tokens/` (`Color.immich*`, `bgPrimary`/`bgSecondary`, spacing, motion, fonts) + `Components/` (barre d'app, boutons, badges, squelettes). Aucune couleur en dur dans les vues.
-- **`Sources/ImmichSharedKit/`** — framework partagé app ⇄ extension widget : attributs et vues ActivityKit de la Live Activity.
-- **`ImmichWidgets/`** — extension widget (tuile d'accueil + Live Activity).
+- **`Sources/DesignSystem/`** — `Tokens/` (`Color.immich*`, `bgPrimary`/`bgSecondary`, spacing, motion, fonts) + `Components/` (barre d'app, boutons, badges, squelettes, contrôles flottants : `pvFloating(.circle|.pill|.bar)`). Aucune couleur en dur dans les vues.
+- **`Sources/ImmichSharedKit/`** — framework partagé app ⇄ extensions : attributs et vues ActivityKit de la Live Activity, session des widgets.
+- **`ImmichWidgets/`** — extension widget (widgets d'accueil + Live Activity). **`ImmichShareExtension/`** — extension de partage.
 
 ```mermaid
 flowchart TD
@@ -74,7 +105,7 @@ flowchart TD
         VM["*ViewModel.swift<br/>@Observable · @MainActor"]
     end
     P["Core/Protocols<br/>contrats immuables"]
-    S["Core/Services<br/>implementations"]
+    S["Services<br/>implementations"]
     DTO["Core/Types<br/>DTOs"]
     DS["DesignSystem<br/>Tokens + Components"]
 
@@ -92,39 +123,43 @@ flowchart TD
 
 ### Authentification
 
-1. Onboarding : URL du serveur (saisie ou scan de QR code) → ping `/api/server/ping` + configuration serveur.
-2. Connexion email/mot de passe (`/api/auth/login`) ou OAuth2/OIDC (`ASWebAuthenticationSession`, callback `app.immich:///oauth-callback`).
-3. Token stocké dans le Keychain ; à chaque lancement, `restoreSession()` revalide le token et reconstruit la session.
-4. App Lock (Face ID) : verrouillage au passage en arrière-plan, overlay `LockView`.
+1. **Onboarding :** URL du serveur (saisie ou scan de QR code) → ping `/api/server/ping` + configuration serveur. Un avis non bloquant prévient quand la version du serveur est inférieure à 2.0.0 ou à partir de 4.0.0.
+2. **Connexion :** l'étape de connexion n'affiche que les modes que le serveur accepte : `GET /api/public/config` sur un serveur qui la sert (v3.2+), l'ancienne `GET /api/server/features` sinon. Mot de passe (`/api/auth/login`), SSO — OAuth2/OIDC via `ASWebAuthenticationSession` — ou les deux ; un serveur qui n'en accepte aucun le dit. Une connexion par mot de passe d'un non-administrateur dont le serveur pose `shouldChangePassword` passe par l'étape de changement de mot de passe avant l'accueil ; tant que le changement n'a pas réussi, le token reste en mémoire seulement.
+3. **Stockage du token et lancement :** le token est stocké dans le Keychain. Un lancement avec une session enregistrée ouvre l'onglet Photos aussitôt ; `restoreSession()` valide le token derrière (un 401 ramène à l'étape de connexion, « session expirée »).
+4. **App Lock (Face ID) :** verrouillage au passage en arrière-plan, avec l'overlay `AppLockCoverView`.
 
 ### Données et images
 
-- **`ImmichAPIClient`** : toutes les URLs passent par `ImmichAPI.SubPath` ; token en en-tête ; client thread-safe ; erreurs typées `APIError`.
-- **Images** : `AuthenticatedAsyncImage`, pipeline à 3 niveaux (cache mémoire actor-isolé `NSCache`, cache disque, réseau avec en-têtes d'authentification).
-- **Temps réel** : `RealtimeService` (Socket.IO) pour les événements serveur.
+- **`ImmichAPIClient`** : toutes les URLs passent par `ImmichAPI` ; token en en-tête ; client thread-safe ; erreurs typées `APIError`.
+- **Images :** `AuthenticatedAsyncImage`, pipeline à 4 niveaux (copie hors ligne si présente, cache mémoire `ImageCache`, cache disque, réseau avec en-têtes d'authentification).
+- **Temps réel :** `RealtimeService` (Socket.IO, `RealtimeTransport` injectable) pour les événements serveur. Chaque rafale debouncée poste `.immichAssetsChanged` avec le nom de ses événements (`RealtimeBatch`) et chaque écran se rafraîchit.
+- **En-têtes HTTP personnalisés (proxy) :** paires nom/valeur déclarées par serveur depuis l'étape serveur de l'onboarding ou Me › Advanced. Elles vivent dans le Keychain du groupe partagé (`KeychainCustomHeadersStore`), jamais dans les journaux, et chaque requête vers ce serveur les porte (`CustomHeadersRegistry`), widgets et extension de partage compris. Une redirection vers un autre hôte les abandonne (`ServerRedirectPolicy`). Un `401` portant `WWW-Authenticate` est le proxy qui refuse (`APIError.proxyRejected`) : la session est gardée.
+- **Certificat client (authentification TLS mutuelle) :** un fichier PKCS#12 importé par serveur depuis l'étape serveur de l'onboarding ou Me › Advanced. L'identité vit dans le Keychain du groupe partagé (`KeychainClientIdentityStore`) ; `ClientCertificateResponder` répond au défi TLS de chaque connexion de l'app, et `WidgetTrustDelegate` à ceux des widgets et de l'extension de partage. Un serveur qui demande un certificat que personne ne peut présenter donne `APIError.clientCertificateRequired`.
+- **Adresse locale et externe du serveur :** Me › Advanced › Network déclare, par compte, une adresse locale, une adresse externe et une bascule automatique, désactivée par défaut (`ServerEndpointSwitch`). Bascule active, l'adresse locale n'est utilisée que si le serveur répond à `GET /api/server/ping` et `GET /api/server/version` avec la même version que l'adresse externe, en moins de 2 s ; sinon l'externe. Le compte garde une seule identité (`ServerAddressBook`) ; les widgets appliquent la même règle (`WidgetEndpointResolver`).
 
 ### Sauvegarde automatique — la pièce maîtresse
 
 `BackupEngine` est une machine à phases : `checking → uploading → done / cancelled`.
 
 1. **Scan** de la photothèque (PhotosKit) avec filtres (screenshots, Camera Roll, WhatsApp).
-2. **Passe 1 — hash** : SHA-1 streamé par blocs de 1 Mo ; jamais l'asset entier en RAM.
-3. **Déduplication serveur** : `/api/assets/bulk-upload-check`.
-4. **Passe 2 — upload** : ré-export sur disque → multipart écrit sur disque → `URLSession.upload(fromFile:)`. RAM bornée, les grosses vidéos sont sauvegardées au lieu d'être écartées.
-5. **`BackupLedger`** : les assets déjà sauvegardés ne sont pas ré-exportés — évite de re-télécharger toute la photothèque iCloud « Optimiser le stockage » à chaque run.
-6. **Assets iCloud** : états dédiés (téléchargement en cours, retry) avec messages de statut dans l'UI.
+2. **Passe 1 — hash :** SHA-1 streamé par blocs de 1 Mo ; jamais l'asset entier en RAM.
+3. **Déduplication serveur :** `/api/assets/bulk-upload-check`.
+4. **Passe 2 — envoi :** ré-export sur disque → multipart écrit sur disque → envoi depuis le fichier. RAM bornée, les grosses vidéos sont sauvegardées au lieu d'être écartées.
+5. **`BackupLedger` :** les assets déjà sauvegardés ne sont pas ré-exportés — évite de re-télécharger toute la photothèque iCloud « Optimiser le stockage » à chaque exécution.
+6. **Assets iCloud :** états dédiés (téléchargement en cours, nouvel essai) avec messages de statut dans l'UI.
+7. **Sauvegarder aussi les éditions (opt-in, désactivé par défaut) :** un asset édité sur place dans Photos voit son rendu édité exporté, envoyé sous le même `deviceAssetId`, puis empilé sur son original avec `POST /api/stacks`. Les éditions déjà envoyées sont consignées par `BackupEditLedger`, à côté du registre des originaux.
 
-Progression fiable : total fixé après filtrage, barre = `processed / total` (chaque asset compte : uploadé, dédupliqué ou échoué).
+Progression fiable : total fixé après filtrage, barre = `processed / total` (chaque asset compte : envoyé, dédupliqué ou échoué).
 
 Surfaces système :
 
-- **Live Activity** (`BackupLiveActivityService`) — progression dans la Dynamic Island et l'écran verrouillé.
-- **BGTaskScheduler** — chaîne auto-entretenue de backups en arrière-plan (`app.immich.background-backup`).
-- **App Intent** — « Back up now » depuis Siri/Shortcuts ; le widget d'accueil le déclenche via le deep link `app.immich://backup`.
+- **Live Activity** (`LiveActivityBackupService`) — progression dans la Dynamic Island et l'écran verrouillé.
+- **BGTaskScheduler** — chaîne auto-entretenue de sauvegardes en arrière-plan (`app.immich.background-backup`).
+- **App Intent** — « Back up now » depuis Siri/Shortcuts ; le widget d'accueil le déclenche via le deep link `app.immich://backup`, qui lance une passe de sauvegarde manuelle sur l'onglet Photos.
 
 ### Navigation
 
-`AuthenticatedRoot` : TabView (Photos, Memories, Albums, Shared) + onglet Recherche natif iOS 26 (`role: .search`, bulle Liquid Glass alignée par le système). Le profil (« Me ») est présenté en sheet depuis l'avatar de chaque onglet.
+`AuthenticatedRoot` : TabView (Photos, Memories, Albums, Shared) + onglet Recherche natif iOS 26 (`role: .search`). L'onglet Albums s'ouvre sur une section **Bibliothèque** : les collections de contenu (Recently Taken, Recently Added, People, Tags, Folders, Stacks, Partners, On this device, Offline Storage, Duplicates, Trash, Locked Folder), un toucher chacune, poussées sur la `NavigationStack` propre de l'onglet. Favoris et Archive sont le bouton de filtre de l'onglet Photos ; les lieux sont le segment Explorer de la Recherche. Le profil (« Me ») est présenté en sheet depuis l'avatar de chaque onglet et ne garde que le compte, les réglages et les outils.
 
 ## Démarrage rapide
 
@@ -144,10 +179,12 @@ Au premier lancement : URL de ton instance Immich (ou scan du QR code), puis con
 ## Tests
 
 ```bash
-xcodebuild test -destination 'platform=iOS Simulator,name=iPhone 17'
+xcodebuild test -project ImmichSwiftUI.xcodeproj -scheme ImmichSwiftUI -destination 'platform=iOS Simulator,name=iPhone 17' -only-testing:ImmichSwiftUITests
+python3 -m unittest discover -s Scripts -p 'test_*.py'
 ```
 
-- 886 tests dans `Tests/` (dernier relevé : 2026-09-14, `-only-testing:ImmichSwiftUITests`) ; chaque view model est testé avec un `MockImmichClient` injecté via `init(client:)`.
+- Les tests unitaires vivent dans `Tests/` : chaque view model est testé avec un `MockImmichClient` injecté via `init(client:)`. Les scénarios UI de bout en bout vivent dans `UITests/Scenarios/`, chacun avec son stub Python sous `UITests/stubs/` ; `Scripts/ci.sh` lance ceux de `Scripts/ci-ui-scenarios.txt`.
+- Les tests Python de `Scripts/` couvrent la CI, la chaîne de release, l'audit du catalogue de chaînes et ces README.
 - **Piège** : le target de test source le dossier `Tests/` en entier — un nouveau fichier `Tests/*.swift` n'est compilé qu'après `xcodegen generate`. Sans regénération, les tests passent « verts » par omission.
 
 ### CI et IPA signé
