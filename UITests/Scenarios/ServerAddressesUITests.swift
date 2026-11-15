@@ -239,10 +239,7 @@ final class ServerAddressesUITests: XCTestCase {
                 app.launch()
             }
             walkOnboardingToLogin()
-            let sso = app.buttons.matching(identifier: "loginSSOButton").firstMatch
-            XCTAssertTrue(waitUntil(timeout: 20) { sso.exists && sso.isEnabled && sso.isHittable },
-                          "SSO button missing on login screen — \(screenReads())")
-            sso.tap()
+            XCTAssertTrue(tapAnyButton(["Immich SSO"]), "SSO button missing on login screen — \(screenReads())")
             authorized = tapAuthorizeInProvider(timeout: 45)
         }
         XCTAssertTrue(authorized, "Authorize link not reachable in the auth sheet after 3 attempts — \(screenReads())")
