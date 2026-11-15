@@ -245,19 +245,34 @@ final class ServerAddressesUITests: XCTestCase {
         }
         XCTAssertTrue(onLogin, "Login screen did not appear — \(screenReads())")
         XCTAssertTrue(tapAnyButton(["Immich SSO"]), "SSO button missing on login screen")
-        let springboard = XCUIApplication(bundleIdentifier: "com.apple.springboard")
-        for label in Self.proceed where springboard.alerts.buttons[label].waitForExistence(timeout: 6) {
-            springboard.alerts.buttons[label].tap()
-            break
-        }
-        let safari = XCUIApplication(bundleIdentifier: "com.apple.SafariViewService")
-        let authorize = NSPredicate(format: "label CONTAINS 'Authorize'")
-        let link = safari.links.matching(authorize).firstMatch
-        XCTAssertTrue(link.waitForExistence(timeout: 20), "Authorize link not reachable in the auth sheet")
-        link.tap()
+        XCTAssertTrue(tapAuthorizeInProvider(), "Authorize link not reachable in the auth sheet — \(screenReads())")
         XCTAssertTrue(app.tabBars.buttons.matching(labelPredicate(["Photos", "Fotos"])).firstMatch.waitForExistence(timeout: 30),
                       "OAuth did not reach the authenticated shell — \(screenReads())")
         settleOnShell()
+    }
+
+    /// The provider page loads in another process (`SafariViewService`), slowly on a
+    /// loaded Mac, and the system's sign-in consent can show late: while the
+    /// "Authorize" link is awaited, the consent is accepted whenever it is up.
+    private func tapAuthorizeInProvider(timeout: TimeInterval = 60) -> Bool {
+        let safari = XCUIApplication(bundleIdentifier: "com.apple.SafariViewService")
+        let springboard = XCUIApplication(bundleIdentifier: "com.apple.springboard")
+        let predicate = NSPredicate(format: "label CONTAINS 'Authorize'")
+        let consent = NSPredicate(format: "label IN %@", Self.proceed)
+        let candidates = [safari.links.matching(predicate).firstMatch, safari.buttons.matching(predicate).firstMatch]
+        let deadline = Date().addingTimeInterval(timeout)
+        while Date() < deadline {
+            if let authorize = candidates.first(where: { $0.exists }) {
+                authorize.tap()
+                return true
+            }
+            for button in [springboard.alerts.buttons.matching(consent).firstMatch,
+                           app.alerts.buttons.matching(consent).firstMatch] where button.exists {
+                button.tap()
+            }
+            Thread.sleep(forTimeInterval: 0.5)
+        }
+        return false
     }
 
     private func settleOnShell() {
