@@ -382,6 +382,40 @@ final class ServerAddressesUITests: XCTestCase {
                       "the local address never read \(state) — \(screenReads())")
     }
 
+    /// Every state the local status row can show (`networkLocalStatus_<state>`).
+    private static let localStates = ["checking", "reachable", "unreachable", "notThisServer", "denied", "untrusted"]
+
+    private func localStatusShown() -> String? {
+        Self.localStates.first { element("networkLocalStatus_\($0)").exists }
+    }
+
+    /// The local address over TLS reads "reachable" after "Trust". A probe has 2 s
+    /// for two TLS handshakes that present the client certificate: on a Mac running
+    /// several simulators one can miss it, and the row reads "unreachable for now"
+    /// until the next measure. It is measured again by the network-change control,
+    /// as a change of network would. Any other state fails at once, with what the stub saw.
+    private func waitForLocalReachableOverTLS(attempts: Int = 3) {
+        // The state the previous measure left: the next one starts by replacing it with "checking".
+        var stale = "untrusted"
+        var shown: String?
+        for attempt in 0..<attempts {
+            if attempt > 0 { simulateNetworkChange() }
+            reveal("networkLocalAddressField")
+            _ = waitUntil(timeout: 5) { self.localStatusShown() != stale }
+            _ = waitUntil(timeout: 30) {
+                let state = self.localStatusShown()
+                return state != nil && state != "checking"
+            }
+            shown = localStatusShown()
+            if shown == "reachable" { return }
+            if shown != "unreachable" { break }
+            stale = "unreachable"
+        }
+        let seen = handshakes().map { "ok=\($0.ok) cert=\($0.cert ?? "-")" }.joined(separator: ", ")
+        XCTFail("the local address over TLS never read reachable (last state: \(shown ?? "none")); "
+                + "TLS handshakes: [\(seen)] — \(screenReads())")
+    }
+
     private func waitForActiveKind(_ kind: String, timeout: TimeInterval = 20) {
         reveal("networkActiveAddress")
         XCTAssertTrue(element("networkActiveAddressKind_\(kind)").waitForExistence(timeout: timeout),
@@ -770,7 +804,7 @@ final class ServerAddressesUITests: XCTestCase {
         setSwitch(on: true)
         saveLocal(tlsAddress)
         answerTrustAlert("Trust")
-        waitForLocalStatus("reachable", timeout: 30)
+        waitForLocalReachableOverTLS()
         dismissHub()
         app.terminate()
 
