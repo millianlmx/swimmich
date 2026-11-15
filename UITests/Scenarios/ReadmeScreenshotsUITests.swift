@@ -179,15 +179,21 @@ final class ReadmeScreenshotsUITests: XCTestCase {
             + "keyboards \(app.keyboards.count); screen reads \(Array(texts))"
     }
 
-    /// Opens the Search tab and returns its search field. The Search bubble lands on Search only when the
-    /// last content tab is Photos (`RootView`, `onChange(of: selection)`): from Albums it is a "+" that opens
-    /// New Album and puts Albums back (`handleBubbleTap`). So Photos is selected first, as
-    /// `ContentCollectionsUITests.goToSearchRoot()` does.
-    private func openSearchField() -> XCUIElement {
+    /// Selects the Photos tab and waits until it is the selection. The Search bubble lands on Search only when
+    /// the last content tab is Photos (`RootView`, `onChange(of: selection)`), and the Search results toolbar
+    /// crowds the profile avatar out: both the Search and the Backup steps start from Photos.
+    private func selectPhotosTab() {
         let photos = app.tabBars.buttons.matching(labelPredicate(["Photos"])).firstMatch
         XCTAssertTrue(photos.waitForExistence(timeout: 20), "no Photos tab — \(screenState())")
         photos.tap()
         XCTAssertTrue(waitUntil(10) { photos.isSelected }, "the Photos tab was not selected — \(screenState())")
+    }
+
+    /// Opens the Search tab and returns its search field. From Albums the Search bubble is a "+" that opens
+    /// New Album and puts Albums back (`handleBubbleTap`), so Photos is selected first, as
+    /// `ContentCollectionsUITests.goToSearchRoot()` does.
+    private func openSearchField() -> XCUIElement {
+        selectPhotosTab()
         XCTAssertTrue(searchTab.waitForExistence(timeout: 20), "no Search tab — \(screenState())")
         searchTab.tap()
         let field = app.searchFields.firstMatch
@@ -262,28 +268,33 @@ final class ReadmeScreenshotsUITests: XCTestCase {
         XCTAssertFalse(element("searchEmptyState").exists, "Search shows its empty state")
         try capture("search")
 
-        // 5. Backup: the Me hub's Backup screen.
+        // 5. Backup: the Me hub's Backup screen, opened from the Photos timeline (in Search results mode the
+        // trailing toolbar group holds seven items and the avatar is not a reachable button).
+        selectPhotosTab()
         let hub = app.buttons.matching(identifier: "profileAvatar").firstMatch
-        XCTAssertTrue(hub.waitForExistence(timeout: 15), "Profile avatar missing")
+        XCTAssertTrue(hub.waitForExistence(timeout: 15), "Profile avatar missing — \(screenState())")
         hub.tap()
+        XCTAssertTrue(element("profileList").waitForExistence(timeout: 20),
+                      "the Me sheet did not open — \(screenState())")
         let backupRow = app.buttons.matching(identifier: "backupRow").firstMatch
         for _ in 0..<10 where !(backupRow.exists && backupRow.isHittable) {
             app.swipeUp()
             _ = backupRow.waitForExistence(timeout: 1)
         }
-        XCTAssertTrue(backupRow.exists, "Backup row missing in the Me hub")
+        XCTAssertTrue(backupRow.exists, "Backup row missing in the Me hub — \(screenState())")
         backupRow.tap()
         let toggle = element("autoBackupToggle")
-        XCTAssertTrue(toggle.waitForExistence(timeout: 20), "the Backup screen did not open")
+        XCTAssertTrue(toggle.waitForExistence(timeout: 20), "the Backup screen did not open — \(screenState())")
 
         // The progress section is below the fold. `runBackupButton` and `cancelBackupButton` are the two
         // exclusive branches of `if vm.running`: a hittable Run button proves no pass is running, so the
         // picture cannot show a thumbnail of the simulator's own library.
         let runButton = row("runBackupButton", swiping: "up")
         if !(runButton.exists && runButton.isHittable) {
-            XCTFail(app.buttons.matching(identifier: "cancelBackupButton").firstMatch.exists
-                    ? "a backup is running: the capture would show a photo of the simulator's library"
-                    : "the Backup screen has no Run now button in its progress section")
+            XCTFail((app.buttons.matching(identifier: "cancelBackupButton").firstMatch.exists
+                     ? "a backup is running: the capture would show a photo of the simulator's library"
+                     : "the Backup screen has no Run now button in its progress section")
+                    + " — \(screenState())")
         }
 
         // Back to the top, never one swipe too many: at the top of the list a swipe pulls the hub sheet down.
@@ -296,16 +307,17 @@ final class ReadmeScreenshotsUITests: XCTestCase {
 
         // The count of photos left to back up: a number above 0 (— means Photos access is missing).
         let count = element("backupRemainderCount")
-        XCTAssertTrue(count.waitForExistence(timeout: 30), "backupRemainderCount is missing")
+        XCTAssertTrue(count.waitForExistence(timeout: 30), "backupRemainderCount is missing — \(screenState())")
         var label = ""
         let counted = waitUntil(30) {
             label = count.label
             return (Int(label.filter(\.isWholeNumber)) ?? 0) > 0
         }
         if !counted {
-            XCTFail(label == "—"
-                    ? "Photos access is not granted (backupRemainderCount reads —): simctl privacy grant did not hold"
-                    : "backupRemainderCount reads \(label), expected a count above 0")
+            XCTFail((label == "—"
+                     ? "Photos access is not granted (backupRemainderCount reads —): simctl privacy grant did not hold"
+                     : "backupRemainderCount reads \(label), expected a count above 0")
+                    + " — \(screenState())")
         }
         try capture("backup")
     }
