@@ -13,6 +13,13 @@ enum VideoPlaybackStatus: Sendable, Equatable {
     case failed(String)
 }
 
+/// Why an engine refused media it could load: the file is intact but the
+/// device cannot play it (unsupported codec). The view model falls back to the
+/// server's stream on any failure, this one included.
+enum VideoPlaybackEngineError: Error, Equatable {
+    case notPlayable
+}
+
 /// Thin, injectable seam over `AVPlayer` for the photo-viewer video pages.
 ///
 /// The ViewModel drives the state machine from these hooks and never touches

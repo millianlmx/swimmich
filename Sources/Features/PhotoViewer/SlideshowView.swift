@@ -59,9 +59,13 @@ struct SlideshowView: View {
         .task(id: tickerKey) { await runTicker() }
         .task(id: autoHideKey) { await autoHideControls() }
         .onAppear {
+            // Held for as long as the slideshow is on screen, pause included.
+            vm.keepScreenAwake()
             vm.slideChanged()
             if !Self.autoplayOff { vm.start() }
         }
+        // The close button, the viewer closing under it, any other removal.
+        .onDisappear { vm.releaseScreen() }
         .onChange(of: vm.currentIndex) { old, new in
             directionForward = SlideshowDirection.isForward(from: old, to: new, count: vm.count)
             vm.slideChanged()

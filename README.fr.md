@@ -36,7 +36,7 @@ Chaque dossier de `Sources/Features/` figure une fois, dans la ligne de son doma
 | Domaine | Contenu | Code |
 |---|---|---|
 | **Timeline** | photos groupées par jour, zoom de grille, scrubber de dates, sélection multiple avec actions de lot, listes « Recently Taken » et « Recently Added » | `Sources/Features/Timeline/`, `Sources/Features/Recent/` |
-| **Visionneuse** | plein écran, zoom, filmstrip, vidéo, diaporama, panneau d'infos, surcouche de texte détecté, visages, stacks, ajustement de la date et du lieu, tags | `Sources/Features/PhotoViewer/`, `Sources/Features/AssetDetail/` |
+| **Visionneuse** | plein écran, zoom, filmstrip, vidéo, diaporama, panneau d'infos, surcouche de texte détecté, visages, stacks, ajustement de la date et du lieu, tags ; « Réessayer » sur une photo qui ne se charge pas et sur le panneau de détails ; retour haptique sur le favori et la suppression (suit le réglage Retour haptique) ; l'écran reste allumé tant que le diaporama est affiché ; une vidéo dont la copie hors ligne est illisible est lue depuis le flux transcodé du serveur | `Sources/Features/PhotoViewer/`, `Sources/Features/AssetDetail/` |
 | **Diffusion** | feuille Cast et sélecteur de route AirPlay | `Sources/Features/Cast/` |
 | **Recherche** | recherche sémantique (CLIP) et textuelle, filtres (personnes, tags, « hors album », favoris, archive, note, appareil, dates), carte, recherches enregistrées et récentes, sélection multiple des résultats | `Sources/Features/Search/` |
 | **Albums** | création, édition, partage, flux d'activité, et la section Bibliothèque qui mène aux collections ci-dessous | `Sources/Features/Albums/` |
@@ -86,7 +86,7 @@ MVVM strict en 4 couches. Les protocoles de `Sources/Core/Protocols/` sont **imm
 | Couche | Rôle | Contenu |
 |---|---|---|
 | `Sources/Core/Types/` | DTOs de l'API | `SearchDTOs.swift`, `APIError.swift`, `DTOs+SharedLink.swift`, … |
-| `Sources/Core/Protocols/` | Contrats (seul point d'injection) | `ImmichClient`, `PhotoLibraryService`, `BackupAssetSource`, `BackupLedgerStoring`, `BackupEditLedgerStoring`, `KeychainStore`, `TrustedServerStore`, `AppLockService`, `VideoPlaybackEngine` |
+| `Sources/Core/Protocols/` | Contrats (seul point d'injection) | `ImmichClient`, `PhotoLibraryService`, `BackupAssetSource`, `BackupLedgerStoring`, `BackupEditLedgerStoring`, `KeychainStore`, `TrustedServerStore`, `AppLockService`, `VideoPlaybackEngine`, `IdleTimerControlling` |
 | `Sources/Services/` | Implémentations | `ImmichAPIClient`, `PhotoLibraryServiceImpl`, `BackupEngine`, `BackupLedger`, `BackupEditLedger`, `MultipartBody`, `ImageCache`, `AuthenticatedAsyncImage`, `RealtimeService` (Socket.IO), `KeychainStoreImpl`, … |
 | `Sources/Features/<Feature>/` | MVVM par feature | `<Feature>ViewModel.swift` (`@Observable`, `@MainActor`) + `<Feature>View.swift` (stateless) |
 

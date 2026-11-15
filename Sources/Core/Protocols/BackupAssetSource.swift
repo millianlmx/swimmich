@@ -129,7 +129,9 @@ protocol BackupAssetSource: Sendable {
     /// A caller that exports outside a backup run passes its own directory,
     /// because every run purges `BackupExportDirectory.backup` at its start.
     /// `onState` reports iCloud download progress / retries as they happen;
-    /// it may be called from a background queue.
+    /// it may be called from a background queue. Once the call has returned or
+    /// thrown it is not called again: a download that is abandoned (stalled,
+    /// not ready, stopped) is cancelled, so it cannot report late progress.
     func exportOriginal(
         for candidate: BackupCandidate,
         into directory: URL,

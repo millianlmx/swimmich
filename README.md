@@ -36,7 +36,7 @@ Every folder of `Sources/Features/` is listed once, in the row of its domain.
 | Domain | Content | Code |
 |---|---|---|
 | **Timeline** | photos grouped by day, grid zoom, date scrubber, multi-selection with batch actions, "Recently Taken" and "Recently Added" lists | `Sources/Features/Timeline/`, `Sources/Features/Recent/` |
-| **Viewer** | full-screen pager, zoom, filmstrip, video, slideshow, info panel, detected-text overlay, faces, stacks, date and location adjustment, tags | `Sources/Features/PhotoViewer/`, `Sources/Features/AssetDetail/` |
+| **Viewer** | full-screen pager, zoom, filmstrip, video, slideshow, info panel, detected-text overlay, faces, stacks, date and location adjustment, tags; "Try Again" on a photo that fails to load and on the details panel; haptic on favorite and delete (follows the Haptic Feedback setting); the screen stays on while the slideshow is displayed; a video whose offline copy cannot be read plays from the server's transcoded stream | `Sources/Features/PhotoViewer/`, `Sources/Features/AssetDetail/` |
 | **Casting** | Cast sheet and AirPlay route picker | `Sources/Features/Cast/` |
 | **Search** | semantic (CLIP) and text search, filters (people, tags, "not in album", favourites, archive, rating, camera, dates), map, saved and recent searches, multi-selection of results | `Sources/Features/Search/` |
 | **Albums** | create, edit, share, activity feed, and the Library section that leads to the collections below | `Sources/Features/Albums/` |
@@ -86,7 +86,7 @@ Strict MVVM in 4 layers. Protocols in `Sources/Core/Protocols/` are **immutable*
 | Layer | Role | Content |
 |---|---|---|
 | `Sources/Core/Types/` | API DTOs | `SearchDTOs.swift`, `APIError.swift`, `DTOs+SharedLink.swift`, … |
-| `Sources/Core/Protocols/` | Contracts (sole injection point) | `ImmichClient`, `PhotoLibraryService`, `BackupAssetSource`, `BackupLedgerStoring`, `BackupEditLedgerStoring`, `KeychainStore`, `TrustedServerStore`, `AppLockService`, `VideoPlaybackEngine` |
+| `Sources/Core/Protocols/` | Contracts (sole injection point) | `ImmichClient`, `PhotoLibraryService`, `BackupAssetSource`, `BackupLedgerStoring`, `BackupEditLedgerStoring`, `KeychainStore`, `TrustedServerStore`, `AppLockService`, `VideoPlaybackEngine`, `IdleTimerControlling` |
 | `Sources/Services/` | Implementations | `ImmichAPIClient`, `PhotoLibraryServiceImpl`, `BackupEngine`, `BackupLedger`, `BackupEditLedger`, `MultipartBody`, `ImageCache`, `AuthenticatedAsyncImage`, `RealtimeService` (Socket.IO), `KeychainStoreImpl`, … |
 | `Sources/Features/<Feature>/` | Per-feature MVVM | `<Feature>ViewModel.swift` (`@Observable`, `@MainActor`) + `<Feature>View.swift` (stateless) |
 

@@ -22,7 +22,21 @@ final class MockVideoPlaybackEngine: NSObject, VideoPlaybackEngine, @unchecked S
     var lastSeek: Double?
     var reloadCount = 0
 
+    /// Every `prepare` call, failed ones included (`preparedURL` keeps the last successful one).
+    private(set) var preparedURLs: [URL] = []
+    private(set) var preparedTokens: [String?] = []
+    /// Per-URL failure, consulted before `prepareError`.
+    var prepareErrorsByURL: [URL: Error] = [:]
+    /// Awaited at the start of each `prepare`, before it returns or throws.
+    var onPrepare: ((URL) async -> Void)?
+
     func prepare(url: URL, token: String?) async throws {
+        preparedURLs.append(url)
+        preparedTokens.append(token)
+        await onPrepare?(url)
+        if let error = prepareErrorsByURL[url] {
+            throw error
+        }
         if let prepareError {
             throw prepareError
         }

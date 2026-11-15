@@ -331,7 +331,8 @@ private struct SharedLinkAssetPager: View {
                         asset: asset,
                         baseURL: baseURL,
                         token: nil,
-                        sharedLink: sharedLink
+                        sharedLink: sharedLink,
+                        offersRetry: true
                     )
                     .tag(offset)
                 }

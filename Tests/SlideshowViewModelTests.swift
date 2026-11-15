@@ -241,6 +241,69 @@ final class SlideshowViewModelTests: XCTestCase {
         XCTAssertEqual(vm.currentAsset?.id, currentID)
     }
 
+    // MARK: - Screen stays on (L-29, AC-58)
+
+    @MainActor
+    private final class FakeIdleTimer: IdleTimerControlling {
+        var isIdleTimerDisabled: Bool
+        init(_ initial: Bool = false) { isIdleTimerDisabled = initial }
+    }
+
+    private func makeViewModel(idleTimer: FakeIdleTimer) -> SlideshowViewModel {
+        SlideshowViewModel(
+            assets: [makeAsset(id: "a"), makeAsset(id: "b")], startIndex: 0,
+            appSettings: settings, idleTimer: idleTimer
+        )
+    }
+
+    func test_AC_58_showingTheSlideshowKeepsTheScreenAwake() {
+        let timer = FakeIdleTimer()
+        let vm = makeViewModel(idleTimer: timer)
+        XCTAssertFalse(timer.isIdleTimerDisabled, "building the model changes nothing")
+
+        vm.keepScreenAwake()
+
+        XCTAssertTrue(timer.isIdleTimerDisabled)
+    }
+
+    func test_AC_58_1_pauseKeepsAwakeCloseRestoresFalse() {
+        let timer = FakeIdleTimer()
+        let vm = makeViewModel(idleTimer: timer)
+        vm.keepScreenAwake()
+        vm.start()
+        vm.advance()
+        vm.stop()
+        vm.togglePlayPause()
+        vm.togglePlayPause()
+        XCTAssertTrue(timer.isIdleTimerDisabled, "playing, paused or moving on: still awake")
+
+        vm.releaseScreen()
+
+        XCTAssertFalse(timer.isIdleTimerDisabled)
+    }
+
+    func test_AC_58_1_closeRestoresAPreviouslyDisabledTimer() {
+        let timer = FakeIdleTimer(true)
+        let vm = makeViewModel(idleTimer: timer)
+        vm.keepScreenAwake()
+        vm.releaseScreen()
+        XCTAssertTrue(timer.isIdleTimerDisabled, "the value found before the show comes back, not false")
+    }
+
+    func test_AC_58_1_releaseWithoutHoldAndDoubleCallsAreHarmless() {
+        let timer = FakeIdleTimer(true)
+        let vm = makeViewModel(idleTimer: timer)
+        vm.releaseScreen()
+        XCTAssertTrue(timer.isIdleTimerDisabled, "no hold, nothing to give back")
+
+        timer.isIdleTimerDisabled = false
+        vm.keepScreenAwake()
+        vm.keepScreenAwake()
+        vm.releaseScreen()
+        vm.releaseScreen()
+        XCTAssertFalse(timer.isIdleTimerDisabled, "the second keep did not record `true` as the value to restore")
+    }
+
     func test_shuffle_singleAssetNoop() {
         let vm = makeViewModel([makeAsset(id: "only")])
         vm.shuffle()
