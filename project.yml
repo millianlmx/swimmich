@@ -1,4 +1,12 @@
 name: ImmichSwiftUI
+# Needs XcodeGen 2.32.0, which introduced `enable` on an include.
+minimumXcodeGenVersion: 2.32.0
+# Manual release signing, included only when Scripts/ipa.sh runs in manual mode
+# (Scripts/release.sh, CI release). Without the variable the generated project
+# is the one `main` is signed with, by the Apple ID signed in to Xcode.
+include:
+  - path: project-release-signing.yml
+    enable: ${SWIMMICH_RELEASE_SIGNING}
 options:
   bundleIdPrefix: app.immich
   deploymentTarget:
@@ -189,7 +197,7 @@ targets:
         CODE_SIGN_ENTITLEMENTS: Resources/ImmichWidgets.entitlements
     dependencies:
       - target: ImmichSharedKit
-        embed: true
+        embed: false
   ImmichShareExtension:
     type: app-extension
     platform: iOS
@@ -250,7 +258,7 @@ targets:
         CODE_SIGN_ENTITLEMENTS: Resources/ImmichShareExtension.entitlements
     dependencies:
       - target: ImmichSharedKit
-        embed: true
+        embed: false
   ImmichSwiftUITests:
     type: bundle.unit-test
     platform: iOS

@@ -453,7 +453,6 @@
 		8C135C7B90E587648F9339D1 /* AlbumSyncUITests.swift in Sources */ = {isa = PBXBuildFile; fileRef = B9CF0B790615363896DCC617 /* AlbumSyncUITests.swift */; };
 		8C19D51C26AE4A3B46B240E4 /* SyncStatusViewModelTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = F4E32791115A112A7B7B097C /* SyncStatusViewModelTests.swift */; };
 		8C755C7E217146A20A7B634D /* PixelSize.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4FB9F5B8C9DABE4B19847C08 /* PixelSize.swift */; };
-		8CF7498E1F0B82CD96D2522C /* ImmichSharedKit.framework in Embed Frameworks */ = {isa = PBXBuildFile; fileRef = 43EFADF0DFF6B6F100CC9AED /* ImmichSharedKit.framework */; settings = {ATTRIBUTES = (CodeSignOnCopy, RemoveHeadersOnCopy, ); }; };
 		8D4B55C8EF362383062D9A11 /* ClientCertificateResponder.swift in Sources */ = {isa = PBXBuildFile; fileRef = E79464878A9E97B5175F8C22 /* ClientCertificateResponder.swift */; };
 		8D839C92FC345147FE371F4C /* StacksViewModelTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9EFC8C3ED07A3BD31DC643A8 /* StacksViewModelTests.swift */; };
 		8E1979C95823D67CEEDDE8AF /* PartnersViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = BFA2D6AEDFC83D02A1809D96 /* PartnersViewModel.swift */; };
@@ -558,7 +557,6 @@
 		B66F10F2A0915596CE59A686 /* MockAppLockService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9B5ECFEFD0658B794D13D709 /* MockAppLockService.swift */; };
 		B78816EE563074FA18F13893 /* AppStringsTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A9D158726EA9BD49E050D1B7 /* AppStringsTests.swift */; };
 		B7A50ED30BC62BFADAD60901 /* ThumbHashDecoder.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2733888CA0E8AA03F0B57E68 /* ThumbHashDecoder.swift */; };
-		B7B70726564F75456E444885 /* ImmichSharedKit.framework in Embed Frameworks */ = {isa = PBXBuildFile; fileRef = 43EFADF0DFF6B6F100CC9AED /* ImmichSharedKit.framework */; settings = {ATTRIBUTES = (CodeSignOnCopy, RemoveHeadersOnCopy, ); }; };
 		B7F3BF2B6D9A909739FCD271 /* ArchiveUITests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2A1531C60F36C47F188E6197 /* ArchiveUITests.swift */; };
 		B82C508D882D7C128A6713E9 /* DynamicTypeUITests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3B744CBC23D2313C390E4614 /* DynamicTypeUITests.swift */; };
 		B86BB79B8BCDAFAE36E6BEA0 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 8E81A210D26A501C1F68C961 /* Assets.xcassets */; };
@@ -838,28 +836,6 @@
 			dstSubfolderSpec = 10;
 			files = (
 				A8BB15778001A368E6CC3675 /* ImmichSharedKit.framework in Embed Frameworks */,
-			);
-			name = "Embed Frameworks";
-			runOnlyForDeploymentPostprocessing = 0;
-		};
-		60A2E7FC4C76D3A49C7B2B13 /* Embed Frameworks */ = {
-			isa = PBXCopyFilesBuildPhase;
-			buildActionMask = 2147483647;
-			dstPath = "";
-			dstSubfolderSpec = 10;
-			files = (
-				B7B70726564F75456E444885 /* ImmichSharedKit.framework in Embed Frameworks */,
-			);
-			name = "Embed Frameworks";
-			runOnlyForDeploymentPostprocessing = 0;
-		};
-		72C5D233A859CCE3071E3008 /* Embed Frameworks */ = {
-			isa = PBXCopyFilesBuildPhase;
-			buildActionMask = 2147483647;
-			dstPath = "";
-			dstSubfolderSpec = 10;
-			files = (
-				8CF7498E1F0B82CD96D2522C /* ImmichSharedKit.framework in Embed Frameworks */,
 			);
 			name = "Embed Frameworks";
 			runOnlyForDeploymentPostprocessing = 0;
@@ -2938,7 +2914,6 @@
 				301DCE54A9D6AA78713CD7BD /* Sources */,
 				29C946012C00A387B4F71EB3 /* Resources */,
 				1678D668730E55E1CD7CE0CA /* Frameworks */,
-				60A2E7FC4C76D3A49C7B2B13 /* Embed Frameworks */,
 			);
 			buildRules = (
 			);
@@ -2959,7 +2934,6 @@
 				6AE8040800EB0CACEDF75623 /* Sources */,
 				AA6DC06C8DF1BCC98CA3B14D /* Resources */,
 				7BC55BB305EF5A25AD516BF5 /* Frameworks */,
-				72C5D233A859CCE3071E3008 /* Embed Frameworks */,
 			);
 			buildRules = (
 			);
