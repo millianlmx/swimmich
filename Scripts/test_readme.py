@@ -333,7 +333,8 @@ class TestDocumentedCommands(unittest.TestCase):
     @unittest.skipUnless(shutil.which("xcrun") and shutil.which("xcodebuild"), "needs Xcode")
     def test_AC_21_readme_destination_exists_on_this_mac(self):
         # The CI Mac creates its simulators on demand (Scripts/ci.sh), so none is named "iPhone 17" there: what
-        # a Mac must offer is the device type and an iOS 26+ runtime, from which Xcode makes the device.
+        # a Mac must offer is the device type and an iOS 26+ runtime. A Mac without an "iPhone 17" device still
+        # has to create one (`xcrun simctl create`, as Scripts/screenshots.sh does) before the README's xcodebuild command runs.
         def simctl(*args):
             return json.loads(subprocess.run(["xcrun", "simctl", "list", *args, "-j"],
                                              capture_output=True, text=True, check=True).stdout)
