@@ -389,8 +389,7 @@ struct SearchView: View {
     /// Filters sheet's "Detected text" field, which sets the text itself.
     private var ocrFilterToggle: some View {
         Button {
-            vm.ocrFilterEnabled.toggle()
-            vm.queryDidChange()
+            Task { await vm.setOcrFilterEnabled(!vm.ocrFilterEnabled) }
         } label: {
             if vm.ocrFilterEnabled {
                 Label("Search typed text in detected text", systemImage: "checkmark")

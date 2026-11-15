@@ -595,6 +595,18 @@ final class SearchViewModel {
         }
     }
 
+    /// The menu's detected-text toggle. Like a mode pick, it changes how the
+    /// typed text is read, so a text already searched is searched again —
+    /// `queryDidChange()` would skip it as unchanged. Without a text, nothing
+    /// is sent.
+    func setOcrFilterEnabled(_ enabled: Bool) async {
+        guard enabled != ocrFilterEnabled else { return }
+        ocrFilterEnabled = enabled
+        if !query.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            await restartSearch()
+        }
+    }
+
     /// Re-runs the search from the current state even while a read is in
     /// flight (`search()` alone returns when `isLoading`). The generation bump
     /// makes the running read drop its answer; once it has finished, a fresh

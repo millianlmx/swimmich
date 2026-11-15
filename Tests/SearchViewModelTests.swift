@@ -1312,6 +1312,50 @@ final class SearchViewModelTests: XCTestCase {
         XCTAssertEqual(both.body, sheetMetadata.body)
     }
 
+    /// AC-9: the toggle is touched after the text was searched. It must search
+    /// again — the same text, now read as detected text — and off again brings
+    /// the `query` back. A text unchanged since the last search is not enough
+    /// to skip it (`queryDidChange()` would).
+    func test_AC_9_toggleReSearchesTheTextAlreadySearched() async throws {
+        let mock = makeMock(items: [makeAsset(id: "r1")])
+        mock.serverVersionResponse = ServerVersionResponseDto(major: 3, minor: 2, patch: 0, prerelease: nil)
+        let vm = SearchViewModel(client: mock)
+        vm.searchMode = .metadata
+        vm.query = "sunset"
+        await vm.search()
+        XCTAssertEqual(mock.searchMetadataCalls.count, 1)
+
+        func lastBody() throws -> NSDictionary {
+            let data = try JSONEncoder.immich.encode(try XCTUnwrap(mock.searchMetadataCalls.last))
+            return try XCTUnwrap(JSONSerialization.jsonObject(with: data) as? NSDictionary)
+        }
+
+        await vm.setOcrFilterEnabled(true)
+        XCTAssertTrue(vm.ocrFilterEnabled)
+        XCTAssertEqual(mock.searchMetadataCalls.count, 2, "the toggle did not search again")
+        XCTAssertEqual(try lastBody(), [
+            "filter": ["ocr": ["matches": "sunset"], "visibility": ["eq": "timeline"]],
+        ] as NSDictionary)
+
+        await vm.setOcrFilterEnabled(false)
+        XCTAssertFalse(vm.ocrFilterEnabled)
+        XCTAssertEqual(mock.searchMetadataCalls.count, 3, "turning it off did not search again")
+        XCTAssertEqual(try lastBody(), [
+            "query": "sunset", "filter": ["visibility": ["eq": "timeline"]],
+        ] as NSDictionary)
+    }
+
+    /// Without a text, the toggle only records the choice: nothing is sent.
+    func test_AC_9_toggleWithoutTextSendsNothing() async {
+        let mock = makeMock(items: [makeAsset(id: "r1")])
+        let vm = SearchViewModel(client: mock)
+        vm.searchMode = .metadata
+        await vm.setOcrFilterEnabled(true)
+        XCTAssertTrue(vm.ocrFilterEnabled)
+        XCTAssertTrue(mock.searchMetadataCalls.isEmpty)
+        XCTAssertTrue(mock.searchSmartCalls.isEmpty)
+    }
+
     func test_AC_21_theSameCriteriaSendTheSamePathAndBody() async throws {
         let flat = (major: 2, minor: 0)
         let structured = (major: 3, minor: 2)
