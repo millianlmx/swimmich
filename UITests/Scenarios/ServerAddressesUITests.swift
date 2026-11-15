@@ -226,14 +226,41 @@ final class ServerAddressesUITests: XCTestCase {
 
     // MARK: - Sign-in
 
+    /// Onboarding → SSO → "Authorize". A sign-in that stalls (the SSO tap lost while
+    /// the login screen still loads its modes, or a cold `SafariViewService` on a
+    /// loaded Mac) is started again from a relaunch, never failed on the first miss
+    /// (the pattern of `ConfirmationsUITests.signIn`).
     private func signIn() {
+        var authorized = false
+        for attempt in 0..<3 where !authorized {
+            if attempt > 0 {
+                // Same launch arguments: the app comes back on its onboarding.
+                app.terminate()
+                app.launch()
+            }
+            walkOnboardingToLogin()
+            XCTAssertTrue(tapAnyButton(["Immich SSO"]), "SSO button missing on login screen — \(screenReads())")
+            authorized = tapAuthorizeInProvider(timeout: 45)
+        }
+        XCTAssertTrue(authorized, "Authorize link not reachable in the auth sheet after 3 attempts — \(screenReads())")
+        XCTAssertTrue(app.tabBars.buttons.matching(labelPredicate(["Photos", "Fotos"])).firstMatch.waitForExistence(timeout: 30),
+                      "OAuth did not reach the authenticated shell — \(screenReads())")
+        settleOnShell()
+    }
+
+    /// Welcome → server URL (the stub) → login. Leaves the app on the login screen.
+    private func walkOnboardingToLogin() {
         let field = app.textFields.firstMatch
         if !field.waitForExistence(timeout: 12) {
             XCTAssertTrue(tapAnyButton(Self.getStarted, timeout: 30), "Welcome CTA missing — \(screenReads())")
             XCTAssertTrue(field.waitForExistence(timeout: 20), "Server URL field missing")
         }
         field.tap()
-        field.typeText(stub)
+        let seeded = (field.value as? String) ?? ""
+        if !seeded.isEmpty && seeded != stub {
+            field.typeText(String(repeating: XCUIKeyboardKey.delete.rawValue, count: seeded.count))
+        }
+        if (field.value as? String) != stub { field.typeText(stub) }
         XCTAssertTrue(tapAnyButton(Self.checkConnection + Self.tryAgain), "Check-connection CTA missing — \(screenReads())")
         XCTAssertTrue(app.buttons.matching(labelPredicate(Self.proceed)).firstMatch.waitForExistence(timeout: 30),
                       "Server never became reachable — \(screenReads())")
@@ -244,20 +271,30 @@ final class ServerAddressesUITests: XCTestCase {
             onLogin = app.staticTexts.matching(labelPredicate(Self.loginCopy)).firstMatch.waitForExistence(timeout: 10)
         }
         XCTAssertTrue(onLogin, "Login screen did not appear — \(screenReads())")
-        XCTAssertTrue(tapAnyButton(["Immich SSO"]), "SSO button missing on login screen")
-        let springboard = XCUIApplication(bundleIdentifier: "com.apple.springboard")
-        for label in Self.proceed where springboard.alerts.buttons[label].waitForExistence(timeout: 6) {
-            springboard.alerts.buttons[label].tap()
-            break
-        }
+    }
+
+    /// The provider page loads in another process (`SafariViewService`), slowly on a
+    /// loaded Mac, and the system's sign-in consent can show late: while the
+    /// "Authorize" link is awaited, the consent is accepted whenever it is up.
+    private func tapAuthorizeInProvider(timeout: TimeInterval = 60) -> Bool {
         let safari = XCUIApplication(bundleIdentifier: "com.apple.SafariViewService")
-        let authorize = NSPredicate(format: "label CONTAINS 'Authorize'")
-        let link = safari.links.matching(authorize).firstMatch
-        XCTAssertTrue(link.waitForExistence(timeout: 20), "Authorize link not reachable in the auth sheet")
-        link.tap()
-        XCTAssertTrue(app.tabBars.buttons.matching(labelPredicate(["Photos", "Fotos"])).firstMatch.waitForExistence(timeout: 30),
-                      "OAuth did not reach the authenticated shell — \(screenReads())")
-        settleOnShell()
+        let springboard = XCUIApplication(bundleIdentifier: "com.apple.springboard")
+        let predicate = NSPredicate(format: "label CONTAINS 'Authorize'")
+        let consent = NSPredicate(format: "label IN %@", Self.proceed)
+        let candidates = [safari.links.matching(predicate).firstMatch, safari.buttons.matching(predicate).firstMatch]
+        let deadline = Date().addingTimeInterval(timeout)
+        while Date() < deadline {
+            if let authorize = candidates.first(where: { $0.exists }) {
+                authorize.tap()
+                return true
+            }
+            for button in [springboard.alerts.buttons.matching(consent).firstMatch,
+                           app.alerts.buttons.matching(consent).firstMatch] where button.exists {
+                button.tap()
+            }
+            Thread.sleep(forTimeInterval: 0.5)
+        }
+        return false
     }
 
     private func settleOnShell() {
@@ -345,6 +382,40 @@ final class ServerAddressesUITests: XCTestCase {
                       "the local address never read \(state) — \(screenReads())")
     }
 
+    /// Every state the local status row can show (`networkLocalStatus_<state>`).
+    private static let localStates = ["checking", "reachable", "unreachable", "notThisServer", "denied", "untrusted"]
+
+    private func localStatusShown() -> String? {
+        Self.localStates.first { element("networkLocalStatus_\($0)").exists }
+    }
+
+    /// The local address over TLS reads "reachable" after "Trust". A probe has 2 s
+    /// for two TLS handshakes that present the client certificate: on a Mac running
+    /// several simulators one can miss it, and the row reads "unreachable for now"
+    /// until the next measure. It is measured again by the network-change control,
+    /// as a change of network would. Any other state fails at once, with what the stub saw.
+    private func waitForLocalReachableOverTLS(attempts: Int = 3) {
+        // The state the previous measure left: the next one starts by replacing it with "checking".
+        var stale = "untrusted"
+        var shown: String?
+        for attempt in 0..<attempts {
+            if attempt > 0 { simulateNetworkChange() }
+            reveal("networkLocalAddressField")
+            _ = waitUntil(timeout: 5) { self.localStatusShown() != stale }
+            _ = waitUntil(timeout: 30) {
+                let state = self.localStatusShown()
+                return state != nil && state != "checking"
+            }
+            shown = localStatusShown()
+            if shown == "reachable" { return }
+            if shown != "unreachable" { break }
+            stale = "unreachable"
+        }
+        let seen = handshakes().map { "ok=\($0.ok) cert=\($0.cert ?? "-")" }.joined(separator: ", ")
+        XCTFail("the local address over TLS never read reachable (last state: \(shown ?? "none")); "
+                + "TLS handshakes: [\(seen)] — \(screenReads())")
+    }
+
     private func waitForActiveKind(_ kind: String, timeout: TimeInterval = 20) {
         reveal("networkActiveAddress")
         XCTAssertTrue(element("networkActiveAddressKind_\(kind)").waitForExistence(timeout: timeout),
@@ -369,11 +440,18 @@ final class ServerAddressesUITests: XCTestCase {
         start()
         openNetwork()
         setSwitch(on: true)
+        let switched = mark()
         saveLocal(localAddress)
         waitForLocalStatus("reachable")
         simulateNetworkChange()
         waitForActiveKind("local")
         dismissHub()
+        // The switch is already on when the address is saved: saving measures it, retains the
+        // local address and reloads the visible tab (changedAddress), so the reload is that of the save.
+        let reloaded = waitForRequest(from: switched) {
+            $0.path.hasPrefix("/api/timeline/") && $0.address == "local" && $0.token
+        }
+        XCTAssertNotNil(reloaded, "the timeline reloads from the local address:\n\(describe(traffic(from: switched)))")
 
         var index = mark()
         let local = openPhotoAndFindPreview(from: index, id: photoID)
@@ -396,15 +474,48 @@ final class ServerAddressesUITests: XCTestCase {
         start()
         openNetwork()
         setSwitch(on: true)
-        setLocalMode("silent")
         saveLocal(localAddress)
-        waitForLocalStatus("unreachable", timeout: 30)
+        waitForLocalStatus("reachable")
+        simulateNetworkChange()
+        waitForActiveKind("local")
+
+        // The app goes to the background and comes back while the local address answers too slowly.
+        setLocalMode("silent")
+        XCUIDevice.shared.press(.home)
+        // The Home button alone sometimes leaves the app in the foreground (state 4):
+        // bringing SpringBoard forward is what puts it in the background (DynamicTypeUITests).
+        let backgrounded = { [.runningBackground, .runningBackgroundSuspended].contains(self.app.state) }
+        if !waitUntil(timeout: 5, backgrounded) {
+            XCUIApplication(bundleIdentifier: "com.apple.springboard").activate()
+        }
+        XCTAssertTrue(waitUntil(timeout: 20, backgrounded),
+                      "the app never went to the background (state \(app.state.rawValue))")
+        sleep(1)
+        app.activate()
+        waitForActiveKind("external", timeout: 30)
+        dismissHub()
+        let back = mark()
+        let external = openPhotoAndFindPreview(from: back, id: photoID)
+        XCTAssertEqual(external?.address, "external", "back in the foreground, the requests go to the external address:\n\(describe(traffic(from: back)))")
+        XCTAssertEqual(external?.token, true)
+
+        // Opening the screen measures again; let that measure end before the local address answers.
+        openNetwork()
+        Thread.sleep(forTimeInterval: 3)
         waitForActiveKind("external")
 
         setLocalMode("immich")
+        let index = mark()
         simulateNetworkChange()
         waitForLocalStatus("reachable")
         waitForActiveKind("local")
+        dismissHub()
+        let reloaded = waitForRequest(from: index) {
+            $0.path.hasPrefix("/api/timeline/") && $0.address == "local" && $0.token
+        }
+        XCTAssertNotNil(reloaded, "the requests go back to the local address:\n\(describe(traffic(from: index)))")
+        XCTAssertTrue(app.tabBars.buttons.matching(labelPredicate(["Photos", "Fotos"])).firstMatch.exists,
+                      "the user must still be signed in")
     }
 
     func test_AC_242() throws {
@@ -424,7 +535,19 @@ final class ServerAddressesUITests: XCTestCase {
 
     func test_AC_235() throws {
         start()
-        openNetwork()
+        // Network comes before Custom HTTP Headers and is pushed on the hub's own stack.
+        openHub()
+        reveal("customHeadersRow")
+        XCTAssertTrue(element("networkSettingsRow").exists && element("customHeadersRow").exists,
+                      "the Advanced section lacks a row — \(screenReads())")
+        XCTAssertLessThan(element("networkSettingsRow").frame.minY, element("customHeadersRow").frame.minY,
+                          "Network must come before Custom HTTP Headers — \(screenReads())")
+        element("networkSettingsRow").tap()
+        XCTAssertTrue(element("networkLocalAddressField").waitForExistence(timeout: 15),
+                      "the Network setting never opened — \(screenReads())")
+        XCTAssertTrue(app.navigationBars["Network"].exists, "the pushed screen is titled Network")
+        XCTAssertTrue(app.navigationBars["Network"].buttons.firstMatch.exists,
+                      "a back button to the hub: the screen is pushed, with no stack of its own")
         XCTAssertEqual(element("networkAutoSwitchToggle").value as? String, "0", "the switch starts off")
         XCTAssertTrue(((element("networkExternalAddressField").value as? String) ?? "").contains("127.0.0.1:\(port)"),
                       "the external address is the connection address")
@@ -545,6 +668,7 @@ final class ServerAddressesUITests: XCTestCase {
         XCTAssertEqual(playback?.address, "external", "the video is read from the external address:\n\(describe(traffic(from: index)))")
         let after = traffic(from: index)
         XCTAssertFalse(after.contains { $0.address == "local" && !$0.isProbe }, "the local address only gets probes:\n\(describe(after))")
+        XCTAssertFalse(after.contains { $0.address == "local" && $0.token }, "the token never reaches the local address:\n\(describe(after))")
     }
 
     func test_AC_240() throws {
@@ -680,7 +804,7 @@ final class ServerAddressesUITests: XCTestCase {
         setSwitch(on: true)
         saveLocal(tlsAddress)
         answerTrustAlert("Trust")
-        waitForLocalStatus("reachable", timeout: 30)
+        waitForLocalReachableOverTLS()
         dismissHub()
         app.terminate()
 
@@ -951,7 +1075,20 @@ final class ServerAddressesUITests: XCTestCase {
         reveal("networkOpenSettingsButton")
         XCTAssertTrue(element("networkOpenSettingsButton").exists, "no button towards the system settings")
         waitForActiveKind("external")
-        XCTAssertFalse(traffic(from: index).contains { $0.address == "local" }, "a refused local network sends nothing there")
         XCTAssertFalse(element("networkLocalValidationMessage").exists, "a refusal is a state, not an error message")
+        dismissHub()
+        XCTAssertFalse(element("timelineLoadErrorBanner").exists, "a refused local network raises no error banner")
+        let shown = mark()
+        let preview = openPhotoAndFindPreview(from: shown, id: photoID)
+        XCTAssertEqual(preview?.address, "external", "the photo is served from the external address:\n\(describe(traffic(from: shown)))")
+        XCTAssertEqual(preview?.token, true)
+        XCTAssertFalse(traffic(from: index).contains { $0.address == "local" }, "a refused local network sends nothing there")
+
+        openNetwork()
+        waitForLocalStatus("denied")
+        reveal("networkOpenSettingsButton")
+        element("networkOpenSettingsButton").tap()
+        XCTAssertTrue(XCUIApplication(bundleIdentifier: "com.apple.Preferences").wait(for: .runningForeground, timeout: 20),
+                      "Open System Settings did not bring the Settings app")
     }
 }
