@@ -665,7 +665,9 @@ final class SearchRedesignUITests: XCTestCase {
 
         waitForSearch("detected text", { $0.structured && $0.ocrMatches == "sunset" && $0.body["query"] == nil })
         openOptions()
-        XCTAssertEqual(optionItem("searchOcrFilterToggle").value as? String, "on", "VoiceOver would not hear the toggle is on")
+        let latched = optionItem("searchOcrFilterToggle")
+        XCTAssertEqual(latched.value as? String, "on",
+                       "VoiceOver would not hear the toggle is on: value \(String(describing: latched.value)), label '\(latched.label)' — \(buttonsDump())")
         closeOptions()
     }
 
