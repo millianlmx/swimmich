@@ -107,7 +107,10 @@ P-passkey_settings|exclu|
 P-advanced.prefer_remote_image|exclu|
 EOF
 )
-EXPECT_B=$(cat <<'EOF'
+# The rows hold apostrophes: a heredoc inside `$( )` fails `bash -n` on bash 3.2
+# (macOS), whose parser scans the body for quotes. So it sits in a function body.
+expect_b() {
+  cat <<'EOF'
 Connexion|Parcours|B-13 B-14 B-32 B-42
 Connexion|Gestes et transitions|B-22
 Connexion|Haptique|B-32
@@ -147,7 +150,8 @@ Verrouillage|États|B-36
 Verrouillage|Haptique|B-36
 Verrouillage|Accessibilité|B-17
 EOF
-)
+}
+EXPECT_B=$(expect_b)
 
 STATUSES="présent|partiel|absent|hors périmètre"
 BAD=0
