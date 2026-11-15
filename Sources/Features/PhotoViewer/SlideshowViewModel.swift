@@ -91,6 +91,9 @@ final class SlideshowViewModel {
     private(set) var isVideoActive = false
 
     let assets: [AssetReactItem]
+    private let idleTimer: any IdleTimerControlling
+    /// `nil` = the screen lock is free; otherwise the value `releaseScreen()` restores.
+    @ObservationIgnored private var heldIdleState: Bool?
     /// Playback order: position → asset index. Identity until `shuffle()`.
     private(set) var order: [Int]
 
@@ -105,9 +108,15 @@ final class SlideshowViewModel {
 
     // MARK: - Init
 
-    init(assets: [AssetReactItem], startIndex: Int = 0, appSettings: AppSettingsStore = .shared) {
+    init(
+        assets: [AssetReactItem],
+        startIndex: Int = 0,
+        appSettings: AppSettingsStore = .shared,
+        idleTimer: any IdleTimerControlling = DependencyContainer.shared.idleTimer
+    ) {
         self.assets = assets
         self.appSettings = appSettings
+        self.idleTimer = idleTimer
         // Unreadable stored values fall back to the case the slideshow would
         // have used before the setting existed.
         self.storedSpeed = SlideshowSpeed(rawValue: appSettings.slideshowSpeed) ?? .threeSeconds
@@ -123,6 +132,24 @@ final class SlideshowViewModel {
 
         let wanted = assets.isEmpty ? 0 : min(max(startIndex, 0), assets.count - 1)
         self.currentIndex = initialOrder.firstIndex(of: wanted) ?? wanted
+    }
+
+    // MARK: - Screen lock
+
+    /// Keeps the screen on while the slideshow is displayed, paused included
+    /// (a paused slide must not go dark). Idempotent: the value to restore is
+    /// read once, at the first call.
+    func keepScreenAwake() {
+        if heldIdleState == nil { heldIdleState = idleTimer.isIdleTimerDisabled }
+        idleTimer.isIdleTimerDisabled = true
+    }
+
+    /// Gives the screen back as it was before `keepScreenAwake()` (a timer
+    /// that was already disabled stays disabled). No-op without a hold.
+    func releaseScreen() {
+        guard let previous = heldIdleState else { return }
+        idleTimer.isIdleTimerDisabled = previous
+        heldIdleState = nil
     }
 
     // MARK: - Transport

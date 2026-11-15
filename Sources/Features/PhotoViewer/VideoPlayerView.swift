@@ -341,6 +341,7 @@ struct VideoPlayerView: View {
                     .foregroundStyle(Color.white.opacity(0.85))
                     .multilineTextAlignment(.center)
                     .padding(.horizontal, PVSpacing.s24)
+                    .accessibilityIdentifier("videoPlayerError")
             }
             Button {
                 vm.reset()
@@ -354,6 +355,7 @@ struct VideoPlayerView: View {
                     .pvFloating(.pill)
             }
             .buttonStyle(.plain)
+            .accessibilityIdentifier("videoPlayerRetry")
         }
     }
 }
