@@ -400,6 +400,24 @@ final class ServerEndpointSwitchTests: XCTestCase {
         XCTAssertTrue(rig.probe.calls.isEmpty)
     }
 
+    // MARK: - AC-249
+
+    func test_AC_249_knownURLsNameEveryAddress() {
+        let vpn = URL(string: "https://vpn.example.net")!
+        let rig = makeRig(settings: ServerAddressSettings(
+            localURL: local.absoluteString, externalURL: "vpn.example.net", autoSwitch: true
+        ))
+        activate(rig)
+
+        XCTAssertEqual(rig.sut.knownURLs, [account, vpn, local])
+        XCTAssertEqual(rig.sut.publicURL, vpn)
+
+        let plain = makeRig(settings: ServerAddressSettings(localURL: local.absoluteString, autoSwitch: true))
+        activate(plain)
+
+        XCTAssertEqual(plain.sut.knownURLs, [account, local], "the external address is the connection one: no duplicate")
+    }
+
     // MARK: - AC-244
 
     func test_AC_244_settingsFollowTheAccount() async {

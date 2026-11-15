@@ -88,3 +88,8 @@ final class AlbumsViewModel {
         }
     }
 }
+
+extension AlbumsViewModel: ReloadableScreen {
+    /// Only the failure of the screen's own read counts, never an action's (L-26).
+    var hasLoadError: Bool { loadErrorMessage != nil }
+}

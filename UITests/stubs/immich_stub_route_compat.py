@@ -16,7 +16,7 @@ THE VERSION. A scenario picks it at run time, without restarting the stub:
     GET /stub/version?v=garbage               ... answers 200 with a body that is not a version
 
 The route is journaled (the scenario can read back what it set). `/__reset` goes
-back to `SERVER_VERSION` (`IMMICH_STUB_VERSION`, 1.119.0 by default) for every host.
+back to `SERVER_VERSION` (`IMMICH_STUB_VERSION`, 2.0.0 by default) for every host.
 
 WHAT IT SERVES
     * An ADMINISTRATOR signs in by SSO (`/api/oauth/callback`, `/api/users/me`).

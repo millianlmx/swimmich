@@ -90,4 +90,19 @@ final class SharedLinkServerAddressTests: XCTestCase {
 
         XCTAssertEqual(vm.publicURL?.host, "photos.example.org")
     }
+
+    func test_AC_249_viewerLinkUsesTheExternalDomain() async {
+        let mock = MockImmichClient()
+        mock.sharedLinkMineResponse = sharedLink(key: key)
+        let vm = SharedLinkViewerViewModel(
+            client: mock, baseURL: local, externalDomain: "https://public.example.net",
+            publicServerURL: external, serverURLs: [external, local]
+        )
+
+        vm.linkText = "https://public.example.net/share/\(key)"
+        await vm.openLink()
+
+        XCTAssertEqual(vm.phase, .opened)
+        XCTAssertEqual(vm.publicURL?.host, "public.example.net")
+    }
 }

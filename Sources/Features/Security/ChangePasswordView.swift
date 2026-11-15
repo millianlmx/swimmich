@@ -19,6 +19,9 @@ struct ChangePasswordView: View {
     /// Called once the server accepted the change. Only the auth session owns
     /// `shouldChangePassword`, and this screen does not know about it.
     let onPasswordChanged: () -> Void
+    /// Why the screen is shown, above the form: the sign-in step that the
+    /// server requires (B-42). The Me hub's entry has none.
+    var notice: Text? = nil
 
     @PVReduceMotion private var reduceMotion
 
@@ -36,6 +39,15 @@ struct ChangePasswordView: View {
 
     var body: some View {
         Form {
+            if let notice {
+                Section {
+                    Label { notice } icon: { Image(systemName: "exclamationmark.triangle.fill") }
+                        .font(.pvSubhead)
+                        .foregroundStyle(Color.immichWarning)
+                        .accessibilityIdentifier("requiredPasswordChangeNotice")
+                }
+            }
+
             Section {
                 HStack(spacing: PVSpacing.s8) {
                     Group {

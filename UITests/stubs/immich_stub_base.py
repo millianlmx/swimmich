@@ -88,7 +88,7 @@ WHAT IS LOGGED
     an absent `orderBy`.
 
 WHICH VERSION IT ANNOUNCES, AND WHAT IT SERVES (L-20)
-    `IMMICH_STUB_VERSION` (default 1.119.0) is the version `GET /api/server/version`
+    `IMMICH_STUB_VERSION` (default 2.0.0) is the version `GET /api/server/version`
     answers; a feature stub that overrides that route is followed by
     `announced_version()`. `ROUTE_TABLE` lists the replacement routes with the
     version that introduced them (upstream OpenAPI `x-immich-history`): a request
@@ -435,7 +435,7 @@ def asset_statistics(req):
 
 # MARK: - Announced version and route table (L-20)
 
-SERVER_VERSION = os.environ.get("IMMICH_STUB_VERSION", "1.119.0")
+SERVER_VERSION = os.environ.get("IMMICH_STUB_VERSION", "2.0.0")
 
 # (method, path pattern, first version that serves it). `{name}` is one segment.
 # Routes that exist in every supported version are not listed: they are served.
@@ -484,7 +484,7 @@ def announced_version(request):
 
 def version_payload():
     """The body of `GET /api/server/version` for `SERVER_VERSION`."""
-    major, minor, patch = parse_version(SERVER_VERSION) or (1, 119, 0)
+    major, minor, patch = parse_version(SERVER_VERSION) or (2, 0, 0)
     return {"major": major, "minor": minor, "patch": patch, "prerelease": None}
 
 

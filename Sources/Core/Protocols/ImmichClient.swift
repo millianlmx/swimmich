@@ -20,11 +20,21 @@ protocol ImmichClient: AnyObject, Sendable {
     var authDelegate: (any AuthSessionDelegate)? { get set }
 
     func ping() async throws -> ServerPingResponse
+    /// `GET /api/server/ping` with its own, short timeout (L-28): the startup
+    /// reachability probe. Goes through a session of its own, so it never waits
+    /// for a free connection behind the requests of the launch.
+    func ping(timeout: TimeInterval) async throws -> ServerPingResponse
     func serverVersion() async throws -> ServerVersionResponseDto
     /// `GET /api/public/config` from v3.2.0, `GET /api/server/config` before (or when the version is unreadable). No auth.
     func publicConfig() async throws -> ServerConfig
     /// `GET /api/config` from v3.2.0, `GET /api/server/config` before. Needs a session token.
     func sessionConfig() async throws -> ServerConfig
+    /// The sign-in modes the server accepts (L-28), read without a token:
+    /// `GET /api/public/config` on a server that serves it (v3.2+), the
+    /// deprecated `GET /api/server/features` otherwise or when the version is
+    /// unknown. Never both for one call. Any failure is thrown as is — the
+    /// caller decides the fallback.
+    func loginOptions(serverVersion: ServerVersionResponseDto?) async throws -> ServerLoginOptions
 
     func login(email: String, password: String) async throws -> LoginResponseDto
     func logout() async throws -> LogoutResponseDto

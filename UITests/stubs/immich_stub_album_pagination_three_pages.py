@@ -21,7 +21,7 @@ serves three albums of three pages each, against a server that announces v3.2.0
 
 Routes (everything else comes from `immich_stub_base`):
 
-* `GET /api/server/version` — always 3.2.0 (the shell says 1.119.0).
+* `GET /api/server/version` — always 3.2.0 (the shell says 2.0.0).
 * `GET /api/albums` — the three albums, `order` "asc".
 * `GET /api/albums/<id>` — that album; the shell answers `[]` on this path,
   which does not decode as an album. Any other id is a 404.

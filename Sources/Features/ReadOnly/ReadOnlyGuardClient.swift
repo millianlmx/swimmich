@@ -62,6 +62,10 @@ final class ReadOnlyGuardClient: ImmichClient {
         try await inner.ping()
     }
 
+    func ping(timeout: TimeInterval) async throws -> ServerPingResponse {
+        try await inner.ping(timeout: timeout)
+    }
+
     func serverVersion() async throws -> ServerVersionResponseDto {
         try await inner.serverVersion()
     }
@@ -72,6 +76,10 @@ final class ReadOnlyGuardClient: ImmichClient {
 
     func sessionConfig() async throws -> ServerConfig {
         try await inner.sessionConfig()
+    }
+
+    func loginOptions(serverVersion: ServerVersionResponseDto?) async throws -> ServerLoginOptions {
+        try await inner.loginOptions(serverVersion: serverVersion)
     }
 
     /// Account mechanics, not library writes: the mode guards the library, so a

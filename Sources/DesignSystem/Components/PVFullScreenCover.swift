@@ -19,6 +19,12 @@ private struct PVCoverToken: Identifiable {
     let id = 0
 }
 
+/// Set by the authenticated root to ask every `pvFullScreenCover` below it to
+/// close: a new value is a new request, `nil` is "none yet".
+extension EnvironmentValues {
+    @Entry var coverDismissalRequest: UUID? = nil
+}
+
 private struct PVFullScreenCoverModifier<Item: Identifiable, Cover: View>: ViewModifier {
     @Binding var item: Item?
     let onDismiss: (() -> Void)?
@@ -32,6 +38,10 @@ private struct PVFullScreenCoverModifier<Item: Identifiable, Cover: View>: ViewM
     /// Frozen at each presentation: a setting flip while open does not change its close.
     @State private var presentedStyle: PVCoverStyle = .system
     @State private var closing = false
+    /// A signal from the root to close whatever full-screen cover is up (a
+    /// widget link must reach its target, and a presentation is refused while
+    /// another occupies the screen).
+    @Environment(\.coverDismissalRequest) private var coverDismissalRequest
 
     func body(content: Content) -> some View {
         content
@@ -42,6 +52,12 @@ private struct PVFullScreenCoverModifier<Item: Identifiable, Cover: View>: ViewM
             }
             .onChange(of: item?.id, initial: true) { _, _ in
                 externalChanged()
+            }
+            .onChange(of: coverDismissalRequest) { _, _ in
+                guard item != nil else { return }
+                var transaction = Transaction()
+                transaction.disablesAnimations = true
+                withTransaction(transaction) { item = nil }
             }
     }
 
