@@ -48,6 +48,35 @@
 # does not fit replaces a line or is `--release`, and its detailed criteria go to
 # the unit tests.
 
+# Search redesign (AC-2 to AC-26): the Results screen's bar (Filters, Search options, sync, avatar),
+# its menu, the chips over "No results". Release: one line per test; the
+# view model's bodies are proven by SearchViewModelTests (AC-13.1, AC-21).
+# First in the file: a push's gate runs its changed lines in file order, two at
+# a time, so test_AC_9 (the menu toggle's VoiceOver value) and test_AC_2 run first.
+immich_stub_search_filters.py SearchRedesignUITests/test_AC_9 --release
+immich_stub_search_filters.py SearchRedesignUITests/test_AC_2 --release
+immich_stub_search_filters.py SearchRedesignUITests/test_AC_3 --release
+immich_stub_search_filters.py SearchRedesignUITests/test_AC_3_1 --release
+immich_stub_search_filters.py SearchRedesignUITests/test_AC_4 --release
+immich_stub_search_filters.py SearchRedesignUITests/test_AC_5 --release
+immich_stub_search_filters.py SearchRedesignUITests/test_AC_6 --release
+immich_stub_search_filters.py SearchRedesignUITests/test_AC_7 --release
+immich_stub_search_filters.py SearchRedesignUITests/test_AC_8 --release
+immich_stub_search_filters.py SearchRedesignUITests/test_AC_10 --release
+immich_stub_search_filters.py SearchRedesignUITests/test_AC_11 --release
+immich_stub_search_filters.py SearchRedesignUITests/test_AC_12 --release
+immich_stub_search_filters.py SearchRedesignUITests/test_AC_13 --release
+immich_stub_search_filters.py SearchRedesignUITests/test_AC_14 --release
+immich_stub_search_filters.py SearchRedesignUITests/test_AC_15 --release
+immich_stub_search_filters.py SearchRedesignUITests/test_AC_16 --release
+immich_stub_search_filters.py SearchRedesignUITests/test_AC_17 --release
+immich_stub_search_filters.py SearchRedesignUITests/test_AC_18 --release
+immich_stub_search_filters.py SearchRedesignUITests/test_AC_19 --release
+immich_stub_search_filters.py SearchRedesignUITests/test_AC_22 --release
+immich_stub_search_filters.py SearchRedesignUITests/test_AC_25 --release
+immich_stub_list_states.py SearchRedesignUITests/test_AC_20 --release
+immich_stub_search_filters.py SearchRedesignUITests/test_AC_26 --content-size accessibility-extra-extra-extra-large --release
+
 # L-21 server-side edits (AC-39, AC-40, AC-181, AC-182, AC-187, AC-188, AC-189): the editor, the edited
 # version shown by the viewer, and the choice of the file to download.
 immich_stub_asset_edits.py AssetEditsUITests/test_AC_182_reopenChangeRotationThenRevert --release
