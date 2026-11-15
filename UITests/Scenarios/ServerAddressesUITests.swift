@@ -226,14 +226,44 @@ final class ServerAddressesUITests: XCTestCase {
 
     // MARK: - Sign-in
 
+    /// Onboarding → SSO → "Authorize". A sign-in that stalls (the SSO tap lost while
+    /// the login screen still loads its modes, or a cold `SafariViewService` on a
+    /// loaded Mac) is started again from a relaunch, never failed on the first miss
+    /// (the pattern of `ConfirmationsUITests.signIn`).
     private func signIn() {
+        var authorized = false
+        for attempt in 0..<3 where !authorized {
+            if attempt > 0 {
+                // Same launch arguments: the app comes back on its onboarding.
+                app.terminate()
+                app.launch()
+            }
+            walkOnboardingToLogin()
+            let sso = app.buttons.matching(identifier: "loginSSOButton").firstMatch
+            XCTAssertTrue(waitUntil(timeout: 20) { sso.exists && sso.isEnabled && sso.isHittable },
+                          "SSO button missing on login screen — \(screenReads())")
+            sso.tap()
+            authorized = tapAuthorizeInProvider(timeout: 45)
+        }
+        XCTAssertTrue(authorized, "Authorize link not reachable in the auth sheet after 3 attempts — \(screenReads())")
+        XCTAssertTrue(app.tabBars.buttons.matching(labelPredicate(["Photos", "Fotos"])).firstMatch.waitForExistence(timeout: 30),
+                      "OAuth did not reach the authenticated shell — \(screenReads())")
+        settleOnShell()
+    }
+
+    /// Welcome → server URL (the stub) → login. Leaves the app on the login screen.
+    private func walkOnboardingToLogin() {
         let field = app.textFields.firstMatch
         if !field.waitForExistence(timeout: 12) {
             XCTAssertTrue(tapAnyButton(Self.getStarted, timeout: 30), "Welcome CTA missing — \(screenReads())")
             XCTAssertTrue(field.waitForExistence(timeout: 20), "Server URL field missing")
         }
         field.tap()
-        field.typeText(stub)
+        let seeded = (field.value as? String) ?? ""
+        if !seeded.isEmpty && seeded != stub {
+            field.typeText(String(repeating: XCUIKeyboardKey.delete.rawValue, count: seeded.count))
+        }
+        if (field.value as? String) != stub { field.typeText(stub) }
         XCTAssertTrue(tapAnyButton(Self.checkConnection + Self.tryAgain), "Check-connection CTA missing — \(screenReads())")
         XCTAssertTrue(app.buttons.matching(labelPredicate(Self.proceed)).firstMatch.waitForExistence(timeout: 30),
                       "Server never became reachable — \(screenReads())")
@@ -244,11 +274,6 @@ final class ServerAddressesUITests: XCTestCase {
             onLogin = app.staticTexts.matching(labelPredicate(Self.loginCopy)).firstMatch.waitForExistence(timeout: 10)
         }
         XCTAssertTrue(onLogin, "Login screen did not appear — \(screenReads())")
-        XCTAssertTrue(tapAnyButton(["Immich SSO"]), "SSO button missing on login screen")
-        XCTAssertTrue(tapAuthorizeInProvider(), "Authorize link not reachable in the auth sheet — \(screenReads())")
-        XCTAssertTrue(app.tabBars.buttons.matching(labelPredicate(["Photos", "Fotos"])).firstMatch.waitForExistence(timeout: 30),
-                      "OAuth did not reach the authenticated shell — \(screenReads())")
-        settleOnShell()
     }
 
     /// The provider page loads in another process (`SafariViewService`), slowly on a
