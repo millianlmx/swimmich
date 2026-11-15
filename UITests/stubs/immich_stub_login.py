@@ -67,7 +67,10 @@ Mute, delay and revocation are therefore done in a wrapper installed on
 `router.handle` itself: the request is already in the journal when it sleeps,
 is dropped or is refused, and a route registered below needs no knowledge of
 any of it. Overriding `StubHandler._dispatch` would run BEFORE the journal.
-Control and `/__…` requests are never muted, delayed, held nor refused.
+Control and `/__…` requests are never muted, delayed, held nor refused; neither
+is a probe of the shell (`request.probe`: its read of `/api/server/version` or
+`/api/server/config` to choose what a versioned route answers), which the app
+never sent — a fault set on one route must not reach another through it.
 """
 import re
 import threading
@@ -145,7 +148,7 @@ _PUBLIC_PREFIXES = ("/api/server/", "/api/auth/login", "/api/oauth/", "/api/publ
 def _hooked(handle):
     def wrapper(request):
         path = request.path
-        if path.startswith("/api/"):
+        if path.startswith("/api/") and not request.probe:
             mode = STATE["mute"]
             if mode == "drop":
                 # Not caught on purpose: the connection closes with no response.

@@ -44,9 +44,10 @@ struct UserAdminUpdateDto: Codable, Equatable {
     var isAdmin: Bool?
 }
 
-// MARK: - Jobs (legacy `/api/jobs`)
+// MARK: - Jobs (legacy `/api/jobs`, replaced by `/api/queues` from v2.4.0)
 
-/// `GET /api/jobs` returns a dictionary keyed by queue name.
+/// `GET /api/jobs` returns a dictionary keyed by queue name; `GET /api/queues`
+/// is converted into the same shape (`isActive` = `statistics.active > 0`).
 struct QueueStatusLegacyDto: Codable, Equatable {
     let isActive: Bool
     let isPaused: Bool
@@ -61,12 +62,29 @@ struct QueueStatisticsDto: Codable, Equatable {
     let paused: Int
 }
 
+/// One element of `GET /api/queues` (v2.4.0+).
+struct QueueResponseDto: Decodable, Equatable {
+    let name: String
+    let isPaused: Bool
+    let statistics: QueueStatisticsDto
+}
+
+/// `PUT /api/queues/{name}` body.
+struct QueueUpdateDto: Encodable, Equatable {
+    let isPaused: Bool
+}
+
+/// `DELETE /api/queues/{name}/jobs` body; `failed` nil is not encoded.
+struct QueueDeleteDto: Encodable, Equatable {
+    var failed: Bool?
+}
+
 struct QueueResponseLegacyDto: Codable, Equatable {
     let queueStatus: QueueStatusLegacyDto
     let jobCounts: QueueStatisticsDto
 }
 
-/// `PUT /api/jobs/{name}` — command in "start" | "pause" | "resume" | "empty" | "clear-failed".
+/// `PUT /api/jobs/{name}` (legacy) — command in "start" | "pause" | "resume" | "empty" | "clear-failed".
 struct QueueCommandDto: Codable, Equatable {
     let command: String
     var force: Bool?
