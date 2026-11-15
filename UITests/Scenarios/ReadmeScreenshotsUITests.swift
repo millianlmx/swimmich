@@ -55,6 +55,10 @@ final class ReadmeScreenshotsUITests: XCTestCase {
     /// nothing in the accessibility tree says "decoded": a short, bounded pause.
     private func capture(_ name: String) throws {
         Thread.sleep(forTimeInterval: 3)
+        let springboard = XCUIApplication(bundleIdentifier: "com.apple.springboard")
+        let alerts = springboard.alerts.allElementsBoundByIndex + app.alerts.allElementsBoundByIndex
+        let buttons = alerts.flatMap { $0.buttons.allElementsBoundByIndex.map(\.label) }
+        XCTAssertTrue(alerts.isEmpty, "\(name): an alert is on screen: \(buttons.joined(separator: ", "))")
         let data = XCUIScreen.main.screenshot().pngRepresentation
         XCTAssertGreaterThan(data.count, 50_000, "\(name): the screenshot is nearly empty")
         try data.write(to: outputDirectory.appendingPathComponent("\(name).png"), options: .atomic)
@@ -160,6 +164,54 @@ final class ReadmeScreenshotsUITests: XCTestCase {
         tab.tap()
     }
 
+    private var searchTab: XCUIElement {
+        app.tabBars.buttons.matching(labelPredicate(["Search", "Recherch"])).firstMatch
+    }
+
+    /// What the screen holds, for a failure message that can be acted on (the CI log is unreadable: the
+    /// message is all the run reports).
+    private func screenState() -> String {
+        let tabs = app.tabBars.buttons.allElementsBoundByIndex.map { "\($0.label)\($0.isSelected ? "*" : "")" }
+        let texts = app.staticTexts.allElementsBoundByIndex.map(\.label).filter { !$0.isEmpty }.prefix(20)
+        let search = searchTab.exists ? "hittable \(searchTab.isHittable), frame \(searchTab.frame)" : "absent"
+        return "tabs \(tabs); Search tab \(search); searchFields \(app.searchFields.count); "
+            + "textFields \(app.textFields.count); sheets \(app.sheets.count); alerts \(app.alerts.count); "
+            + "keyboards \(app.keyboards.count); screen reads \(Array(texts))"
+    }
+
+    /// Selects the Photos tab and waits until it is the selection. The Search bubble lands on Search only when
+    /// the last content tab is Photos (`RootView`, `onChange(of: selection)`), and the Search results toolbar
+    /// crowds the profile avatar out: both the Search and the Backup steps start from Photos.
+    private func selectPhotosTab() {
+        let photos = app.tabBars.buttons.matching(labelPredicate(["Photos"])).firstMatch
+        XCTAssertTrue(photos.waitForExistence(timeout: 20), "no Photos tab — \(screenState())")
+        photos.tap()
+        XCTAssertTrue(waitUntil(10) { photos.isSelected }, "the Photos tab was not selected — \(screenState())")
+    }
+
+    /// Opens the Search tab and returns its search field. From Albums the Search bubble is a "+" that opens
+    /// New Album and puts Albums back (`handleBubbleTap`), so Photos is selected first, as
+    /// `ContentCollectionsUITests.goToSearchRoot()` does.
+    private func openSearchField() -> XCUIElement {
+        selectPhotosTab()
+        XCTAssertTrue(searchTab.waitForExistence(timeout: 20), "no Search tab — \(screenState())")
+        searchTab.tap()
+        let field = app.searchFields.firstMatch
+        XCTAssertTrue(field.waitForExistence(timeout: 20), "no search field — \(screenState())")
+        return field
+    }
+
+    /// A row of a pushed screen, by IDENTIFIER (copied from `UploadDetailUITests`). A `Form` only
+    /// publishes what it rendered, so it is scrolled into view first: `up` walks down the list.
+    private func row(_ identifier: String, swiping direction: String = "up", swipes: Int = 10) -> XCUIElement {
+        let element = app.buttons.matching(identifier: identifier).firstMatch
+        for _ in 0..<swipes where !(element.exists && element.isHittable) {
+            if direction == "down" { app.swipeDown() } else { app.swipeUp() }
+            _ = element.waitForExistence(timeout: 1)
+        }
+        return element
+    }
+
     // MARK: - The five screens
 
     func test_AC_7_capturesTheFiveScreens() throws {
@@ -171,6 +223,12 @@ final class ReadmeScreenshotsUITests: XCTestCase {
         XCTAssertTrue(element("assetTile_\(photoID(1))").waitForExistence(timeout: 30),
                       "the timeline never rendered against \(stub)")
         XCTAssertTrue(element("assetTile_\(photoID(9))").exists, "the grid has fewer than nine tiles")
+        // A tile of a lazy grid can exist below the fold: `exists` does not put it in the picture.
+        for n in 1...9 {
+            let tile = element("assetTile_\(photoID(n))")
+            XCTAssertTrue(waitUntil(10) { tile.exists && tile.isHittable },
+                          "timeline: tile \(n) is not on screen: the capture would show fewer than nine photos")
+        }
         XCTAssertFalse(element("timelineLoadingSkeleton").exists, "the timeline is still loading")
         XCTAssertFalse(element("timelineLoadErrorBanner").exists, "the timeline shows an error")
         try capture("timeline")
@@ -185,14 +243,23 @@ final class ReadmeScreenshotsUITests: XCTestCase {
 
         // 3. Albums: the four album cards.
         openTab(["Albums"])
-        XCTAssertTrue(element("albumCard_\(albumID(4))").waitForExistence(timeout: 20), "the albums did not load")
+        // The Library section tops the scroll view and its 12 tiles push the album cards below the fold; the
+        // cards sit in a LazyVGrid, so one that is off screen is not in the accessibility tree at all. Wait for
+        // the screen itself, then scroll until all four cards exist and fit together.
+        XCTAssertTrue(element("albumsLibrarySection").waitForExistence(timeout: 20), "the Albums tab did not open")
+        let cards = (1...4).map { element("albumCard_\(albumID($0))") }
+        let fourCardsOnScreen = { cards.allSatisfy { $0.exists && $0.isHittable } }
+        for _ in 0..<8 where !fourCardsOnScreen() {
+            app.swipeUp()
+            _ = waitUntil(2, fourCardsOnScreen)
+        }
         XCTAssertFalse(element("albumsEmptyState").exists, "Albums shows its empty state")
+        XCTAssertFalse(element("albumsRetryButton").exists, "Albums shows its error state")
+        XCTAssertTrue(fourCardsOnScreen(), "albums: the four album cards never fit on screen together")
         try capture("albums")
 
         // 4. Search: a word that matches photos, keyboard dismissed.
-        openTab(["Search", "Recherch"])
-        let field = app.searchFields.firstMatch
-        XCTAssertTrue(field.waitForExistence(timeout: 20), "no search field")
+        let field = openSearchField()
         field.tap()
         field.typeText("nature\n") // the return key submits the search and dismisses the keyboard
         let results = app.descendants(matching: .any)
@@ -201,19 +268,57 @@ final class ReadmeScreenshotsUITests: XCTestCase {
         XCTAssertFalse(element("searchEmptyState").exists, "Search shows its empty state")
         try capture("search")
 
-        // 5. Backup: the Me hub's Backup screen.
+        // 5. Backup: the Me hub's Backup screen, opened from the Photos timeline (in Search results mode the
+        // trailing toolbar group holds seven items and the avatar is not a reachable button).
+        selectPhotosTab()
         let hub = app.buttons.matching(identifier: "profileAvatar").firstMatch
-        XCTAssertTrue(hub.waitForExistence(timeout: 15), "Profile avatar missing")
+        XCTAssertTrue(hub.waitForExistence(timeout: 15), "Profile avatar missing — \(screenState())")
         hub.tap()
+        XCTAssertTrue(element("profileList").waitForExistence(timeout: 20),
+                      "the Me sheet did not open — \(screenState())")
         let backupRow = app.buttons.matching(identifier: "backupRow").firstMatch
         for _ in 0..<10 where !(backupRow.exists && backupRow.isHittable) {
             app.swipeUp()
             _ = backupRow.waitForExistence(timeout: 1)
         }
-        XCTAssertTrue(backupRow.exists, "Backup row missing in the Me hub")
+        XCTAssertTrue(backupRow.exists, "Backup row missing in the Me hub — \(screenState())")
         backupRow.tap()
-        XCTAssertTrue(app.buttons.matching(identifier: "runBackupButton").firstMatch.waitForExistence(timeout: 20),
-                      "the Backup screen has no Run now button")
+        let toggle = element("autoBackupToggle")
+        XCTAssertTrue(toggle.waitForExistence(timeout: 20), "the Backup screen did not open — \(screenState())")
+
+        // The progress section is below the fold. `runBackupButton` and `cancelBackupButton` are the two
+        // exclusive branches of `if vm.running`: a hittable Run button proves no pass is running, so the
+        // picture cannot show a thumbnail of the simulator's own library.
+        let runButton = row("runBackupButton", swiping: "up")
+        if !(runButton.exists && runButton.isHittable) {
+            XCTFail((app.buttons.matching(identifier: "cancelBackupButton").firstMatch.exists
+                     ? "a backup is running: the capture would show a photo of the simulator's library"
+                     : "the Backup screen has no Run now button in its progress section")
+                    + " — \(screenState())")
+        }
+
+        // Back to the top, never one swipe too many: at the top of the list a swipe pulls the hub sheet down.
+        let toggleOnScreen = { toggle.exists && toggle.isHittable }
+        for _ in 0..<10 where !toggleOnScreen() {
+            app.swipeDown()
+            _ = waitUntil(1.5, toggleOnScreen)
+        }
+        XCTAssertTrue(toggleOnScreen(), "the Backup screen did not scroll back to its top")
+
+        // The count of photos left to back up: a number above 0 (— means Photos access is missing).
+        let count = element("backupRemainderCount")
+        XCTAssertTrue(count.waitForExistence(timeout: 30), "backupRemainderCount is missing — \(screenState())")
+        var label = ""
+        let counted = waitUntil(30) {
+            label = count.label
+            return (Int(label.filter(\.isWholeNumber)) ?? 0) > 0
+        }
+        if !counted {
+            XCTFail((label == "—"
+                     ? "Photos access is not granted (backupRemainderCount reads —): simctl privacy grant did not hold"
+                     : "backupRemainderCount reads \(label), expected a count above 0")
+                    + " — \(screenState())")
+        }
         try capture("backup")
     }
 }

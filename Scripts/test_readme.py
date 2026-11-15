@@ -1,15 +1,22 @@
 """Tests of the READMEs and of the screenshot chain: sections, links, citations, sample photos, stub, script."""
 import hashlib
+import http.server
+import json
 import os
 import re
 import shlex
+import shutil
+import socket
 import struct
 import subprocess
 import sys
+import tempfile
+import threading
+import time
 import unittest
 from pathlib import Path
 
-from test_release_checks import headings, read
+from test_release_checks import headings, job_blocks, read
 
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT / "UITests" / "stubs"))
@@ -25,6 +32,8 @@ PATH_EXTENSIONS = (".swift", ".sh", ".py", ".yml", ".md", ".json", ".plist", ".x
                    ".txt", ".png", ".entitlements")
 # Names a README cites in backticks that no Swift file of the repository declares.
 EXTERNAL_NAMES = {"ASWebAuthenticationSession", "NavigationStack", "NSAllowsArbitraryLoads", "SessionCreate"}
+# Hosts a README may link to: public documentation (Immich, XcodeGen, simslim), never an Immich server.
+DOC_HOSTS = {"github.com"}
 
 
 def prose(text):
@@ -91,11 +100,6 @@ def citation(item, roots):
     return None
 
 
-def screenshots_captured():
-    """False until a human has run Scripts/screenshots.sh on a Mac and committed the pictures."""
-    return any((ROOT / "docs" / "screenshots").glob("*.png"))
-
-
 def png_size(path):
     data = path.read_bytes()
     assert data[:8] == b"\x89PNG\r\n\x1a\n", f"{path.name} is not a PNG"
@@ -132,8 +136,6 @@ class TestReadmeContent(unittest.TestCase):
                     continue
                 path, _, anchor = target.partition("#")
                 with self.subTest(name=name, target=target):
-                    if path.startswith("docs/screenshots/") and not screenshots_captured():
-                        continue  # the pictures only exist once Scripts/screenshots.sh ran on a Mac (test_AC_6)
                     if path:
                         self.assertTrue((ROOT / path).exists(), f"{path} is missing")
                     else:
@@ -240,8 +242,6 @@ class TestScreenshots(unittest.TestCase):
                 self.assertGreater(len(alt.strip()), 10, f"{name}: alternative text too short")
 
     def test_AC_6_five_screenshots_are_versioned_with_alt_text(self):
-        if not screenshots_captured():
-            self.skipTest("docs/screenshots/*.png are not captured yet: run Scripts/screenshots.sh on a Mac and commit them")
         digests = set()
         for shot in SCREENSHOTS:
             path = ROOT / "docs" / "screenshots" / f"{shot}.png"
@@ -324,6 +324,292 @@ class TestScreenshots(unittest.TestCase):
         self.assertIsNone(re.search(r"https?://(?!127\.0\.0\.1)", stub))
         for name in READMES:
             self.assertIsNone(re.search(r"\b(?!127\.0\.0\.1\b)\d{1,3}(\.\d{1,3}){3}\b", prose(read(name))), name)
+            for url in re.findall(r"https?://[^\s)>\"'`]+", read(name)):
+                host = re.match(r"https?://([^/:?#]+)", url).group(1)
+                self.assertTrue(host in DOC_HOSTS or host == "127.0.0.1", f"{name}: {url} is not a documentation link")
+
+
+class TestDocumentedCommands(unittest.TestCase):
+    @unittest.skipUnless(shutil.which("xcrun") and shutil.which("xcodebuild"), "needs Xcode")
+    def test_AC_21_readme_destination_exists_on_this_mac(self):
+        # The CI Mac creates its simulators on demand (Scripts/ci.sh), so none is named "iPhone 17" there: what
+        # a Mac must offer is the device type and an iOS 26+ runtime. A Mac without an "iPhone 17" device still
+        # has to create one (`xcrun simctl create`, as Scripts/screenshots.sh does) before the README's xcodebuild command runs.
+        def simctl(*args):
+            return json.loads(subprocess.run(["xcrun", "simctl", "list", *args, "-j"],
+                                             capture_output=True, text=True, check=True).stdout)
+
+        types = {t["name"] for t in simctl("devicetypes")["devicetypes"]}
+        runtimes = [r for r in simctl("runtimes")["runtimes"]
+                    if r.get("isAvailable") and r["name"].startswith("iOS ") and int(r["version"].split(".")[0]) >= 26]
+        self.assertTrue(runtimes, "no iOS 26+ simulator runtime is installed")
+        for name in READMES:
+            destination = re.search(r"-destination 'platform=iOS Simulator,name=([^']+)'", section(name, "Tests"))
+            with self.subTest(name=name):
+                self.assertIsNotNone(destination, "no simulator destination in the Tests section")
+                self.assertIn(destination.group(1), types, "no such simulator device type")
+
+
+def write_tool(path, body):
+    path.write_text("#!/bin/sh\n" + body, encoding="utf-8")
+    path.chmod(0o755)
+
+
+@unittest.skipUnless(shutil.which("python3") and shutil.which("curl") and shutil.which("bash"),
+                     "needs python3, curl and bash")
+class TestScreenshotsScript(unittest.TestCase):
+    """Scripts/screenshots.sh against fake xcrun, xcodegen and xcodebuild, and the real stub."""
+
+    def setUp(self):
+        self.tmp = Path(tempfile.mkdtemp()).resolve()
+        self.addCleanup(shutil.rmtree, self.tmp, True)
+        (self.tmp / "Scripts").mkdir()
+        shutil.copy2(ROOT / "Scripts" / "screenshots.sh", self.tmp / "Scripts" / "screenshots.sh")
+        (self.tmp / "UITests").symlink_to(ROOT / "UITests")
+        self.shots = self.tmp / "docs" / "screenshots"
+        self.shots.mkdir(parents=True)
+        self.witness = {name: f"committed {name}".encode() for name in SCREENSHOTS}
+        for name, data in self.witness.items():
+            (self.shots / f"{name}.png").write_bytes(data)
+        self.calls = self.tmp / "calls.log"
+        bin_dir = self.tmp / "bin"
+        bin_dir.mkdir()
+        write_tool(bin_dir / "xcodegen", 'echo "xcodegen $*" >> "$FAKE_CALLS"\n')
+        write_tool(bin_dir / "xcrun", '''echo "xcrun $*" >> "$FAKE_CALLS"
+case "$1 $2 $3" in
+  "simctl list runtimes")
+    echo '{"runtimes": [{"isAvailable": true, "name": "iOS 26.0", "version": "26.0", "identifier": "fake-ios-26"}]}' ;;
+  "simctl create "*) echo FAKE-UDID ;;
+esac
+exit 0
+''')
+        write_tool(bin_dir / "xcodebuild", '''echo "xcodebuild $*" >> "$FAKE_CALLS"
+case "$*" in
+  *build-for-testing*)
+    if [ -n "$FAKE_BUILD_FAILS" ]; then echo "Foo.swift:1:1: error: boom"; exit 65; fi ;;
+  *test-without-building*)
+    echo "url $TEST_RUNNER_IMMICH_STUB_URL" >> "$FAKE_CALLS"
+    for name in $FAKE_WRITE; do printf 'new picture of %s' "$name" > "$TEST_RUNNER_SWIMMICH_SCREENSHOT_DIR/$name.png"; done ;;
+esac
+exit 0
+''')
+
+    def run_script(self, write=(), port=None, build_fails=False):
+        env = dict(os.environ, PATH=f"{self.tmp / 'bin'}{os.pathsep}{os.environ['PATH']}",
+                   FAKE_CALLS=str(self.calls), FAKE_WRITE=" ".join(write),
+                   FAKE_BUILD_FAILS="1" if build_fails else "")
+        env.pop("SWIMMICH_SCREENSHOT_PORT", None)
+        if port:
+            env["SWIMMICH_SCREENSHOT_PORT"] = str(port)
+        return subprocess.run(["bash", "Scripts/screenshots.sh"], cwd=self.tmp, env=env,
+                              capture_output=True, text=True, timeout=60)
+
+    def logged(self):
+        return self.calls.read_text(encoding="utf-8").splitlines() if self.calls.exists() else []
+
+    def assert_witnesses_intact(self):
+        for name, data in self.witness.items():
+            self.assertEqual((self.shots / f"{name}.png").read_bytes(), data, f"{name}.png was touched")
+
+    def test_AC_28_screenshots_script_only_trusts_its_own_stub(self):
+        class Impostor(http.server.BaseHTTPRequestHandler):
+            def do_GET(handler):
+                body = json.dumps({"port": handler.server.server_address[1], "pid": os.getpid(),
+                                   "stub": "other_stub.py"}).encode()
+                handler.send_response(200)
+                handler.send_header("Content-Length", str(len(body)))
+                handler.end_headers()
+                handler.wfile.write(body)
+
+            def log_message(handler, *args):
+                pass
+
+        class Exclusive(http.server.HTTPServer):
+            allow_reuse_address = False  # the stub's bind must fail the same way on macOS and Linux
+
+        server = Exclusive(("127.0.0.1", 0), Impostor)
+        threading.Thread(target=server.serve_forever, daemon=True).start()
+        self.addCleanup(server.server_close)
+        self.addCleanup(server.shutdown)
+        port = server.server_address[1]
+
+        done = self.run_script(write=SCREENSHOTS, port=port)
+        calls = "\n".join(self.logged())
+        self.assertNotEqual(done.returncode, 0)
+        self.assertIn(str(port), done.stderr)
+        self.assertNotIn("simctl boot", calls)
+        self.assertNotIn("xcodebuild", calls)
+        self.assertIn("simctl delete FAKE-UDID", calls)
+        self.assert_witnesses_intact()
+
+    def test_AC_7_screenshots_script_grants_photos_after_install(self):
+        done = self.run_script(write=SCREENSHOTS)
+        self.assertEqual(done.returncode, 0, done.stderr)
+        calls = self.logged()
+
+        def at(prefix):
+            return next(i for i, line in enumerate(calls) if line.startswith(prefix))
+
+        added = calls[at("xcrun simctl addmedia FAKE-UDID")].split()[4:]
+        expected = sorted(p.name for p in FIXTURES.glob("*.jpg") if not p.name.endswith("-thumb.jpg"))
+        self.assertEqual(len(expected), len(shots.PHOTOS))
+        self.assertEqual(sorted(Path(a).name for a in added), expected)
+        order = [at("xcrun simctl boot FAKE-UDID"), at("xcrun simctl addmedia FAKE-UDID"),
+                 at("xcodebuild build-for-testing"), at("xcrun simctl install FAKE-UDID"),
+                 at("xcrun simctl privacy FAKE-UDID grant photos fr.millianlmx.immich-ios"),
+                 at("xcodebuild test-without-building"), at("xcrun simctl delete FAKE-UDID")]
+        self.assertEqual(order, sorted(order))
+        self.assertTrue(calls[at("xcrun simctl install FAKE-UDID")].endswith("/ImmichSwiftUI.app"))
+        test_run = calls[at("xcodebuild test-without-building")]
+        self.assertIn("-only-testing:ImmichSwiftUIUITests/ReadmeScreenshotsUITests", test_run)
+        self.assertIn("-resultBundlePath", test_run)
+        url = calls[at("url ")].split()[1]
+        port = int(url.rsplit(":", 1)[1])
+        self.assertNotEqual(port, 8421)
+        for name in SCREENSHOTS:
+            self.assertNotEqual((self.shots / f"{name}.png").read_bytes(), self.witness[name], f"{name}.png kept")
+        deadline = time.time() + 5
+        while True:
+            with socket.socket() as probe:
+                probe.settimeout(1)
+                listening = probe.connect_ex(("127.0.0.1", port)) == 0
+            if not listening or time.time() > deadline:
+                break
+            time.sleep(0.1)
+        self.assertFalse(listening, "the stub is still listening after the script exited")
+
+    def test_AC_7_screenshots_script_names_the_missing_capture(self):
+        done = self.run_script(write=[n for n in SCREENSHOTS if n != "backup"])
+        self.assertEqual(done.returncode, 1)
+        self.assertIn("docs/screenshots/backup.png was not written", done.stderr)
+
+    def test_AC_29_screenshots_script_names_the_failed_build(self):
+        done = self.run_script(write=SCREENSHOTS, build_fails=True)
+        calls = "\n".join(self.logged())
+        self.assertNotEqual(done.returncode, 0)
+        self.assertRegex(done.stderr, r"screenshots\.sh: build error: .*error: boom")
+        self.assertIn("screenshots.sh: xcodebuild build-for-testing failed (exit 65)", done.stderr)
+        self.assertNotIn("test-without-building", calls)
+        self.assertNotIn("simctl privacy", calls)
+        self.assert_witnesses_intact()
+
+
+class TestCaptureJob(unittest.TestCase):
+    workflow = read(".github/workflows/ci.yml")
+
+    def test_AC_29_capture_job_writes_only_its_branch(self):
+        jobs = job_blocks(self.workflow)
+        block = jobs["readme-screenshots"]
+        for wanted in ("name: README screenshots", "needs: unit-tests", "!cancelled()", "github.event_name == 'push'",
+                       "contents: write", "${{ github.token }}", "run: Scripts/ci-readme-screenshots.sh"):
+            self.assertIn(wanted, block)
+        self.assertNotIn("secrets.", block)
+        self.assertNotIn("environment:", block)
+        self.assertEqual([n for n, b in jobs.items() if n != "readme-screenshots" and "contents: write" in b], [])
+        self.assertRegex(self.workflow.split("\njobs:")[0], r"(?m)^permissions:\n  contents: read$")
+
+
+@unittest.skipUnless(shutil.which("git") and shutil.which("bash"), "needs git and bash")
+class TestCaptureJobScript(unittest.TestCase):
+    """Scripts/ci-readme-screenshots.sh with a fake screenshots.sh and a local bare repository as the remote."""
+    BOT = "github-actions[bot] <41898282+github-actions[bot]@users.noreply.github.com>"
+
+    def setUp(self):
+        self.tmp = Path(tempfile.mkdtemp()).resolve()
+        self.addCleanup(shutil.rmtree, self.tmp, True)
+        (self.tmp / "Scripts").mkdir()
+        shutil.copy2(ROOT / "Scripts" / "ci-readme-screenshots.sh", self.tmp / "Scripts" / "ci-readme-screenshots.sh")
+        write_tool(self.tmp / "Scripts" / "screenshots.sh", '''echo called >> "$FAKE_CALLS"
+case "$FAKE_MODE" in
+  write)
+    mkdir -p docs/screenshots
+    for name in timeline viewer albums search backup; do printf 'png of %s' "$name" > "docs/screenshots/$name.png"; done ;;
+  prefixed)
+    echo "screenshots.sh: docs/screenshots/backup.png was not written" >&2; exit 1 ;;
+  unprefixed)
+    echo 'xcrun: error: unable to find utility "simctl"' >&2; exit 72 ;;
+esac
+''')
+        (self.tmp / "bin").mkdir()
+        write_tool(self.tmp / "bin" / "xcrun", "exit 1\n")
+        (self.tmp / "gitconfig").write_text(
+            f'[url "file://{self.tmp}/remote.git"]\n\tinsteadOf = https://x-access-token:t0ken@github.com/owner/repo.git\n'
+            "[user]\n\tuseConfigOnly = true\n", encoding="utf-8")  # no user.name: git cannot guess an identity
+        self.shots = self.tmp / "docs" / "screenshots"
+        self.shots.mkdir(parents=True)
+        self.remote = self.tmp / "remote.git"
+        self.calls = self.tmp / "calls.log"
+        subprocess.run(["git", "init", "--bare", "--quiet", str(self.remote)], check=True, env=self.env("none"))
+
+    def env(self, mode):
+        return {"PATH": f"{self.tmp / 'bin'}{os.pathsep}{os.environ['PATH']}", "HOME": str(self.tmp),
+                "GIT_CONFIG_NOSYSTEM": "1", "GIT_CONFIG_GLOBAL": str(self.tmp / "gitconfig"),
+                "GITHUB_SHA": "abc123", "GITHUB_REF_NAME": "harness/x", "GITHUB_REPOSITORY": "owner/repo",
+                "GITHUB_TOKEN": "t0ken", "FAKE_CALLS": str(self.calls), "FAKE_MODE": mode}
+
+    def run_job(self, mode):
+        return subprocess.run(["bash", "Scripts/ci-readme-screenshots.sh"], cwd=self.tmp, env=self.env(mode),
+                              capture_output=True, text=True, timeout=60)
+
+    def git(self, *args, binary=False):
+        done = subprocess.run(["git", "-C", str(self.remote), *args], capture_output=True, check=True)
+        return done.stdout if binary else done.stdout.decode().strip()
+
+    def branches(self):
+        return self.git("for-each-ref", "--format=%(refname)").splitlines()
+
+    def commit_four(self):
+        for name in SCREENSHOTS[:-1]:
+            (self.shots / f"{name}.png").write_bytes(f"committed {name}".encode())
+
+    def test_AC_29_capture_script_does_nothing_when_the_five_are_committed(self):
+        for name in SCREENSHOTS:
+            (self.shots / f"{name}.png").write_bytes(b"png")
+        done = self.run_job("write")
+        self.assertEqual(done.returncode, 0, done.stderr)
+        self.assertFalse(self.calls.exists(), "screenshots.sh was called")
+        self.assertEqual(self.branches(), [])
+
+    def test_AC_29_capture_script_pushes_to_the_dedicated_branch_and_fails(self):
+        for attempt in range(2):  # the second push replaces the first: --force
+            self.commit_four()
+            (self.shots / "backup.png").unlink(missing_ok=True)
+            done = self.run_job("write")
+            self.assertEqual(done.returncode, 1, done.stderr)
+            self.assertEqual(self.branches(), ["refs/heads/ci/readme-screenshots"])
+            tree = self.git("ls-tree", "-r", "--name-only", "ci/readme-screenshots").splitlines()
+            self.assertEqual(sorted(tree), sorted(["SOURCE.txt"] + [f"docs/screenshots/{n}.png" for n in SCREENSHOTS]))
+            self.assertEqual(self.git("show", "ci/readme-screenshots:SOURCE.txt"), "abc123 harness/x")
+            for name in SCREENSHOTS:
+                self.assertEqual(self.git("cat-file", "blob", f"ci/readme-screenshots:docs/screenshots/{name}.png",
+                                          binary=True), (self.shots / f"{name}.png").read_bytes())
+            self.assertEqual(self.git("log", "-1", "--format=%an <%ae>|%cn <%ce>", "ci/readme-screenshots"),
+                             f"{self.BOT}|{self.BOT}")
+            pushed = self.git("rev-parse", "ci/readme-screenshots")
+            annotation = next(l for l in done.stdout.splitlines() if "ci/readme-screenshots" in l)
+            self.assertTrue(annotation.startswith("::error title=README screenshots::"))
+            self.assertIn("abc123", annotation)
+            self.assertIn(pushed, annotation)
+            self.assertNotIn("t0ken", done.stdout + done.stderr)
+
+    def test_AC_29_capture_script_reports_the_capture_failure_without_pushing(self):
+        self.commit_four()
+        done = self.run_job("prefixed")
+        self.assertEqual(done.returncode, 1)
+        lines = done.stdout.splitlines()
+        self.assertIn("::error title=README screenshots::Scripts/screenshots.sh exited 1", lines)
+        self.assertIn("::error title=README screenshots::screenshots.sh: docs/screenshots/backup.png was not written", lines)
+        self.assertLess(lines.index("::error title=README screenshots::Scripts/screenshots.sh exited 1"),
+                        lines.index("::error title=README screenshots::screenshots.sh: docs/screenshots/backup.png was not written"))
+        self.assertEqual(self.branches(), [])
+
+    def test_AC_29_capture_script_reports_an_unprefixed_failure(self):
+        self.commit_four()
+        done = self.run_job("unprefixed")
+        self.assertEqual(done.returncode, 1)
+        self.assertIn("::error title=README screenshots::Scripts/screenshots.sh exited 72", done.stdout)
+        self.assertIn("unable to find utility", done.stdout)
+        self.assertEqual(self.branches(), [])
 
 
 if __name__ == "__main__":
