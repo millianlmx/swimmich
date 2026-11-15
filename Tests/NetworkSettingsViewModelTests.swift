@@ -1,3 +1,4 @@
+import SwiftUI
 import XCTest
 @testable import ImmichSwiftUI
 
@@ -120,6 +121,24 @@ final class NetworkSettingsViewModelTests: XCTestCase {
         XCTAssertEqual(rig.client.configuredBaseURL, account)
     }
 
+    func test_AC_235_emptyLocalAddressClearsIt() async {
+        let rig = makeRig(settings: ServerAddressSettings(localURL: local.absoluteString, autoSwitch: true))
+        rig.probe.answer(account, .immich(version: version))
+        rig.probe.answer(local, .immich(version: version))
+        // `activate` already started a launch evaluation; let it settle first.
+        await rig.endpoints.evaluate(.launch)
+        XCTAssertTrue(rig.vm.usesLocal, "control: the local address is in use before it is cleared")
+
+        rig.vm.localText = "  "
+        await rig.vm.saveLocal()
+
+        XCTAssertNil(rig.store.settings(for: accountID).localURL)
+        XCTAssertEqual(rig.vm.localStatus, .notConfigured, "no networkLocalStatus row is shown")
+        XCTAssertNil(rig.vm.localValidationMessage)
+        XCTAssertFalse(rig.vm.usesLocal)
+        XCTAssertEqual(rig.vm.activeAddressText, account.absoluteString)
+    }
+
     // MARK: - AC-241
 
     func test_AC_241_untrustedLocalAsksTrust() async {
@@ -189,6 +208,24 @@ final class NetworkSettingsViewModelTests: XCTestCase {
         await rig.vm.simulateNetworkChange()
 
         XCTAssertEqual(rig.probe.calls.count, probes, "without the test switch the control does nothing")
+    }
+
+    func test_AC_242_simulateButtonOnlyWithTestControls() async {
+        for testControls in [true, false] {
+            let rig = makeRig(testControls: testControls)
+            let screen = HostedScreen(NavigationStack { NetworkSettingsView(vm: rig.vm) }, size: .large)
+            defer { screen.close() }
+            // Without this the form may not be rendered yet and an absence would mean nothing.
+            let rendered = await screen.waitFor("networkAutoSwitchToggle")
+            XCTAssertTrue(rendered, screen.dump())
+            if testControls {
+                let button = screen.find("networkSimulateChangeButton")
+                XCTAssertNotNil(button, screen.dump())
+                XCTAssertEqual(button?.label, "Simulate network change")
+            } else {
+                XCTAssertNil(screen.find("networkSimulateChangeButton"), screen.dump())
+            }
+        }
     }
 
     func test_AC_242_switchingOnAndOffFollowsTheService() async {

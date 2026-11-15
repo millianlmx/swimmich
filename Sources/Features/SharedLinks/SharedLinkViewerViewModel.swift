@@ -42,7 +42,7 @@ final class SharedLinkViewerViewModel {
     /// Server the visitor is connected to — the base every asset URL of this
     /// screen is built against.
     let baseURL: URL
-    /// `ServerConfigDto.externalDomain` — the public domain the server
+    /// `ServerConfig.externalDomain` — the public domain the server
     /// advertises. A link received from this instance may name either that
     /// domain or the API host; both count as "this server".
     private let externalDomain: String

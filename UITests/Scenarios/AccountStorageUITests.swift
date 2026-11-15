@@ -209,9 +209,11 @@ final class AccountStorageUITests: XCTestCase {
         XCTAssertTrue(app.staticTexts["Thumbnail Generation"].exists, "the jobs section is gone")
         XCTAssertTrue(app.staticTexts["Stub Library"].exists, "the libraries section is gone")
         let paths = Set(stubRequests().filter { $0.method == "GET" }.map(\.path))
-        for path in ["/api/admin/users", "/api/jobs", "/api/libraries"] {
+        // The stub announces 3.4.0: the jobs come from `/api/queues`, never the deprecated `/api/jobs`.
+        for path in ["/api/admin/users", "/api/queues", "/api/libraries"] {
             XCTAssertTrue(paths.contains(path), "Administration never read \(path)")
         }
+        XCTAssertFalse(paths.contains("/api/jobs"), "Administration read the deprecated /api/jobs")
 
         control("fail?instance=0")
         tapRetry("adminInstanceStatsError")

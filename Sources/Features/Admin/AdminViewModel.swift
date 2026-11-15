@@ -152,7 +152,7 @@ final class AdminViewModel {
 
     func runJob(name: String, command: String) async {
         do {
-            _ = try await client.sendJobCommand(name: name, command: command, force: command == "start" ? true : nil)
+            try await client.sendJobCommand(name: name, command: command, force: command == "start" ? true : nil)
             errorMessage = nil
             await load(force: true)
         } catch {

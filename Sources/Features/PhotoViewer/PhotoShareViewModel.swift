@@ -18,7 +18,7 @@ final class PhotoShareViewModel {
     let asset: AssetReactItem
     let client: any ImmichClient
     let baseURL: URL
-    /// `ServerConfigDto.externalDomain` — empty when the server advertises none.
+    /// `ServerConfig.externalDomain` — empty when the server advertises none.
     let externalDomain: String
 
     var users: [UserResponseDto] = []

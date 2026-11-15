@@ -17,7 +17,9 @@
 #    on first use so the CI never boots the developer's. Each scenario runs
 #    against its own Python stub from UITests/stubs/ (the scenarios not listed
 #    are compiled, not run). A scenario that skips itself fails the CI: a skip
-#    only means its stub was unreachable, which proves nothing.
+#    only means its stub was unreachable, which proves nothing. A line's
+#    `--stub-version <X.Y.Z>` starts its stub with `IMMICH_STUB_VERSION=<X.Y.Z>`,
+#    the server version the stub shell announces.
 #
 # DerivedData and SwiftPM checkouts live in a persistent cache: on the
 # self-hosted runner, a run only rebuilds what the commit changed.
@@ -402,6 +404,7 @@ run_unit_tests() {
 #
 #   <stub.py> <Class>[/<test>] [--content-size <simctl category>]
 #             [--media <file name>]... [--skip <test>]... [--erase]
+#             [--stub-version <X.Y.Z>]
 #             [--smoke | --release]
 #
 # `--smoke` and `--release` are the line's tier (see `SWIMMICH_CI_UI_SCOPE`
@@ -414,9 +417,11 @@ run_unit_tests() {
 # scenario reaches it through `IMMICH_STUB_URL` (`TEST_RUNNER_IMMICH_STUB_URL`).
 # `--content-size` sets the SYSTEM text size, which an app extension follows
 # (the app itself takes it as a launch argument); `--media` seeds a generated
-# PNG under that file name into Photos. A test that fails, or skips, fails the
-# CI; every line still runs, so one run reports every broken scenario. A free
-# worker takes the next job: put the longest lines first.
+# PNG under that file name into Photos; `--stub-version` starts the stub with
+# `IMMICH_STUB_VERSION=<X.Y.Z>` (the version immich_stub_base.py announces, and
+# the routes it serves, L-20). A test that fails, or skips, fails the CI; every
+# line still runs, so one run reports every broken scenario. A free worker takes
+# the next job: put the longest lines first.
 #
 # Budget: a UI test over `SWIMMICH_CI_UI_TEST_BUDGET` seconds (180 by default)
 # gets a `::warning`. The run lasts at least as long as its longest line, however
@@ -471,7 +476,7 @@ except Exception:
 run_scenario() {
   local index="$1" sim="$2" port="$3" stub="$4" selector="$5"
   shift 5
-  local content_size="" media=() skips=() erase=0 status=0 name file
+  local content_size="" media=() skips=() erase=0 stub_version="" status=0 name file
   # Not local: the EXIT trap of the line's subshell reads it after the return.
   stub_pid=""
   trap '[[ -z "$stub_pid" ]] || kill "$stub_pid" 2>/dev/null || true' EXIT
@@ -481,12 +486,14 @@ run_scenario() {
       --media) media+=("$2"); shift ;;
       --skip) skips+=("-skip-testing:ImmichSwiftUIUITests/${selector%%/*}/$2"); shift ;;
       --erase) erase=1 ;;
+      --stub-version) stub_version="$2"; shift ;;
       --smoke | --release) ;;
       *) echo "::error::$UI_LIST: unknown option $1"; return 2 ;;
     esac
     shift
   done
-  local label="$selector" result="build/ci/ui-$index.xcresult" stub_log="build/ci/ui-$index-stub.log"
+  local label="$selector${stub_version:+ (IMMICH_STUB_VERSION=$stub_version)}"
+  local result="build/ci/ui-$index.xcresult" stub_log="build/ci/ui-$index-stub.log"
   printf '%s\n' "$label" >"build/ci/job-$index.summary"
   local media_here="$media_dir/$index"
   echo "ci.sh: UI scenario $label (stub $stub, simulator $sim, port $port)"
@@ -527,7 +534,9 @@ open(sys.argv[1], "wb").write(png(sys.argv[2], size=64))
   done
   sleep 0.5
 
-  python3 -u "UITests/stubs/$stub" "$port" >"$stub_log" 2>&1 &
+  # `env` execs python3: `$!` is the stub's own pid, which `/__whoami` must answer.
+  env ${stub_version:+"IMMICH_STUB_VERSION=$stub_version"} \
+    python3 -u "UITests/stubs/$stub" "$port" >"$stub_log" 2>&1 &
   stub_pid=$!
   local ready=0 attempt
   for attempt in $(seq 1 30); do

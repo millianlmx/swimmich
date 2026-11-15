@@ -72,6 +72,39 @@ struct ServerConfigDto: Codable, Equatable {
     let minFaces: Int
 }
 
+/// What the app reads from the server's configuration, whichever route served
+/// it. `nil` = not carried by the route that was read (L-20).
+struct ServerConfig: Equatable {
+    var oauthButtonText: String
+    var externalDomain: String?
+    var isInitialized: Bool?
+}
+
+/// Decoded subset of `GET /api/public/config` (v3.2.0+); other keys ignored.
+struct PublicConfigDto: Decodable, Equatable {
+    let oauth: ConfigOAuthDto
+}
+
+struct ConfigOAuthDto: Decodable, Equatable {
+    let buttonText: String
+}
+
+/// Decoded subset of `GET /api/config` (v3.2.0+, authenticated).
+struct UserConfigDto: Decodable, Equatable {
+    let oauth: ConfigOAuthDto
+    let server: UserConfigServerDto
+}
+
+struct UserConfigServerDto: Decodable, Equatable {
+    let externalDomain: String
+}
+
+extension ServerConfigDto {
+    var asServerConfig: ServerConfig {
+        ServerConfig(oauthButtonText: oauthButtonText, externalDomain: externalDomain, isInitialized: isInitialized)
+    }
+}
+
 // MARK: - Timeline DTOs
 
 /// One element of `GET /api/timeline/buckets`.

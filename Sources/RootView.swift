@@ -24,10 +24,9 @@ struct RootView: View {
     /// the root still builds: `AuthenticatedRoot` takes it as soon as it exists.
     @State private var pendingWidgetLink: PendingWidgetLink?
 
-    init(container: DependencyContainer = .shared) {
+    init(container: DependencyContainer = .shared, auth: AuthViewModel) {
         self.container = container
-        let authVM = container.makeAuthViewModel()
-        _auth = State(initialValue: authVM)
+        _auth = State(initialValue: auth)
         _appLock = State(initialValue: container.appLock)
         _language = State(initialValue: container.language)
         _appSettings = State(initialValue: container.appSettings)

@@ -5,11 +5,17 @@ import WidgetKit
 @main
 struct ImmichSwiftUIApp: App {
     @State private var container = DependencyContainer.shared
+    /// Built once per process. `body` reads `scenePhase`, so every phase change
+    /// builds `RootView` again: a view model made there would rewire the shared
+    /// hooks its init sets (`client.authDelegate`, `serverEndpoints.onSettingsSaved`)
+    /// to a copy SwiftUI throws away, and the widget session would stop following
+    /// the "Network" setting (L-26).
+    @State private var auth = DependencyContainer.shared.makeAuthViewModel()
     @Environment(\.scenePhase) private var scenePhase
 
     var body: some Scene {
         WindowGroup {
-            RootView(container: container)
+            RootView(container: container, auth: auth)
                 .onChange(of: scenePhase) { _, phase in
                     container.appLock.scenePhaseChanged(to: phase)
                     switch phase {

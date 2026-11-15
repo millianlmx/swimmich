@@ -17,12 +17,8 @@ final class LoginOptionsTests: XCTestCase {
         return (auth, defaults, suite)
     }
 
-    private func config(buttonText: String) -> ServerConfigDto {
-        ServerConfigDto(
-            oauthButtonText: buttonText, loginPageMessage: "", trashDays: 30, userDeleteDelay: 7,
-            isInitialized: true, isOnboarded: true, externalDomain: "", publicUsers: false,
-            mapDarkStyleUrl: "", mapLightStyleUrl: "", maintenanceMode: false, minFaces: 3
-        )
+    private func config(buttonText: String) -> ServerConfig {
+        ServerConfig(oauthButtonText: buttonText, externalDomain: "", isInitialized: true)
     }
 
     private func options(password: Bool, oauth: Bool, text: String? = nil) -> ServerLoginOptions {
@@ -48,7 +44,7 @@ final class LoginOptionsTests: XCTestCase {
         // the password form, and SSO only when the configuration has a label.
         for failure in [APIError.serverError(404, nil), APIError.decoding("not the features object")] {
             let mock = MockImmichClient()
-            mock.serverConfigResponse = config(buttonText: "Config SSO")
+            mock.publicConfigResponse = config(buttonText: "Config SSO")
             mock.loginOptionsError = failure
             let (auth, defaults, suite) = makeAuth(mock: mock)
             defer { defaults.removePersistentDomain(forName: suite) }
@@ -96,7 +92,7 @@ final class LoginOptionsTests: XCTestCase {
     @MainActor
     func test_AC_331_featuresOverrideButtonText() async {
         let mock = MockImmichClient()
-        mock.serverConfigResponse = config(buttonText: "Company SSO")
+        mock.publicConfigResponse = config(buttonText: "Company SSO")
         mock.loginOptionsResponse = options(password: true, oauth: false)
         let (auth, defaults, suite) = makeAuth(mock: mock)
         defer { defaults.removePersistentDomain(forName: suite) }
@@ -112,7 +108,7 @@ final class LoginOptionsTests: XCTestCase {
     @MainActor
     func test_AC_332_emptyLabelFallsBackToLocalizedDefault() async {
         let mock = MockImmichClient()
-        mock.serverConfigResponse = config(buttonText: "")
+        mock.publicConfigResponse = config(buttonText: "")
         mock.loginOptionsResponse = options(password: false, oauth: true, text: "   ")
         let (auth, defaults, suite) = makeAuth(mock: mock)
         defer { defaults.removePersistentDomain(forName: suite) }
