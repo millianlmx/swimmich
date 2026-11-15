@@ -367,29 +367,144 @@ final class TimelineViewModel {
         }
     }
 
+    // MARK: - Widget link target (L-28)
+
+    /// Where a widget link to one photo lands.
+    enum LinkedAssetResolution: Equatable {
+        /// Open the viewer on `assets[index]`; `inTimeline` says the photo is
+        /// part of the timeline (so the grid can scroll to it) rather than a
+        /// lone photo the timeline does not hold.
+        case open(assets: [AssetReactItem], index: Int, inTimeline: Bool)
+        /// The server refuses or cannot be asked: nothing opens, nothing is
+        /// said (the official client does the same), and nothing is retried.
+        case unavailable
+    }
+
+    /// Resolves the photo a widget link names. One `GET /api/assets/{id}`
+    /// decides whether it can be opened at all (deleted, or another account's:
+    /// the server refuses); the grid is then asked for it, jumping to its day
+    /// when it is not loaded.
+    @MainActor
+    func resolveLinkedAsset(id: String, day: String?) async -> LinkedAssetResolution {
+        let dto: AssetResponseDto
+        do {
+            dto = try await client.getAsset(id: id)
+        } catch {
+            return .unavailable
+        }
+        // A first page in flight owns `items`: its result decides what is
+        // loaded. A link that arrived before the grid started loading starts it.
+        if let inFlight = firstPageTask {
+            await inFlight.value
+        } else if items.isEmpty {
+            await load()
+        }
+        if let index = items.firstIndex(where: { $0.id == id }) {
+            return .open(assets: items, index: index, inTimeline: true)
+        }
+        if let day, !day.isEmpty {
+            await jump(toDay: day)
+            if let index = items.firstIndex(where: { $0.id == id }) {
+                return .open(assets: items, index: index, inTimeline: true)
+            }
+        }
+        return .open(assets: [AssetReactItem(from: dto)], index: 0, inTimeline: false)
+    }
+
+    // MARK: - First page and startup reachability (L-28)
+
+    /// How long the startup probe waits for the server before the empty Photos
+    /// tab shows its error state. 2 s, not the 5 s of the official client: the
+    /// error must be on screen within 3 s of the launch.
+    static let reachabilityTimeout: TimeInterval = 2
+
+    /// The first page in flight (`load()` / `refresh()`), `nil` when none.
+    private var firstPageTask: Task<Void, Never>?
+    /// Identifies the current first page: a replaced one must not write its
+    /// late result over the new one.
+    private var firstPageGeneration = 0
+
     @MainActor
     func refresh() async {
         exitSelectionMode()
-        isLoading = true
-        loadErrorMessage = nil
-        do {
-            try await reloadFirstPage()
-        } catch let e {
-            loadErrorMessage = e.userFacingMessage
-        }
-        isLoading = false
+        // "Try Again" replaces a first page still in flight.
+        firstPageTask?.cancel()
+        await startFirstPage()
     }
 
     @MainActor
     func load() async {
+        // The view reappearing while the first page is in flight starts neither
+        // a second page nor a second probe: it waits for the one running.
+        if let inFlight = firstPageTask {
+            await inFlight.value
+            return
+        }
+        await startFirstPage()
+    }
+
+    /// Runs the first page. With nothing on screen a reachability probe runs
+    /// beside it: a server that does not answer within `reachabilityTimeout`
+    /// puts the error state on screen without cancelling the page — a server
+    /// that is merely slow to connect still delivers its photos, which then
+    /// replace the error. A server that answers the probe never shows the error
+    /// early: the loading state lasts until the content or the page's own error.
+    @MainActor
+    private func startFirstPage() async {
+        firstPageGeneration &+= 1
+        let generation = firstPageGeneration
         isLoading = true
         loadErrorMessage = nil
+        let page: Task<Void, Never> = Task { @MainActor [weak self] in
+            await self?.runFirstPage(generation: generation)
+        }
+        firstPageTask = page
+        var probe: Task<Void, Never>?
+        if items.isEmpty {
+            probe = Task { @MainActor [weak self] in
+                await self?.probeReachability(generation: generation)
+            }
+        }
+        await page.value
+        probe?.cancel()
+    }
+
+    @MainActor
+    private func runFirstPage(generation: Int) async {
+        var thrownMessage: String?
+        var failed = false
         do {
-            try await reloadFirstPage()
+            try await reloadFirstPage(generation: generation)
+            // The first month failed: `loadNextBucket` recorded its own message.
+            failed = bucketIndex == 0 && !buckets.isEmpty
         } catch let e {
-            loadErrorMessage = e.userFacingMessage
+            failed = true
+            thrownMessage = e.userFacingMessage
+        }
+        guard generation == firstPageGeneration else { return }
+        if let thrownMessage {
+            loadErrorMessage = thrownMessage
+        } else if !failed {
+            // Photos arrived after the probe's error: they replace it.
+            loadErrorMessage = nil
         }
         isLoading = false
+        firstPageTask = nil
+    }
+
+    @MainActor
+    private func probeReachability(generation: Int) async {
+        do {
+            _ = try await client.ping(timeout: Self.reachabilityTimeout)
+        } catch {
+            // Only a server that did not answer (timeout, refusal, cut): any
+            // reply, whatever its status, proves it is there.
+            guard UserFacingError.from(error)?.family == .offline else { return }
+            // The page finished first, or was replaced: nothing to say.
+            guard !Task.isCancelled, generation == firstPageGeneration, firstPageTask != nil else { return }
+            loadErrorMessage = UserFacingError.offlineMessage
+            isLoading = false
+        }
     }
 
     /// Re-fetches the bucket list and the first page. The shown items are only
@@ -398,9 +513,11 @@ final class TimelineViewModel {
     /// places are not restored: `buckets` already names the new list, and old
     /// places would point at months that are absent or wrong in it.
     @MainActor
-    private func reloadFirstPage() async throws {
+    private func reloadFirstPage(generation: Int) async throws {
         supersedeJumps()
         let fetched = try await fetchBuckets()
+        // Replaced while the list was in flight: the newer page owns the state.
+        guard generation == firstPageGeneration else { throw CancellationError() }
         // A jump started while the list was in flight read the old one.
         supersedeJumps()
         buckets = fetched

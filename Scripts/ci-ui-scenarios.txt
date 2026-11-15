@@ -125,6 +125,38 @@ immich_stub_share_caches.py ShareAndCachesUITests/test_AC_50
 immich_stub_share_caches.py ShareAndCachesUITests/test_AC_270 --release
 immich_stub_share_caches.py ShareAndCachesUITests/test_AC_273 --release
 
+# L-28 Connexion et démarrage (AC-53 to AC-56, AC-330 to AC-348), against
+# immich_stub_login.py. The widget backup pass needs a photo in the library.
+# Release: the night's suite is at its budget of 40 lines.
+immich_stub_login.py LoginStartupUITests/test_AC_53 --release
+immich_stub_login.py LoginStartupUITests/test_AC_339 --release
+immich_stub_login.py LoginStartupUITests/test_AC_336 --release
+immich_stub_login.py LoginStartupUITests/test_AC_345 --release
+immich_stub_login.py LoginStartupUITests/test_AC_346 --release
+immich_stub_login.py LoginStartupUITests/test_AC_344 --release
+immich_stub_login.py LoginStartupUITests/test_AC_344_widgetBackup --media Widget-backup-photo.png --release
+immich_stub_login.py LoginStartupUITests/test_AC_344_whatsNewCold --release
+immich_stub_login.py LoginStartupUITests/test_AC_344_coverOpenWarm --release
+immich_stub_login.py LoginStartupUITests/test_AC_343 --release
+immich_stub_login.py LoginStartupUITests/test_AC_337 --release
+immich_stub_login.py LoginStartupUITests/test_AC_341 --release
+immich_stub_login.py LoginStartupUITests/test_AC_341_slowServerKeepsSkeleton --release
+immich_stub_login.py LoginStartupUITests/test_AC_341_lateFirstPageReplacesError --release
+immich_stub_login.py LoginStartupUITests/test_AC_342 --release
+immich_stub_login.py LoginStartupUITests/test_AC_333 --release
+immich_stub_login.py LoginStartupUITests/test_AC_334 --release
+immich_stub_login.py LoginStartupUITests/test_AC_338 --release
+immich_stub_login.py LoginStartupUITests/test_AC_340 --release
+immich_stub_login.py LoginStartupUITests/test_AC_56 --release
+immich_stub_login.py LoginStartupUITests/test_AC_55 --release
+immich_stub_login.py LoginStartupUITests/test_AC_54 --release
+immich_stub_login.py LoginStartupUITests/test_AC_330 --release
+immich_stub_login.py LoginStartupUITests/test_AC_331 --release
+immich_stub_login.py LoginStartupUITests/test_AC_332 --release
+immich_stub_login.py LoginStartupUITests/test_AC_335 --release
+immich_stub_login.py LoginStartupUITests/test_AC_347 --release
+immich_stub_login.py LoginStartupUITests/test_AC_348 --release
+
 # L-30 widgets photo à leur taille (AC-61.6): the large Photos and Favorites widgets, posed on the Home
 # Screen through SpringBoard, are archived and drawn at the new image sizes (a wall of 4 previews; one
 # favourite on the biggest tile). Erased: a widget posed by an earlier test would falsify the gallery search.

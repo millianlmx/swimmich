@@ -65,7 +65,8 @@ final class AuthViewModelTests: XCTestCase {
 
     // G18: the server's shouldChangePassword flag rides the session — filled at
     // login from `LoginResponseDto`, cleared only when the password changes, and
-    // never written to UserDefaults.
+    // never written to UserDefaults. An administrator's sign-in is not held for
+    // the new password (AC-347), so its session carries the flag to the Me hub.
     @MainActor
     func test_G18_loginCarriesShouldChangePasswordFlag() async {
         let (defaults, suite) = makeIsolatedDefaults()
@@ -73,7 +74,7 @@ final class AuthViewModelTests: XCTestCase {
         let mock = MockImmichClient()
         mock.loginResponse = LoginResponseDto(
             accessToken: "jwt", userId: "u1", userEmail: "alice@example.com", name: "Alice",
-            profileImagePath: "", isAdmin: false, shouldChangePassword: true, isOnboarded: true
+            profileImagePath: "", isAdmin: true, shouldChangePassword: true, isOnboarded: true
         )
         let auth = AuthViewModel(client: mock, keychain: MockKeychainStore(), defaults: defaults)
         auth.serverURLString = "https://example.com"
@@ -90,6 +91,115 @@ final class AuthViewModelTests: XCTestCase {
         // not read it back out of the preferences (unlike `isAdmin`).
         let restored = AuthViewModel(client: MockImmichClient(), keychain: MockKeychainStore(), defaults: defaults)
         XCTAssertFalse(restored.shouldChangePassword)
+    }
+
+    private func requiredChangeLogin(isAdmin: Bool = false, token: String = "held-jwt") -> LoginResponseDto {
+        LoginResponseDto(
+            accessToken: token, userId: "u-bob", userEmail: "bob@example.com", name: "Bob",
+            profileImagePath: "", isAdmin: isAdmin, shouldChangePassword: true, isOnboarded: true
+        )
+    }
+
+    // AC-347 (B-42): a non-administrator whose server asks for a new password is
+    // held before the home screen — the token reaches the API client (the change
+    // needs it) but nothing is persisted — and the change opens the session.
+    @MainActor
+    func test_AC_347_nonAdminPasswordSignInWaitsForTheNewPassword() async {
+        let (defaults, suite) = makeIsolatedDefaults()
+        defer { defaults.removePersistentDomain(forName: suite) }
+        let mock = MockImmichClient()
+        mock.loginResponse = requiredChangeLogin()
+        let keychain = MockKeychainStore()
+        let auth = AuthViewModel(client: mock, keychain: keychain, defaults: defaults)
+        auth.serverURLString = "https://example.com"
+        _ = auth.baseURL
+
+        await auth.login(email: "bob@example.com", password: "reset-by-admin")
+
+        XCTAssertTrue(auth.isPasswordChangeRequired)
+        XCTAssertFalse(auth.isAuthenticated, "the home screen must not open before the new password")
+        XCTAssertEqual(mock.configuredToken, "held-jwt", "the change-password call needs the token")
+        XCTAssertNil(keychain.savedToken, "a relaunch must not restore a session that skipped the step")
+        XCTAssertTrue(auth.savedAccounts.isEmpty)
+        let relaunched = AuthViewModel(client: MockImmichClient(), keychain: keychain, defaults: defaults)
+        XCTAssertFalse(relaunched.isAuthenticated)
+
+        auth.completeRequiredPasswordChange()
+
+        XCTAssertFalse(auth.isPasswordChangeRequired)
+        XCTAssertTrue(auth.isAuthenticated)
+        XCTAssertFalse(auth.shouldChangePassword, "the server cleared its flag with the change")
+        XCTAssertEqual(keychain.savedToken, "held-jwt")
+        XCTAssertEqual(auth.userEmail, "bob@example.com")
+        XCTAssertEqual(auth.savedAccounts.count, 1)
+    }
+
+    // AC-347: an administrator, or an SSO sign-in, is never held.
+    @MainActor
+    func test_AC_347_adminAndSSOAreNotRedirected() async {
+        let (defaults, suite) = makeIsolatedDefaults()
+        defer { defaults.removePersistentDomain(forName: suite) }
+        let mock = MockImmichClient()
+        mock.loginResponse = requiredChangeLogin(isAdmin: true, token: "admin-jwt")
+        let auth = AuthViewModel(client: mock, keychain: MockKeychainStore(), defaults: defaults)
+        auth.serverURLString = "https://example.com"
+        _ = auth.baseURL
+
+        await auth.login(email: "bob@example.com", password: "secret")
+        XCTAssertFalse(auth.isPasswordChangeRequired, "administrator")
+        XCTAssertTrue(auth.isAuthenticated)
+        XCTAssertTrue(auth.shouldChangePassword, "the hub keeps its invitation")
+
+        let (ssoDefaults, ssoSuite) = makeIsolatedDefaults()
+        defer { ssoDefaults.removePersistentDomain(forName: ssoSuite) }
+        let ssoMock = MockImmichClient()
+        ssoMock.oauthCallbackResponse = requiredChangeLogin(token: "sso-jwt")
+        let sso = AuthViewModel(client: ssoMock, keychain: MockKeychainStore(), defaults: ssoDefaults)
+        sso.serverURLString = "https://photos.example.com"
+        _ = sso.baseURL
+        sso.serverConfig = makeOAuthConfig()
+        sso.oauthSessionHandler = { _ in URL(string: "app.immich:///oauth-callback?code=abc") }
+
+        await sso.startOAuthFlow()
+        XCTAssertFalse(sso.isPasswordChangeRequired, "SSO sign-in")
+        XCTAssertTrue(sso.isAuthenticated)
+        XCTAssertFalse(AuthViewModel.requiresPasswordChange(requiredChangeLogin(isAdmin: true)))
+        XCTAssertTrue(AuthViewModel.requiresPasswordChange(requiredChangeLogin()))
+    }
+
+    // AC-347: "Back to sign in" signs the held session out on the server and
+    // leaves the client without a token; the address stays typed.
+    @MainActor
+    func test_AC_347_backToSignInSignsTheHeldSessionOut() async {
+        let (defaults, suite) = makeIsolatedDefaults()
+        defer { defaults.removePersistentDomain(forName: suite) }
+        let mock = MockImmichClient()
+        mock.loginResponse = requiredChangeLogin()
+        let keychain = MockKeychainStore()
+        let auth = AuthViewModel(client: mock, keychain: keychain, defaults: defaults)
+        auth.serverURLString = "https://example.com"
+        _ = auth.baseURL
+        await auth.login(email: "bob@example.com", password: "reset-by-admin")
+
+        await auth.abandonRequiredPasswordChange()
+
+        XCTAssertFalse(auth.isPasswordChangeRequired)
+        XCTAssertFalse(auth.isAuthenticated)
+        XCTAssertEqual(mock.logoutTokens, ["held-jwt"])
+        XCTAssertNil(mock.configuredToken)
+        XCTAssertNil(keychain.savedToken)
+        XCTAssertEqual(auth.serverURLString, "https://example.com")
+
+        // Once dropped, completing does nothing.
+        auth.completeRequiredPasswordChange()
+        XCTAssertFalse(auth.isAuthenticated)
+    }
+
+    // AC-348 (B-42): the onboarding shows `v<CFBundleShortVersionString>`.
+    func test_AC_348_versionLabelIsTheShortVersion() {
+        XCTAssertEqual(OnboardingAppVersion.label(from: ["CFBundleShortVersionString": "1.4.0", "CFBundleVersion": "87"]), "v1.4.0")
+        XCTAssertNil(OnboardingAppVersion.label(from: ["CFBundleShortVersionString": ""]))
+        XCTAssertNil(OnboardingAppVersion.label(from: nil))
     }
 
     // G18: the flag is re-read from the server, so a reset that happens while the
