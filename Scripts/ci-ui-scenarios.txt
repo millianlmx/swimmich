@@ -119,13 +119,13 @@ immich_stub_read_only_mode.py ReadOnlyModeUITests/test_readOnlyMode --media medi
 immich_stub_plurals.py PluralsUITests/test_AC_32_1_timelineSelectionTitle --erase --release
 
 # L-20 routes par version (AC-36, AC-174 à AC-180). The stub switches its
-# announced version itself (`/stub/version`), one launch per version. Core: the
-# journey of AC-36 over the four thresholds (2.0.0, 3.1.0, 3.2.0, 3.4.0) and the
-# relaunch of AC-176, which only a launched app shows. Release: the others
-# double the unit tests of the same criteria (ServerRouteCompatTests,
-# Scripts/test_stub_routes.py).
-immich_stub_route_compat.py RouteCompatUITests/test_AC_36
-immich_stub_route_compat.py RouteCompatUITests/test_AC_176
+# announced version itself (`/stub/version`), one launch per version. All
+# release: the night's 40 lines were taken by `main` when L-20 came in, and
+# each criterion has unit tests of the same name (ServerRouteCompatTests,
+# Scripts/test_stub_routes.py). The journey of AC-36 over the four thresholds
+# (2.0.0, 3.1.0, 3.2.0, 3.4.0) and the relaunch of AC-176 come first.
+immich_stub_route_compat.py RouteCompatUITests/test_AC_36 --release
+immich_stub_route_compat.py RouteCompatUITests/test_AC_176 --release
 immich_stub_route_compat.py RouteCompatUITests/test_AC_174 --release
 immich_stub_route_compat.py RouteCompatUITests/test_AC_175 --release
 immich_stub_route_compat.py RouteCompatUITests/test_AC_177 --release
