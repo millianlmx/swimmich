@@ -124,8 +124,7 @@ final class SearchViewModel {
 
     /// Star-rating filter (star-ratings) — `nil` = no rating constraint.
     /// Sticky by design: it survives text edits and Explore drill-downs; only
-    /// "Any rating" in the filter menu, the sheet's Clear, or `clearFilters()`
-    /// clear it.
+    /// the sheet's Rating Clear, or `clearFilters()` clear it.
     ///
     /// A view onto `filter.rating`: the Filters sheet is the one control that
     /// edits it, and a rating outside the server's `1...5` scale (including

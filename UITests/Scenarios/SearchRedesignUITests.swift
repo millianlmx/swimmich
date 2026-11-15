@@ -358,20 +358,41 @@ final class SearchRedesignUITests: XCTestCase {
         app.buttons.matching(identifier: identifier).firstMatch
     }
 
+    /// Any item of the open menu: the text modes, the detected-text toggle, Save and Select. The menu is
+    /// open when one of them is there — not when one given mode is, since a mode that is the current one
+    /// may be exposed differently from the others.
+    private var menuItems: NSPredicate {
+        NSPredicate(format: "identifier BEGINSWITH 'searchTextMode_' OR identifier == 'searchOcrFilterToggle' "
+                    + "OR identifier == 'searchSaveButton' OR identifier == 'searchSelectButton'")
+    }
+
+    private func menuIsOpen() -> Bool {
+        app.buttons.matching(menuItems).firstMatch.exists
+    }
+
+    /// What the accessibility tree offers, for a failure message: `screenText()` reads static texts only,
+    /// which says nothing of a menu's items.
+    private func buttonsDump() -> String {
+        let buttons = app.buttons.allElementsBoundByIndex.prefix(60).map {
+            "\($0.identifier.isEmpty ? "-" : $0.identifier)|\($0.label)|\($0.isHittable ? "hit" : "no")"
+        }
+        return "buttons: \(buttons) — menus: \(app.menus.count), popovers: \(app.popovers.count), "
+            + "menu items: \(app.menuItems.allElementsBoundByIndex.map(\.label))"
+    }
+
     private func openOptions() {
         let menu = optionItem("searchModeMenu")
         XCTAssertTrue(menu.waitForExistence(timeout: 20), "the Search options menu is missing — \(screenText())")
         XCTAssertTrue(waitUntil(20) { menu.isHittable }, "the Search options menu cannot be touched — \(screenText())")
         menu.tap()
-        XCTAssertTrue(optionItem("searchTextMode_smart").waitForExistence(timeout: 10),
-                      "the menu did not open — \(screenText())")
+        XCTAssertTrue(waitUntil(10) { self.menuIsOpen() },
+                      "the menu did not open — \(screenText()) — \(buttonsDump())")
     }
 
     /// A touch beside the menu, which is anchored on the right.
     private func closeOptions() {
         app.windows.firstMatch.coordinate(withNormalizedOffset: CGVector(dx: 0.1, dy: 0.5)).tap()
-        XCTAssertTrue(optionItem("searchTextMode_smart").waitForNonExistence(timeout: 5),
-                      "the menu did not close — \(screenText())")
+        XCTAssertTrue(waitUntil(5) { !self.menuIsOpen() }, "the menu did not close — \(screenText()) — \(buttonsDump())")
     }
 
     /// Picks a text mode: the menu, then `searchTextMode_<mode>`; returns once the menu answers again.

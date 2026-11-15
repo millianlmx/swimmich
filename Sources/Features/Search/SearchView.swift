@@ -383,8 +383,6 @@ struct SearchView: View {
         }
     }
 
-    /// The rating has one control: the Rating section of the Filters sheet.
-    ///
     /// Restricts the results to photos whose detected text matches the query
     /// (ocr-text). Sits with the mode menu — it changes how the query is
     /// interpreted, not which grid is shown. Only the metadata route carries
