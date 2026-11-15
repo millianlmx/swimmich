@@ -123,11 +123,11 @@ final class VoiceOverLabelsUITests: XCTestCase {
         "Photo, %@": ["en": "Photo, %@", "fr": "Photo, %@", "de": "Foto, %@", "es": "Foto, %@", "it": "Foto, %@"],
         "Video, %@": ["en": "Video, %@", "fr": "Vidéo, %@", "de": "Video, %@", "es": "Vídeo, %@", "it": "Video, %@"],
         "Remove rating": ["en": "Remove rating", "fr": "Retirer la note", "de": "Bewertung entfernen", "es": "Quitar la valoración", "it": "Rimuovi la valutazione"],
-        "Search mode: %@": ["en": "Search mode: %@", "fr": "Mode de recherche : %@", "de": "Suchmodus: %@", "es": "Modo de búsqueda: %@", "it": "Modalità di ricerca: %@"],
+        "Search options": ["en": "Search options", "fr": "Options de recherche", "de": "Suchoptionen", "es": "Opciones de búsqueda", "it": "Opzioni di ricerca"],
         "Smart": ["en": "Smart", "fr": "Intelligent", "de": "Intelligent", "es": "Inteligente", "it": "Intelligente"],
         "Metadata": ["en": "Metadata", "fr": "Métadonnées", "de": "Metadaten", "es": "Metadatos", "it": "Metadati"],
-        "Save search": ["en": "Save search", "fr": "Enregistrer la recherche", "de": "Suche speichern", "es": "Guardar búsqueda", "it": "Salva ricerca"],
-        "Search by detected text": ["en": "Search by detected text", "fr": "Rechercher par texte détecté", "de": "Nach erkanntem Text suchen", "es": "Buscar por texto detectado", "it": "Cerca per testo rilevato"],
+        "Save search…": ["en": "Save search…", "fr": "Enregistrer la recherche…", "de": "Suche speichern…", "es": "Guardar búsqueda…", "it": "Salva ricerca…"],
+        "Search typed text in detected text": ["en": "Search typed text in detected text", "fr": "Chercher le texte saisi dans le texte détecté", "de": "Eingegebenen Text im erkannten Text suchen", "es": "Buscar el texto escrito en el texto detectado", "it": "Cerca il testo digitato nel testo rilevato"],
         "Invite a partner": ["en": "Invite a partner", "fr": "Inviter un partenaire", "de": "Partner einladen", "es": "Invitar a un socio", "it": "Invita un partner"],
         "Stop sharing with %@": ["en": "Stop sharing with %@", "fr": "Ne plus partager avec %@", "de": "Teilen mit %@ beenden", "es": "Dejar de compartir con %@", "it": "Interrompi condivisione con %@"],
         "Copy link": ["en": "Copy link", "fr": "Copier le lien", "de": "Link kopieren", "es": "Copiar enlace", "it": "Copia link"],
@@ -293,13 +293,18 @@ final class VoiceOverLabelsUITests: XCTestCase {
         XCTAssertTrue(waitForLabel(videoPlayPause, before == pause ? play : pause),
                       "the video's Play/Pause did not flip from \"\(before)\" — it reads \"\(videoPlayPause.label)\"")
 
-        // The search's detected-text filter is inactive (the stub's server predates the
-        // structured filter): it announces its action and "off".
+        // The search's detected-text toggle, in the "Search options" menu, is inactive
+        // (the stub's server predates the structured filter): it announces its
+        // action and "off".
         relaunch(lang)
         openTab(4)
-        let filter = assertButton("searchOcrFilterToggle", label: text("Search by detected text", lang),
+        let options = button("searchModeMenu")
+        XCTAssertTrue(options.waitForExistence(timeout: 25), "search: no searchModeMenu button — \(screenReads())")
+        options.tap()
+        let filter = assertButton("searchOcrFilterToggle", label: text("Search typed text in detected text", lang),
                                   "search, detected-text filter inactive")
         XCTAssertEqual(filter.value as? String, text("off", lang), "the search's detected-text filter reads off")
+        closeMenu("searchOcrFilterToggle")
 
         // The change-password screen's reveal: masked offers "Show password", revealed
         // offers "Hide password".
@@ -387,17 +392,22 @@ final class VoiceOverLabelsUITests: XCTestCase {
             assertButton(id, label: text("Show password", lang), "change password")
         }
 
-        // The search: mode menu, save, then the filters' stars (AC-34.5 reads their
-        // labels in every language).
+        // The search: the options menu (the mode as its value, then save in its
+        // sheet of actions), then the filters' stars (AC-34.5 reads their labels in
+        // every language).
         relaunch(lang)
         openTab(4)
-        let smart = text("Search mode: %@", lang, text("Smart", lang))
-        let metadata = text("Search mode: %@", lang, text("Metadata", lang))
+        let smart = text("Smart", lang)
+        let metadata = text("Metadata", lang)
         let modeMenu = button("searchModeMenu")
         XCTAssertTrue(modeMenu.waitForExistence(timeout: 25), "search: no searchModeMenu button — \(screenReads())")
-        XCTAssertTrue([smart, metadata].contains(modeMenu.label),
-                      "search: the mode menu reads \"\(modeMenu.label)\", expected \"\(smart)\" or \"\(metadata)\"")
-        assertButton("searchSaveButton", label: text("Save search", lang), "search")
+        XCTAssertEqual(modeMenu.label, text("Search options", lang), "search: the options menu's label")
+        let modeValue = modeMenu.value as? String ?? ""
+        XCTAssertTrue([smart, metadata].contains(modeValue),
+                      "search: the options menu reads \"\(modeValue)\", expected \"\(smart)\" or \"\(metadata)\"")
+        modeMenu.tap()
+        assertButton("searchSaveButton", label: text("Save search…", lang), "search")
+        closeMenu("searchSaveButton")
 
         // The shared links.
         relaunch(lang)
@@ -708,6 +718,12 @@ final class VoiceOverLabelsUITests: XCTestCase {
 
     private func element(_ identifier: String) -> XCUIElement {
         app.descendants(matching: .any).matching(identifier: identifier).firstMatch
+    }
+
+    /// Takes an open menu down: a touch outside it (the menu hangs off the top right).
+    private func closeMenu(_ item: String) {
+        app.windows.firstMatch.coordinate(withNormalizedOffset: CGVector(dx: 0.1, dy: 0.5)).tap()
+        XCTAssertTrue(button(item).waitForNonExistence(timeout: 5), "the menu did not close — \(screenReads())")
     }
 
     /// The element of this identifier among the BUTTONS only: a control that lost its

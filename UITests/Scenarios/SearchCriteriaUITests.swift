@@ -854,10 +854,37 @@ final class SearchCriteriaUITests: XCTestCase {
         assertTiles([p1, p2, p3], "Alice")
     }
 
+    /// Starts the multi-selection from the "Search options" menu: `searchModeMenu`,
+    /// then `searchSelectButton`, which stays disabled while the results are
+    /// not in — so the menu is closed and opened again until it answers.
     private func enterSelection() {
-        let select = element("searchSelectButton")
-        XCTAssertTrue(select.waitForExistence(timeout: 30), "no Select entry above the results — \(screenText())")
-        select.tap()
+        let menu = app.buttons.matching(identifier: "searchModeMenu").firstMatch
+        let select = app.buttons.matching(identifier: "searchSelectButton").firstMatch
+        let deadline = Date().addingTimeInterval(30)
+        var entered = false
+        while !entered && Date() < deadline {
+            XCTAssertTrue(waitUntil(20) { menu.exists && menu.isHittable },
+                          "no Search options menu above the results — \(screenText())")
+            menu.tap()
+            if select.waitForExistence(timeout: 5) && select.isEnabled {
+                select.tap()
+                entered = true
+            } else {
+                // Outside the menu (anchored top right): closes it without a side effect.
+                app.windows.firstMatch.coordinate(withNormalizedOffset: CGVector(dx: 0.1, dy: 0.5)).tap()
+                _ = select.waitForNonExistence(timeout: 5)
+            }
+        }
+        XCTAssertTrue(entered, "the Select entry of the Search options menu never became enabled — \(screenText())")
+        XCTAssertTrue(select.waitForNonExistence(timeout: 5), "the Search options menu did not close on Select — \(screenText())")
+    }
+
+    /// The selection is over: the bar is back (it is not drawn during a
+    /// selection) and the count line is gone.
+    private func assertSelectionEnded(_ message: String) {
+        let menu = app.buttons.matching(identifier: "searchModeMenu").firstMatch
+        XCTAssertTrue(waitUntil(15) { menu.exists && menu.isHittable }, "\(message) — \(screenText())")
+        XCTAssertFalse(element("searchSelectionCount").exists, "\(message): the count line is still shown — \(screenText())")
     }
 
     private func pick(_ ids: [String]) {
@@ -1069,7 +1096,7 @@ final class SearchCriteriaUITests: XCTestCase {
         XCTAssertTrue(titleShows(2), "the photo is not checked again — \(screenText())")
 
         tapBarAction("selectionCancelButton")
-        XCTAssertTrue(element("searchSelectButton").waitForExistence(timeout: 15), "Cancel did not leave the selection")
+        assertSelectionEnded("Cancel did not leave the selection")
 
         // A long press enters the selection and checks the photo.
         element("assetTile_\(p2)").press(forDuration: 1.0)
@@ -1197,7 +1224,7 @@ final class SearchCriteriaUITests: XCTestCase {
             $0.params["edited"] == "true"
         }
         XCTAssertEqual(original.params["edited"], "true", "the choice must reach the request — \(original.bodyJSON)")
-        XCTAssertTrue(element("searchSelectButton").waitForExistence(timeout: 15), "the answer did not leave the selection")
+        assertSelectionEnded("the answer did not leave the selection")
 
         // A server that serves no edits: no question, the original goes, the selection ends.
         startSession(major: 1, minor: 119)
@@ -1210,7 +1237,7 @@ final class SearchCriteriaUITests: XCTestCase {
             $0.params["edited"] == "false"
         }
         XCTAssertEqual(plain.params["edited"], "false")
-        XCTAssertTrue(element("searchSelectButton").waitForExistence(timeout: 15), "the download did not leave the selection")
+        assertSelectionEnded("the download did not leave the selection")
     }
 
     // MARK: - AC-44.2 (the same bar on both screens)

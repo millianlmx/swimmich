@@ -5,8 +5,8 @@ import SwiftUI
 /// - **Results**: native `.searchable` field with debounced live search.
 ///   LazyVGrid of `AssetThumbnailCell` (corner radius 0 — project convention).
 ///   Tap → `AssetDetailView` (NavigationLink pattern from TimelineView.swift:253).
-///   The text-mode menu (Smart, Metadata, file name, description) lives in a
-///   toolbar `Menu` (default Smart/CLIP).
+///   The "Search options" menu (text mode, detected-text toggle, save, select)
+///   lives in a toolbar `Menu` next to Filters (default Smart/CLIP).
 /// - **Explore**: a vertical list of every place you've photographed, powered by
 ///   `GET /api/search/cities` (one representative asset per city) + per-place
 ///   counts from `POST /api/search/statistics`. Tap a card →
@@ -95,28 +95,18 @@ struct SearchView: View {
                 // empty `LocalizedStringKey` would be extracted as a `""` key.
                 .navigationTitle(vm.selectionMode ? Text("\(vm.selectedIds.count) selected") : Text(verbatim: ""))
                 .navigationBarTitleDisplayMode(.inline)
-                // Search-mode menu + sync status + avatar as a nav-bar row
+                // Filters + the "Search options" menu (text mode, detected-text
+                // toggle, save, select) + sync status + avatar as a nav-bar row
                 // (topBarTrailing): iOS 26 renders its own Liquid-Glass chrome,
                 // so no manual glassEffect — a manual circle on the label would
-                // double-glass and clip. Menu only in results mode; the two
-                // pinned buttons are always visible.
+                // double-glass and clip. Filters and the menu only in results
+                // mode; the two pinned buttons are always visible.
                 .toolbar {
                     if !(vm.selectionMode && vm.viewMode == .results) {
                         ToolbarItemGroup(placement: .topBarTrailing) {
                             if vm.viewMode == .results {
-                                ratingFilterMenu
                                 filtersButton
-                                searchModeMenu
-                                ocrFilterToggle
-                                Button {
-                                    saveSearchName = vm.query.trimmingCharacters(in: .whitespacesAndNewlines)
-                                    showSaveSearch = true
-                                } label: {
-                                    Image(systemName: "bookmark")
-                                }
-                                .disabled(vm.query.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
-                                .accessibilityLabel("Save search")
-                                .accessibilityIdentifier("searchSaveButton")
+                                searchOptionsMenu
                             }
                             SyncStatusButton { openSyncStatus() }
                             ProfileAvatarButton { openProfile() }
@@ -315,25 +305,45 @@ struct SearchView: View {
         Task { await vm.removeConstraint(field) }
     }
 
-    /// How the typed text is read — Smart (CLIP), Metadata, file name or
-    /// description — folded into a compact menu so the Results area stays
-    /// uncluttered. Each mode is its own button (identifier
-    /// `searchTextMode_<mode>`), the current one checked; a pick with a text
-    /// re-runs the search.
+    /// The "Search options" menu: how the typed text is read — Smart (CLIP),
+    /// Metadata, file name or description, each its own button (identifier
+    /// `searchTextMode_<mode>`, the current one checked; a pick with a text
+    /// re-runs the search) — then the detected-text toggle, "Save search…" and
+    /// "Select". One compact menu keeps the bar at four commands.
     @ViewBuilder
-    private var searchModeMenu: some View {
+    private var searchOptionsMenu: some View {
         Menu {
-            ForEach(SearchViewModel.SearchMode.allCases, id: \.self) { mode in
-                Button {
-                    Task { await vm.selectSearchMode(mode) }
-                } label: {
-                    if mode == vm.searchMode {
-                        Label(modeTitle(mode), systemImage: "checkmark")
-                    } else {
-                        Text(modeTitle(mode))
+            Section {
+                ForEach(SearchViewModel.SearchMode.allCases, id: \.self) { mode in
+                    Button {
+                        Task { await vm.selectSearchMode(mode) }
+                    } label: {
+                        if mode == vm.searchMode {
+                            Label(modeTitle(mode), systemImage: "checkmark")
+                        } else {
+                            Text(modeTitle(mode))
+                        }
                     }
+                    .accessibilityIdentifier("searchTextMode_\(mode.rawValue)")
                 }
-                .accessibilityIdentifier("searchTextMode_\(mode.rawValue)")
+            }
+            Section {
+                ocrFilterToggle
+                Button {
+                    saveSearchName = vm.query.trimmingCharacters(in: .whitespacesAndNewlines)
+                    showSaveSearch = true
+                } label: {
+                    Label("Save search…", systemImage: "bookmark")
+                }
+                .disabled(vm.query.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+                .accessibilityIdentifier("searchSaveButton")
+                Button {
+                    vm.enterSelectionMode()
+                } label: {
+                    Label("Select", systemImage: "checkmark.circle")
+                }
+                .disabled(vm.results.isEmpty)
+                .accessibilityIdentifier("searchSelectButton")
             }
         } label: {
             Image(systemName: modeIcon(vm.searchMode))
@@ -341,7 +351,8 @@ struct SearchView: View {
                 .foregroundStyle(Color.immichPrimary)
                 .frame(minWidth: 44, minHeight: 44)
         }
-        .accessibilityLabel(Text("Search mode: \(modeTitle(vm.searchMode))"))
+        .accessibilityLabel(Text("Search options"))
+        .accessibilityValue(Text(modeTitle(vm.searchMode)))
         .accessibilityIdentifier("searchModeMenu")
     }
 
@@ -372,61 +383,29 @@ struct SearchView: View {
         }
     }
 
-    /// Star-rating filter (star-ratings): mono-valued — "Any rating" or 1…5 —
-    /// and only in the results branch, where there is a grid to filter (Smart
-    /// carries the rating too; with no text the view model moves to Metadata).
-    /// The tinted
-    /// glyph keeps an active filter visible with the menu closed.
-    private var ratingFilterMenu: some View {
-        Menu {
-            Picker("Rating", selection: ratingFilterBinding) {
-                Label("Any rating", systemImage: "star").tag(Int?.none)
-                ForEach(1...5, id: \.self) { value in
-                    Label("\(value) stars", systemImage: "star.fill").tag(Int?.some(value))
-                }
-            }
-        } label: {
-            Image(systemName: vm.ratingFilter == nil ? "star" : "star.fill")
-                .font(.pvBody.weight(.semibold))
-                .foregroundStyle(Color.immichPrimary)
-                .frame(minWidth: 44, minHeight: 44)
-        }
-        .accessibilityIdentifier("searchRatingFilterMenu")
-        .accessibilityLabel(vm.ratingFilter.map { Text("Rating filter: \($0) stars") } ?? Text("Rating filter: any rating"))
-    }
-
-    /// `Picker` needs an explicit `Binding<Int?>`: with a plain `Int` selection
-    /// `nil` and `0` would be indistinguishable, and `0` is not a rating the
-    /// server accepts. Selecting writes the value first (so the tinted glyph
-    /// updates immediately) and lets the ViewModel own the request.
-    private var ratingFilterBinding: Binding<Int?> {
-        Binding(
-            get: { vm.ratingFilter },
-            set: { newValue in
-                vm.ratingFilter = newValue
-                Task { await vm.setRatingFilter(newValue) }
-            }
-        )
-    }
-
+    /// The rating has one control: the Rating section of the Filters sheet.
+    ///
     /// Restricts the results to photos whose detected text matches the query
     /// (ocr-text). Sits with the mode menu — it changes how the query is
     /// interpreted, not which grid is shown. Only the metadata route carries
     /// the criterion, and only a server with the v3.2.0 structured filter has a
-    /// field for it: on an older one the toggle is off the table rather than
-    /// silently searching something else.
+    /// field for it: on an older one the item stays in the menu, disabled,
+    /// rather than silently searching something else. A check mark and the
+    /// VoiceOver value ("on"/"off") tell its state. Its label differs from the
+    /// Filters sheet's "Detected text" field, which sets the text itself.
     private var ocrFilterToggle: some View {
         Button {
             vm.ocrFilterEnabled.toggle()
             vm.queryDidChange()
         } label: {
-            Image(systemName: "text.viewfinder")
-                .font(.pvBody.weight(.semibold))
-                .foregroundStyle(vm.ocrFilterEnabled ? Color.immichPrimary : Color.secondary)
+            if vm.ocrFilterEnabled {
+                Label("Search typed text in detected text", systemImage: "checkmark")
+            } else {
+                Text("Search typed text in detected text")
+            }
         }
         .disabled(vm.searchMode != .metadata || !vm.supportsStructuredSearch)
-        .accessibilityLabel("Search by detected text")
-        .accessibilityValue(vm.ocrFilterEnabled ? "on" : "off")
+        .accessibilityValue(vm.ocrFilterEnabled ? Text("on") : Text("off"))
         .accessibilityIdentifier("searchOcrFilterToggle")
     }
 
@@ -510,23 +489,32 @@ struct SearchView: View {
                 .padding(PVSpacing.s24)
                 .containerRelativeFrame(.vertical)
             case .empty:
-                ContentUnavailableView {
-                    Label("No results", systemImage: "magnifyingglass")
-                        .accessibilityIdentifier("searchEmptyState")
-                } description: {
-                    Text("Try a different search term.")
-                } actions: {
-                    // A filtered grid that came back empty must offer the way
-                    // out without opening the sheet again.
+                // The chips stay over "No results": a filtered grid that came
+                // back empty lets the user drop one criterion at a time.
+                VStack(spacing: 0) {
                     if vm.isFilterActive {
-                        Button("Reset filters") {
-                            Task { await vm.clearFilters() }
-                        }
-                        .accessibilityIdentifier("searchNoResultsReset")
+                        activeFiltersBar
+                            .padding(.horizontal, PVSpacing.s4)
+                            .padding(.vertical, PVSpacing.s8)
                     }
+                    ContentUnavailableView {
+                        Label("No results", systemImage: "magnifyingglass")
+                            .accessibilityIdentifier("searchEmptyState")
+                    } description: {
+                        Text("Try a different search term.")
+                    } actions: {
+                        // A filtered grid that came back empty must offer the way
+                        // out without opening the sheet again.
+                        if vm.isFilterActive {
+                            Button("Reset filters") {
+                                Task { await vm.clearFilters() }
+                            }
+                            .accessibilityIdentifier("searchNoResultsReset")
+                        }
+                    }
+                    .frame(maxWidth: .infinity)
+                    .containerRelativeFrame(.vertical)
                 }
-                .frame(maxWidth: .infinity)
-                .containerRelativeFrame(.vertical)
             case .data(let status):
                 resultsGridContent(status)
             }
@@ -545,17 +533,6 @@ struct SearchView: View {
                 InlineErrorBadge(message: message, retry: { Task { await vm.retryResults() } })
                     .padding(.horizontal, PVSpacing.s4)
                     .accessibilityIdentifier("searchRefreshError")
-            }
-            if !vm.selectionMode && !vm.results.isEmpty {
-                // Explicit entry point of the multi-selection; a long press on a
-                // thumbnail enters it too.
-                HStack {
-                    Spacer()
-                    Button("Select") { vm.enterSelectionMode() }
-                        .font(.pvSubhead.weight(.semibold))
-                        .accessibilityIdentifier("searchSelectButton")
-                }
-                .padding(.horizontal, PVSpacing.s8)
             }
             if vm.isFilterActive {
                 activeFiltersBar

@@ -1245,4 +1245,125 @@ final class SearchViewModelTests: XCTestCase {
         XCTAssertEqual(vm.exploreState, .data(.idle))
         XCTAssertEqual(vm.explorePlaces.map(\.city), ["Paris"])
     }
+
+    // MARK: - AC-13.1 / AC-21: the Search-screen redesign moves controls, never request bodies
+
+    /// What one search sends: the route taken and the JSON body encoded as the
+    /// wire gets it. The literals in the tests below are what the base
+    /// (`e81b24f`, before the redesign) sends — the view model is untouched.
+    private func sent(
+        _ mode: SearchViewModel.SearchMode, server: (major: Int, minor: Int), query: String,
+        configure: (SearchViewModel) -> Void = { _ in }
+    ) async throws -> (route: String, body: NSDictionary) {
+        let mock = makeMock(items: [makeAsset(id: "r1")])
+        mock.serverVersionResponse = ServerVersionResponseDto(
+            major: server.major, minor: server.minor, patch: 0, prerelease: nil
+        )
+        let vm = SearchViewModel(client: mock)
+        vm.searchMode = mode
+        vm.query = query
+        configure(vm)
+        await vm.search()
+        let data: Data
+        let route: String
+        if let smart = mock.searchSmartCalls.first {
+            XCTAssertTrue(mock.searchMetadataCalls.isEmpty, "one route per search")
+            data = try JSONEncoder.immich.encode(smart)
+            route = "smart"
+        } else {
+            let metadata = try XCTUnwrap(mock.searchMetadataCalls.first, "no request left")
+            data = try JSONEncoder.immich.encode(metadata)
+            route = "metadata"
+        }
+        return (route, try XCTUnwrap(JSONSerialization.jsonObject(with: data) as? NSDictionary))
+    }
+
+    func test_AC_13_1_detectedTextToggleAndSheetFieldKeepTheirBodies() async throws {
+        let v32 = (major: 3, minor: 2)
+
+        // The menu's toggle: the typed text becomes the OCR criterion, no `query`.
+        let toggle = try await sent(.metadata, server: v32, query: "sunset") { $0.ocrFilterEnabled = true }
+        XCTAssertEqual(toggle.route, "metadata")
+        XCTAssertEqual(toggle.body, [
+            "filter": ["ocr": ["matches": "sunset"], "visibility": ["eq": "timeline"]],
+        ] as NSDictionary)
+
+        // The sheet's field, toggle off: the criterion joins the text.
+        let sheetMetadata = try await sent(.metadata, server: v32, query: "sunset") { $0.filter.ocrText = "beach" }
+        XCTAssertEqual(sheetMetadata.body, [
+            "query": "sunset",
+            "filter": ["ocr": ["matches": "beach"], "visibility": ["eq": "timeline"]],
+        ] as NSDictionary)
+        let sheetFileName = try await sent(.filename, server: v32, query: "sunset") { $0.filter.ocrText = "beach" }
+        XCTAssertEqual(sheetFileName.body, [
+            "filter": [
+                "ocr": ["matches": "beach"],
+                "originalFileName": ["like": "sunset"],
+                "visibility": ["eq": "timeline"],
+            ],
+        ] as NSDictionary)
+
+        // Both: the sheet's criterion is the only OCR one, and the body is
+        // exactly the toggle-off body — the toggle changes nothing.
+        let both = try await sent(.metadata, server: v32, query: "sunset") {
+            $0.ocrFilterEnabled = true
+            $0.filter.ocrText = "beach"
+        }
+        XCTAssertEqual(both.body, sheetMetadata.body)
+    }
+
+    func test_AC_21_theSameCriteriaSendTheSamePathAndBody() async throws {
+        let flat = (major: 2, minor: 0)
+        let structured = (major: 3, minor: 2)
+        let criteria: (SearchViewModel) -> Void = {
+            $0.filter.city = "Paris"
+            $0.filter.rating = 4
+        }
+        let smartBody: NSDictionary = [
+            "query": "plage", "page": 1, "visibility": "timeline", "city": "Paris", "rating": 4,
+        ]
+        let flatBody: (String, String) -> NSDictionary = { key, value in
+            ["page": 1, "visibility": "timeline", "city": "Paris", "rating": 4, key: value]
+        }
+        let structuredFilter: ([String: Any]) -> NSDictionary = { extra in
+            let filter: [String: Any] = ["city": ["eq": "Paris"], "rating": ["eq": 4], "visibility": ["eq": "timeline"]]
+            return ["filter": filter.merging(extra) { $1 }]
+        }
+
+        // Smart: the flat Smart route on every server version.
+        for server in [flat, structured] {
+            let smart = try await sent(.smart, server: server, query: "plage", configure: criteria)
+            XCTAssertEqual(smart.route, "smart")
+            XCTAssertEqual(smart.body, smartBody)
+        }
+        // Metadata and file name: the flat body before v3.2.0…
+        let flatMetadata = try await sent(.metadata, server: flat, query: "plage", configure: criteria)
+        XCTAssertEqual(flatMetadata.route, "metadata")
+        XCTAssertEqual(flatMetadata.body, flatBody("query", "plage"))
+        let flatFileName = try await sent(.filename, server: flat, query: "plage", configure: criteria)
+        XCTAssertEqual(flatFileName.body, flatBody("originalFileName", "plage"))
+        // …and the structured one from v3.2.0.
+        let structuredMetadata = try await sent(.metadata, server: structured, query: "plage", configure: criteria)
+        XCTAssertEqual(structuredMetadata.route, "metadata")
+        let withQuery = try XCTUnwrap(structuredFilter([:]).mutableCopy() as? NSMutableDictionary)
+        withQuery["query"] = "plage"
+        XCTAssertEqual(structuredMetadata.body, withQuery)
+        let structuredFileName = try await sent(.filename, server: structured, query: "plage", configure: criteria)
+        XCTAssertEqual(structuredFileName.body, structuredFilter(["originalFileName": ["like": "plage"]]))
+        // The sheet's OCR field: dropped by the flat shape, written by the structured one.
+        let flatOcr = try await sent(.metadata, server: flat, query: "plage") { $0.filter.ocrText = "beach" }
+        XCTAssertEqual(flatOcr.body, ["query": "plage", "page": 1, "visibility": "timeline"] as NSDictionary)
+        let structuredOcr = try await sent(.metadata, server: structured, query: "plage") { $0.filter.ocrText = "beach" }
+        XCTAssertEqual(structuredOcr.body, [
+            "query": "plage",
+            "filter": ["ocr": ["matches": "beach"], "visibility": ["eq": "timeline"]],
+        ] as NSDictionary)
+
+        // Opening the tab sends no search: only the version probe runs.
+        let mock = makeMock()
+        let vm = SearchViewModel(client: mock)
+        await vm.probeSearchShape()
+        XCTAssertEqual(mock.searchSmartCalls.count, 0)
+        XCTAssertEqual(mock.searchMetadataCalls.count, 0)
+    }
 }
