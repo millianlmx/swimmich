@@ -20,6 +20,10 @@ struct OnboardingFlowView: View {
 
     enum Step: Hashable {
         case welcome, serverURL, login
+        /// The application log, reachable without a session (L-28).
+        case logs
+        /// The new password a server requires before the home screen (B-42).
+        case requiredPasswordChange
     }
 
     @State private var path: [Step]
@@ -44,14 +48,103 @@ struct OnboardingFlowView: View {
                     destination(for: step)
                 }
         }
+        // A password sign-in held for a new password pushes the step; dropping
+        // it (back, or a refused session) brings the sign-in step back.
+        .onChange(of: auth.isPasswordChangeRequired) { _, required in
+            if required {
+                path.append(.requiredPasswordChange)
+            } else if path.last == .requiredPasswordChange {
+                path.removeLast()
+            }
+        }
     }
 
     @ViewBuilder
     private func destination(for step: Step) -> some View {
         switch step {
         case .welcome:   WelcomeScreen(continue: { path.append(.serverURL) })
-        case .serverURL: ServerURLScreen(continue: { path.append(.login) })
-        case .login:     LoginScreen()
+        case .serverURL: ServerURLScreen(continue: { path.append(.login) }, openLogs: { path.append(.logs) })
+        case .login:     LoginScreen(openLogs: { path.append(.logs) })
+        case .logs:      OnboardingAppLogScreen()
+        case .requiredPasswordChange: RequiredPasswordChangeScreen()
+        }
+    }
+}
+
+/// The application log on the onboarding stack. It is pushed on the flow's own
+/// `NavigationStack` (no stack of its own: the bar would double), and its view
+/// model is built once, on the process-wide log store — which the masking of
+/// secrets already covers — so going back leaves the typed address untouched.
+private struct OnboardingAppLogScreen: View {
+    @State private var vm = DependencyContainer.shared.makeAppLogViewModel()
+
+    var body: some View {
+        AppLogView(vm: vm)
+    }
+}
+
+/// The change-password step a server requires after a password sign-in (B-42,
+/// the official client's `ChangePasswordRoute` pushed by `onLogin`). It reuses
+/// the Me hub's screen and view model. The system back button is replaced: the
+/// only way out besides the change is an explicit return to the sign-in step,
+/// which signs the held session out.
+private struct RequiredPasswordChangeScreen: View {
+    @Environment(AuthViewModel.self) private var auth
+    @State private var vm = DependencyContainer.shared.makeChangePasswordViewModel()
+
+    var body: some View {
+        ChangePasswordView(
+            vm: vm,
+            onPasswordChanged: { auth.completeRequiredPasswordChange() },
+            notice: Text("This server asks you to choose a new password before you continue.")
+        )
+        .navigationBarBackButtonHidden(true)
+        .toolbar {
+            ToolbarItem(placement: .topBarLeading) {
+                Button {
+                    Task { await auth.abandonRequiredPasswordChange() }
+                } label: {
+                    Label("Back to Sign In", systemImage: "chevron.backward")
+                }
+                .accessibilityIdentifier("requiredPasswordChangeBackButton")
+            }
+        }
+    }
+}
+
+/// The version of the running app, `v<CFBundleShortVersionString>`, shown next
+/// to the "App Logs" entry of the onboarding like the official client's login
+/// page (B-42). `nil` when the bundle carries no version.
+enum OnboardingAppVersion {
+    static func label(from info: [String: Any]?) -> String? {
+        guard let short = info?["CFBundleShortVersionString"] as? String, !short.isEmpty else { return nil }
+        return "v\(short)"
+    }
+}
+
+/// The onboarding's trailing toolbar: the app version, then the "App Logs"
+/// entry (L-28, B-42). One item, so the version stays next to the entry.
+struct OnboardingLogsToolbar: ToolbarContent {
+    let openLogs: () -> Void
+    let logsIdentifier: String
+    let versionIdentifier: String
+
+    var body: some ToolbarContent {
+        ToolbarItem(placement: .topBarTrailing) {
+            HStack(spacing: PVSpacing.s8) {
+                if let version = OnboardingAppVersion.label(from: Bundle.main.infoDictionary) {
+                    Text(verbatim: version)
+                        .font(.pvCaption)
+                        .foregroundStyle(Color.textSecondaryPV)
+                        .fixedSize()
+                        .accessibilityIdentifier(versionIdentifier)
+                }
+                Button(action: openLogs) {
+                    Label("App Logs", systemImage: "doc.text.magnifyingglass")
+                        .labelStyle(.iconOnly)
+                }
+                .accessibilityIdentifier(logsIdentifier)
+            }
         }
     }
 }
@@ -71,6 +164,18 @@ extension View {
                 .pvFloating(.bar)
                 .padding(.horizontal, PVSpacing.s16)
                 .padding(.bottom, PVSpacing.s8)
+        }
+    }
+
+    /// `onboardingBottomBar`, only when `isPresented`: a screen whose CTA can
+    /// disappear (the sign-in step of a server that refuses the password)
+    /// carries no empty bar.
+    @ViewBuilder
+    func onboardingBottomBar<Content: View>(isPresented: Bool, @ViewBuilder content: () -> Content) -> some View {
+        if isPresented {
+            onboardingBottomBar(content: content)
+        } else {
+            self
         }
     }
 }

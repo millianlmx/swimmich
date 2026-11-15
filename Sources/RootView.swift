@@ -19,6 +19,10 @@ struct RootView: View {
     /// viewer and the video player read.
     @State private var appSettings: AppSettingsStore
     private let container: DependencyContainer
+    /// A widget link waiting for the authenticated tree (L-28). Held here, above
+    /// the session gate, so a link that opens the app cold is not lost while
+    /// the root still builds: `AuthenticatedRoot` takes it as soon as it exists.
+    @State private var pendingWidgetLink: PendingWidgetLink?
 
     init(container: DependencyContainer = .shared) {
         self.container = container
@@ -35,7 +39,10 @@ struct RootView: View {
                 ProgressView()
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
             } else if auth.isAuthenticated {
-                AuthenticatedRoot(container: container, session: auth, accountID: auth.activeAccountID ?? "")
+                AuthenticatedRoot(
+                    container: container, session: auth, accountID: auth.activeAccountID ?? "",
+                    pendingWidgetLink: $pendingWidgetLink
+                )
                     .id(auth.activeAccountID)
             } else {
                 OnboardingFlowView(startsOnLogin: auth.sessionExpired)
@@ -58,6 +65,22 @@ struct RootView: View {
         // included, obeys one switch.
         .environment(appSettings)
         .environment(\.hapticsEnabled, appSettings.hapticsEnabled)
+        // Widget deep links (issue #19; L-28 for the cold launch), parsed by the
+        // shared framework so the widget extension and this router cannot drift.
+        // Without a session there is nothing to open: the link is dropped. A
+        // stored session counts as one from the first frame (the token is read
+        // at init), so a link that launched the app is kept while it restores.
+        // Anything that is not a widget link (the OAuth callback included) is
+        // not ours — no state changes.
+        .onOpenURL { url in
+            guard let link = WidgetDeepLink.parse(url), auth.isAuthenticated else { return }
+            pendingWidgetLink = PendingWidgetLink(link: link)
+        }
+        // A session that ends takes its pending link with it: it is never
+        // replayed after a new sign-in.
+        .onChange(of: auth.isAuthenticated) { _, isAuthenticated in
+            if !isAuthenticated { pendingWidgetLink = nil }
+        }
         .task {
             // Reconfigure the shared client from the stored session and
             // validate the token on launch (auth persistence across relaunch).
@@ -182,6 +205,22 @@ private struct AuthenticatedRoot: View {
     @State private var lastContentTab: RootTab = .photos
     @State private var pendingTimelineScrollID: String?
     @State private var pendingTimelineScrollDay: String?
+    /// The widget link taken from the root (L-28): the photo it names, handed
+    /// to the timeline, which resolves and opens it.
+    @State private var pendingLinkedAsset: LinkedAssetRequest?
+    /// Bumped to ask every full-screen cover below to close before a link routes.
+    @State private var coverDismissalRequest: UUID?
+    /// What's New was closed by a widget link: its dismissal must not mark it seen.
+    @State private var whatsNewYieldedToLink = false
+    /// What's New is on screen: its content appeared and its dismissal is not over.
+    @State private var whatsNewOnScreen = false
+    /// The photo of a link that closed What's New, held until the sheet has left:
+    /// UIKit drops a cover presented while a sheet is still coming in or going
+    /// out, and the viewer would never open (L-28, AC-344).
+    @State private var linkedAssetAfterWhatsNew: LinkedAssetRequest?
+    /// A widget link reached this root: no automatic What's New in this launch.
+    @State private var widgetLinkReceived = false
+    @Binding private var pendingWidgetLink: PendingWidgetLink?
     @State private var showCreateAlbum = false
     @State private var showCreateSharedLink = false
     @State private var showProfile = false
@@ -189,7 +228,8 @@ private struct AuthenticatedRoot: View {
     @State private var showWhatsNew = false
     @State private var showDownloadInfo = false
 
-    init(container: DependencyContainer, session: AuthViewModel, accountID: String) {
+    init(container: DependencyContainer, session: AuthViewModel, accountID: String, pendingWidgetLink: Binding<PendingWidgetLink?>) {
+        _pendingWidgetLink = pendingWidgetLink
         self.container = container
         _timeline = State(initialValue: container.makeTimelineViewModel())
         _recentTaken = State(initialValue: container.makeRecentAssetsViewModel(mode: .taken))
@@ -245,7 +285,7 @@ private struct AuthenticatedRoot: View {
     var body: some View {
         TabView(selection: $selection) {
             Tab("Photos", systemImage: "photo.on.rectangle.angled", value: RootTab.photos) {
-                TimelineView(vm: timeline, stacks: stacks, downloads: downloads, troubleshoot: troubleshoot, scrollTargetID: $pendingTimelineScrollID, scrollTargetDay: $pendingTimelineScrollDay)
+                TimelineView(vm: timeline, stacks: stacks, downloads: downloads, troubleshoot: troubleshoot, scrollTargetID: $pendingTimelineScrollID, scrollTargetDay: $pendingTimelineScrollDay, linkedAsset: $pendingLinkedAsset)
             }
             Tab("Memories", systemImage: "sparkles.rectangle.stack", value: RootTab.memories) {
                 MemoriesView(vm: memories)
@@ -282,6 +322,7 @@ private struct AuthenticatedRoot: View {
             }
         }
         .immichBottomBar()
+        .environment(\.coverDismissalRequest, coverDismissalRequest)
         .environment(upload)
         .environment(\.openProfile) { showProfile = true }
         .environment(\.openSyncStatus) { showSyncStatus = true }
@@ -320,26 +361,12 @@ private struct AuthenticatedRoot: View {
                 await offline.load()
             }
         }
-        // Widget deep links (issue #19), parsed by the shared framework so the
-        // widget extension and this router cannot drift: an asset lands on the
-        // Photos tab with the timeline primed to its bucket + day (a not-yet-
-        // loaded asset still resolves), memories lands on the Memories tab, and
-        // backup lands on Photos while kicking the gated engine. Anything else
-        // (the OAuth callback included) is not ours — no state changes.
-        .onOpenURL { url in
-            switch WidgetDeepLink.parse(url) {
-            case let .asset(id, day):
-                pendingTimelineScrollID = id
-                pendingTimelineScrollDay = day
-                selection = .photos
-            case .memories:
-                selection = .memories
-            case .backup:
-                selection = .photos
-                container.kickOffAutoBackup()
-            case nil:
-                break
-            }
+        // The widget link the root took (issue #19, L-28). `initial` covers a link
+        // that was there before this tree appeared (a cold launch).
+        .onChange(of: pendingWidgetLink?.id, initial: true) { _, id in
+            guard id != nil, let pending = pendingWidgetLink else { return }
+            pendingWidgetLink = nil
+            applyWidgetLink(pending.link)
         }
         .onChange(of: selection) { _, newValue in
             if newValue == .search {
@@ -362,7 +389,10 @@ private struct AuthenticatedRoot: View {
         // their images follow the address by themselves.
         .onChange(of: container.serverEndpoints.lastOutcome) { _, outcome in
             guard let outcome else { return }
-            Task { await reloadVisibleTab(after: outcome) }
+            Task {
+                await VisibleTabReloader(photos: timeline, memories: memories, albums: albums, shared: sharedLinks)
+                    .reload(tab: selection, after: outcome)
+            }
         }
         // The locked folder closes when the app leaves the foreground, whichever
         // tab is up and whether or not its screen is on display: the elevation
@@ -468,17 +498,27 @@ private struct AuthenticatedRoot: View {
         // `markSeen()` is in `onDismiss` rather than in the Done button so a
         // swipe-down is a "seen" too, and the sheet cannot come back at the next
         // launch. The stack is the sheet's: `WhatsNewView` declares none.
-        .sheet(isPresented: $showWhatsNew, onDismiss: { whatsNew.markSeen() }) {
+        .sheet(isPresented: $showWhatsNew, onDismiss: {
+            whatsNewOnScreen = false
+            // Closed by a widget link, it is not seen: it returns at the next launch.
+            if whatsNewYieldedToLink { whatsNewYieldedToLink = false } else { whatsNew.markSeen() }
+            if let request = linkedAssetAfterWhatsNew {
+                linkedAssetAfterWhatsNew = nil
+                pendingLinkedAsset = request
+            }
+        }) {
             NavigationStack {
                 WhatsNewView(vm: whatsNew, onDone: { showWhatsNew = false })
             }
+            .onAppear { whatsNewOnScreen = true }
         }
         // Evaluated on the first authenticated frame and again on an account
         // change (the seen-release is account state, not process state). The
         // flag is never set back to true: once `markSeen()` has run,
         // `shouldPresentAutomatically()` answers false for the rest of the run.
         .task(id: auth.userId) {
-            showWhatsNew = whatsNew.shouldPresentAutomatically()
+            // Not in a launch that a widget link opened: the link's target comes first.
+            showWhatsNew = pendingWidgetLink == nil && !widgetLinkReceived && whatsNew.shouldPresentAutomatically()
         }
         .sheet(isPresented: Binding(
             get: { map.isPhotoSheetPresented },
@@ -490,31 +530,48 @@ private struct AuthenticatedRoot: View {
         }
     }
 
+    /// Routes a widget link: closes what could hide the target, selects its tab
+    /// and hands it what it needs. Everything runs in one main-actor turn, with
+    /// no animation, so the target is on screen as soon as it is resolved.
+    private func applyWidgetLink(_ link: WidgetDeepLink) {
+        let route = WidgetLinkRoute(link)
+        widgetLinkReceived = true
+        var transaction = Transaction()
+        transaction.disablesAnimations = true
+        withTransaction(transaction) {
+            // The root's own sheets. The sheets of the tab screens stay: they may
+            // hold something being typed.
+            showProfile = false
+            showSyncStatus = false
+            showDownloadInfo = false
+            showCreateAlbum = false
+            showCreateSharedLink = false
+            map.isPhotoSheetPresented = false
+            if showWhatsNew {
+                whatsNewYieldedToLink = true
+                showWhatsNew = false
+            }
+            coverDismissalRequest = UUID()
+        }
+        switch route.tab {
+        case .photos: selection = .photos
+        case .memories: selection = .memories
+        }
+        // What's New still on screen (coming in or going out): the viewer waits
+        // for its `onDismiss`. A later link replaces a photo still waiting.
+        if whatsNewOnScreen {
+            linkedAssetAfterWhatsNew = route.viewerAsset
+        } else if let request = route.viewerAsset {
+            linkedAssetAfterWhatsNew = nil
+            pendingLinkedAsset = request
+        }
+        if route.startsBackup { container.startManualBackup() }
+    }
+
     private var bubbleIcon: String {
         switch selection {
         case .photos, .memories, .search: "magnifyingglass"
         case .albums, .shared: "plus"
-        }
-    }
-
-    /// Reloads the root screen of the tab on display after an evaluation of the
-    /// server address (L-26). The search tab has nothing to reload.
-    @MainActor
-    private func reloadVisibleTab(after outcome: EvaluationOutcome) async {
-        func should(_ loadError: String?) -> Bool {
-            ReloadAfterEvaluation.shouldReload(changedAddress: outcome.changedAddress, hasLoadError: loadError != nil)
-        }
-        switch selection {
-        case .photos:
-            if should(timeline.loadErrorMessage) { await timeline.refresh() }
-        case .memories:
-            if should(memories.loadErrorMessage) { await memories.refresh() }
-        case .albums:
-            if should(albums.loadErrorMessage) { await albums.refresh() }
-        case .shared:
-            if should(sharedLinks.loadErrorMessage) { await sharedLinks.refresh() }
-        case .search:
-            break
         }
     }
 
@@ -529,12 +586,60 @@ private struct AuthenticatedRoot: View {
 }
 
 /// Root-level tabs. Order defines tab order; raw value used only for matching.
-private enum RootTab: Int, Hashable {
+enum RootTab: Int, Hashable {
     case photos
     case memories
     case albums
     case shared
     case search
+}
+
+/// A widget link waiting for the authenticated tree. The `id` makes two taps
+/// on the same link two events.
+struct PendingWidgetLink: Equatable {
+    let id = UUID()
+    let link: WidgetDeepLink
+}
+
+/// The photo a widget link asks the timeline to open. Two requests for the
+/// same photo are equal; `token` tells them apart as events.
+struct LinkedAssetRequest: Equatable {
+    let token = UUID()
+    let id: String
+    let day: String?
+
+    static func == (lhs: LinkedAssetRequest, rhs: LinkedAssetRequest) -> Bool {
+        lhs.id == rhs.id && lhs.day == rhs.day
+    }
+}
+
+/// Where a widget link leads (L-28): a pure function of the link, so the routing
+/// is testable without a view tree.
+struct WidgetLinkRoute: Equatable {
+    enum Tab: Equatable { case photos, memories }
+
+    let tab: Tab
+    /// The photo to open in the viewer, if the link names one.
+    let viewerAsset: LinkedAssetRequest?
+    /// Whether the link starts a backup pass.
+    let startsBackup: Bool
+
+    init(_ link: WidgetDeepLink) {
+        switch link {
+        case let .asset(id, day):
+            tab = .photos
+            viewerAsset = LinkedAssetRequest(id: id, day: day)
+            startsBackup = false
+        case .memories:
+            tab = .memories
+            viewerAsset = nil
+            startsBackup = false
+        case .backup:
+            tab = .photos
+            viewerAsset = nil
+            startsBackup = true
+        }
+    }
 }
 
 // MARK: - Me (profile) entry from every tab

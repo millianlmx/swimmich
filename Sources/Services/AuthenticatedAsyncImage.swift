@@ -274,46 +274,49 @@ struct AuthenticatedAsyncImage: View {
         // Read before the network await: a purge that lands while the request is
         // in flight bumps the epoch and `store` then drops this stale image.
         let epoch = await ImageCache.shared.epoch
-        // L-26: the other address of the server may have served this image before;
-        // it then sits on disk under the address the account was connected with.
-        if let onDisk = Self.canonicalDiskImage(for: url, cache: Self.imageDiskCache) {
-            await ImageCache.shared.store(onDisk, for: url, epoch: epoch)
-            self.image = onDisk
-            loadState = ImageLoadState(loaded: onDisk)
-            onImageSize?(onDisk.size)
+        guard let img = await Self.fetchImage(
+            for: url, token: token, customHeaders: CustomHeadersRegistry.shared.headers(for: url),
+            session: Self.imageSession, cache: Self.imageDiskCache, reload: reloadToken > 0
+        ) else {
+            if self.image == nil { didFail = true; loadState = .failed }
+            // Silent on cancellation: the view left, or a newer load owns the outcome.
+            if !Task.isCancelled { onSourceOutcome?(.failed) }
             return
+        }
+        if Task.isCancelled { return }
+        // Populate the memory tier for subsequent hits.
+        await ImageCache.shared.store(img, for: url, epoch: epoch)
+        self.image = img
+        loadState = ImageLoadState(loaded: img)
+        onImageSize?(img.size)
+        onSourceOutcome?(.loaded)
+    }
+
+    /// Disk then network tiers of the image pipeline, without any view state.
+    /// L-26: the other address of the server may have served this image before;
+    /// it then sits on disk under the address the account was connected with and
+    /// is served without a request. A network answer is copied there too.
+    static func fetchImage(
+        for url: URL, token: String?, customHeaders: [CustomHTTPHeader], session: URLSession, cache: URLCache,
+        reload: Bool = false, addressBook: ServerAddressBook = .shared
+    ) async -> UIImage? {
+        if let onDisk = canonicalDiskImage(for: url, cache: cache, addressBook: addressBook) {
+            return onDisk
         }
         do {
             var request = URLRequest(url: url)
             // An explicit retry must reach the server: the session's
             // `.returnCacheDataElseLoad` would replay a cached failure.
-            if reloadToken > 0 { request.cachePolicy = .reloadIgnoringLocalCacheData }
-            ServerRequestAuthorization.apply(
-                token: token, custom: CustomHeadersRegistry.shared.headers(for: url), to: &request
-            )
+            if reload { request.cachePolicy = .reloadIgnoringLocalCacheData }
+            ServerRequestAuthorization.apply(token: token, custom: customHeaders, to: &request)
             // Tiers 2+3 — URLCache dedup + network.
-            let (data, response) = try await Self.imageSession.data(for: request)
-            if Task.isCancelled { return }
-            if let http = response as? HTTPURLResponse, !(200..<300).contains(http.statusCode) {
-                if self.image == nil { didFail = true; loadState = .failed }
-                onSourceOutcome?(.failed)
-                return
-            }
-            guard let img = UIImage(data: data) else {
-                if self.image == nil { didFail = true; loadState = .failed }
-                onSourceOutcome?(.failed)
-                return
-            }
-            Self.storeCanonicalDiskCopy(data: data, response: response, for: url, cache: Self.imageDiskCache)
-            // Populate both tiers for subsequent hits.
-            await ImageCache.shared.store(img, for: url, epoch: epoch)
-            self.image = img
-            loadState = ImageLoadState(loaded: img)
-            onImageSize?(img.size)
-            onSourceOutcome?(.loaded)
+            let (data, response) = try await session.data(for: request)
+            if let http = response as? HTTPURLResponse, !(200..<300).contains(http.statusCode) { return nil }
+            guard let img = UIImage(data: data) else { return nil }
+            storeCanonicalDiskCopy(data: data, response: response, for: url, cache: cache, addressBook: addressBook)
+            return img
         } catch {
-            if self.image == nil { didFail = true; loadState = .failed }
-            if !UserFacingError.isCancellation(error) { onSourceOutcome?(.failed) }
+            return nil
         }
     }
 

@@ -16,12 +16,21 @@ Ports (P = the port given on the command line, default 8421)
   D  A port nobody listens on (`deadPort` in `/__whoami`): bound by this
      process for its whole life WITHOUT `listen`, so a connection is refused
      and no other process can take the port meanwhile.
+  T  Local address over TLS (`tlsLocalPort` in `/__whoami`, null without
+     `openssl`): the same API as L (same modes), served with a self-signed
+     certificate for 127.0.0.1 AND a REQUIRED client certificate (the CA of
+     "Swimmich Test CA"; client A, PKCS#12 password `alpha`). A journal entry
+     of this port exists only after a handshake where the client accepted the
+     self-signed certificate and presented A. Chosen by the system like L.
 
 Every `/__requests` entry carries what a scenario asserts on:
-  address  `external` or `local`: the port the request arrived on;
+  address  `external` or `local`: the port the request arrived on (T is `local`);
   token    true when the request carried `Authorization`,
            `x-immich-user-token` or an `immich_access_token` cookie;
-  xAccess  the value of `X-Access`, or null.
+  xAccess  the value of `X-Access`, or null;
+  tls      true only for a request that arrived on T;
+  cert     on T, "A" / "unknown" (the label of the client certificate shown) or
+           null (none); null on the other ports.
 
 Control (never logged, answered on both ports)
 ----------------------------------------------
@@ -31,9 +40,23 @@ Control (never logged, answered on both ports)
       notimmich     `GET /api/server/ping` is 200 `{"status":"ok"}` and
                     `GET /api/server/version` is 404 (a web server that is not Immich);
       otherversion  `GET /api/server/version` answers 1.118.0 (another server).
-  GET /__whoami                    the base's answer plus `localPort` and `deadPort`.
+  GET /__whoami                    the base's answer plus `localPort`, `tlsLocalPort`
+                                   and `deadPort`.
+  GET /__handshakes                the TLS handshakes of T since the last reset:
+                                   [{"ok": bool, "cert": "A"|"unknown"|null, "error": str|null}].
+  GET /__client-cert/current       the PKCS#12 of client A (`application/octet-stream`,
+                                   `no-store`), the file `-uiTestClientCertificateFeed`
+                                   downloads; 404 without TLS material.
   GET /__reset, GET /__requests    as in the base (`/__reset` also puts the local
-                                   address back to `immich`).
+                                   address back to `immich` and empties the handshakes).
+
+`POST /api/assets` is the share extension's upload: multipart, answered 201
+`{"id": <UPLOAD_ID>, "status": "created"}` (copied from `immich_stub_client_cert.py`).
+The certificates are made at start-up with `openssl` (in a temporary folder;
+copied from `immich_stub_selfsigned.py` CERT_CONFIG / make_certificate and
+`immich_stub_client_cert.py` CA_CONFIG / CLIENT_* / make_fixtures, which this
+module must NOT import: their routes would hijack the sign-in). Without `openssl`
+the stub writes one line on stderr and runs without T (`tlsLocalPort: null`).
 
 `/api/socket.io/` is only logged (the base answers it like any unrouted read),
 which is all a scenario needs: the log says WHICH address a socket handshake
@@ -51,10 +74,15 @@ Run by hand (the launcher `.omp/orchestration/uitest.sh` is not involved):
         -only-testing:ImmichSwiftUIUITests/ServerAddressesUITests
 """
 
+import hashlib
 import json
 import os
+import re
 import socket
+import ssl
+import subprocess
 import sys
+import tempfile
 import threading
 import time
 from http.server import ThreadingHTTPServer
@@ -68,14 +96,171 @@ from immich_stub_base import STATE, Request, Response, StubHandler, router
 
 SILENT_DELAY = 3.0
 LOCAL_MODES = ("immich", "silent", "notimmich", "otherversion")
+UPLOAD_ID = "dddddddd-1111-4111-8111-000000000001"
 
 # One dict, mutated in place; `/__reset` puts `local` back (`router.reset`).
-ADDRESSES = {"local": "immich", "localPort": 0, "deadPort": 0}
+ADDRESSES = {"local": "immich", "localPort": 0, "deadPort": 0, "tlsLocalPort": None}
+
+# The TLS port's material and journal. `P12` is the bytes of client A's file;
+# `FINGERPRINTS` maps the SHA-256 of a DER client certificate to its label.
+TLS_MATERIAL = {"p12": None}
+FINGERPRINTS = {}
+HANDSHAKES = []
+HANDSHAKES_LOCK = threading.Lock()
+
+# `immich_stub_selfsigned.py:105-118`
+CERT_CONFIG = """\
+[req]
+distinguished_name = dn
+x509_extensions = v3
+prompt = no
+[dn]
+CN = 127.0.0.1
+[v3]
+subjectAltName = IP:127.0.0.1
+extendedKeyUsage = serverAuth
+basicConstraints = critical, CA:TRUE
+subjectKeyIdentifier = hash
+authorityKeyIdentifier = keyid:always
+"""
+
+# `immich_stub_client_cert.py:152-177`
+CA_CONFIG = """\
+[req]
+distinguished_name = dn
+x509_extensions = v3
+prompt = no
+[dn]
+CN = Swimmich Test CA
+[v3]
+basicConstraints = critical, CA:TRUE
+keyUsage = critical, keyCertSign, cRLSign
+subjectKeyIdentifier = hash
+"""
+
+CLIENT_CONFIG = """\
+[req]
+distinguished_name = dn
+prompt = no
+[dn]
+CN = {cn}
+"""
+
+CLIENT_EXTENSIONS = """\
+basicConstraints = CA:FALSE
+keyUsage = digitalSignature
+extendedKeyUsage = clientAuth
+"""
+
+# The algorithms `SecPKCS12Import` reads (`immich_stub_client_cert.py:179-181`).
+LEGACY_P12 = ["-keypbe", "PBE-SHA1-3DES", "-certpbe", "PBE-SHA1-3DES", "-macalg", "sha1"]
 
 
 @router.reset
 def _reset_addresses():
     ADDRESSES["local"] = "immich"
+    with HANDSHAKES_LOCK:
+        HANDSHAKES.clear()
+
+
+def _carries_token(headers):
+    cookie = headers.get("Cookie") or ""
+    return bool(headers.get("Authorization") or headers.get("x-immich-user-token")
+                or "immich_access_token" in cookie)
+
+
+# MARK: - TLS material
+
+def _openssl(*args):
+    subprocess.run(["openssl", *args], check=True, capture_output=True)
+
+
+def _write(path, text):
+    with open(path, "w") as handle:
+        handle.write(text)
+
+
+def make_tls_material():
+    """`(server cert, server key, CA)` paths, with client A's PKCS#12 and its
+    fingerprint filled in `TLS_MATERIAL` / `FINGERPRINTS`; None when `openssl`
+    is absent or fails (one line on stderr, the stub runs without port T)."""
+    try:
+        folder = tempfile.mkdtemp(prefix="immich-stub-server-addresses-")
+
+        def at(name):
+            return os.path.join(folder, name)
+
+        _write(at("server.cnf"), CERT_CONFIG)
+        _openssl("req", "-x509", "-newkey", "rsa:2048", "-sha256", "-days", "30", "-nodes",
+                 "-keyout", at("server.key"), "-out", at("server.pem"), "-config", at("server.cnf"))
+        _write(at("ca.cnf"), CA_CONFIG)
+        _openssl("req", "-x509", "-newkey", "rsa:2048", "-sha256", "-days", "30", "-nodes",
+                 "-keyout", at("ca.key"), "-out", at("ca.pem"), "-config", at("ca.cnf"))
+        _write(at("client.ext"), CLIENT_EXTENSIONS)
+        _write(at("a.cnf"), CLIENT_CONFIG.format(cn="client-a"))
+        _openssl("req", "-new", "-newkey", "rsa:2048", "-sha256", "-nodes",
+                 "-keyout", at("a.key"), "-out", at("a.csr"), "-config", at("a.cnf"))
+        _openssl("x509", "-req", "-in", at("a.csr"), "-CA", at("ca.pem"), "-CAkey", at("ca.key"),
+                 "-CAcreateserial", "-days", "30", "-sha256", "-extfile", at("client.ext"),
+                 "-out", at("a.pem"))
+        _openssl("pkcs12", "-export", "-inkey", at("a.key"), "-in", at("a.pem"),
+                 *LEGACY_P12, "-passout", "pass:alpha", "-out", at("a.p12"))
+        with open(at("a.pem")) as handle:
+            der = ssl.PEM_cert_to_DER_cert(handle.read())
+        FINGERPRINTS[hashlib.sha256(der).hexdigest()] = "A"
+        with open(at("a.p12"), "rb") as handle:
+            TLS_MATERIAL["p12"] = handle.read()
+        return at("server.pem"), at("server.key"), at("ca.pem")
+    except (OSError, subprocess.CalledProcessError, ValueError) as error:
+        detail = error.stderr.decode("utf-8", "replace") if isinstance(error, subprocess.CalledProcessError) else str(error)
+        sys.stderr.write(f"immich_stub_server_addresses: no TLS port (openssl: {detail.strip()})\n")
+        TLS_MATERIAL["p12"] = None
+        FINGERPRINTS.clear()
+        return None
+
+
+def peer_label(tls):
+    """"A", "unknown", or None when the peer showed no certificate
+    (`immich_stub_client_cert.py:238-243`)."""
+    der = tls.getpeercert(binary_form=True)
+    if der is None:
+        return None
+    return FINGERPRINTS.get(hashlib.sha256(der).hexdigest(), "unknown")
+
+
+# MARK: - Upload (copied from immich_stub_client_cert.py:329-359)
+
+def _part_names(raw):
+    """The `name="…"` of every part of a multipart body, in order."""
+    return re.findall(r'(?<!file)name="([^"]+)"', raw)
+
+
+def _value(raw, name):
+    """The text value of a multipart part (`fileCreatedAt`, `deviceId`, …)."""
+    match = re.search(r'name="%s"\r\n\r\n(.*?)\r\n' % re.escape(name), raw, re.S)
+    return match.group(1) if match else None
+
+
+@router.post("/api/assets")
+def upload(req):
+    """The extension's multipart upload — parsed, so a wrong body is visible."""
+    raw = req.body.get("raw", "")
+    names = _part_names(raw)
+    filename = (re.search(r'filename="([^"]*)"', raw) or [None, None])[1]
+    req.note(
+        parts=names,
+        filename=filename,
+        asset_data=("assetData" in names),
+        file_created_at=_value(raw, "fileCreatedAt"),
+        device_asset_id=_value(raw, "deviceAssetId"),
+        device_id=_value(raw, "deviceId"),
+        checksum=req.headers.get("x-immich-checksum"),
+        authorization=req.headers.get("Authorization"),
+        content_type=(req.headers.get("Content-Type") or "").split(";")[0],
+    )
+    return Response({"id": UPLOAD_ID, "status": "created"}, status=201)
+
+
 
 
 def _carries_token(headers):
@@ -89,6 +274,7 @@ class AddressHandler(StubHandler):
     the local address. `address` is set by the two subclasses below."""
 
     address = "external"
+    tls = False
 
     def _dispatch(self, method):
         path, _, query = self.path.partition("?")
@@ -103,6 +289,8 @@ class AddressHandler(StubHandler):
             "address": self.address,
             "token": _carries_token(self.headers),
             "xAccess": self.headers.get("X-Access"),
+            "tls": self.tls,
+            "cert": getattr(self.request, "peer_cert_label", None) if self.tls else None,
         }
         STATE["requests"].append(entry)
         response = None
@@ -146,10 +334,19 @@ class AddressHandler(StubHandler):
             return Response({
                 "port": STATE["port"],
                 "localPort": ADDRESSES["localPort"],
+                "tlsLocalPort": ADDRESSES["tlsLocalPort"],
                 "deadPort": ADDRESSES["deadPort"],
                 "pid": os.getpid(),
                 "stub": os.path.basename(sys.argv[0]),
             })
+        if path == "/__handshakes":
+            with HANDSHAKES_LOCK:
+                return Response(list(HANDSHAKES))
+        if path == "/__client-cert/current":
+            if TLS_MATERIAL["p12"] is None:
+                return Response({"error": "no TLS material: is openssl on the PATH?"}, status=404)
+            return Response(TLS_MATERIAL["p12"], ctype="application/octet-stream",
+                            headers={"Cache-Control": "no-store"})
         return super()._control(path, query)
 
     def _send(self, response):
@@ -167,27 +364,78 @@ class LocalHandler(AddressHandler):
     address = "local"
 
 
+class LocalTLSHandler(AddressHandler):
+    """The local address over TLS: the same modes as `LocalHandler`."""
+    address = "local"
+    tls = True
+
+
+class LocalTLSServer(ThreadingHTTPServer):
+    """`ThreadingHTTPServer` over TLS with a REQUIRED client certificate, one
+    handshake journal entry per accepted connection
+    (`immich_stub_client_cert.py:597-621`)."""
+
+    def __init__(self, address, handler, context):
+        super().__init__(address, handler)
+        self.context = context
+
+    def finish_request(self, request, client_address):
+        request.settimeout(30)
+        try:
+            tls = self.context.wrap_socket(request, server_side=True)
+        except OSError as error:  # no certificate, a bad one, or the client cut the socket
+            with HANDSHAKES_LOCK:
+                HANDSHAKES.append({"ok": False, "cert": None, "error": str(error)})
+            return
+        label = peer_label(tls)
+        with HANDSHAKES_LOCK:
+            HANDSHAKES.append({"ok": True, "cert": label, "error": None})
+        tls.peer_cert_label = label
+        try:
+            self.RequestHandlerClass(tls, client_address, self)
+        except OSError:
+            pass  # the client left mid-request
+        finally:
+            tls.close()
+
+
 def main():
     port = int(sys.argv[1]) if len(sys.argv) > 1 else 8421
+    # Material first: a few seconds at most, inside the launcher's wait for `/__whoami`.
+    material = make_tls_material()
     # The external port taken raises OSError here: no silent fallback to another.
     external = ThreadingHTTPServer(("127.0.0.1", port), ExternalHandler)
     local = ThreadingHTTPServer(("127.0.0.1", 0), LocalHandler)
+    tls_local = None
+    if material is not None:
+        cert, key, ca = material
+        context = ssl.SSLContext(ssl.PROTOCOL_TLS_SERVER)
+        context.minimum_version = ssl.TLSVersion.TLSv1_2
+        context.load_cert_chain(cert, key)
+        context.verify_mode = ssl.CERT_REQUIRED
+        context.load_verify_locations(ca)
+        tls_local = LocalTLSServer(("127.0.0.1", 0), LocalTLSHandler, context)
     # Bound, never listening: a connection to it is refused, and the port stays
     # ours (so free of any other listener) until the process exits.
     dead = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
     dead.bind(("127.0.0.1", 0))
     STATE["port"] = external.server_address[1]
     ADDRESSES["localPort"] = local.server_address[1]
+    ADDRESSES["tlsLocalPort"] = tls_local.server_address[1] if tls_local else None
     ADDRESSES["deadPort"] = dead.getsockname()[1]
     print(json.dumps({
         "port": STATE["port"],
         "localPort": ADDRESSES["localPort"],
+        "tlsLocalPort": ADDRESSES["tlsLocalPort"],
         "deadPort": ADDRESSES["deadPort"],
         "label": "server_addresses",
         "timeline_day": base.TIMELINE_DAY,
-        "endpoints": base.BASE_ENDPOINTS + ["GET /__addresses"] + router.endpoints(),
+        "endpoints": base.BASE_ENDPOINTS + ["GET /__addresses", "GET /__handshakes",
+                                            "GET /__client-cert/current"] + router.endpoints(),
     }), flush=True)
     threading.Thread(target=local.serve_forever, daemon=True).start()
+    if tls_local:
+        threading.Thread(target=tls_local.serve_forever, daemon=True).start()
     external.serve_forever()
 
 

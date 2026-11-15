@@ -84,24 +84,26 @@ final class ServerAddressBookTests: XCTestCase {
         )
     }
 
-    func test_AC_241_responderPresentsTheAccountIdentityForTheLocalHost() throws {
-        let store = InMemoryClientIdentityStore()
-        try store.save(try ClientCertificateTestSupport.identityA(), for: ClientCertificateTestSupport.key("https://photos.example.org"))
+    func test_AC_241_emptyBookChangesNothing() {
+        let thumbnail = URL(string: "http://192.168.1.10:2283/api/assets/a/thumbnail?size=thumbnail")!
+        let localKey = ServerKey.of("http://192.168.1.10:2283")
+
+        let fresh = ServerAddressBook()
+        XCTAssertNil(fresh.accountURL)
+        XCTAssertNil(fresh.activeURL)
+        XCTAssertEqual(fresh.canonicalKey(for: localKey), localKey)
+        XCTAssertEqual(fresh.canonicalURL(for: thumbnail).absoluteString, thumbnail.absoluteString)
+
         let book = makeBook()
-        let responder = ClientCertificateResponder(
-            store: store, log: TLSChallengeLog(), canonicalKey: { book.canonicalKey(for: $0) }
+        XCTAssertEqual(
+            book.canonicalKey(for: ServerKey.of("http://192.168.1.11:2283")), ServerKey.of("http://192.168.1.11:2283"),
+            "another host is not an address of the account"
         )
 
-        let local = try XCTUnwrap(responder.answer(
-            ClientCertificateTestSupport.clientCertificateChallenge(host: "192.168.1.10", port: 2283, protocolName: NSURLProtectionSpaceHTTP)
-        ))
-        XCTAssertEqual(local.0, .useCredential)
-        XCTAssertNotNil(local.1?.identity)
-
-        let foreign = try XCTUnwrap(responder.answer(
-            ClientCertificateTestSupport.clientCertificateChallenge(host: "192.168.1.99", port: 2283, protocolName: NSURLProtectionSpaceHTTP)
-        ))
-        XCTAssertEqual(foreign.0, .performDefaultHandling)
-        XCTAssertNil(foreign.1)
+        book.clear()
+        XCTAssertNil(book.accountURL)
+        XCTAssertNil(book.activeURL)
+        XCTAssertEqual(book.canonicalKey(for: localKey), localKey)
+        XCTAssertEqual(book.canonicalURL(for: thumbnail).absoluteString, thumbnail.absoluteString)
     }
 }

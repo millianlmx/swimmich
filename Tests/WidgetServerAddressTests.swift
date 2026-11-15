@@ -56,14 +56,30 @@ final class WidgetServerAddressTests: XCTestCase {
         return probe
     }
 
-    private func refreshWidget(_ session: WidgetSession, probe: ScriptedServerAddressProbe) async -> RecordingTransport {
+    private func refreshWidgetWall(_ session: WidgetSession, probe: ScriptedServerAddressProbe) async -> (RecordingTransport, PhotoWall) {
         let transport = RecordingTransport()
         let provider = WidgetDataProvider(
             sessionStore: StubSessionStore(session: session), transport: { transport },
             endpoints: WidgetEndpointResolver(probe: probe, deadline: .milliseconds(200))
         )
-        _ = await provider.recentPhotos(limit: 1, target: .medium)
-        return transport
+        let wall = await provider.recentPhotos(limit: 1, target: .medium)
+        return (transport, wall)
+    }
+
+    private func refreshWidget(_ session: WidgetSession, probe: ScriptedServerAddressProbe) async -> RecordingTransport {
+        await refreshWidgetWall(session, probe: probe).0
+    }
+
+    /// The favorite intent's write, on `session`, and the requests it sent.
+    private func toggleFavorite(_ session: WidgetSession, probe: ScriptedServerAddressProbe) async -> [URLRequest] {
+        let transport = RecordingTransport()
+        await ToggleFavoriteIntent.write(
+            assetId: "a1", favorite: true,
+            sessionStore: StubSessionStore(session: session), transport: transport,
+            reloadTimelines: { _ in }, log: { _ in },
+            endpoints: WidgetEndpointResolver(probe: probe, deadline: .milliseconds(200))
+        )
+        return transport.requests
     }
 
     private func hosts(_ requests: [URLRequest]) -> Set<String> {
@@ -90,9 +106,6 @@ final class WidgetServerAddressTests: XCTestCase {
     func test_AC_239_widgetKeepsExternalWhenLocalIsAnotherServer() async {
         let other = await refreshWidget(session(), probe: probe(local: .immich(version: "1.120.0")))
         XCTAssertEqual(hosts(other.requests), ["photos.example.org:443"], "another version is not this server")
-
-        let denied = await refreshWidget(session(), probe: probe(local: .localNetworkDenied))
-        XCTAssertEqual(hosts(denied.requests), ["photos.example.org:443"], "a refused local network falls back silently")
     }
 
     func test_AC_239_externalMuteKnownVersionLetsLocalWin() async {
@@ -212,5 +225,87 @@ final class WidgetServerAddressTests: XCTestCase {
         XCTAssertEqual(answer(host: "nas.local", port: 2283), .useCredential, "the local address presents the account's certificate")
         XCTAssertEqual(answer(host: "photos.example.org", port: 443), .useCredential)
         XCTAssertEqual(answer(host: "other.example", port: 443), .performDefaultHandling, "never to a foreign server")
+    }
+
+    // MARK: - L-26 part 2: widgets and extension, requirement by requirement
+
+    func test_AC_239_1_slowLocalFallsBackWithinTheDeadline() async {
+        let probe = ScriptedServerAddressProbe()
+        probe.script(local, ScriptedServerAddressProbe.Step(result: .immich(version: version), delay: .seconds(3)))
+        probe.answer(external, .immich(version: version))
+        let resolver = WidgetEndpointResolver(probe: probe)
+        let stored = session()
+
+        var resolved = stored
+        let elapsed = await ContinuousClock().measure { resolved = await resolver.resolve(stored) }
+
+        XCTAssertEqual(resolved.baseURL, external.absoluteString, "a local address that answers after the deadline is not used")
+        XCTAssertLessThan(elapsed, .milliseconds(2500))
+        XCTAssertEqual(probe.callCount(for: local), 1)
+    }
+
+    func test_AC_239_2_favoriteIntentFallsBackToExternal() async {
+        let requests = await toggleFavorite(session(), probe: probe(local: .unreachable))
+
+        XCTAssertEqual(requests.map { "\($0.httpMethod ?? "") \($0.url?.absoluteString ?? "")" }, ["PUT https://photos.example.org/api/assets/a1"])
+    }
+
+    func test_AC_239_5_noLocalAddressNeverProbes() async {
+        let stored = WidgetSession(
+            baseURL: "https://vpn.example.net", token: "widget-jwt",
+            localURL: nil, autoSwitch: true, lastKnownVersion: version, accountURL: external.absoluteString
+        )
+        let probe = ScriptedServerAddressProbe()
+
+        let transport = await refreshWidget(stored, probe: probe)
+
+        XCTAssertTrue(probe.calls.isEmpty)
+        XCTAssertEqual(hosts(transport.requests), ["vpn.example.net:443"])
+    }
+
+    func test_AC_239_6_localThatIsNotImmichStaysExternal() async {
+        let transport = await refreshWidget(session(), probe: probe(local: .notImmich))
+
+        XCTAssertFalse(transport.requests.isEmpty)
+        XCTAssertEqual(hosts(transport.requests), ["photos.example.org:443"])
+        XCTAssertFalse(transport.requests.contains { $0.url?.host == "192.168.1.10" })
+    }
+
+    func test_AC_241_1_headersOnTheExternalFallback() async {
+        let headers = [StaticCustomHeaders.xAccess]
+        let probe = self.probe(local: .unreachable)
+
+        let transport = await refreshWidget(session(headers: headers), probe: probe)
+
+        XCTAssertFalse(transport.requests.isEmpty)
+        XCTAssertEqual(hosts(transport.requests), ["photos.example.org:443"])
+        XCTAssertTrue(transport.requests.allSatisfy { $0.value(forHTTPHeaderField: "X-Access") == "secret" })
+        XCTAssertEqual(probe.calls.count, 2)
+        XCTAssertTrue(probe.calls.allSatisfy { $0.headers == headers })
+    }
+
+    /// An address the widget cannot use is a silent fallback, never a message:
+    /// the wall, the favorite write and the extension's base all stay on the
+    /// external address.
+    private func assertSilentFallback(_ localResult: ServerAddressProbeResult, file: StaticString = #filePath, line: UInt = #line) async {
+        let (transport, wall) = await refreshWidgetWall(session(), probe: probe(local: localResult))
+        XCTAssertEqual(hosts(transport.requests), ["photos.example.org:443"], file: file, line: line)
+        XCTAssertEqual(wall.availability, .ready, file: file, line: line)
+        XCTAssertNil(wall.failureHint, file: file, line: line)
+
+        let writes = await toggleFavorite(session(), probe: probe(local: localResult))
+        XCTAssertEqual(writes.map { $0.url?.absoluteString }, ["https://photos.example.org/api/assets/a1"], file: file, line: line)
+
+        let stored = session()
+        let resolved = await WidgetEndpointResolver(probe: probe(local: localResult), deadline: .milliseconds(200)).resolve(stored)
+        XCTAssertEqual(resolved, stored, "the extension's base is the external address", file: file, line: line)
+    }
+
+    func test_AC_241_2_untrustedLocalFallsBackSilently() async {
+        await assertSilentFallback(.untrustedCertificate(host: "192.168.1.10"))
+    }
+
+    func test_AC_250_1_deniedLocalNetworkFallsBackSilently() async {
+        await assertSilentFallback(.localNetworkDenied)
     }
 }

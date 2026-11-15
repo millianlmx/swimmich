@@ -59,6 +59,9 @@ final class MockImmichClient: ImmichClient, @unchecked Sendable {
     var lastLoginBody: LoginCredentialDto?
     var loginResponse: LoginResponseDto?
     var loginError: Error?
+    /// The token configured when each `logout()` was sent (B-42: the held
+    /// sign-in of a required password change is signed out on the server).
+    var logoutTokens: [String?] = []
 
     // OAuth (P5)
     var oauthAuthorizeResponse: OAuthAuthorizeResponseDto?
@@ -81,6 +84,8 @@ final class MockImmichClient: ImmichClient, @unchecked Sendable {
     /// `3.2.0` (or later) version here.
     var serverVersionResponse: ServerVersionResponseDto?
     var serverVersionError: Error?
+    /// Awaited in `serverVersion` after `bump()`, before the error check (L-26).
+    var serverVersionGate: (() async throws -> Void)?
     /// Whether `serverVersion()` is one of the `requestCount` requests. The
     /// search view model probes the version before every metadata request;
     /// suites that count *search* requests turn this off.
@@ -92,6 +97,8 @@ final class MockImmichClient: ImmichClient, @unchecked Sendable {
     var validateTokenCallCount = 0
     /// Awaited in `validateToken` after `bump()` and the recording, before the error check.
     var validateTokenGate: (() async throws -> Void)?
+    /// Awaited in `logout` after `bump()`, before the error check (L-26).
+    var logoutGate: (() async throws -> Void)?
 
     // Locked folder (gap G12)
     /// Awaited in `getAuthStatus` after the call is counted and before the
@@ -487,8 +494,24 @@ final class MockImmichClient: ImmichClient, @unchecked Sendable {
         return pingResponse ?? ServerPingResponse(res: "pong")
     }
 
+    // Startup reachability probe (L-28). Shares `pingError`/`pingResponse` with
+    // `ping()`; the gate holds the probe so a test decides when it fails. It is
+    // deliberately not counted in `requestCount`: the probe is not a request of
+    // the screen under test, and the timeline tests count theirs.
+    var pingTimeouts: [TimeInterval] = []
+    /// Awaited in `ping(timeout:)` after the timeout is recorded, before the error check.
+    var pingTimeoutGate: (() async throws -> Void)?
+
+    func ping(timeout: TimeInterval) async throws -> ServerPingResponse {
+        lock.lock(); pingTimeouts.append(timeout); lock.unlock()
+        if let pingTimeoutGate { try await pingTimeoutGate() }
+        if let e = globalError ?? pingError { throw e }
+        return pingResponse ?? ServerPingResponse(res: "pong")
+    }
+
     func serverVersion() async throws -> ServerVersionResponseDto {
         if versionProbeCountsAsRequest { bump() }
+        if let gate = serverVersionGate { try await gate() }
         if let e = globalError ?? serverVersionError { throw e }
         return serverVersionResponse ?? ServerVersionResponseDto(major: 1, minor: 120, patch: 0, prerelease: nil)
     }
@@ -504,6 +527,22 @@ final class MockImmichClient: ImmichClient, @unchecked Sendable {
         )
     }
 
+    // Sign-in modes (L-28).
+    var loginOptionsResponse: ServerLoginOptions?
+    var loginOptionsError: Error?
+    /// Versions `loginOptions(serverVersion:)` was called with, in order.
+    var loginOptionsCalls: [ServerVersionResponseDto?] = []
+    /// Awaited in `loginOptions` after the call is recorded, before the error check.
+    var loginOptionsGate: (() async throws -> Void)?
+
+    func loginOptions(serverVersion: ServerVersionResponseDto?) async throws -> ServerLoginOptions {
+        bump()
+        lock.lock(); loginOptionsCalls.append(serverVersion); lock.unlock()
+        if let loginOptionsGate { try await loginOptionsGate() }
+        if let e = globalError ?? loginOptionsError { throw e }
+        return loginOptionsResponse ?? ServerLoginOptions(passwordLogin: true, oauth: false, oauthButtonText: nil)
+    }
+
     func login(email: String, password: String) async throws -> LoginResponseDto {
         bump()
         lastLoginBody = LoginCredentialDto(email: email, password: password)
@@ -516,6 +555,8 @@ final class MockImmichClient: ImmichClient, @unchecked Sendable {
 
     func logout() async throws -> LogoutResponseDto {
         bump()
+        lock.lock(); logoutTokens.append(configuredToken); lock.unlock()
+        if let gate = logoutGate { try await gate() }
         if let e = globalError { throw e }
         return logoutResponse ?? LogoutResponseDto(successful: true, redirectUri: "")
     }

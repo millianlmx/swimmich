@@ -104,7 +104,10 @@ final class AppSettingsStore {
             .flatMap(AppTheme.init(rawValue:)) ?? .system
         storedAccent = defaults.string(forKey: Self.accentColorKey)
             .flatMap(AppAccent.init(rawValue:)) ?? .immich
-        storedHapticsEnabled = defaults.object(forKey: Self.hapticsEnabledKey) as? Bool ?? true
+        // `bool(forKey:)`, not `as? Bool`: a launch argument (`-hapticFeedbackEnabled NO`)
+        // reaches the defaults as the string "NO", which `as? Bool` reads as absent.
+        storedHapticsEnabled = defaults.object(forKey: Self.hapticsEnabledKey) == nil
+            ? true : defaults.bool(forKey: Self.hapticsEnabledKey)
         storedSmoothScrubbing = defaults.object(forKey: Self.timelineSmoothScrubbingKey) as? Bool ?? false
         storedShareQuality = defaults.string(forKey: Self.shareFileTypeKey)
             .flatMap(ShareQuality.init(rawValue:)) ?? .preview
