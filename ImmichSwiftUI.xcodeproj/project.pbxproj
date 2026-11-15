@@ -10,6 +10,7 @@
 		D26E3FA1B2C3D4E5F6A7B8C9 /* immich_stub_server_addresses.py in Resources */ = {isa = PBXBuildFile; fileRef = D26E3EA1B2C3D4E5F6A7B8C9 /* immich_stub_server_addresses.py */; };
 		D26E3DA1B2C3D4E5F6A7B8C9 /* ServerAddressesUITests.swift in Sources */ = {isa = PBXBuildFile; fileRef = D26E3CA1B2C3D4E5F6A7B8C9 /* ServerAddressesUITests.swift */; };
 		D26E39A1B2C3D4E5F6A7B8C9 /* NetworkSettingsViewModelTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = D26E38A1B2C3D4E5F6A7B8C9 /* NetworkSettingsViewModelTests.swift */; };
+		D26E43A1B2C3D4E5F6A7B8C9 /* LocalNetworkUsageTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = D26E42A1B2C3D4E5F6A7B8C9 /* LocalNetworkUsageTests.swift */; };
 		D26E35A1B2C3D4E5F6A7B8C9 /* NetworkSettingsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = D26E34A1B2C3D4E5F6A7B8C9 /* NetworkSettingsView.swift */; };
 		D26E33A1B2C3D4E5F6A7B8C9 /* NetworkSettingsViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = D26E32A1B2C3D4E5F6A7B8C9 /* NetworkSettingsViewModel.swift */; };
 		D26E31A1B2C3D4E5F6A7B8C9 /* SharedLinkServerAddressTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = D26E30A1B2C3D4E5F6A7B8C9 /* SharedLinkServerAddressTests.swift */; };
@@ -894,6 +895,7 @@
 		D26E3EA1B2C3D4E5F6A7B8C9 /* immich_stub_server_addresses.py */ = {isa = PBXFileReference; lastKnownFileType = text.script.python; path = immich_stub_server_addresses.py; sourceTree = "<group>"; };
 		D26E3CA1B2C3D4E5F6A7B8C9 /* ServerAddressesUITests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ServerAddressesUITests.swift; sourceTree = "<group>"; };
 		D26E38A1B2C3D4E5F6A7B8C9 /* NetworkSettingsViewModelTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NetworkSettingsViewModelTests.swift; sourceTree = "<group>"; };
+		D26E42A1B2C3D4E5F6A7B8C9 /* LocalNetworkUsageTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LocalNetworkUsageTests.swift; sourceTree = "<group>"; };
 		D26E34A1B2C3D4E5F6A7B8C9 /* NetworkSettingsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NetworkSettingsView.swift; sourceTree = "<group>"; };
 		D26E32A1B2C3D4E5F6A7B8C9 /* NetworkSettingsViewModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NetworkSettingsViewModel.swift; sourceTree = "<group>"; };
 		D26E30A1B2C3D4E5F6A7B8C9 /* SharedLinkServerAddressTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SharedLinkServerAddressTests.swift; sourceTree = "<group>"; };
@@ -2266,6 +2268,7 @@
 				D26E0CA1B2C3D4E5F6A7B8C9 /* UserDefaultsServerAddressSettingsStoreTests.swift */,
 				D26E0EA1B2C3D4E5F6A7B8C9 /* URLSessionServerAddressProbeTests.swift */,
 				D26E38A1B2C3D4E5F6A7B8C9 /* NetworkSettingsViewModelTests.swift */,
+				D26E42A1B2C3D4E5F6A7B8C9 /* LocalNetworkUsageTests.swift */,
 				D26E30A1B2C3D4E5F6A7B8C9 /* SharedLinkServerAddressTests.swift */,
 				D26E2EA1B2C3D4E5F6A7B8C9 /* BackgroundBackupPassTests.swift */,
 				D26E2CA1B2C3D4E5F6A7B8C9 /* ReloadAfterEvaluationTests.swift */,
@@ -3477,6 +3480,7 @@
 				D26E0DA1B2C3D4E5F6A7B8C9 /* UserDefaultsServerAddressSettingsStoreTests.swift in Sources */,
 				D26E0FA1B2C3D4E5F6A7B8C9 /* URLSessionServerAddressProbeTests.swift in Sources */,
 				D26E39A1B2C3D4E5F6A7B8C9 /* NetworkSettingsViewModelTests.swift in Sources */,
+				D26E43A1B2C3D4E5F6A7B8C9 /* LocalNetworkUsageTests.swift in Sources */,
 				D26E31A1B2C3D4E5F6A7B8C9 /* SharedLinkServerAddressTests.swift in Sources */,
 				D26E2FA1B2C3D4E5F6A7B8C9 /* BackgroundBackupPassTests.swift in Sources */,
 				D26E2DA1B2C3D4E5F6A7B8C9 /* ReloadAfterEvaluationTests.swift in Sources */,

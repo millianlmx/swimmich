@@ -369,11 +369,18 @@ final class ServerAddressesUITests: XCTestCase {
         start()
         openNetwork()
         setSwitch(on: true)
+        let switched = mark()
         saveLocal(localAddress)
         waitForLocalStatus("reachable")
         simulateNetworkChange()
         waitForActiveKind("local")
         dismissHub()
+        // The switch is already on when the address is saved: saving measures it, retains the
+        // local address and reloads the visible tab (changedAddress), so the reload is that of the save.
+        let reloaded = waitForRequest(from: switched) {
+            $0.path.hasPrefix("/api/timeline/") && $0.address == "local" && $0.token
+        }
+        XCTAssertNotNil(reloaded, "the timeline reloads from the local address:\n\(describe(traffic(from: switched)))")
 
         var index = mark()
         let local = openPhotoAndFindPreview(from: index, id: photoID)
@@ -396,15 +403,43 @@ final class ServerAddressesUITests: XCTestCase {
         start()
         openNetwork()
         setSwitch(on: true)
-        setLocalMode("silent")
         saveLocal(localAddress)
-        waitForLocalStatus("unreachable", timeout: 30)
+        waitForLocalStatus("reachable")
+        simulateNetworkChange()
+        waitForActiveKind("local")
+
+        // The app goes to the background and comes back while the local address answers too slowly.
+        setLocalMode("silent")
+        XCUIDevice.shared.press(.home)
+        XCTAssertTrue(waitUntil(timeout: 10) {
+            self.app.state == .runningBackgroundSuspended || self.app.state == .runningBackground
+        }, "the app never went to the background")
+        app.activate()
+        waitForActiveKind("external", timeout: 30)
+        dismissHub()
+        let back = mark()
+        let external = openPhotoAndFindPreview(from: back, id: photoID)
+        XCTAssertEqual(external?.address, "external", "back in the foreground, the requests go to the external address:\n\(describe(traffic(from: back)))")
+        XCTAssertEqual(external?.token, true)
+
+        // Opening the screen measures again; let that measure end before the local address answers.
+        openNetwork()
+        Thread.sleep(forTimeInterval: 3)
         waitForActiveKind("external")
 
         setLocalMode("immich")
+        let index = mark()
         simulateNetworkChange()
         waitForLocalStatus("reachable")
         waitForActiveKind("local")
+        dismissHub()
+        let reloaded = waitForRequest(from: index) {
+            $0.path.hasPrefix("/api/timeline/") && $0.address == "local" && $0.token
+        }
+        XCTAssertNotNil(reloaded, "the requests go back to the local address:\n\(describe(traffic(from: index)))")
+        XCTAssertTrue(app.tabBars.buttons.matching(labelPredicate(["Photos", "Fotos"])).firstMatch.exists,
+                      "the user must still be signed in")
+        XCTAssertFalse(element("networkLocalAddressField").exists, "no sign-in field: the session stayed")
     }
 
     func test_AC_242() throws {
@@ -424,7 +459,19 @@ final class ServerAddressesUITests: XCTestCase {
 
     func test_AC_235() throws {
         start()
-        openNetwork()
+        // Network comes before Custom HTTP Headers and is pushed on the hub's own stack.
+        openHub()
+        reveal("customHeadersRow")
+        XCTAssertTrue(element("networkSettingsRow").exists && element("customHeadersRow").exists,
+                      "the Advanced section lacks a row — \(screenReads())")
+        XCTAssertLessThan(element("networkSettingsRow").frame.minY, element("customHeadersRow").frame.minY,
+                          "Network must come before Custom HTTP Headers — \(screenReads())")
+        element("networkSettingsRow").tap()
+        XCTAssertTrue(element("networkLocalAddressField").waitForExistence(timeout: 15),
+                      "the Network setting never opened — \(screenReads())")
+        XCTAssertTrue(app.navigationBars["Network"].exists, "the pushed screen is titled Network")
+        XCTAssertTrue(app.navigationBars["Network"].buttons.firstMatch.exists,
+                      "a back button to the hub: the screen is pushed, with no stack of its own")
         XCTAssertEqual(element("networkAutoSwitchToggle").value as? String, "0", "the switch starts off")
         XCTAssertTrue(((element("networkExternalAddressField").value as? String) ?? "").contains("127.0.0.1:\(port)"),
                       "the external address is the connection address")
@@ -545,6 +592,7 @@ final class ServerAddressesUITests: XCTestCase {
         XCTAssertEqual(playback?.address, "external", "the video is read from the external address:\n\(describe(traffic(from: index)))")
         let after = traffic(from: index)
         XCTAssertFalse(after.contains { $0.address == "local" && !$0.isProbe }, "the local address only gets probes:\n\(describe(after))")
+        XCTAssertFalse(after.contains { $0.address == "local" && $0.token }, "the token never reaches the local address:\n\(describe(after))")
     }
 
     func test_AC_240() throws {
@@ -951,7 +999,20 @@ final class ServerAddressesUITests: XCTestCase {
         reveal("networkOpenSettingsButton")
         XCTAssertTrue(element("networkOpenSettingsButton").exists, "no button towards the system settings")
         waitForActiveKind("external")
-        XCTAssertFalse(traffic(from: index).contains { $0.address == "local" }, "a refused local network sends nothing there")
         XCTAssertFalse(element("networkLocalValidationMessage").exists, "a refusal is a state, not an error message")
+        dismissHub()
+        XCTAssertFalse(element("timelineLoadErrorBanner").exists, "a refused local network raises no error banner")
+        let shown = mark()
+        let preview = openPhotoAndFindPreview(from: shown, id: photoID)
+        XCTAssertEqual(preview?.address, "external", "the photo is served from the external address:\n\(describe(traffic(from: shown)))")
+        XCTAssertEqual(preview?.token, true)
+        XCTAssertFalse(traffic(from: index).contains { $0.address == "local" }, "a refused local network sends nothing there")
+
+        openNetwork()
+        waitForLocalStatus("denied")
+        reveal("networkOpenSettingsButton")
+        element("networkOpenSettingsButton").tap()
+        XCTAssertTrue(XCUIApplication(bundleIdentifier: "com.apple.Preferences").wait(for: .runningForeground, timeout: 20),
+                      "Open System Settings did not bring the Settings app")
     }
 }
