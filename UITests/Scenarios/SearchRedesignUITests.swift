@@ -666,8 +666,9 @@ final class SearchRedesignUITests: XCTestCase {
         waitForSearch("detected text", { $0.structured && $0.ocrMatches == "sunset" && $0.body["query"] == nil })
         openOptions()
         let latched = optionItem("searchOcrFilterToggle")
-        XCTAssertEqual(latched.value as? String, "on",
-                       "VoiceOver would not hear the toggle is on: value \(String(describing: latched.value)), label '\(latched.label)' — \(buttonsDump())")
+        let state = latched.label
+        XCTAssertTrue(state.contains("Search typed text in detected text") && state.contains("On") && !state.contains("Off"),
+                      "VoiceOver would not hear the toggle is on: label '\(state)', value \(String(describing: latched.value)) — \(buttonsDump())")
         closeOptions()
     }
 
@@ -679,7 +680,8 @@ final class SearchRedesignUITests: XCTestCase {
         let toggle = optionItem("searchOcrFilterToggle")
         XCTAssertTrue(toggle.waitForExistence(timeout: 10), "no detected-text toggle in the menu — \(screenText())")
         XCTAssertFalse(toggle.isEnabled, "the detected-text toggle is on offer on a 2.0 server")
-        XCTAssertEqual(toggle.value as? String, "off")
+        XCTAssertTrue(toggle.label.contains("Search typed text in detected text") && toggle.label.contains("Off"),
+                      "the detected-text toggle does not read off: label '\(toggle.label)'")
         closeOptions()
 
         openFilters()
@@ -1012,7 +1014,9 @@ final class SearchRedesignUITests: XCTestCase {
         let items = ["searchTextMode_smart", "searchTextMode_metadata", "searchTextMode_filename",
                      "searchTextMode_description", "searchOcrFilterToggle", "searchSaveButton", "searchSelectButton"]
         assertReadable(items.map(optionItem), "menu")
-        XCTAssertEqual(optionItem("searchOcrFilterToggle").value as? String, "off")
+        let ocrLabel = optionItem("searchOcrFilterToggle").label
+        XCTAssertTrue(ocrLabel.contains("Search typed text in detected text") && ocrLabel.contains("Off"),
+                      "the detected-text toggle does not read off: label '\(ocrLabel)'")
         closeOptions()
     }
 

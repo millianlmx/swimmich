@@ -384,17 +384,25 @@ struct SearchView: View {
     /// interpreted, not which grid is shown. Only the metadata route carries
     /// the criterion, and only a server with the v3.2.0 structured filter has a
     /// field for it: on an older one the item stays in the menu, disabled,
-    /// rather than silently searching something else. A check mark and the
-    /// VoiceOver value ("on"/"off") tell its state. Its label differs from the
-    /// Filters sheet's "Detected text" field, which sets the text itself.
+    /// rather than silently searching something else. A check mark and an
+    /// "On"/"Off" subtitle tell its state: the iOS 26 menu item drops
+    /// `.accessibilityValue`, but shows the second `Text` as a subtitle and
+    /// reads it as part of the label. Its label differs from the Filters
+    /// sheet's "Detected text" field, which sets the text itself.
     private var ocrFilterToggle: some View {
         Button {
             Task { await vm.setOcrFilterEnabled(!vm.ocrFilterEnabled) }
         } label: {
             if vm.ocrFilterEnabled {
-                Label("Search typed text in detected text", systemImage: "checkmark")
+                Label {
+                    Text("Search typed text in detected text")
+                    Text("On")
+                } icon: {
+                    Image(systemName: "checkmark")
+                }
             } else {
                 Text("Search typed text in detected text")
+                Text("Off")
             }
         }
         .disabled(vm.searchMode != .metadata || !vm.supportsStructuredSearch)

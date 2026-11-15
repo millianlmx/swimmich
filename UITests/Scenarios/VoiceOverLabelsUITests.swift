@@ -116,6 +116,8 @@ final class VoiceOverLabelsUITests: XCTestCase {
         "Slideshow": ["en": "Slideshow", "fr": "Diaporama", "de": "Diashow", "es": "Presentación", "it": "Presentazione"],
         "on": ["en": "on", "fr": "Activé", "de": "Ein", "es": "Activado", "it": "Attivato"],
         "off": ["en": "off", "fr": "Désactivé", "de": "Aus", "es": "Desactivado", "it": "Disattivato"],
+        "On": ["en": "On", "fr": "Activé", "de": "Ein", "es": "Activado", "it": "Attivato"],
+        "Off": ["en": "Off", "fr": "Désactivé", "de": "Aus", "es": "Desactivado", "it": "Disattivato"],
         "Item": ["en": "Item", "fr": "Élément", "de": "Objekt", "es": "Elemento", "it": "Elemento"],
         "Item, %@": ["en": "Item, %@", "fr": "Élément, %@", "de": "Objekt, %@", "es": "Elemento, %@", "it": "Elemento, %@"],
         "Video %lld of %lld": ["en": "Video %lld of %lld", "fr": "Vidéo %lld sur %lld", "de": "Video %lld von %lld", "es": "Vídeo %lld de %lld", "it": "Video %lld di %lld"],
@@ -294,16 +296,20 @@ final class VoiceOverLabelsUITests: XCTestCase {
                       "the video's Play/Pause did not flip from \"\(before)\" — it reads \"\(videoPlayPause.label)\"")
 
         // The search's detected-text toggle, in the "Search options" menu, is inactive
-        // (the stub's server predates the structured filter): it announces its
-        // action and "off".
+        // (the stub's server predates the structured filter): its label reads its
+        // action and its "Off" subtitle (the iOS 26 menu item drops the value).
         relaunch(lang)
         openTab(4)
         let options = button("searchModeMenu")
         XCTAssertTrue(options.waitForExistence(timeout: 25), "search: no searchModeMenu button — \(screenReads())")
         options.tap()
-        let filter = assertButton("searchOcrFilterToggle", label: text("Search typed text in detected text", lang),
-                                  "search, detected-text filter inactive")
-        XCTAssertEqual(filter.value as? String, text("off", lang), "the search's detected-text filter reads off")
+        let filter = button("searchOcrFilterToggle")
+        XCTAssertTrue(filter.waitForExistence(timeout: 20),
+                      "search, detected-text filter inactive: no searchOcrFilterToggle among the app's buttons — \(screenReads())")
+        let action = text("Search typed text in detected text", lang)
+        let off = text("Off", lang)
+        XCTAssertTrue(filter.label.contains(action) && filter.label.contains(off),
+                      "the search's detected-text filter does not read \"\(action)\" and \"\(off)\": label '\(filter.label)'")
         closeMenu("searchOcrFilterToggle")
 
         // The change-password screen's reveal: masked offers "Show password", revealed
