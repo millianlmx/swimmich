@@ -181,6 +181,9 @@ final class BackupEngine {
     /// asset the run has moved past is dropped, `reset()` clears the rest.
     private(set) var iCloudProgress: [String: Double] = [:]
     private(set) var iCloudRetryAttempts: [String: Int] = [:]
+    /// Bumped each time an export of the loop throws: states an abandoned
+    /// export still emits carry an older generation and are dropped.
+    private var exportStateGeneration = 0
     /// When the upload phase began — the clock for the ETA estimate.
     private(set) var startedAt: Date?
 
@@ -577,6 +580,7 @@ final class BackupEngine {
                     // is the original.
                     renderingIsOriginal = edit == nil
                 } catch is BackupExportError {
+                    exportStateGeneration &+= 1
                     deferredCount += 1
                     deferralReason.insert(.waitingForICloud)
                     recordDeferral(candidate, reason: .waitingForICloud)
@@ -585,6 +589,7 @@ final class BackupEngine {
                     if isCancelled { return await cancelStaging(&batch) }
                     continue
                 } catch {
+                    exportStateGeneration &+= 1
                     if UserFacingError.isCancellation(error) {
                         if isCancelled { return await cancelStaging(&batch) }
                         continue
@@ -633,9 +638,7 @@ final class BackupEngine {
                 var staged = StagedAsset(candidate: candidate, edit: edit, renderingIsOriginal: renderingIsOriginal)
                 var size = Self.editBytes(staged)
                 if plan.needsOriginal {
-                    let fileURL = try await source.exportOriginal(for: candidate) { [weak self] state in
-                        Task { @MainActor in self?.applyExportState(state) }
-                    }
+                    let fileURL = try await source.exportOriginal(for: candidate, onState: exportStateHandler(for: candidate.id))
                     let checksum: String
                     do {
                         checksum = try await Task.detached(priority: .utility) {
@@ -653,9 +656,7 @@ final class BackupEngine {
                     if candidate.isLivePhoto {
                         var pairedURL: URL?
                         do {
-                            if let paired = try await source.exportPairedVideo(for: candidate, onState: { [weak self] state in
-                                Task { @MainActor in self?.applyExportState(state) }
-                            }) {
+                            if let paired = try await source.exportPairedVideo(for: candidate, onState: exportStateHandler(for: candidate.id)) {
                                 pairedURL = paired.url
                                 let pairedChecksum = try await Task.detached(priority: .utility) {
                                     try Self.streamingSHA1Base64(paired.url)
@@ -685,6 +686,7 @@ final class BackupEngine {
                 // Half a step banked: the export+hash of this asset is done.
                 notifyProgress()
             } catch is BackupExportError {
+                exportStateGeneration &+= 1
                 // iCloud original isn't local yet — not a failure. Deferred and
                 // picked up on the next run once the download has landed. The
                 // element's edit files go with it: the pass starts over.
@@ -697,6 +699,7 @@ final class BackupEngine {
                 if isCancelled { return await cancelStaging(&batch) }
                 continue
             } catch {
+                exportStateGeneration &+= 1
                 Self.removeStagedEdit(edit)
                 if UserFacingError.isCancellation(error) {
                     if isCancelled { return await cancelStaging(&batch) }
@@ -814,9 +817,10 @@ final class BackupEngine {
     /// hashes it by streaming. Nil when Photos has no edited resource. Throws
     /// like the original's export; its temp files are removed on a failed hash.
     private func stageEdit(for candidate: BackupCandidate) async throws -> StagedEdit? {
-        guard let rendering = try await source.exportEditedRendering(for: candidate, onState: { [weak self] state in
-            Task { @MainActor in self?.applyExportState(state) }
-        }) else { return nil }
+        guard let rendering = try await source.exportEditedRendering(
+            for: candidate,
+            onState: exportStateHandler(for: candidate.id)
+        ) else { return nil }
         do {
             let checksum = try await Task.detached(priority: .utility) {
                 try Self.streamingSHA1Base64(rendering.url)
@@ -1621,11 +1625,25 @@ final class BackupEngine {
         await reconcileLedgerIfDue(force: true, includeEdits: includeEdits)
     }
 
+    /// Relay for the states one export emits. It binds them to the asset and to
+    /// the generation that was current when the export started: PhotoKit may
+    /// still deliver progress of an abandoned request, and that must neither
+    /// reach the next asset nor outlive the export that raised.
+    private func exportStateHandler(for assetID: String) -> @Sendable (BackupExportState) -> Void {
+        let generation = exportStateGeneration
+        return { [weak self] state in
+            Task { @MainActor in
+                self?.applyExportState(state, assetID: assetID, generation: generation)
+            }
+        }
+    }
+
     /// Maps a per-asset export event into the observable `statusMessage` — kept
     /// as-is for the Backup screen, which owns that line — and into the
     /// per-asset maps the detail screen reads, so an iCloud download can be
     /// attributed to the asset it belongs to.
-    private func applyExportState(_ state: BackupExportState) {
+    private func applyExportState(_ state: BackupExportState, assetID: String, generation: Int) {
+        guard assetID == currentAssetID, generation == exportStateGeneration else { return }
         switch state {
         case .downloadingFromICloud(let fraction):
             let clamped = min(max(fraction, 0), 1)

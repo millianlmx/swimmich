@@ -1538,6 +1538,93 @@ final class ContinuationGateTests: XCTestCase {
     }
 }
 
+// MARK: - Fausse source PhotoKit partagée
+
+final class Log<Element>: @unchecked Sendable {
+    private let lock = NSLock()
+    private var items: [Element] = []
+    func append(_ element: Element) { lock.lock(); items.append(element); lock.unlock() }
+    var values: [Element] { lock.lock(); defer { lock.unlock() }; return items }
+}
+
+/// Fausse `ResourceDataSource` : enregistre les requêtes émises, celles qui se
+/// terminent et celles qui sont annulées, pour compter les requêtes vivantes.
+final class FakeResourceData: @unchecked Sendable {
+    struct Request: @unchecked Sendable {
+        let id: PHAssetResourceDataRequestID
+        let progress: @Sendable (Double) -> Void
+        let dataReceived: @Sendable (Data) -> Void
+        let completion: @Sendable (Error?) -> Void
+    }
+
+    private let lock = NSLock()
+    private var recorded: [Request] = []
+    private var cancelled: [PHAssetResourceDataRequestID] = []
+    /// Ids completed or cancelled (whichever came first, or both).
+    private var ended: Set<PHAssetResourceDataRequestID> = []
+    private var maxLive = 0
+    /// Script of the n-th request (0-based), run on a global queue once the
+    /// request is registered. A request without script stays pending.
+    var script: [Int: @Sendable (Request) -> Void] = [:]
+    /// Script of the n-th request (0-based) that has no entry in `script`.
+    var defaultScript: (@Sendable (Int, Request) -> Void)?
+    /// Called synchronously from `cancelDataRequest`.
+    var onCancel: (@Sendable (Request) -> Void)?
+
+    var requests: [Request] { lock.lock(); defer { lock.unlock() }; return recorded }
+    var cancelledIDs: [PHAssetResourceDataRequestID] { lock.lock(); defer { lock.unlock() }; return cancelled }
+    /// Requests emitted that are neither completed nor cancelled (a request
+    /// completed then cancelled, or the reverse, counts once).
+    var liveCount: Int { lock.lock(); defer { lock.unlock() }; return liveLocked }
+    var maxLiveCount: Int { lock.lock(); defer { lock.unlock() }; return maxLive }
+
+    private var liveLocked: Int { recorded.count - ended.count }
+
+    var source: ResourceDataSource {
+        ResourceDataSource(
+            requestData: { [self] progress, dataReceived, completion in
+                lock.lock()
+                let index = recorded.count
+                let id = PHAssetResourceDataRequestID(index + 1)
+                let request = Request(
+                    id: id,
+                    progress: progress, dataReceived: dataReceived,
+                    completion: { [self] error in
+                        lock.lock()
+                        ended.insert(id)
+                        lock.unlock()
+                        completion(error)
+                    }
+                )
+                recorded.append(request)
+                maxLive = max(maxLive, liveLocked)
+                let body: (@Sendable (Request) -> Void)? = script[index] ?? defaultScript.map { run in
+                    { @Sendable request in run(index, request) }
+                }
+                lock.unlock()
+                if let body { DispatchQueue.global().async { body(request) } }
+                return request.id
+            },
+            cancelDataRequest: { [self] id in
+                lock.lock()
+                cancelled.append(id)
+                ended.insert(id)
+                let request = recorded.first { $0.id == id }
+                lock.unlock()
+                if let request { onCancel?(request) }
+            }
+        )
+    }
+
+    func waitFor(_ what: String, timeout: TimeInterval = 2, _ condition: @escaping () -> Bool) async {
+        let deadline = Date().addingTimeInterval(timeout)
+        while !condition() {
+            if Date() > deadline { XCTFail("timeout: \(what)"); return }
+            try? await Task.sleep(nanoseconds: 10_000_000)
+        }
+    }
+}
+
 // MARK: - Export en flux (PhotoKit)
 
 /// L'export en flux de `PhotoLibraryServiceImpl` (`requestData` + `FileHandle`),
@@ -1546,67 +1633,6 @@ final class ContinuationGateTests: XCTestCase {
 final class ResourceExportHelpersTests: XCTestCase {
 
     // MARK: Helpers
-
-    private final class Log<Element>: @unchecked Sendable {
-        private let lock = NSLock()
-        private var items: [Element] = []
-        func append(_ element: Element) { lock.lock(); items.append(element); lock.unlock() }
-        var values: [Element] { lock.lock(); defer { lock.unlock() }; return items }
-    }
-
-    private final class FakeResourceData: @unchecked Sendable {
-        struct Request: @unchecked Sendable {
-            let id: PHAssetResourceDataRequestID
-            let progress: @Sendable (Double) -> Void
-            let dataReceived: @Sendable (Data) -> Void
-            let completion: @Sendable (Error?) -> Void
-        }
-
-        private let lock = NSLock()
-        private var recorded: [Request] = []
-        private var cancelled: [PHAssetResourceDataRequestID] = []
-        /// Script of the n-th request (0-based), run on a global queue once the
-        /// request is registered. A request without script stays pending.
-        var script: [Int: @Sendable (Request) -> Void] = [:]
-        /// Called synchronously from `cancelDataRequest`.
-        var onCancel: (@Sendable (Request) -> Void)?
-
-        var requests: [Request] { lock.lock(); defer { lock.unlock() }; return recorded }
-        var cancelledIDs: [PHAssetResourceDataRequestID] { lock.lock(); defer { lock.unlock() }; return cancelled }
-
-        var source: ResourceDataSource {
-            ResourceDataSource(
-                requestData: { [self] progress, dataReceived, completion in
-                    lock.lock()
-                    let index = recorded.count
-                    let request = Request(
-                        id: PHAssetResourceDataRequestID(index + 1),
-                        progress: progress, dataReceived: dataReceived, completion: completion
-                    )
-                    recorded.append(request)
-                    let body = script[index]
-                    lock.unlock()
-                    if let body { DispatchQueue.global().async { body(request) } }
-                    return request.id
-                },
-                cancelDataRequest: { [self] id in
-                    lock.lock()
-                    cancelled.append(id)
-                    let request = recorded.first { $0.id == id }
-                    lock.unlock()
-                    if let request { onCancel?(request) }
-                }
-            )
-        }
-
-        func waitFor(_ what: String, timeout: TimeInterval = 2, _ condition: @escaping () -> Bool) async {
-            let deadline = Date().addingTimeInterval(timeout)
-            while !condition() {
-                if Date() > deadline { XCTFail("timeout: \(what)"); return }
-                try? await Task.sleep(nanoseconds: 10_000_000)
-            }
-        }
-    }
 
     private final class FootprintSampler: @unchecked Sendable {
         private let lock = NSLock()
@@ -1852,29 +1878,6 @@ final class ResourceExportHelpersTests: XCTestCase {
         late.dataReceived(Data("zz".utf8))
         late.completion(nil)
         XCTAssertFalse(exists(dest), "les octets tardifs ne recréent rien")
-    }
-
-    func test_AC9_exportResource_stallDefersWithoutCancellingAndIgnoresLateChunks() async {
-        let dest = makeDest()
-        defer { try? FileManager.default.removeItem(at: dest) }
-        let fake = FakeResourceData()
-        fake.script[0] = { $0.dataReceived(Data("ab".utf8)) }
-
-        do {
-            _ = try await export(dest, fake, stall: 0.1)
-            XCTFail("doit lever cloudDownloadPending")
-        } catch let error as BackupExportError {
-            guard case .cloudDownloadPending = error else { return XCTFail("\(error)") }
-        } catch {
-            XCTFail("obtenu : \(error)")
-        }
-
-        XCTAssertEqual(fake.cancelledIDs, [])
-        XCTAssertFalse(exists(dest))
-        let late = fake.requests[0]
-        late.dataReceived(Data("cd".utf8))
-        late.completion(nil)
-        XCTAssertFalse(exists(dest), "writer fermé : rien n'est recréé")
     }
 
     func test_AC14_exportResource_retries1005ThenDefers() async {
@@ -2388,5 +2391,499 @@ final class BackupExportStopTests: XCTestCase {
         XCTAssertEqual(rig.engine.phase, .done)
         XCTAssertEqual(rig.engine.failedCount, 0)
         XCTAssertEqual(rig.engine.deferredCount, 0)
+    }
+}
+
+// MARK: - Première sauvegarde iCloud sans plantage
+
+/// Un téléchargement abandonné (blocage de 90 s, 1005 épuisé) est annulé avant
+/// que l'export rende la main : au plus une requête PhotoKit vivante à la fois,
+/// et plus aucun état d'un export abandonné n'atteint le moteur. Les exports
+/// passent par la vraie boucle `PhotoLibraryServiceImpl.exportResource`, sur
+/// une fausse source PhotoKit (`FakeResourceData`). AC-2 (appareil réel) est
+/// vérifié à la main, hors de cette classe.
+final class ICloudFirstRunBackupTests: XCTestCase {
+
+    private static let cloud1005 = NSError(domain: "CloudPhotoLibraryErrorDomain", code: 1005)
+    private static let signature = "2024-07-01T00:00:00.000Z"
+
+    private func candidate(_ id: String) -> BackupCandidate {
+        BackupCandidate(
+            id: id, kind: .image, fileName: "\(id).jpg",
+            fileCreatedAt: Self.signature, fileModifiedAt: Self.signature,
+            duration: nil, isFavorite: false
+        )
+    }
+
+    private func acceptAll(_ client: MockImmichClient) {
+        client.bulkUploadCheckResponder = { items in
+            AssetBulkUploadCheckResponse(results: items.map {
+                AssetBulkUploadCheckResponse.Result(id: $0.id, action: "accept")
+            })
+        }
+    }
+
+    private func makeDest() -> URL {
+        URL(fileURLWithPath: NSTemporaryDirectory()).appendingPathComponent("icloud-first-run-\(UUID().uuidString)")
+    }
+
+    private func exists(_ url: URL) -> Bool { FileManager.default.fileExists(atPath: url.path) }
+
+    private func resetBackupDirectory() {
+        try? FileManager.default.removeItem(at: MockBackupAssetSource.testBackupDirectory)
+    }
+
+    private func exportedFiles() -> [URL] {
+        (try? FileManager.default.contentsOfDirectory(
+            at: MockBackupAssetSource.testBackupDirectory, includingPropertiesForKeys: nil
+        )) ?? []
+    }
+
+    private static func describe(_ state: BackupExportState) -> String {
+        switch state {
+        case .downloadingFromICloud(let fraction): "downloading(\(fraction))"
+        case .retryingICloud(let attempt): "retrying(\(attempt))"
+        }
+    }
+
+    private func export(
+        _ dest: URL,
+        _ fake: FakeResourceData,
+        stall: TimeInterval,
+        states: Log<String> = Log()
+    ) async throws -> URL {
+        try await PhotoLibraryServiceImpl.exportResource(
+            to: dest, source: fake.source, stallInterval: stall, retryAttempts: 2,
+            retryDelayNanos: 1_000_000,
+            onState: { states.append(Self.describe($0)) }
+        )
+    }
+
+    /// L'appel doit lever `cloudDownloadPending` (et rien d'autre).
+    private func assertDeferred(
+        _ call: () async throws -> URL, file: StaticString = #filePath, line: UInt = #line
+    ) async {
+        do {
+            _ = try await call()
+            XCTFail("doit lever cloudDownloadPending", file: file, line: line)
+        } catch let error as BackupExportError {
+            guard case .cloudDownloadPending = error else { return XCTFail("\(error)", file: file, line: line) }
+        } catch {
+            XCTFail("obtenu : \(error)", file: file, line: line)
+        }
+    }
+
+    // MARK: exportResource
+
+    /// AC-3 : un blocage annule la requête ; un morceau tardif n'écrit rien.
+    func test_ICloudFirstRun_AC3_exportResource_stallCancelsRequestAndIgnoresLateChunks() async {
+        let dest = makeDest()
+        defer { try? FileManager.default.removeItem(at: dest) }
+        let fake = FakeResourceData()
+        fake.script[0] = { $0.dataReceived(Data("ab".utf8)) }
+
+        await assertDeferred { try await self.export(dest, fake, stall: 0.1) }
+
+        XCTAssertEqual(fake.cancelledIDs, [1])
+        XCTAssertEqual(fake.requests.count, 1, "un blocage n'est jamais relancé")
+        XCTAssertEqual(fake.liveCount, 0)
+        XCTAssertFalse(exists(dest))
+        let late = fake.requests[0]
+        late.dataReceived(Data("cd".utf8))
+        late.completion(nil)
+        XCTAssertFalse(exists(dest), "un morceau tardif ne recrée rien")
+    }
+
+    /// AC-4 : 1005 épuisé, aucune requête restée vivante, aucune annulation.
+    func test_ICloudFirstRun_AC4_exportResource_exhausted1005LeavesNoLiveRequest() async {
+        let dest = makeDest()
+        defer { try? FileManager.default.removeItem(at: dest) }
+        let fake = FakeResourceData()
+        fake.defaultScript = { _, request in request.completion(Self.cloud1005) }
+
+        await assertDeferred { try await self.export(dest, fake, stall: 30) }
+
+        XCTAssertEqual(fake.requests.count, 2)
+        XCTAssertEqual(fake.liveCount, 0)
+        XCTAssertEqual(fake.cancelledIDs, [], "une requête terminée par 1005 n'est pas annulée")
+        XCTAssertFalse(exists(dest))
+    }
+
+    /// AC-5 : 50 blocages successifs ne se recouvrent jamais.
+    func test_ICloudFirstRun_AC5_exportResource_fiftyStallsNeverOverlap() async {
+        let fake = FakeResourceData()
+        for _ in 0..<50 {
+            let dest = makeDest()
+            await assertDeferred { try await self.export(dest, fake, stall: 0.02) }
+            XCTAssertEqual(fake.liveCount, 0, "aucune requête vivante quand l'appel rend la main")
+            XCTAssertFalse(exists(dest))
+        }
+        XCTAssertEqual(fake.cancelledIDs.count, 50)
+        XCTAssertEqual(fake.maxLiveCount, 1)
+    }
+
+    /// AC-8 : après un blocage, ni progrès ni fin tardifs n'atteignent `onState`.
+    func test_ICloudFirstRun_AC8_exportResource_stateAfterStallIsDropped() async {
+        let dest = makeDest()
+        defer { try? FileManager.default.removeItem(at: dest) }
+        let states = Log<String>()
+        let fake = FakeResourceData()
+
+        await assertDeferred { try await self.export(dest, fake, stall: 0.05, states: states) }
+
+        let late = fake.requests[0]
+        late.progress(0.7)
+        late.completion(nil)
+        XCTAssertEqual(states.values, [])
+    }
+
+    // MARK: Moteur
+
+    /// AC-1 : première sauvegarde de 3 000 assets dont 30 bloquent, menée à `.done`
+    /// avec au plus une requête PhotoKit vivante à la fois.
+    @MainActor
+    func test_ICloudFirstRun_AC1_firstRunWithStallsReachesDoneWithOneLiveRequestAtMost() async {
+        resetBackupDirectory()
+        defer { resetBackupDirectory() }
+        let total = 3000
+        let client = MockImmichClient()
+        acceptAll(client)
+        let fake = FakeResourceData()
+        // Un asset sur 100 ne donne ni progrès ni fin ; les autres livrent leur fichier.
+        fake.defaultScript = { index, request in
+            guard index % 100 != 99 else { return }
+            request.dataReceived(Data("asset-\(index)".utf8))
+            request.completion(nil)
+        }
+        let source = MockBackupAssetSource()
+        source.candidates = (0..<total).map { candidate("a\($0)") }
+        source.resourceStallInterval = 0.05
+        for item in source.candidates { source.resourceSources[item.id] = fake.source }
+        let engine = BackupEngine(
+            client: client, source: source, environment: MockBackupEnvironment(), ledger: BackupLedger.inMemory()
+        )
+
+        await engine.run(settings: BackupSettings(isEnabled: true), manual: true)
+
+        let blocked = Set((0..<total).filter { $0 % 100 == 99 }.map { "a\($0)" })
+        XCTAssertEqual(engine.phase, .done)
+        XCTAssertEqual(engine.uploadedCount, 2970)
+        XCTAssertEqual(engine.deferredCount, 30)
+        XCTAssertEqual(engine.deferralReason, .waitingForICloud)
+        XCTAssertEqual(engine.failedCount, 0)
+        XCTAssertEqual(engine.processedCount, total)
+        XCTAssertEqual(engine.total, total)
+        XCTAssertEqual(Set(engine.deferrals.map(\.id)), blocked)
+        XCTAssertTrue(engine.failures.isEmpty)
+        XCTAssertEqual(fake.cancelledIDs.count, 30)
+        let blockedRequestIDs = Set((0..<total).filter { $0 % 100 == 99 }.map { PHAssetResourceDataRequestID($0 + 1) })
+        XCTAssertEqual(Set(fake.cancelledIDs), blockedRequestIDs)
+        XCTAssertEqual(fake.liveCount, 0)
+        XCTAssertEqual(fake.maxLiveCount, 1, "jamais deux téléchargements vivants à la fois")
+    }
+
+    /// AC-6 : les assets reportés ne sont pas au registre, puis sont envoyés au passage suivant.
+    @MainActor
+    func test_ICloudFirstRun_AC6_deferredAssetsAreRetriedAndBackedUpNextRun() async {
+        resetBackupDirectory()
+        defer { resetBackupDirectory() }
+        let client = MockImmichClient()
+        acceptAll(client)
+        let ledger = BackupLedger.inMemory()
+        let source = MockBackupAssetSource()
+        source.candidates = (0..<20).map { candidate("d\($0)") }
+        let pending = Set((0..<20).filter { $0 % 2 == 0 }.map { "d\($0)" })
+        source.deferIDs = pending
+        let engine = BackupEngine(client: client, source: source, environment: MockBackupEnvironment(), ledger: ledger)
+        let settings = BackupSettings(isEnabled: true)
+
+        await engine.run(settings: settings, manual: true)
+
+        XCTAssertEqual(engine.phase, .done)
+        XCTAssertEqual(engine.deferredCount, 10)
+        XCTAssertEqual(engine.deferralReason, .waitingForICloud)
+        XCTAssertEqual(engine.failedCount, 0)
+        for id in pending {
+            XCTAssertFalse(ledger.isBackedUp(id: id, signature: Self.signature), id)
+            XCTAssertFalse(engine.backedUpIDs.contains(id), id)
+        }
+
+        source.deferIDs = []
+        await engine.run(settings: settings, manual: true)
+
+        XCTAssertEqual(engine.phase, .done)
+        XCTAssertEqual(engine.total, 10)
+        XCTAssertEqual(engine.uploadedCount, 10)
+        XCTAssertEqual(engine.deferredCount, 0)
+        for id in pending { XCTAssertTrue(ledger.isBackedUp(id: id, signature: Self.signature), id) }
+    }
+
+    /// AC-7 : le dossier d'export reste borné à un lot plus l'asset en cours, et finit vide.
+    @MainActor
+    func test_ICloudFirstRun_AC7_exportDirectoryStaysBoundedAndEndsEmpty() async {
+        resetBackupDirectory()
+        defer { resetBackupDirectory() }
+        let size: UInt64 = 8 << 20
+        let client = MockImmichClient()
+        acceptAll(client)
+        let source = MockBackupAssetSource()
+        source.candidates = (0..<400).map { candidate("s\($0)") }
+        for item in source.candidates { source.sizedIDs[item.id] = size }
+        let peak = TestBox<UInt64>(0)
+        source.onExported = { [self] _ in
+            let bytes = exportedFiles().reduce(UInt64(0)) { sum, url in
+                let attributes = try? FileManager.default.attributesOfItem(atPath: url.path)
+                return sum + ((attributes?[.size] as? NSNumber)?.uint64Value ?? 0)
+            }
+            peak.value = max(peak.value, bytes)
+        }
+        let engine = BackupEngine(
+            client: client, source: source, environment: MockBackupEnvironment(), ledger: BackupLedger.inMemory()
+        )
+
+        await engine.run(settings: BackupSettings(isEnabled: true), manual: true)
+
+        XCTAssertEqual(engine.phase, .done)
+        XCTAssertEqual(engine.uploadedCount, 400)
+        XCTAssertGreaterThan(peak.value, 0, "le relevé a bien vu des fichiers")
+        XCTAssertLessThanOrEqual(peak.value, (512 << 20) + size)
+        XCTAssertTrue(exportedFiles().isEmpty, "plus aucun fichier une fois le passage terminé")
+    }
+
+    /// AC-9 : le progrès tardif d'un asset reporté ne touche pas l'asset suivant.
+    @MainActor
+    func test_ICloudFirstRun_AC9_lateStateOfDeferredAssetDoesNotTouchNextAsset() async {
+        resetBackupDirectory()
+        defer { resetBackupDirectory() }
+        let client = MockImmichClient()
+        acceptAll(client)
+        let source = MockBackupAssetSource()
+        source.candidates = [candidate("A"), candidate("B")]
+        source.deferIDs = ["A"]
+        source.iCloudFractions = ["B": 0.2]
+        source.exportGate = { id in if id == "B" { try await suspendUntilCancelled() } }
+        let engine = BackupEngine(
+            client: client, source: source, environment: MockBackupEnvironment(), ledger: BackupLedger.inMemory()
+        )
+        let run = Task { @MainActor in
+            await engine.run(settings: BackupSettings(isEnabled: true), manual: true)
+        }
+        await pollUntil("progression iCloud de B") { engine.iCloudProgress["B"] == 0.2 }
+        let lateOfA = source.onStateByID["A"]
+        XCTAssertNotNil(lateOfA)
+
+        lateOfA?(.downloadingFromICloud(fraction: 0.9))
+        for _ in 0..<20 { await Task.yield() }
+
+        XCTAssertEqual(engine.statusMessage, String(localized: "Downloading from iCloud… \(20)%"))
+        XCTAssertEqual(engine.iCloudProgress["B"], 0.2)
+        XCTAssertNil(engine.iCloudProgress["A"])
+
+        engine.cancel()
+        await run.value
+    }
+
+    /// AC-9 : le progrès tardif du dernier asset reporté, encore « courant » pendant
+    /// la vérification serveur du dernier lot (processBatch ne réécrit
+    /// `currentAssetID` qu'à l'envoi de chaque élément), est lui aussi ignoré : seule
+    /// la génération le distingue de l'asset courant.
+    @MainActor
+    func test_ICloudFirstRun_AC9_lateStateOfLastDeferredAssetIsDropped() async {
+        resetBackupDirectory()
+        defer { resetBackupDirectory() }
+        let client = MockImmichClient()
+        acceptAll(client)
+        let latch = TestLatch()
+        client.bulkUploadCheckGate = { try await latch.wait() }
+        let source = MockBackupAssetSource()
+        source.candidates = [candidate("B"), candidate("A")]
+        source.deferIDs = ["A"]
+        let engine = BackupEngine(
+            client: client, source: source, environment: MockBackupEnvironment(), ledger: BackupLedger.inMemory()
+        )
+        let run = Task { @MainActor in
+            await engine.run(settings: BackupSettings(isEnabled: true), manual: true)
+        }
+        await pollUntil("vérification serveur du dernier lot suspendue") {
+            client.bulkUploadCheckChunks.count == 1 && engine.currentAssetID == "A"
+        }
+        let lateOfA = source.onStateByID["A"]
+        XCTAssertNotNil(lateOfA)
+
+        lateOfA?(.downloadingFromICloud(fraction: 0.9))
+        for _ in 0..<20 { await Task.yield() }
+
+        XCTAssertNil(engine.iCloudProgress["A"])
+        XCTAssertFalse((engine.statusMessage ?? "").contains("Downloading from iCloud"))
+
+        latch.open()
+        await run.value
+        XCTAssertEqual(engine.phase, .done)
+        XCTAssertEqual(engine.uploadedCount, 1)
+        XCTAssertEqual(engine.deferredCount, 1)
+    }
+
+    /// AC-11 : un asset dont iCloud n'émet son premier progrès qu'au double de
+    /// l'intervalle de blocage reste reporté à chaque passage (décision #3).
+    @MainActor
+    func test_ICloudFirstRun_AC11_chronicallySlowAssetStaysDeferredEveryRun() async {
+        resetBackupDirectory()
+        defer { resetBackupDirectory() }
+        let stall: TimeInterval = 0.05
+        let client = MockImmichClient()
+        acceptAll(client)
+        let fast = FakeResourceData()
+        fast.defaultScript = { index, request in
+            request.dataReceived(Data("fast-\(index)".utf8))
+            request.completion(nil)
+        }
+        let slow = FakeResourceData()
+        slow.defaultScript = { _, request in
+            DispatchQueue.global().asyncAfter(deadline: .now() + 2 * stall) { request.progress(0.5) }
+        }
+        let ledger = BackupLedger.inMemory()
+        let source = MockBackupAssetSource()
+        source.candidates = ["a", "b", "c", "d", "X"].map { candidate($0) }
+        source.resourceStallInterval = stall
+        for item in source.candidates { source.resourceSources[item.id] = (item.id == "X" ? slow : fast).source }
+        let engine = BackupEngine(client: client, source: source, environment: MockBackupEnvironment(), ledger: ledger)
+
+        for pass in 1...3 {
+            await engine.run(settings: BackupSettings(isEnabled: true), manual: true)
+            try? await Task.sleep(nanoseconds: UInt64(3 * stall * 1_000_000_000))
+            for _ in 0..<10 { await Task.yield() }
+
+            XCTAssertEqual(engine.phase, .done, "passage \(pass)")
+            XCTAssertEqual(engine.deferredCount, 1, "passage \(pass)")
+            XCTAssertEqual(engine.deferralReason, .waitingForICloud, "passage \(pass)")
+            XCTAssertEqual(engine.failedCount, 0, "passage \(pass)")
+            XCTAssertFalse(ledger.isBackedUp(id: "X", signature: Self.signature), "passage \(pass)")
+            XCTAssertFalse(engine.backedUpIDs.contains("X"), "passage \(pass)")
+            XCTAssertEqual(slow.requests.count, pass, "une requête par passage")
+            XCTAssertEqual(slow.cancelledIDs.count, pass)
+            XCTAssertEqual(slow.liveCount, 0)
+            XCTAssertNil(engine.statusMessage, "passage \(pass)")
+            XCTAssertTrue(engine.iCloudProgress.isEmpty, "passage \(pass)")
+            if pass == 1 {
+                XCTAssertEqual(engine.uploadedCount, 4)
+            } else {
+                XCTAssertEqual(engine.total, 1, "passage \(pass)")
+            }
+        }
+    }
+
+    // MARK: Arrêt pendant un téléchargement iCloud réel de la boucle
+
+    private struct StopRig {
+        let client: MockImmichClient
+        let source: MockBackupAssetSource
+        let fake: FakeResourceData
+        let engine: BackupEngine
+        let vm: UploadViewModel
+    }
+
+    /// « c1 » est exporté par `exportResource` : 40 % de progrès, deux octets,
+    /// puis plus rien, avec un intervalle de blocage qui ne se déclenche pas.
+    @MainActor
+    private func makeStopRig() -> StopRig {
+        resetBackupDirectory()
+        let client = MockImmichClient()
+        client.bulkUploadCheckResponse = AssetBulkUploadCheckResponse(results: [.init(id: "c1", action: "accept")])
+        let fake = FakeResourceData()
+        fake.script[0] = { request in
+            request.progress(0.4)
+            request.dataReceived(Data("ab".utf8))
+        }
+        let source = MockBackupAssetSource()
+        source.candidates = [candidate("c1")]
+        source.resourceSources["c1"] = fake.source
+        source.resourceStallInterval = 30
+        let engine = BackupEngine(
+            client: client, source: source, environment: MockBackupEnvironment(), ledger: BackupLedger.inMemory()
+        )
+        let store = BackupSettingsStore(suiteName: "icloud-first-run-\(UUID().uuidString)")
+        store.isEnabled = true
+        let vm = UploadViewModel(
+            client: client, photos: MockPhotoLibraryService(),
+            engine: engine, settings: store,
+            scheduler: MockBackupScheduler(), activityService: MockBackupLiveActivityService(),
+            notifications: MockNotificationService(),
+            readOnly: .ephemeral()
+        )
+        return StopRig(client: client, source: source, fake: fake, engine: engine, vm: vm)
+    }
+
+    @MainActor
+    private func waitForDownloadInFlight(_ rig: StopRig) async {
+        await pollUntil("progression iCloud de c1") { rig.engine.iCloudProgress["c1"] == 0.4 }
+        await pollUntil("octets écrits dans le dossier d'export") {
+            self.exportedFiles().contains {
+                (try? Data(contentsOf: $0))?.isEmpty == false
+            }
+        }
+    }
+
+    @MainActor
+    private func assertStopped(_ rig: StopRig, elapsed: Duration, file: StaticString = #filePath, line: UInt = #line) {
+        XCTAssertLessThan(elapsed, .seconds(1), file: file, line: line)
+        XCTAssertEqual(rig.engine.phase, .cancelled, file: file, line: line)
+        XCTAssertEqual(rig.fake.cancelledIDs, [1], file: file, line: line)
+        XCTAssertEqual(rig.fake.liveCount, 0, file: file, line: line)
+        XCTAssertTrue(rig.engine.deferrals.isEmpty, file: file, line: line)
+        XCTAssertTrue(rig.engine.failures.isEmpty, file: file, line: line)
+        XCTAssertEqual(rig.engine.deferredCount, 0, file: file, line: line)
+        XCTAssertEqual(rig.engine.failedCount, 0, file: file, line: line)
+        XCTAssertTrue(exportedFiles().isEmpty, "aucun fichier partiel", file: file, line: line)
+    }
+
+    /// AC-10 : Stop (`cancelBackup`) pendant le téléchargement.
+    @MainActor
+    func test_ICloudFirstRun_AC10_stopCancelsICloudRequestAndLeavesNoFile() async {
+        let rig = makeStopRig()
+        defer { resetBackupDirectory() }
+        let run = Task { @MainActor in await rig.vm.runBackup(manual: true) }
+        await waitForDownloadInFlight(rig)
+
+        let elapsed = await ContinuousClock().measure {
+            rig.vm.cancelBackup()
+            _ = await run.value
+        }
+
+        assertStopped(rig, elapsed: elapsed)
+    }
+
+    /// AC-10 : expiration de la tâche de fond pendant le téléchargement.
+    @MainActor
+    func test_ICloudFirstRun_AC10_bgExpirationCancelsICloudRequestAndLeavesNoFile() async {
+        let rig = makeStopRig()
+        defer { resetBackupDirectory() }
+        let run = Task { @MainActor in await rig.vm.runBackup() }
+        await waitForDownloadInFlight(rig)
+
+        // Ce que fait `expirationHandler` : appel depuis une file de fond.
+        let engine = rig.engine
+        let elapsed = await ContinuousClock().measure {
+            await Task.detached { await MainActor.run { engine.cancel() } }.value
+            _ = await run.value
+        }
+
+        assertStopped(rig, elapsed: elapsed)
+    }
+
+    /// AC-10 : déconnexion (`stopAndWait`) pendant le téléchargement.
+    @MainActor
+    func test_ICloudFirstRun_AC10_stopAndWaitCancelsICloudRequestAndLeavesNoFile() async {
+        let rig = makeStopRig()
+        defer { resetBackupDirectory() }
+        let engine = rig.engine
+        let run = Task { @MainActor in
+            await engine.run(settings: BackupSettings(isEnabled: true), manual: true)
+        }
+        await waitForDownloadInFlight(rig)
+
+        let elapsed = await ContinuousClock().measure { await engine.stopAndWait() }
+        _ = await run.value
+
+        assertStopped(rig, elapsed: elapsed)
     }
 }

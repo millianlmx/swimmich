@@ -44,6 +44,13 @@ final class MockBackupAssetSource: BackupAssetSource, @unchecked Sendable {
     /// Candidate ids whose export is a file of this many bytes, without the
     /// bytes ever existing in memory (sparse file of zeros).
     nonisolated(unsafe) var sizedIDs: [String: UInt64] = [:]
+    /// Candidates exported through `PhotoLibraryServiceImpl.exportResource` on
+    /// this fake PhotoKit instead of being written directly.
+    nonisolated(unsafe) var resourceSources: [String: ResourceDataSource] = [:]
+    nonisolated(unsafe) var resourceStallInterval: TimeInterval = 0.05
+    /// The `onState` of each export, so a test can replay a state after the
+    /// export returned, like a late PhotoKit callback.
+    nonisolated(unsafe) var onStateByID: [String: @Sendable (BackupExportState) -> Void] = [:]
 
     private let fetchLock = NSLock()
 
@@ -97,6 +104,7 @@ final class MockBackupAssetSource: BackupAssetSource, @unchecked Sendable {
     ) async throws -> URL {
         fetchLock.lock()
         exportedIDs.append(candidate.id)
+        onStateByID[candidate.id] = onState
         fetchLock.unlock()
         if let fraction = iCloudFractions[candidate.id] {
             onState(.downloadingFromICloud(fraction: fraction))
@@ -117,6 +125,21 @@ final class MockBackupAssetSource: BackupAssetSource, @unchecked Sendable {
         // The engine's directory maps to the test's own; any other (the Check's)
         // is written as asked, like `writeResource`.
         let target: URL = directory == BackupExportDirectory.backup ? Self.testBackupDirectory : directory
+        // Exported through the real `exportResource` loop, over a fake PhotoKit.
+        if let resourceSource = resourceSources[candidate.id] {
+            try FileManager.default.createDirectory(at: target, withIntermediateDirectories: true)
+            let dest = target.appendingPathComponent("\(UUID().uuidString)-\(candidate.fileName)")
+            let url = try await PhotoLibraryServiceImpl.exportResource(
+                to: dest,
+                source: resourceSource,
+                stallInterval: resourceStallInterval,
+                retryAttempts: 2,
+                retryDelayNanos: 1_000_000,
+                onState: onState
+            )
+            onExported?(url)
+            return url
+        }
         let url: URL
         if let size = sizedIDs[candidate.id] {
             url = try writeSized(size, named: candidate.fileName, into: target)
