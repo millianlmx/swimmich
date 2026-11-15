@@ -191,11 +191,59 @@ final class ViewerResilienceUITests: XCTestCase {
                       "the viewer never opened — \(screenText())")
     }
 
-    private func closeViewer() {
+    /// Closes the viewer by Back, once Back can be hit: a tap made while the
+    /// actions sheet or the slideshow overlay still covers it lands on them and
+    /// leaves the viewer open. `step` names the call in the failure message.
+    private func closeViewer(_ step: String = "") {
         let back = element("viewerBackButton")
-        XCTAssertTrue(back.waitForExistence(timeout: 10), "no Back button — \(screenText())")
-        back.tap()
-        XCTAssertTrue(waitUntil(timeout: 15) { !self.element("viewerBackButton").exists }, "the viewer did not close")
+        XCTAssertTrue(back.waitForExistence(timeout: 10), "\(step) no Back button — \(screenText())")
+        var closed = false
+        for attempt in 0..<3 where !closed {
+            guard waitHittable(back, timeout: 10) else {
+                closed = !back.exists
+                if !closed { shot("back-covered-\(step)-\(attempt)") }
+                break
+            }
+            back.tap()
+            closed = waitUntil(timeout: 10) { !self.element("viewerBackButton").exists }
+        }
+        XCTAssertTrue(closed, "\(step) the viewer did not close — \(coverDiagnostics()) \(screenText())")
+    }
+
+    /// What may lie over the viewer when Back does not answer.
+    private func coverDiagnostics() -> String {
+        let back = element("viewerBackButton")
+        return "back: exists=\(back.exists) hittable=\(back.exists && back.isHittable); "
+            + "actions sheet=\(element("closeShareSheet").exists); "
+            + "slideshow counter=\(element("slideshowCounter").exists) close=\(element("slideshowCloseButton").exists);"
+    }
+
+    /// Closes the viewer's actions sheet and waits until it has left: Back is
+    /// only reachable once the sheet's dismissal is over.
+    private func closeActionsSheet(_ step: String) {
+        let close = element("closeShareSheet")
+        XCTAssertTrue(close.waitForExistence(timeout: 10), "\(step) no Close on the actions sheet — \(screenText())")
+        var gone = false
+        for _ in 0..<2 where !gone {
+            if close.exists, close.isHittable { close.tap() }
+            gone = waitUntil(timeout: 10) { !close.exists }
+        }
+        XCTAssertTrue(gone, "\(step) the actions sheet did not close — \(coverDiagnostics()) \(screenText())")
+    }
+
+    /// Closes the slideshow overlay. Its chrome hides itself 3 s into play, so
+    /// a tap on a fading Close only toggles the chrome: done again until the
+    /// viewer's Back is uncovered.
+    private func closeSlideshow(_ step: String) {
+        let close = element("slideshowCloseButton")
+        let back = element("viewerBackButton")
+        var closed = false
+        for _ in 0..<3 where !closed {
+            XCTAssertTrue(revealSlideshowControl(close), "\(step) no hittable Close control — \(screenText())")
+            close.tap()
+            closed = waitHittable(back, timeout: 10)
+        }
+        XCTAssertTrue(closed, "\(step) the slideshow did not close — \(coverDiagnostics()) \(screenText())")
     }
 
     /// A viewer action: the pill on the row when it fits, else the ⋯ menu entry.
@@ -687,8 +735,8 @@ final class ViewerResilienceUITests: XCTestCase {
         XCTAssertTrue(download.waitForExistence(timeout: 15), "no 'Download for offline' — \(screenText())")
         download.tap()
         XCTAssertTrue(remove.waitForExistence(timeout: 60), "the offline copy never became available — \(screenText())")
-        element("closeShareSheet").tap()
-        closeViewer()
+        closeActionsSheet("after the download")
+        closeViewer("after the download")
 
         // AC-59: the unreadable copy gives way to the server's stream.
         let streamedBefore = playbackRequests()
@@ -707,9 +755,8 @@ final class ViewerResilienceUITests: XCTestCase {
         Thread.sleep(forTimeInterval: 4)
         XCTAssertEqual(slideshowCounterLabel(), slideBefore, "the slideshow skipped the video")
         XCTAssertGreaterThan(playbackRequests(), streamedInSlideshow, "the slideshow never streamed the video")
-        revealSlideshowChrome()
-        element("slideshowCloseButton").tap()
-        closeViewer()
+        closeSlideshow("AC-59.4")
+        closeViewer("after the slideshow")
 
         // AC-59.3: the server fails too — the error state, one switch, no loop.
         flip("playback=fail")
@@ -725,7 +772,7 @@ final class ViewerResilienceUITests: XCTestCase {
         XCTAssertTrue(remove.waitForExistence(timeout: 15), "the offline copy is gone — \(screenText())")
         remove.tap() // courtesy to the other scenarios
         _ = download.waitForExistence(timeout: 15)
-        element("closeShareSheet").tap()
-        closeViewer()
+        closeActionsSheet("AC-59.5")
+        closeViewer("AC-59.5")
     }
 }
