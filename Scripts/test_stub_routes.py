@@ -7,8 +7,9 @@ tested here, on a real `StubHandler` served on port 0:
 
     python3 -m unittest discover -s Scripts -p 'test_stub_routes.py'
 
-Only the shell is covered. The self-contained stubs and
-`immich_stub_route_compat.py` are exercised by `RouteCompatUITests` alone.
+Only the shell is covered, plus the way L-28's `immich_stub_login.py` faults
+(mute, delay, hold) spare the shell's version probes. The other self-contained
+stubs and `immich_stub_route_compat.py` are exercised by `RouteCompatUITests` alone.
 """
 import importlib.util
 import json
@@ -29,6 +30,15 @@ def _load_base():
     spec = importlib.util.spec_from_file_location("immich_stub_base", STUBS / "immich_stub_base.py")
     module = importlib.util.module_from_spec(spec)
     sys.modules["immich_stub_base"] = module
+    spec.loader.exec_module(module)
+    return module
+
+
+def _load_stub(name):
+    """Imports a feature stub on the live (per-test) `base.router`: its routes and
+    `router.handle` wrapper land there, and vanish with the test's router."""
+    spec = importlib.util.spec_from_file_location(name, STUBS / f"{name}.py")
+    module = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(module)
     return module
 
@@ -121,6 +131,44 @@ class StubRoutesTests(unittest.TestCase):
         self.at_version("2.0.0")
         self.assertEqual(self.call("GET", "/api/public/config")[0], 404)
         self.assertEqual(self.call("GET", "/api/server/config")[1]["oauthButtonText"], label)
+
+    def test_AC_35_onlyVersionedRoutesReadTheVersion(self):
+        # A request outside `ROUTE_TABLE` never probes the version: a fault a
+        # feature stub puts around `router.handle` stays on the routes it targets.
+        seen = []
+        handle = base.router.handle
+
+        def recording(request):
+            seen.append((request.path, request.probe))
+            return handle(request)
+
+        base.router.handle = recording
+        base.router.get("/control/ping")(lambda req: base.Response({"ok": True}))
+        self.assertEqual(self.call("GET", "/control/ping"), (200, {"ok": True}))
+        self.assertEqual(self.call("GET", "/api/users/me")[0], 200)
+        self.assertEqual(seen, [("/control/ping", False), ("/api/users/me", False)])
+
+        seen.clear()
+        self.assertEqual(self.call("GET", "/api/public/config")[0], 200)
+        self.assertEqual(seen, [("/api/server/version", True), ("/api/public/config", False),
+                                ("/api/server/config", True)], "the shell's reads are flagged")
+
+    def test_AC_35_loginStubFaultsSpareProbesAndControls(self):
+        # LoginStartupUITests test_AC_56 / test_AC_340 / test_AC_341: after
+        # `mute=drop` or `mute=hang`, `mute=off` must answer at once.
+        _load_stub("immich_stub_login")
+        self.assertEqual(self.call("GET", "/control/mute?mode=drop")[1]["mute"], "drop")
+        self.assertEqual(self.call("GET", "/control/mute?mode=off")[1]["mute"], "off")
+        self.call("GET", "/control/mute?mode=hang&seconds=30")
+        self.assertEqual(self.call("GET", "/control/mute?mode=off")[1]["mute"], "off",
+                         "answered within the 10 s timeout of `call`")
+
+        # A probe goes through a dropped network; the app's request does not.
+        self.call("GET", "/control/mute?mode=drop")
+        self.assertEqual(base.announced_version(base.Request("GET", "/api/queues", "", {}, {})),
+                         (2, 0, 0), "the login stub's own version route answers the probe")
+        with self.assertRaises(RuntimeError):
+            base.router.handle(base.Request("GET", "/api/queues", "", {}, {}))
 
     # MARK: - AC-36
 

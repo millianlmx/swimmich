@@ -610,6 +610,9 @@ final class ServerRouteCompatAuthTests: XCTestCase {
         defer { defaults.removePersistentDomain(forName: suite) }
         let mock = MockImmichClient()
         mock.publicConfigResponse = modern
+        // Sign-in modes unreadable (L-28): the SSO button falls back to the
+        // configuration label, which now comes from the public config.
+        mock.loginOptionsError = APIError.serverError(404, nil)
         let auth = makeAuth(mock: mock, defaults: defaults)
 
         await auth.connectServer()
@@ -618,6 +621,7 @@ final class ServerRouteCompatAuthTests: XCTestCase {
         XCTAssertEqual(mock.sessionConfigCalls, 0, "no session yet")
         XCTAssertEqual(auth.serverConfig, modern)
         XCTAssertTrue(auth.canOAuthLogin, "the SSO button follows the label of the public config")
+        XCTAssertEqual(auth.loginPresentation.ssoLabel, "Continue with Immich SSO")
     }
 
     func test_AC_175_loginReadsSessionConfigWhenDomainUnknown() async {
@@ -625,6 +629,8 @@ final class ServerRouteCompatAuthTests: XCTestCase {
             let (defaults, suite) = makeDefaults()
             defer { defaults.removePersistentDomain(forName: suite) }
             let mock = MockImmichClient()
+            // Both sign-in modes accepted (L-28), so the SSO path is offered.
+            mock.loginOptionsResponse = ServerLoginOptions(passwordLogin: true, oauth: true, oauthButtonText: nil)
             mock.publicConfigResponse = modern
             mock.sessionConfigResponse = ServerConfig(
                 oauthButtonText: "Continue with Immich SSO", externalDomain: "https://photos.public.example", isInitialized: nil

@@ -99,6 +99,13 @@ WHICH VERSION IT ANNOUNCES, AND WHAT IT SERVES (L-20)
     `GET /api/server/config` and `GET /api/public/config` + `GET /api/config`);
     the two 3.2+ configs are built from what `GET /api/server/config` answers,
     a feature stub's override included (`_served_config()`).
+
+    The version is read only for a request of a `ROUTE_TABLE` route: no other
+    request (a `/control/…` route, any other `/api/…`) ever triggers a probe.
+    The probe (and the one of `_served_config()`) is a `Request` whose `probe`
+    is True: it was not sent by the app, so a feature stub that wraps
+    `router.handle` to fake a network fault (mute, delay, hold) lets it through,
+    else the fault would hit requests it was never set on.
 """
 import json
 import os
@@ -324,7 +331,7 @@ class Response:
 class Request:
     """One decoded request, handed to a route handler."""
 
-    __slots__ = ("method", "path", "query", "params", "headers", "body", "rest", "extra")
+    __slots__ = ("method", "path", "query", "params", "headers", "body", "rest", "extra", "probe")
 
     def __init__(self, method, path, query, headers, body):
         self.method = method
@@ -338,6 +345,9 @@ class Request:
         # Set by the router for a prefix route: the path after the prefix.
         self.rest = ""
         self.extra = {}
+        # True for the shell's own reads of a route (`announced_version()`,
+        # `_served_config()`), never for a request the app sent.
+        self.probe = False
 
     @property
     def host(self):
@@ -470,6 +480,7 @@ def announced_version(request):
     `SERVER_VERSION` are read as module globals at every call.
     """
     probe = Request("GET", "/api/server/version", "", request.headers, {})
+    probe.probe = True
     response = router.handle(probe)
     if response is None:
         return parse_version(SERVER_VERSION)
@@ -494,14 +505,22 @@ def _matches(pattern, path):
         w == g or (w.startswith("{") and g != "") for w, g in zip(want, got))
 
 
+def _threshold(method, path):
+    """The first version that serves this route, None when every version does."""
+    for table_method, pattern, minimum in ROUTE_TABLE:
+        if table_method == method and _matches(pattern, path):
+            return minimum
+    return None
+
+
 def serves(method, path, version):
     """Whether a server of `version` has this route. A route the table does not
     list is served by every version; a listed one needs a known version that is
     at least its threshold."""
-    for table_method, pattern, minimum in ROUTE_TABLE:
-        if table_method == method and _matches(pattern, path):
-            return version is not None and tuple(version) >= minimum
-    return True
+    minimum = _threshold(method, path)
+    if minimum is None:
+        return True
+    return version is not None and tuple(version) >= minimum
 
 
 def public_config_payload(config):
@@ -607,6 +626,7 @@ def _served_config(request):
     Keys the override leaves out keep the shell's values.
     """
     probe = Request("GET", "/api/server/config", "", request.headers, {})
+    probe.probe = True
     response = router.handle(probe)
     if response is None or response.status >= 400 or not isinstance(response.payload, dict):
         return CONFIG
@@ -766,7 +786,8 @@ class StubHandler(BaseHTTPRequestHandler):
         request = Request(method, path, query, self.headers, self._body())
         entry = {"method": method, "path": path, "params": request.params, "body": request.body}
         STATE["requests"].append(entry)
-        if not serves(method, path, announced_version(request)):
+        # Only a versioned route reads the version: see the module docstring.
+        if _threshold(method, path) is not None and not serves(method, path, announced_version(request)):
             return self._send(Response(
                 {"message": f"Cannot {method} {path}", "statusCode": 404}, status=404))
         response = router.handle(request)
