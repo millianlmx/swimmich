@@ -161,6 +161,7 @@
 		22C280975F044343DEB5AC9F /* EditState.swift in Sources */ = {isa = PBXBuildFile; fileRef = FA093EC6B585CA727A510320 /* EditState.swift */; };
 		22D7CB55C1BBB7E2D6242B2B /* VideoDurationFormatterTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 682523D4A30882FD6B3038AF /* VideoDurationFormatterTests.swift */; };
 		22D9EEEDD0C4B7ECA9E42536 /* EditAlbumSheet.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7F535694DFA565D257D69FE2 /* EditAlbumSheet.swift */; };
+		5C0A7E1D4B9F2A8365E1D7C3 /* SearchCapturesUITests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A93B6D20E7C54F18B2D0A6E4 /* SearchCapturesUITests.swift */; };
 		231515B0AE2E84229B18D5D7 /* SearchCriteriaUITests.swift in Sources */ = {isa = PBXBuildFile; fileRef = F1124597C9AF926C16B2FC0D /* SearchCriteriaUITests.swift */; };
 		23A3E84882BF9B4584A64388 /* RoadTripCar3D.swift in Sources */ = {isa = PBXBuildFile; fileRef = CFA6FBC8A7F984464229A078 /* RoadTripCar3D.swift */; };
 		240A8B591FA4752FAF38A38A /* ImmichWidgets.appex in Embed Foundation Extensions */ = {isa = PBXBuildFile; fileRef = D083424E27645D19C36429E6 /* ImmichWidgets.appex */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
@@ -1564,6 +1565,7 @@
 		EFFA709EF675F8BC370D6DCB /* ServerCompatibility.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ServerCompatibility.swift; sourceTree = "<group>"; };
 		F0811A00478B347A7005063B /* WhatsNewUITests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WhatsNewUITests.swift; sourceTree = "<group>"; };
 		F0E30393E5D0F3117FF5809E /* CreateAlbumSheet.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CreateAlbumSheet.swift; sourceTree = "<group>"; };
+		A93B6D20E7C54F18B2D0A6E4 /* SearchCapturesUITests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SearchCapturesUITests.swift; sourceTree = "<group>"; };
 		F1124597C9AF926C16B2FC0D /* SearchCriteriaUITests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SearchCriteriaUITests.swift; sourceTree = "<group>"; };
 		F12E4D5D4AEA776F68BF61B6 /* AppUtilitiesUITests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppUtilitiesUITests.swift; sourceTree = "<group>"; };
 		F13F13EF0E4EF9E00EEA1F50 /* JpegXLUITests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = JpegXLUITests.swift; sourceTree = "<group>"; };
@@ -2737,6 +2739,7 @@
 				C1A46A619229399D94C47078 /* RecentlyTakenUITests.swift */,
 				DAE17CFA9D8A272B7101355C /* ReduceMotionUITests.swift */,
 				46F85425AB5D12A11CBFE18A /* RouteCompatUITests.swift */,
+				A93B6D20E7C54F18B2D0A6E4 /* SearchCapturesUITests.swift */,
 				F1124597C9AF926C16B2FC0D /* SearchCriteriaUITests.swift */,
 				0E1157A1B2E58119402D0017 /* SearchFiltersUITests.swift */,
 				800794CDFBCC9FA9194D2933 /* SelfSignedTrustUITests.swift */,
@@ -3545,6 +3548,7 @@
 				ACC4925270474CFBF825B5B7 /* RecentlyTakenUITests.swift in Sources */,
 				8BC0A9699CC851191242638D /* ReduceMotionUITests.swift in Sources */,
 				E600DB8C35E6D2517C6E5585 /* RouteCompatUITests.swift in Sources */,
+				5C0A7E1D4B9F2A8365E1D7C3 /* SearchCapturesUITests.swift in Sources */,
 				231515B0AE2E84229B18D5D7 /* SearchCriteriaUITests.swift in Sources */,
 				54458D16DEBEF6B70BDC9265 /* SearchFiltersUITests.swift in Sources */,
 				4845F6C3CB85D09F6B1B0CE9 /* SelfSignedTrustUITests.swift in Sources */,
