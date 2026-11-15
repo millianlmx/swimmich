@@ -164,27 +164,34 @@ final class ReadmeScreenshotsUITests: XCTestCase {
         tab.tap()
     }
 
+    private var searchTab: XCUIElement {
+        app.tabBars.buttons.matching(labelPredicate(["Search", "Recherch"])).firstMatch
+    }
+
     /// What the screen holds, for a failure message that can be acted on (the CI log is unreadable: the
     /// message is all the run reports).
     private func screenState() -> String {
         let tabs = app.tabBars.buttons.allElementsBoundByIndex.map { "\($0.label)\($0.isSelected ? "*" : "")" }
         let texts = app.staticTexts.allElementsBoundByIndex.map(\.label).filter { !$0.isEmpty }.prefix(20)
-        return "tabs \(tabs); searchFields \(app.searchFields.count); textFields \(app.textFields.count); "
-            + "sheets \(app.sheets.count); alerts \(app.alerts.count); keyboards \(app.keyboards.count); "
-            + "screen reads \(Array(texts))"
+        let search = searchTab.exists ? "hittable \(searchTab.isHittable), frame \(searchTab.frame)" : "absent"
+        return "tabs \(tabs); Search tab \(search); searchFields \(app.searchFields.count); "
+            + "textFields \(app.textFields.count); sheets \(app.sheets.count); alerts \(app.alerts.count); "
+            + "keyboards \(app.keyboards.count); screen reads \(Array(texts))"
     }
 
-    /// Opens the Search tab and returns its search field. The tab is tapped again while it is not selected
-    /// or shows no field (a first tap can fall in a tab-bar transition), and the failure says what is on screen.
+    /// Opens the Search tab and returns its search field. The Search bubble lands on Search only when the
+    /// last content tab is Photos (`RootView`, `onChange(of: selection)`): from Albums it is a "+" that opens
+    /// New Album and puts Albums back (`handleBubbleTap`). So Photos is selected first, as
+    /// `ContentCollectionsUITests.goToSearchRoot()` does.
     private func openSearchField() -> XCUIElement {
-        let tab = app.tabBars.buttons.matching(labelPredicate(["Search", "Recherch"])).firstMatch
-        XCTAssertTrue(tab.waitForExistence(timeout: 20), "no Search tab — \(screenState())")
+        let photos = app.tabBars.buttons.matching(labelPredicate(["Photos"])).firstMatch
+        XCTAssertTrue(photos.waitForExistence(timeout: 20), "no Photos tab — \(screenState())")
+        photos.tap()
+        XCTAssertTrue(waitUntil(10) { photos.isSelected }, "the Photos tab was not selected — \(screenState())")
+        XCTAssertTrue(searchTab.waitForExistence(timeout: 20), "no Search tab — \(screenState())")
+        searchTab.tap()
         let field = app.searchFields.firstMatch
-        for _ in 0..<4 where !field.exists {
-            if !tab.isSelected || !field.exists { tab.tap() }
-            _ = field.waitForExistence(timeout: 6)
-        }
-        XCTAssertTrue(field.exists, "no search field — \(screenState())")
+        XCTAssertTrue(field.waitForExistence(timeout: 20), "no search field — \(screenState())")
         return field
     }
 
