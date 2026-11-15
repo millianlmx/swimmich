@@ -164,6 +164,30 @@ final class ReadmeScreenshotsUITests: XCTestCase {
         tab.tap()
     }
 
+    /// What the screen holds, for a failure message that can be acted on (the CI log is unreadable: the
+    /// message is all the run reports).
+    private func screenState() -> String {
+        let tabs = app.tabBars.buttons.allElementsBoundByIndex.map { "\($0.label)\($0.isSelected ? "*" : "")" }
+        let texts = app.staticTexts.allElementsBoundByIndex.map(\.label).filter { !$0.isEmpty }.prefix(20)
+        return "tabs \(tabs); searchFields \(app.searchFields.count); textFields \(app.textFields.count); "
+            + "sheets \(app.sheets.count); alerts \(app.alerts.count); keyboards \(app.keyboards.count); "
+            + "screen reads \(Array(texts))"
+    }
+
+    /// Opens the Search tab and returns its search field. The tab is tapped again while it is not selected
+    /// or shows no field (a first tap can fall in a tab-bar transition), and the failure says what is on screen.
+    private func openSearchField() -> XCUIElement {
+        let tab = app.tabBars.buttons.matching(labelPredicate(["Search", "Recherch"])).firstMatch
+        XCTAssertTrue(tab.waitForExistence(timeout: 20), "no Search tab — \(screenState())")
+        let field = app.searchFields.firstMatch
+        for _ in 0..<4 where !field.exists {
+            if !tab.isSelected || !field.exists { tab.tap() }
+            _ = field.waitForExistence(timeout: 6)
+        }
+        XCTAssertTrue(field.exists, "no search field — \(screenState())")
+        return field
+    }
+
     /// A row of a pushed screen, by IDENTIFIER (copied from `UploadDetailUITests`). A `Form` only
     /// publishes what it rendered, so it is scrolled into view first: `up` walks down the list.
     private func row(_ identifier: String, swiping direction: String = "up", swipes: Int = 10) -> XCUIElement {
@@ -222,9 +246,7 @@ final class ReadmeScreenshotsUITests: XCTestCase {
         try capture("albums")
 
         // 4. Search: a word that matches photos, keyboard dismissed.
-        openTab(["Search", "Recherch"])
-        let field = app.searchFields.firstMatch
-        XCTAssertTrue(field.waitForExistence(timeout: 20), "no search field")
+        let field = openSearchField()
         field.tap()
         field.typeText("nature\n") // the return key submits the search and dismisses the keyboard
         let results = app.descendants(matching: .any)
