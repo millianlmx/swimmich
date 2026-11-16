@@ -42,7 +42,41 @@ final class TimelineViewModel {
     /// answer), so a month the finger comes back to is shown at once instead
     /// of asked again. `nil` outside a gesture: the cache lives a few seconds
     /// and never outlives it, so it cannot serve a month edited meanwhile.
-    @ObservationIgnored private var scrubCache: [String: TimeBucketAssetResponseDto]?
+    @ObservationIgnored private var scrubCache: [String: [AssetReactItem]]?
+
+    // MARK: - Merged timeline (device photos)
+
+    /// The device half of the merged timeline: this phone's photos the server
+    /// does not have yet (`DeviceTimelineSource`). `nil` keeps the timeline the
+    /// server's alone — every `TimelineViewModel` but the Photos tab's (search
+    /// results, archive, trash…) never sets it.
+    @ObservationIgnored var deviceSource: (any DeviceTimelineSource)?
+    /// The library ids the backup ledger proves on the server, read at every
+    /// month list: a photo just backed up leaves the device half and is shown
+    /// by its server copy alone.
+    @ObservationIgnored var uploadedDeviceIDs: @MainActor () -> Set<String> = { [] }
+    /// The Preferences switch "Show photos from this device".
+    @ObservationIgnored var showsDeviceAssets: @MainActor () -> Bool = { true }
+    /// The library id a server photo was backed up from (the backup ledger's
+    /// bridge), for "Delete from This Device Too". `nil` everywhere but the
+    /// Photos tab.
+    @ObservationIgnored var deviceCopyID: @MainActor (String) -> String? = { _ in nil }
+
+    /// The library ids of the copies this device still holds of `serverIDs`.
+    @MainActor
+    func deviceCopies(of serverIDs: [String]) -> [String] {
+        serverIDs.compactMap { id in
+            deviceCopyID(id).flatMap { DeviceMedia.exists(localIdentifier: $0) ? $0 : nil }
+        }
+    }
+    /// The device half of the last month list, by `"yyyy-MM"`.
+    @ObservationIgnored private var deviceItemsByMonth: [String: [AssetReactItem]] = [:]
+    /// The months the server itself has (`"yyyy-MM"`): a month only the device
+    /// has is never asked of the server.
+    @ObservationIgnored private var serverMonths: Set<String> = []
+    /// The ids of the device half last merged, so a return to the foreground
+    /// reloads only when the library actually changed.
+    @ObservationIgnored private(set) var deviceItemIDs: Set<String> = []
     /// Bumped each time the window of loaded months is replaced; a neighbour
     /// load that started before the replacement is discarded on arrival.
     @ObservationIgnored private(set) var windowEpoch = 0
@@ -99,6 +133,9 @@ final class TimelineViewModel {
     /// Toggles membership of `id` in `selectedIds`. Callers enter selection
     /// mode first (long-press / Select button); the toggle itself is mode-agnostic.
     func toggleSelection(id: String) {
+        // A device-only photo has no server id for the batch actions to send:
+        // it is backed up, shared or deleted on its own (cell menu, viewer).
+        guard !AssetReactItem.isDeviceOnlyID(id) else { return }
         if selectedIds.contains(id) {
             selectedIds.remove(id)
         } else {
@@ -200,11 +237,29 @@ final class TimelineViewModel {
     /// Skipped partner photos are announced by the confirmation beforehand, so
     /// a success does not publish `skippedPartnerCount`; with nothing
     /// sendable, no request is made and the notice is published.
+    /// `alsoFromDevice`: once the server accepted, the copies this device
+    /// still holds are deleted from Photos too (which asks the user).
     @MainActor
     func deleteSelected(currentUserId: String?) async {
+        await deleteSelected(currentUserId: currentUserId, alsoFromDevice: false)
+    }
+
+    /// The selection deleted from the server, then the copies this device
+    /// still holds from Photos.
+    @MainActor
+    func deleteSelectedEverywhere(currentUserId: String?) async {
+        await deleteSelected(currentUserId: currentUserId, alsoFromDevice: true)
+    }
+
+    @MainActor
+    private func deleteSelected(currentUserId: String?, alsoFromDevice: Bool) async {
+        let copies = alsoFromDevice ? deviceCopies(of: ownerScopedSelection(currentUserId: currentUserId).ids) : []
+        var accepted = false
         await removeOwnedSelection(currentUserId: currentUserId, reportsSkipped: false) { ids in
             try await client.deleteAssets(ids: ids, force: false)
+            accepted = true
         }
+        if accepted, !copies.isEmpty { _ = await DeviceMedia.delete(localIdentifiers: copies) }
     }
 
     /// Shared shape of delete / archive / locked folder: send only the ids the
@@ -595,12 +650,12 @@ final class TimelineViewModel {
         scrubPosition = TimelineScrubPosition(monthIndex: index, fraction: fraction)
         let key = buckets[index].timeBucket
         do {
-            let columnar = try await fetchBucketForJump(key)
+            let monthItems = try await fetchBucketForJump(key)
             // A newer jump or a reload owns the window now: touch nothing.
             guard gen == jumpGeneration else { return nil }
             activeJump = nil
             isLoading = false
-            let zipped = AssetReactItem.zip(columnar)
+            let zipped = monthItems
             if zipped.isEmpty {
                 scrubPosition = previous
                 return nil
@@ -678,9 +733,8 @@ final class TimelineViewModel {
         let index = upperBucketIndex
         let key = buckets[index].timeBucket
         do {
-            let columnar = try await fetchBucket(key)
+            let zipped = try await fetchMonthItems(key)
             guard epoch == windowEpoch, upperBucketIndex == index, bucketIsCurrent(index, key) else { return }
-            let zipped = AssetReactItem.zip(columnar)
             let newItems = zipped.filter { !loadedIds.contains($0.id) }
             items.insert(contentsOf: newItems, at: 0)
             loadedIds.formUnion(newItems.map(\.id))
@@ -699,12 +753,12 @@ final class TimelineViewModel {
         let index = bucketIndex
         let key = buckets[index].timeBucket
         do {
-            let columnar = try await fetchBucket(key)
+            // AC-013: the month's columns zipped into objects, with this
+            // device's photos of the month folded in.
+            let zipped = try await fetchMonthItems(key)
             // The window may have been replaced during the await (a jump, a
             // reload): then this month no longer belongs after its end.
             guard epoch == windowEpoch, bucketIndex == index, bucketIsCurrent(index, key) else { return }
-            // AC-013: zip columnar into objects.
-            let zipped = AssetReactItem.zip(columnar)
             for item in zipped where !loadedIds.contains(item.id) {
                 items.append(item)
                 loadedIds.insert(item.id)
@@ -733,9 +787,56 @@ final class TimelineViewModel {
     }
 
     /// The single place listing the filters of `GET /api/timeline/buckets`.
+    /// With a device source, the device half is read here too and its months
+    /// folded into the list (`MergedTimeline.buckets`).
     @MainActor
     private func fetchBuckets() async throws -> [TimeBucketsResponseDto] {
-        try await client.getTimeBuckets(isFavorite: filterIsFavorite, isTrashed: filterIsTrashed, personId: nil, withPartners: filterWithPartners, visibility: filterVisibility, withStacked: withStacked, orderBy: nil)
+        let server = try await client.getTimeBuckets(isFavorite: filterIsFavorite, isTrashed: filterIsTrashed, personId: nil, withPartners: filterWithPartners, visibility: filterVisibility, withStacked: withStacked, orderBy: nil)
+        serverMonths = Set(server.map { MergedTimeline.monthKey($0.timeBucket) })
+        let device = await deviceItems()
+        deviceItemsByMonth = Dictionary(grouping: device) { MergedTimeline.monthKey($0.fileCreatedAt) }
+        deviceItemIDs = Set(device.map(\.id))
+        return MergedTimeline.buckets(server: server, deviceCounts: deviceItemsByMonth.mapValues(\.count))
+    }
+
+    /// The device half for the current filter: nothing without a source, with
+    /// the switch off, or under Archived (a device photo is never archived);
+    /// its favorites alone under Favorites.
+    ///
+    /// Nothing either before this device's first backup pass: until then the
+    /// ledger knows nothing, and every photo of the library would read "only on
+    /// this device" — those the server already has (sent by another app)
+    /// included, shown twice. The first pass records them all, sent or found
+    /// already there.
+    @MainActor
+    private func deviceItems() async -> [AssetReactItem] {
+        guard let deviceSource, filter != .archived, showsDeviceAssets() else { return [] }
+        let uploaded = uploadedDeviceIDs()
+        guard !uploaded.isEmpty else { return [] }
+        return await deviceSource.deviceOnlyItems(excluding: uploaded, favoritesOnly: filter == .favorites)
+    }
+
+    /// Back in the foreground: the library may have changed behind the app (a
+    /// photo taken, one deleted in Photos, one backed up). Reloads only when
+    /// the device half is no longer the one on screen.
+    @MainActor
+    func refreshIfDeviceLibraryChanged() async {
+        guard deviceSource != nil, firstPageTask == nil, !isLoading else { return }
+        let device = await deviceItems()
+        let ids = Set(device.map(\.id))
+        guard ids != deviceItemIDs else { return }
+        await refresh()
+    }
+
+    /// One month's items: the server's (zipped) and the device's, newest
+    /// first. A month only the device has is not asked of the server.
+    @MainActor
+    private func fetchMonthItems(_ timeBucket: String) async throws -> [AssetReactItem] {
+        let month = MergedTimeline.monthKey(timeBucket)
+        let device = deviceItemsByMonth[month] ?? []
+        if !device.isEmpty, !serverMonths.contains(month) { return device }
+        let server = AssetReactItem.zip(try await fetchBucket(timeBucket))
+        return MergedTimeline.items(server: server, device: device)
     }
 
     /// The single place listing the filters of `GET /api/timeline/bucket`:
@@ -754,11 +855,12 @@ final class TimelineViewModel {
 
     /// A jump's month: from the scrub cache when the gesture already fetched
     /// it, else from the server (and kept while a scrub is open).
-    private func fetchBucketForJump(_ timeBucket: String) async throws -> TimeBucketAssetResponseDto {
+    @MainActor
+    private func fetchBucketForJump(_ timeBucket: String) async throws -> [AssetReactItem] {
         if let cached = scrubCache?[timeBucket] { return cached }
-        let columnar = try await fetchBucket(timeBucket)
-        if scrubCache != nil { scrubCache?[timeBucket] = columnar }
-        return columnar
+        let monthItems = try await fetchMonthItems(timeBucket)
+        if scrubCache != nil { scrubCache?[timeBucket] = monthItems }
+        return monthItems
     }
 
     private func fetchBucket(_ timeBucket: String) async throws -> TimeBucketAssetResponseDto {
@@ -863,9 +965,29 @@ final class TimelineViewModel {
     /// touch selection state — distinct from `deleteSelected` which operates on
     /// the selection set. Same try-then-mutate discipline.
     /// - Returns: `true` when the server accepted the delete (see `archive(id:)`).
+    /// Deletes one server photo, and — `alsoFromDevice` — the copy this device
+    /// still holds, once the server accepted (Photos asks the user).
+    @MainActor
+    @discardableResult
+    func delete(id: String, alsoFromDevice: Bool) async -> Bool {
+        let copies = alsoFromDevice ? deviceCopies(of: [id]) : []
+        guard await delete(id: id) else { return false }
+        if !copies.isEmpty { _ = await DeviceMedia.delete(localIdentifiers: copies) }
+        return true
+    }
+
     @MainActor
     @discardableResult
     func delete(id: String) async -> Bool {
+        // A device-only photo: Photos deletes it (and asks the user first).
+        // Already gone from the library (the viewer deleted it) counts as done.
+        if let deviceID = AssetReactItem.deviceAssetID(fromID: id) {
+            guard await DeviceMedia.delete(localIdentifiers: [deviceID]) else { return false }
+            items.removeAll { $0.id == id }
+            loadedIds.remove(id)
+            deviceItemIDs.remove(id)
+            return true
+        }
         do {
             try await client.deleteAssets(ids: [id], force: false)
             items.removeAll { $0.id == id }

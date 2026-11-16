@@ -40,6 +40,11 @@ final class PreferencesViewModel {
         set { store.smoothScrubbing = newValue }
     }
 
+    var showsDeviceAssets: Bool {
+        get { store.showsDeviceAssets }
+        set { store.showsDeviceAssets = newValue }
+    }
+
     // MARK: - Viewer
 
     var loadOriginal: Bool {

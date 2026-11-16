@@ -50,6 +50,11 @@ protocol BackupLedgerStoring: Sendable {
     /// `uploadedLocalAssetIDs()`, for callers holding one id and no set.
     func hasUploaded(id: String) -> Bool
 
+    /// Server UUID → library id, for the entries that know their server UUID:
+    /// the bridge that lets the app offer to delete a backed-up photo from this
+    /// device as well as from the server.
+    func localIDsByServerID() -> [String: String]
+
     /// Every tracked entry that has a checksum — the reconciliation payload.
     /// Entries migrated from the v1 file have none and are skipped: replaying
     /// them is impossible without re-hashing the asset, which is precisely the

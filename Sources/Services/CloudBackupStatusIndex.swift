@@ -28,6 +28,11 @@ final class CloudBackupStatusIndex {
     /// Library ids the ledger tracks — the local half of the same question.
     private(set) var uploadedLocalIDs: Set<String> = []
 
+    /// Server UUID → library id of the photo it was backed up from (the
+    /// original, or its edited version): what "Delete from This Device Too"
+    /// deletes. Not gated by the badge preference — it is not a badge.
+    private(set) var localIDsByServerID: [String: String] = [:]
+
     func setEnabled(_ enabled: Bool) { isEnabled = enabled }
 
     /// Rebuilds both sets from the ledgers. Called once at composition, then on
@@ -40,6 +45,16 @@ final class CloudBackupStatusIndex {
         uploadedServerIDs = ledger.uploadedServerAssetIDs()
             .union(editLedger.allRecords().values.map(\.serverAssetId))
         uploadedLocalIDs = ledger.uploadedLocalAssetIDs()
+        var bridge = ledger.localIDsByServerID()
+        for (localID, record) in editLedger.allRecords() { bridge[record.serverAssetId] = localID }
+        localIDsByServerID = bridge
+    }
+
+    /// The library id a server photo was backed up from, if this device's
+    /// ledger knows it. The photo may have been deleted from Photos since:
+    /// check with `DeviceMedia.exists` before offering anything.
+    func localID(forServerAssetID id: String) -> String? {
+        localIDsByServerID[id]
     }
 
     /// Status of an asset the server knows, looked up by its UUID — what a

@@ -111,7 +111,7 @@ enum BackupExportDirectory {
     }
 
     /// Deletes what a previous process left behind: the three directories
-    /// above, and the bodies older versions wrote at the root of `tmp`
+    /// above, the device photos copied for sharing, and the bodies older versions wrote at the root of `tmp`
     /// (`immich-upload-<uuid>.multipart`). Each is a full-size copy of a
     /// photo or video, and every process killed mid-upload or mid-export (the
     /// system ending a background pass, the user swiping the app away) used to
@@ -126,7 +126,10 @@ enum BackupExportDirectory {
         in temporaryDirectory: URL = URL(fileURLWithPath: NSTemporaryDirectory()),
         fileManager: FileManager = .default
     ) {
-        for name in ["immich-backup", "immich-local-check", "immich-upload"] {
+        // `immich-share`: the copies of device photos handed to the share sheet
+        // (`DeviceMedia.exportForSharing`), left behind by a share the process
+        // did not live to clean up.
+        for name in ["immich-backup", "immich-local-check", "immich-upload", "immich-share"] {
             try? fileManager.removeItem(at: temporaryDirectory.appendingPathComponent(name, isDirectory: true))
         }
         let legacy = (try? fileManager.contentsOfDirectory(atPath: temporaryDirectory.path)) ?? []

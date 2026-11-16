@@ -373,8 +373,16 @@ final class DependencyContainer {
         )
     }
 
+    /// The Photos tab's timeline: the server's, with this device's photos not
+    /// backed up yet merged in (`DeviceTimelineSource`) — the only
+    /// `TimelineViewModel` that has a device source.
     func makeTimelineViewModel() -> TimelineViewModel {
-        TimelineViewModel(client: libraryClient)
+        let vm = TimelineViewModel(client: libraryClient)
+        vm.deviceSource = PhotoKitDeviceTimelineSource()
+        vm.uploadedDeviceIDs = { [cloudStatus = self.cloudStatus] in cloudStatus.uploadedLocalIDs }
+        vm.showsDeviceAssets = { [appSettings = self.appSettings] in appSettings.showsDeviceAssets }
+        vm.deviceCopyID = { [cloudStatus = self.cloudStatus] id in cloudStatus.localID(forServerAssetID: id) }
+        return vm
     }
 
     /// Change-password screen (gap G18). Only lends the shared `ImmichClient`:

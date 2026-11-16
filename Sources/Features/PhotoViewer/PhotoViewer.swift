@@ -121,8 +121,23 @@ struct ViewerActions: Equatable {
     let archive: ViewerArchiveAction?
     let showsDelete: Bool
     let allowsInfoEdits: Bool
+    /// "Back Up Now" — a device-only photo of the merged timeline.
+    let showsBackUp: Bool
 
     init(asset: AssetReactItem, visibility: String, isTrash: Bool, currentUserId: String?) {
+        // A photo only this device has: share it, back it up or delete it
+        // (from Photos). Every other action is a server route.
+        if asset.isDeviceOnly {
+            showsShare = true
+            showsFavorite = false
+            showsEdit = false
+            archive = nil
+            showsDelete = true
+            allowsInfoEdits = false
+            showsBackUp = true
+            return
+        }
+        showsBackUp = false
         let owner = asset.allowsOwnerActions(currentUserId: currentUserId)
         showsShare = !isTrash
         showsFavorite = !isTrash && owner
@@ -295,6 +310,16 @@ struct PhotoViewer: View {
     /// Refusal handed back by the surface's `onArchive`; cleared by the next
     /// accepted archive/unarchive.
     @State private var surfaceActionError: String?
+    /// The backup, for "Back Up Now" on a device-only photo. Optional: only the
+    /// Photos tab shows such photos, and every other host may lack it.
+    @Environment(UploadViewModel.self) private var upload: UploadViewModel?
+    /// The backup ledger's mirror: which server photo came from which device
+    /// photo, for "Delete from This Device Too".
+    @Environment(CloudBackupStatusIndex.self) private var cloudStatus: CloudBackupStatusIndex?
+    /// The device-only photo whose backup is running.
+    @State private var backingUpID: String?
+    /// Device-only photos backed up while the viewer was open.
+    @State private var backedUpDeviceIDs: Set<String> = []
     @State private var selectedIndex: Int
     @State private var favoriteIDs: Set<String>
     @State private var showChrome = true
@@ -602,6 +627,13 @@ struct PhotoViewer: View {
                     confirmDelete()
                 }
                 .accessibilityIdentifier("viewerDeleteConfirm")
+                // A backed-up photo this device still holds: both copies at once.
+                if !deleteIsPermanent, let copy = pendingDeviceCopyID {
+                    Button("Delete from This Device Too", role: .destructive) {
+                        confirmDelete(deviceCopy: copy)
+                    }
+                    .accessibilityIdentifier("viewerDeleteEverywhere")
+                }
                 Button("Cancel", role: .cancel) {}
                     .accessibilityIdentifier("viewerDeleteCancel")
             } message: {
@@ -772,7 +804,7 @@ struct PhotoViewer: View {
                             localFileURL: offlineIndex?.localURL(for: asset.id),
                             controlsVisible: showChrome,
                             onSingleTap: dismissOrToggleChrome,
-                            posterURL: zoomSource == nil ? nil : asset.thumbnailURL(base: baseURL),
+                            posterURL: zoomSource == nil || asset.isDeviceOnly ? nil : asset.thumbnailURL(base: baseURL),
                             posterPlaceholder: asset.id == openingAssetID ? openingImage : nil,
                             isActive: i == selectedIndex
                         )
@@ -884,6 +916,8 @@ struct PhotoViewer: View {
     /// Trailing actions in row order (slideshow · detected text · cast · details).
     /// Cast is absent in the trash: nothing there can leave the device.
     private func topBarActions(_ asset: AssetReactItem) -> [TopBarAction] {
+        // Slideshow, detected text, cast and details all read the server.
+        guard !asset.isDeviceOnly else { return [] }
         var actions = [
             TopBarAction(
                 id: "viewerSlideshowButton", menuID: "viewerMenuSlideshow",
@@ -1083,8 +1117,10 @@ struct PhotoViewer: View {
                         withAnimation(PVMotion.movement(PVMotion.snappy, reduceMotion: reduceMotion)) { selectedIndex = i }
                     } label: {
                         AuthenticatedAsyncImage(
-                            url: asset.thumbnailURL(base: baseURL, size: .thumbnail),
-                            token: token
+                            url: asset.isDeviceOnly ? nil : asset.thumbnailURL(base: baseURL, size: .thumbnail),
+                            token: token,
+                            localMaxPixelSize: 160,
+                            deviceAssetID: asset.deviceAssetID
                         )
                         .frame(width: filmstripWidth(for: asset), height: 56)
                         .clipShape(RoundedRectangle(cornerRadius: PVRadius.sm, style: .continuous))
@@ -1183,7 +1219,11 @@ struct PhotoViewer: View {
             HStack(spacing: PVSpacing.s16) {
                 if actions.showsShare {
                     Button {
-                        presentShare = true
+                        if asset.isDeviceOnly {
+                            share.shareDevicePhoto(asset)
+                        } else {
+                            presentShare = true
+                        }
                     } label: {
                         Image(systemName: "square.and.arrow.up")
                             .font(.pvHeadline)
@@ -1196,7 +1236,8 @@ struct PhotoViewer: View {
                     // quality for this one share and shares at once, leaving the
                     // default setting alone.
                     .contextMenu {
-                        ForEach(ViewerShareViewModel.choices(for: asset)) { quality in
+                        // A device photo is shared as it is, from Photos.
+                        ForEach(asset.isDeviceOnly ? [] : ViewerShareViewModel.choices(for: asset)) { quality in
                             Button {
                                 share.share(asset, quality: quality)
                             } label: {
@@ -1214,8 +1255,12 @@ struct PhotoViewer: View {
 
                 // Center glass capsule: favorite + edit (or restore in Trash).
                 // Absent on a partner's photo: no empty glass pill.
-                if isTrash || actions.showsFavorite || actions.showsEdit {
+                if isTrash || actions.showsFavorite || actions.showsEdit || actions.showsBackUp {
                     HStack(spacing: PVSpacing.s24) {
+                        if actions.showsBackUp {
+                            backUpButton(asset)
+                        }
+
                         if isTrash {
                             Button {
                                 restore(asset)
@@ -1287,6 +1332,11 @@ struct PhotoViewer: View {
 
                 if actions.showsDelete {
                     Button(role: .destructive) {
+                        if asset.isDeviceOnly {
+                            // Photos asks for the confirmation itself.
+                            deleteDevicePhoto(asset)
+                            return
+                        }
                         if isTrash {
                             deleteIsPermanent = true
                         } else {
@@ -1310,6 +1360,67 @@ struct PhotoViewer: View {
         .padding(.vertical, PVSpacing.s8)
         .padding(.bottom, PVSpacing.s12)
         .pvFullscreenChromeTextCap()
+    }
+
+    // MARK: - Device-only photo (merged timeline)
+
+    /// "Back Up Now": a spinner while the pass runs, a checked cloud once the
+    /// ledger has the photo (the grid shows its server copy after the close).
+    private func backUpButton(_ asset: AssetReactItem) -> some View {
+        let done = backedUpDeviceIDs.contains(asset.id)
+        return Button {
+            backUpDevicePhoto(asset)
+        } label: {
+            Group {
+                if backingUpID == asset.id {
+                    ProgressView()
+                        .tint(PVFloating.content)
+                } else {
+                    Image(systemName: done ? "checkmark.icloud" : "icloud.and.arrow.up")
+                        .font(.pvHeadline)
+                        .foregroundStyle(Color.white)
+                }
+            }
+            .frame(width: 44, height: 44)
+        }
+        .buttonStyle(.plain)
+        .disabled(done || backingUpID != nil)
+        .accessibilityLabel(done ? "Backed Up" : "Back Up Now")
+        .accessibilityIdentifier("viewerBackUpButton")
+    }
+
+    private func backUpDevicePhoto(_ asset: AssetReactItem) {
+        guard let deviceID = asset.deviceAssetID, let upload, backingUpID == nil else { return }
+        backingUpID = asset.id
+        Task {
+            let result = await upload.runBackup(manual: true, only: [deviceID])
+            backingUpID = nil
+            switch result {
+            case .refused(let message):
+                surfaceActionError = message
+            case .completed(let outcome):
+                if outcome.backedUpIDs.contains(deviceID) {
+                    backedUpDeviceIDs.insert(asset.id)
+                    onDataChanged?()
+                } else {
+                    surfaceActionError = String(localized: "This photo couldn't be backed up. Try again later.")
+                }
+            }
+        }
+    }
+
+    /// Deletes a device-only photo from Photos (which asks the user), then
+    /// drops its page and tells the grid.
+    private func deleteDevicePhoto(_ asset: AssetReactItem) {
+        guard let deviceID = asset.deviceAssetID else { return }
+        Task {
+            guard await DeviceMedia.delete(localIdentifiers: [deviceID]) else { return }
+            deleteFeedbackTick &+= 1
+            onDelete?(asset)
+            if let index = localAssets.firstIndex(where: { $0.id == asset.id }) {
+                removeAsset(at: index)
+            }
+        }
     }
 
     /// Trash context is signalled by a `onRestore` callback being provided —
@@ -1372,6 +1483,8 @@ struct PhotoViewer: View {
 
     /// Opens the EXIF info bottom sheet — refreshes the detail VM then presents.
     private func openInfo() {
+        // A device-only photo has no server record to describe.
+        guard currentAsset?.isDeviceOnly != true else { return }
         refreshInfo()
         showInfo = true
     }
@@ -1455,7 +1568,7 @@ struct PhotoViewer: View {
     /// Idempotent per asset: a new asset gets a new VM, and `load()` is a no-op
     /// once that VM holds its boxes.
     private func refreshOcr() {
-        guard let asset = currentAsset, asset.isImage else { return }
+        guard let asset = currentAsset, asset.isImage, !asset.isDeviceOnly else { return }
         if ocrVM?.assetId != asset.id {
             ocrVM = OcrOverlayViewModel(assetId: asset.id, client: client)
         }
@@ -1615,7 +1728,21 @@ struct PhotoViewer: View {
         }
     }
 
-    private func confirmDelete() {
+    /// The copy this device still holds of the photo waiting for the delete
+    /// confirmation (the backup ledger's bridge, checked against Photos).
+    private var pendingDeviceCopyID: String? {
+        guard let index = pendingDeleteIndex, localAssets.indices.contains(index),
+              let copy = cloudStatus?.localID(forServerAssetID: localAssets[index].id),
+              DeviceMedia.exists(localIdentifier: copy) else { return nil }
+        return copy
+    }
+
+    /// `deviceCopy`: once the server delete is under way, that copy is deleted
+    /// from Photos too (which asks the user).
+    private func confirmDelete(deviceCopy: String? = nil) {
+        if let deviceCopy {
+            Task { _ = await DeviceMedia.delete(localIdentifiers: [deviceCopy]) }
+        }
         guard let index = pendingDeleteIndex, localAssets.indices.contains(index) else {
             pendingDeleteIndex = nil
             return

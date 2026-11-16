@@ -210,6 +210,18 @@ struct VideoPlayerView: View {
     }
 
     private func prepareVideo() {
+        // A device-only video (merged timeline): the file Photos hands over,
+        // downloaded from iCloud if needed. No server copy to fall back on.
+        if assetID == nil, let deviceID = asset.deviceAssetID {
+            Task {
+                guard let url = await DeviceMedia.videoURL(localIdentifier: deviceID) else {
+                    vm.markUnavailable()
+                    return
+                }
+                await vm.prepare(url: url, assetID: asset.id, token: nil)
+            }
+            return
+        }
         Task { await vm.prepare(assetID: assetID ?? asset.id, baseURL: baseURL, token: token, localFileURL: localFileURL) }
     }
 
@@ -365,7 +377,7 @@ struct VideoPlayerView: View {
             }
             Button {
                 vm.reset()
-                Task { await vm.prepare(assetID: assetID ?? asset.id, baseURL: baseURL, token: token, localFileURL: localFileURL) }
+                prepareVideo()
             } label: {
                 Text("Retry")
                     .font(.pvSubhead.weight(.semibold))

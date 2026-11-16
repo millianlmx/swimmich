@@ -175,6 +175,12 @@ final class VideoPlaybackViewModel {
         }
     }
 
+    /// A source that could not even be resolved (a device video Photos could
+    /// not hand over): the usual error state, with its Retry.
+    func markUnavailable() {
+        status = .failed(UserFacingError.genericMessage)
+    }
+
     func togglePlayPause() {
         switch status {
         case .playing:

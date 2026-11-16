@@ -955,7 +955,7 @@ private final class StallWatchdog: @unchecked Sendable {
 /// The id only exists once `requestImage` returns, while the `onCancel` handler
 /// can fire at any moment — so the hand-off is lock-guarded instead of captured
 /// by value. An id that never landed cancels nothing (Photos never started).
-private final class ImageRequestHandle: @unchecked Sendable {
+final class ImageRequestHandle: @unchecked Sendable {
     private let lock = NSLock()
     private var id: PHImageRequestID = PHInvalidImageRequestID
 

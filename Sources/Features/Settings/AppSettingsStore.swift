@@ -52,6 +52,7 @@ final class AppSettingsStore {
     static let accentColorKey = "themePrimaryColor"
     static let hapticsEnabledKey = "hapticFeedbackEnabled"
     static let timelineSmoothScrubbingKey = "timelineSmoothScrubbing"
+    static let timelineShowsDeviceAssetsKey = "timelineShowsDeviceAssets"
     static let shareFileTypeKey = "shareFileType"
 
     private let defaults: UserDefaults
@@ -79,6 +80,7 @@ final class AppSettingsStore {
     private var storedAccent: AppAccent
     private var storedHapticsEnabled: Bool
     private var storedSmoothScrubbing: Bool
+    private var storedShowsDeviceAssets: Bool
     private var storedShareQuality: ShareQuality
 
     init(defaults: UserDefaults = .standard) {
@@ -109,6 +111,9 @@ final class AppSettingsStore {
         storedHapticsEnabled = defaults.object(forKey: Self.hapticsEnabledKey) == nil
             ? true : defaults.bool(forKey: Self.hapticsEnabledKey)
         storedSmoothScrubbing = defaults.object(forKey: Self.timelineSmoothScrubbingKey) as? Bool ?? false
+        // ON by default: the Photos tab is the whole library, this device's
+        // photos not backed up yet included (Apple Photos' behaviour).
+        storedShowsDeviceAssets = defaults.object(forKey: Self.timelineShowsDeviceAssetsKey) as? Bool ?? true
         storedShareQuality = defaults.string(forKey: Self.shareFileTypeKey)
             .flatMap(ShareQuality.init(rawValue:)) ?? .preview
     }
@@ -146,6 +151,17 @@ final class AppSettingsStore {
             guard newValue != storedSmoothScrubbing else { return }
             storedSmoothScrubbing = newValue
             defaults.set(newValue, forKey: Self.timelineSmoothScrubbingKey)
+        }
+    }
+
+    /// The Photos tab mixes this device's photos that are not on the server
+    /// yet into the server's timeline (`DeviceTimelineSource`).
+    var showsDeviceAssets: Bool {
+        get { storedShowsDeviceAssets }
+        set {
+            guard newValue != storedShowsDeviceAssets else { return }
+            storedShowsDeviceAssets = newValue
+            defaults.set(newValue, forKey: Self.timelineShowsDeviceAssetsKey)
         }
     }
 
@@ -300,7 +316,7 @@ final class AppSettingsStore {
             Self.loadOriginalVideoKey, Self.slideshowRepeatKey, Self.slideshowSpeedKey,
             Self.slideshowLookKey, Self.slideshowReverseKey, Self.themeModeKey,
             Self.accentColorKey, Self.hapticsEnabledKey, Self.timelineSmoothScrubbingKey,
-            Self.shareFileTypeKey
+            Self.shareFileTypeKey, Self.timelineShowsDeviceAssetsKey
         ].forEach(defaults.removeObject(forKey:))
 
         storedGroupBy = .day
@@ -318,6 +334,7 @@ final class AppSettingsStore {
         storedAccent = .immich
         storedHapticsEnabled = true
         storedSmoothScrubbing = false
+        storedShowsDeviceAssets = true
         storedShareQuality = .preview
     }
 }

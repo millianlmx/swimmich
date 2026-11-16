@@ -160,6 +160,19 @@ final class AppSettingsStoreTests: XCTestCase {
         XCTAssertEqual(AppSettingsStore(defaults: defaults).accent, .immich)
     }
 
+    /// The merged Photos timeline is on by default, and the switch persists
+    /// and resets like every other preference.
+    func test_showsDeviceAssets_defaultsOnPersistsAndResets() {
+        XCTAssertTrue(AppSettingsStore(defaults: defaults).showsDeviceAssets)
+        AppSettingsStore(defaults: defaults).showsDeviceAssets = false
+        XCTAssertEqual(defaults.object(forKey: AppSettingsStore.timelineShowsDeviceAssetsKey) as? Bool, false)
+        let store = AppSettingsStore(defaults: defaults)
+        XCTAssertFalse(store.showsDeviceAssets)
+        store.resetToDefaults()
+        XCTAssertTrue(store.showsDeviceAssets)
+        XCTAssertNil(defaults.object(forKey: AppSettingsStore.timelineShowsDeviceAssetsKey))
+    }
+
     func test_AC_92_smoothScrubbing_defaultsOffAndPersists() {
         XCTAssertFalse(AppSettingsStore(defaults: defaults).smoothScrubbing)
         XCTAssertNil(defaults.object(forKey: AppSettingsStore.timelineSmoothScrubbingKey), "reading writes nothing")
