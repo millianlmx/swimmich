@@ -110,7 +110,9 @@ final class FloatingControlStyleTests: XCTestCase {
         let bar: Int
     }
 
-    /// The closed table of the style's call sites (28 + 22 + 10).
+    /// The closed table of the style's call sites (26 + 20 + 8). The map's
+    /// controls are not in it: they float over an interface surface and use the
+    /// system's adaptive glass (`pvGlass`, see `test_mapControlsUseTheSystemGlass`).
     private static let expectedCounts: [String: RoleCounts] = [
         "Sources/Features/PhotoViewer/PhotoViewer.swift": RoleCounts(circle: 8, pill: 5, bar: 2),
         "Sources/Features/PhotoViewer/PhotoInfoPanel.swift": RoleCounts(circle: 1, pill: 0, bar: 0),
@@ -124,8 +126,6 @@ final class FloatingControlStyleTests: XCTestCase {
         "Sources/Features/SharedLinks/SharedLinkViewerView.swift": RoleCounts(circle: 1, pill: 1, bar: 0),
         "Sources/Features/Timeline/TimelineView.swift": RoleCounts(circle: 2, pill: 1, bar: 0),
         "Sources/Features/Timeline/TimelineScrubber.swift": RoleCounts(circle: 0, pill: 2, bar: 0),
-        "Sources/Features/Search/MapView.swift": RoleCounts(circle: 2, pill: 2, bar: 1),
-        "Sources/Features/Search/MapSettingsSheet.swift": RoleCounts(circle: 0, pill: 0, bar: 1),
         "Sources/Features/Albums/AlbumsView.swift": RoleCounts(circle: 0, pill: 1, bar: 0),
         "Sources/Features/Albums/ActivityFeedSheet.swift": RoleCounts(circle: 0, pill: 0, bar: 1),
         "Sources/Features/Auth/Onboarding/OnboardingFlowView.swift": RoleCounts(circle: 0, pill: 0, bar: 1),
@@ -149,7 +149,6 @@ final class FloatingControlStyleTests: XCTestCase {
         "Sources/Features/Memories/MemoryMomentView.swift",
         "Sources/Features/Memories/MemoryEpilogueView.swift",
         "Sources/Features/Memories/MemoriesView.swift",
-        "Sources/Features/Search/MapView.swift",
         "Sources/Features/RoadTrip/RoadTripView.swift"
     ]
 
@@ -170,7 +169,7 @@ final class FloatingControlStyleTests: XCTestCase {
             let expected = Self.expectedCounts[path]?.circle ?? 0
             XCTAssertEqual(actual.circle, expected, "\(path): .pvFloating(.circle) count")
         }
-        XCTAssertEqual(total, 28, "28 round buttons float in the app")
+        XCTAssertEqual(total, 26, "26 round buttons float over media in the app")
     }
 
     func test_AC_30_2_pillsAndBarsUseTheirStyle() throws {
@@ -184,8 +183,8 @@ final class FloatingControlStyleTests: XCTestCase {
             XCTAssertEqual(actual.pill, expected.pill, "\(path): .pvFloating(.pill) count")
             XCTAssertEqual(actual.bar, expected.bar, "\(path): .pvFloating(.bar) count")
         }
-        XCTAssertEqual(pills, 22)
-        XCTAssertEqual(bars, 10)
+        XCTAssertEqual(pills, 20)
+        XCTAssertEqual(bars, 8)
 
         let roadTrip = try Self.normalizedLines("Sources/Features/RoadTrip/RoadTripView.swift")
         XCTAssertFalse(roadTrip.contains { $0.text.contains(".black.opacity(0.5)") },
@@ -193,6 +192,19 @@ final class FloatingControlStyleTests: XCTestCase {
         let root = try Self.normalizedLines("Sources/RootView.swift")
         XCTAssertFalse(root.contains { $0.text.contains(".presentationBackground(") },
                        "the map photo sheet keeps the system background")
+    }
+
+    /// The map's controls (My Location, settings, the filter badge, the
+    /// loading capsule, the empty-filter card) sit beside the system's own bars,
+    /// over a map rather than a photo: the system's adaptive glass, not the
+    /// dark over-media one — side by side, the two read as different materials.
+    func test_mapControlsUseTheSystemGlass() throws {
+        let path = "Sources/Features/Search/MapView.swift"
+        let text = try Self.normalizedLines(path).map(\.text).joined(separator: "\n")
+        XCTAssertEqual(Self.matchCount(#"\.pvFloating\("#, in: text), 0, "\(path): no over-media glass on the map")
+        XCTAssertEqual(Self.matchCount(#"\.pvGlass\(\.circle\)"#, in: text), 2, "\(path): My Location and settings")
+        XCTAssertEqual(Self.matchCount(#"\.pvGlass\(\.pill\)"#, in: text), 2, "\(path): loading capsule and filter badge")
+        XCTAssertEqual(Self.matchCount(#"\.pvGlass\(\.bar\)"#, in: text), 1, "\(path): empty-filter card")
     }
 
     // MARK: - No ad-hoc material outside the design system
@@ -219,8 +231,7 @@ final class FloatingControlStyleTests: XCTestCase {
         "PhotoViewer.swift|body|P4": 1,
         "PhotoViewer.swift|filmstrip|P2": 1,
         "CreateAlbumSheet.swift|coverPreview|P2": 1,
-        "AlbumDetailView.swift|collaboratorAvatars|P5": 1,
-        "TrashView.swift|body|P2": 1
+        "AlbumDetailView.swift|collaboratorAvatars|P5": 1
     ]
 
     func test_AC_30_3_noAdHocMaterialOutsideDesignSystem() throws {

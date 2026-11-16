@@ -14,9 +14,8 @@ import SwiftUI
 // nothing that has to be licensed: the shape is ours, and the palette is
 // `ImmichLogoColors`, two colours derived from the app's accent.
 //
-// Read it at the two sizes it ships at: 24 pt beside the wordmark in
-// `ImmichLogo` (the app bar of nine screens) and 40 pt in the onboarding
-// badge. The barrel and the slits fade below 40 pt — deliberately: at 24 pt the
+// It ships in the onboarding badge only (40 pt); the app bars no longer carry
+// it (`ImmichAppBar` is a title alone). The barrel and the slits fade below 40 pt — deliberately: at 24 pt the
 // mark is a disc with a petal-shaped pupil, which is legible; the blades appear
 // as it grows, which is what keeps the 1024 pt icon interesting.
 
@@ -141,12 +140,11 @@ struct ImmichMarkShape: Shape {
 /// The mark: the lens, filled with the Swimmich sweep.
 ///
 /// ```swift
-/// ImmichMark().frame(width: 24, height: 24)   // app bar glyph
-/// ImmichMark().frame(width: 40, height: 40)   // header badge
+/// ImmichMark().frame(width: 40, height: 40)   // onboarding badge
 /// ```
 ///
 /// Purely decorative: it carries no text, so `Text`-bearing parents own the
-/// accessibility label (see `ImmichLogo`, which names the wordmark beside it).
+/// accessibility label (the onboarding badge names the app beside it).
 struct ImmichMark: View {
     var body: some View {
         ImmichMarkShape()

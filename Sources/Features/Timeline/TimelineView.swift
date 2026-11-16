@@ -64,6 +64,13 @@ struct TimelineView: View {
     /// The scrubber's month bubble is on screen: the pinned header steps aside
     /// so only one date shows at a time.
     @State private var scrubberBubbleVisible = false
+    /// The live jump of a scrub in progress, debounced so that a fast drag
+    /// across ten months does not fire ten loads: only the month the finger
+    /// pauses on (even briefly) is fetched.
+    @State private var liveScrubTask: Task<Void, Never>?
+    /// The month the last completed live jump landed on, so the release does
+    /// not load it a second time when it only needs its first photo.
+    @State private var liveScrubbedMonth: Int?
     /// Height of the scrim behind the header and the top controls, status bar
     /// included.
     private static let scrimHeight: CGFloat = 220
@@ -728,17 +735,44 @@ struct TimelineView: View {
     private var dateScrubber: some View {
         TimelineScrubber(
             vm: vm,
+            onScrub: scrubberMoved,
             onRelease: scrubberReleased,
             onAdjust: scrubberAdjusted,
             onBubbleVisibilityChange: { scrubberBubbleVisible = $0 }
         )
     }
 
+    /// The finger crossed into `month`: the grid follows while it is still
+    /// down. Debounced — a month the finger only flies over is never loaded;
+    /// a newer jump supersedes an older one still in flight (`jumpGeneration`).
+    private func scrubberMoved(month: Int) {
+        liveScrubTask?.cancel()
+        liveScrubbedMonth = nil
+        liveScrubTask = Task { @MainActor in
+            try? await Task.sleep(for: Self.liveScrubDebounce)
+            guard !Task.isCancelled else { return }
+            if let id = await vm.jumpToMonth(at: month, fraction: 0) {
+                guard !Task.isCancelled else { return }
+                liveScrubbedMonth = month
+                requestScroll(to: id)
+            }
+        }
+    }
+
+    /// Short enough to feel live, long enough to skip the months a fast
+    /// drag only flies over.
+    private static let liveScrubDebounce: Duration = .milliseconds(90)
+
     private func scrubberReleased(month: Int, fraction: Double) {
+        liveScrubTask?.cancel()
+        liveScrubTask = nil
+        // Read at release, so a change in Preferences applies without a
+        // relaunch.
+        let anchorFraction: Double = appSettings.smoothScrubbing ? fraction : 0
+        // Already on screen from the live scrub, at its first photo, and the
+        // grid has not moved since: nothing left to load.
+        if anchorFraction == 0, liveScrubbedMonth == month, vm.scrubPosition?.monthIndex == month { return }
         Task {
-            // Read at release, so a change in Preferences applies without a
-            // relaunch.
-            let anchorFraction: Double = appSettings.smoothScrubbing ? fraction : 0
             if let id = await vm.jumpToMonth(at: month, fraction: anchorFraction) {
                 requestScroll(to: id)
             }

@@ -10,9 +10,11 @@ import XCTest
 ///    language (AC-14, AC-90).
 /// 2. The scrubber is there for every filter and grouping, never over an empty
 ///    or failed timeline (AC-86).
-/// 3. A release sends ONE `GET /api/timeline/bucket` for the targeted month, with
-///    the filters of the month list; the months crossed by the drag send none
-///    (AC-87, AC-88, AC-92). A failed month is retried alone (AC-89) and a
+/// 3. The gesture's first `GET /api/timeline/bucket` is for the targeted month,
+///    with the filters of the month list; the months a fast drag only flies
+///    over send none (AC-87, AC-88, AC-92) — the grid follows the finger live,
+///    but only on a month the finger rests on (`TimelineView.scrubberMoved`,
+///    debounced). A failed month is retried alone (AC-89) and a
 ///    release made while another month is in flight wins (AC-95).
 /// 4. The handle follows the finger-scrolled grid (AC-91), snaps to the first
 ///    photo of the month by default and to the exact spot with "Smooth

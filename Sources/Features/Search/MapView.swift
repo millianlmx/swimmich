@@ -89,8 +89,7 @@ struct MapSegmentView: View {
         .sheet(isPresented: $presentSettings) {
             MapSettingsSheet(
                 store: vm.settings,
-                onApply: { filter in Task { await vm.applyFilter(filter) } },
-                onClose: { presentSettings = false }
+                onApply: { filter in Task { await vm.applyFilter(filter) } }
             )
             .presentationDetents([.medium, .large])
             .presentationDragIndicator(.visible)
@@ -191,20 +190,21 @@ struct MapSegmentView: View {
             if ((isLoadingPhotos || vm.isLoading) && vm.markers.isEmpty) || isRenderingMarkers {
                 HStack(spacing: PVSpacing.s8) {
                     ProgressView()
-                        .tint(PVFloating.content)
                     Text("Loading photos…")
                         .font(.pvSubhead)
-                        .foregroundStyle(PVFloating.secondaryContent)
+                        .foregroundStyle(Color.textSecondaryPV)
                 }
                 .padding(.horizontal, PVSpacing.s16)
                 .padding(.vertical, PVSpacing.s8)
-                .pvFloating(.pill)
+                .pvGlass(.pill)
                 .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .center)
             }
 
             // Filter + settings: floating glass controls, the only surface that
             // is legitimately above a full-screen map (same family as the
-            // spinner capsule).
+            // spinner capsule). The system's adaptive glass (`pvGlass`), like
+            // the navigation bar and the tab bar around the map — the dark
+            // over-photo tint read as a second material next to them.
             PVAdaptiveStack(hAlignment: .center, vAlignment: .trailing, spacing: PVSpacing.s8) {
                 if !vm.filter.isEmpty { activeFilterBadge }
                 myLocationButton
@@ -250,7 +250,7 @@ struct MapSegmentView: View {
                 .padding(.vertical, PVSpacing.s8)
         }
         .buttonStyle(.plain)
-        .pvFloating(.pill)
+        .pvGlass(.pill)
         .accessibilityElement(children: .combine)
         .accessibilityIdentifier("mapFilterActiveBadge")
         .transition(PVMotion.appearance(.opacityAndScale(0.92), reduceMotion: reduceMotion).anyTransition)
@@ -263,7 +263,7 @@ struct MapSegmentView: View {
                 .padding(PVSpacing.s12)
         }
         .buttonStyle(.plain)
-        .pvFloating(.circle)
+        .pvGlass(.circle)
         .accessibilityLabel("Map settings")
         .accessibilityIdentifier("mapSettingsButton")
     }
@@ -275,7 +275,7 @@ struct MapSegmentView: View {
                 .padding(PVSpacing.s12)
         }
         .buttonStyle(.plain)
-        .pvFloating(.circle)
+        .pvGlass(.circle)
         .disabled(vm.isLocating)
         .accessibilityLabel("My Location")
         .accessibilityIdentifier("mapMyLocationButton")
@@ -301,7 +301,7 @@ struct MapSegmentView: View {
             .buttonStyle(PVSubtleButtonStyle())
         }
         .padding(PVSpacing.s16)
-        .pvFloating(.bar)
+        .pvGlass(.bar)
     }
 
     private func errorView(_ msg: String) -> some View {

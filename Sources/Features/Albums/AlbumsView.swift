@@ -42,9 +42,16 @@ struct AlbumsView: View {
             .navigationTitle("Albums")
             .navigationBarTitleDisplayMode(.large)
             .toolbar {
-                ToolbarItemGroup(placement: .topBarTrailing) {
-                    ProfileAvatarButton { openProfile() }
+                ToolbarItem(placement: .topBarLeading) {
+                    Button {
+                        presentingCreate = true
+                    } label: {
+                        Label("New Album", systemImage: "plus")
+                            .labelStyle(.iconOnly)
+                    }
+                    .accessibilityIdentifier("albumsToolbarCreateButton")
                 }
+                ProfileAvatarToolbarItem { openProfile() }
             }
             .task { await vm.load() }
             .refreshable { await vm.refresh() }
