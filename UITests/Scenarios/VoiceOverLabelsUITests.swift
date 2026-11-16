@@ -28,17 +28,19 @@ import XCTest
 /// * A state the stub cannot provide in the forced language fails loudly: no
 ///   assertion is skipped or relaxed because an element is missing.
 ///
-/// RUN ON CI for six of the seven tests that select the Search tab
-/// (`test_AC_34_2_labelsInFourLanguages`, `test_AC_34_3_mapThumbnailIsAButton`,
-/// `test_AC_34_4_twoStateButtonsFollowState`, `test_AC_34_5_ratingStars`,
-/// `test_AC_34_6_otherScreens`, `test_AC_34_11_mapMarkersAreButtons`): each has its own
-/// `--release` line, on an erased device, in `Scripts/ci-ui-scenarios.txt`.
-/// `test_AC_34_sixSurfacesAnnounceTheirActions` selects the Search tab too but has no line:
-/// it failed on CI before the redesign (`assertViewer`: no `viewerOcrToggle` among the buttons,
-/// the Photos viewer's top bar having collapsed it into the "⋯" menu), see the comment there.
+/// CI (`Scripts/ci-ui-scenarios.txt`): `test_AC_34_sixSurfacesAnnounceTheirActions`,
+/// `test_AC_34_2_labelsInFourLanguages`, `test_AC_34_3_mapThumbnailIsAButton`,
+/// `test_AC_34_4_twoStateButtonsFollowState`, `test_AC_34_5_ratingStars`, `test_AC_34_6_otherScreens`
+/// and `test_AC_34_11_mapMarkersAreButtons` each have their own `--release` line, on an erased
+/// device. None of them has a recorded pass or failure there yet: the observation pushes and a
+/// "Run workflow" `suite: all` show it. The failure message of the viewer's detected-text pill
+/// (`assertViewerOcrPill`, called by `assertViewer` and by `test_AC_34_4`) ends with
+/// `viewerBarReads()`, which tells a pill folded into the "⋯" menu from a pill that lost its
+/// button role or is absent. `sixSurfaces` failed on CI before the redesign at that pill
+/// (check-run 133004722739); its cause was presumed, not observed.
 /// `test_AC_34_7_widgetButtonsInFrench`, `test_AC_34_7_shareExtensionButtons`,
-/// `test_AC_34_9_gridThumbnails` and `test_AC_34_12_filmstripNamesType` are compiled but not
-/// run there; they are run by hand with the launcher, on an erased device:
+/// `test_AC_34_9_gridThumbnails` and `test_AC_34_12_filmstripNamesType` have no line: they are
+/// compiled but not run there; they are run by hand with the launcher, on an erased device:
 ///
 ///     .omp/orchestration/uitest.sh <worktree> /tmp/voiceover.uitest.log \
 ///         UITests/stubs/immich_stub_voiceover.py VoiceOverLabelsUITests/<test> --erase
@@ -57,7 +59,7 @@ import XCTest
 /// A Menu is expected to be published as a button by XCUITest (as
 /// `viewerOverflowMenu` is in the other scenarios); the map markers are
 /// `MKAnnotationView`s whose accessibility depends on the photo sheet above the
-/// map. Neither has been run: a failure there is a finding to look at, not a
+/// map. None of this has been observed on CI: a failure there is a finding to look at, not a
 /// reason to relax the assertion.
 final class VoiceOverLabelsUITests: XCTestCase {
 
@@ -261,7 +263,7 @@ final class VoiceOverLabelsUITests: XCTestCase {
                       "the heart did not turn back into \"Favorite\" — it reads \"\(heart.label)\"")
 
         // The viewer's detected-text toggle announces its state as a value.
-        let ocr = assertButton("viewerOcrToggle", label: text("Detected text", lang), "viewer, detected text off")
+        let ocr = assertViewerOcrPill(lang, "viewer, detected text off")
         XCTAssertEqual(ocr.value as? String, text("off", lang), "the detected-text toggle starts off")
         ocr.tap()
         XCTAssertTrue(waitForValue(ocr, text("on", lang)),
@@ -630,7 +632,7 @@ final class VoiceOverLabelsUITests: XCTestCase {
         assertButton("viewerBackButton", label: text("Back", lang), context)
         assertButton("viewerFavoriteButton", label: text("Favorite", lang), context)
         assertButton("viewerSlideshowButton", label: text("Slideshow", lang), context)
-        let ocr = assertButton("viewerOcrToggle", label: text("Detected text", lang), context)
+        let ocr = assertViewerOcrPill(lang, context)
         XCTAssertEqual(ocr.value as? String, text("off", lang), "\(context): the detected-text toggle starts off")
         assertFilmstrip(lang)
 
@@ -774,6 +776,53 @@ final class VoiceOverLabelsUITests: XCTestCase {
         app.staticTexts.allElementsBoundByIndex.prefix(25).map(\.label).joined(separator: " | ")
     }
 
+    /// The viewer's detected-text pill, read as a BUTTON with the label of the action: the same
+    /// query, wait and equality as `assertButton`. Only the failure message differs: it tells why
+    /// the pill is missing (`viewerBarReads`), which `screenReads` cannot.
+    @discardableResult
+    private func assertViewerOcrPill(_ lang: Lang, _ context: String) -> XCUIElement {
+        let control = button("viewerOcrToggle")
+        XCTAssertTrue(control.waitForExistence(timeout: 20),
+                      "\(context): no viewerOcrToggle among the app's buttons (missing, or not a button) — \(viewerBarReads())")
+        XCTAssertEqual(control.label, text("Detected text", lang), "\(context): viewerOcrToggle")
+        return control
+    }
+
+    /// What the viewer's top bar holds, for a failure message only (it is never evaluated on a
+    /// passing path: an assertion message is an autoclosure). It separates a pill folded into
+    /// the "⋯" menu from a pill that lost its button role or that is absent: the viewer's
+    /// buttons, the pill by role, the place and date badge, the window width, then, with the
+    /// "⋯" menu opened, its items.
+    private func viewerBarReads() -> String {
+        let ids = app.buttons.allElementsBoundByIndex.map(\.identifier)
+            .filter { $0.hasPrefix("viewer") && !$0.hasPrefix("viewerFilmstripCell") }
+            .sorted().joined(separator: ", ")
+        let pill: String
+        if button("viewerOcrToggle").exists {
+            pill = "viewerOcrToggle as button"
+        } else if element("viewerOcrToggle").exists {
+            pill = "viewerOcrToggle as \(element("viewerOcrToggle").elementType.rawValue)"
+        } else {
+            pill = "viewerOcrToggle absent"
+        }
+        let badge = ["viewerBadgePlace", "viewerBadgeDate", "viewerBadgeSingleLine"]
+            .filter { element($0).exists }
+            .map { "\($0)=\(element($0).label)" }.joined(separator: ", ")
+        let menu: String
+        if button("viewerOverflowMenu").exists {
+            button("viewerOverflowMenu").tap()
+            let items = app.descendants(matching: .any)
+                .matching(NSPredicate(format: "identifier BEGINSWITH 'viewerMenu'"))
+            _ = items.firstMatch.waitForExistence(timeout: 5)
+            let open = items.allElementsBoundByIndex.map(\.identifier).sorted().joined(separator: ", ")
+            menu = "viewerOverflowMenu present, open [\(open)]"
+        } else {
+            menu = "viewerOverflowMenu absent"
+        }
+        return "viewer bar: buttons [\(ids)]; \(pill); badge [\(badge)]; "
+            + "window \(Int(app.windows.firstMatch.frame.width)) pt; \(menu)"
+    }
+
     /// A slideshow control: waits 2 s for its identifier; absent (the controls hide 3 s
     /// after the play start), touches the centre of the screen once (`toggleControls`)
     /// and waits again. Fails when it is still absent.
@@ -881,7 +930,14 @@ final class VoiceOverLabelsUITests: XCTestCase {
         XCTAssertTrue(avatar.waitForExistence(timeout: 30), "no profile avatar — \(screenReads())")
         avatar.tap()
         sleep(4) // the sheet animates in; the Form is not hittable before it does
+        // The Security section sits below the fold of the hub's lazy List, which
+        // only publishes the rows it has rendered: scroll until the row exists,
+        // then wait (the pattern of ChangePasswordUITests.hubRow).
         let row = button("changePasswordRow")
+        for _ in 0..<12 where !row.exists {
+            app.swipeUp()
+            sleep(1)
+        }
         XCTAssertTrue(row.waitForExistence(timeout: 15), "no Change Password row in the Me hub — \(screenReads())")
         for _ in 0..<5 where !row.isHittable {
             app.swipeUp()
