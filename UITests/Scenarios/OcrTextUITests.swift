@@ -60,10 +60,21 @@ final class OcrTextUITests: XCTestCase {
     private let noTextCopy = ["No text found", "Aucun texte détecté", "Kein Text gefunden",
                               "No se encontró texto", "Nessun testo trovato"]
 
-    /// The value both detected-text toggles publish while latched — the same
-    /// hazard as `noTextCopy`, one level down: the VoiceOver value is a catalog
-    /// key (`on`, shipped in five languages), so it follows the machine.
+    /// The value the viewer's detected-text pill (`viewerOcrToggle`) publishes
+    /// while latched — the same hazard as `noTextCopy`, one level down: the
+    /// VoiceOver value is a catalog key (`on`, shipped in five languages), so it
+    /// follows the machine.
     private let latchedCopy = ["on", "Activé", "Ein", "Activado", "Attivato"]
+
+    /// The title of the "Search options" menu's detected-text item once latched.
+    /// The iOS 26 menu item publishes no value, so its title carries the state
+    /// (`SearchView.ocrFilterToggle`). Five languages, as `noTextCopy`: the
+    /// language follows the machine. Copied from `Localizable.xcstrings`.
+    private let menuToggleOnCopy = ["Search typed text in detected text: On",
+                                    "Chercher le texte saisi dans le texte détecté : activé",
+                                    "Eingegebenen Text im erkannten Text suchen: Ein",
+                                    "Buscar el texto escrito en el texto detectado: activado",
+                                    "Cerca il testo digitato nel testo rilevato: attivato"]
 
     override func setUpWithError() throws {
         continueAfterFailure = false
@@ -268,6 +279,17 @@ final class OcrTextUITests: XCTestCase {
     private func waitForValue(_ element: XCUIElement, _ accepted: [String],
                               timeout: TimeInterval = 10) -> Bool {
         let predicate = NSPredicate(format: accepted.map { _ in "value == %@" }.joined(separator: " OR "),
+                                    argumentArray: accepted)
+        let expectation = XCTNSPredicateExpectation(predicate: predicate, object: element)
+        return XCTWaiter().wait(for: [expectation], timeout: timeout) == .completed
+    }
+
+    /// `waitForValue`'s twin on `label`: the Search options menu item publishes no
+    /// value on iOS 26, its title carries the state. Equality is exact — a title
+    /// ending in "Off", or in a language the catalogue does not ship, fails.
+    private func waitForLabel(_ element: XCUIElement, _ accepted: [String],
+                              timeout: TimeInterval = 10) -> Bool {
+        let predicate = NSPredicate(format: accepted.map { _ in "label == %@" }.joined(separator: " OR "),
                                     argumentArray: accepted)
         let expectation = XCTNSPredicateExpectation(predicate: predicate, object: element)
         return XCTWaiter().wait(for: [expectation], timeout: timeout) == .completed
@@ -544,8 +566,8 @@ final class OcrTextUITests: XCTestCase {
         _ = ocrFilter.waitForNonExistence(timeout: 5)
         modeMenu.tap()
         XCTAssertTrue(ocrFilter.waitForExistence(timeout: 10), "the Search options menu did not open again")
-        XCTAssertTrue(waitForValue(ocrFilter, latchedCopy),
-                      "the detected-text toggle did not latch — it reads '\(ocrFilter.value ?? "nil")'")
+        XCTAssertTrue(waitForLabel(ocrFilter, menuToggleOnCopy),
+                      "the detected-text toggle did not latch — its title reads '\(ocrFilter.label)'")
         outsideTheMenu.tap()
         _ = ocrFilter.waitForNonExistence(timeout: 5)
 
