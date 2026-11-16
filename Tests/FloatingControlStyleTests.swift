@@ -203,7 +203,7 @@ final class FloatingControlStyleTests: XCTestCase {
         let text = try Self.normalizedLines(path).map(\.text).joined(separator: "\n")
         XCTAssertEqual(Self.matchCount(#"\.pvFloating\("#, in: text), 0, "\(path): no over-media glass on the map")
         XCTAssertEqual(Self.matchCount(#"\.pvGlass\(\.circle\)"#, in: text), 2, "\(path): My Location and settings")
-        XCTAssertEqual(Self.matchCount(#"\.pvGlass\(\.pill\)"#, in: text), 2, "\(path): loading capsule and filter badge")
+        XCTAssertEqual(Self.matchCount(#"\.pvGlass\(\.pill\)"#, in: text), 3, "\(path): loading capsule, filter badge, Explore preview label")
         XCTAssertEqual(Self.matchCount(#"\.pvGlass\(\.bar\)"#, in: text), 1, "\(path): empty-filter card")
     }
 

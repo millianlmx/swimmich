@@ -647,8 +647,9 @@ struct SearchView: View {
         }
     }
 
-    /// Explore: the map entry, then the places. The map entry shows in every
-    /// state (loading, error, empty): the map needs no place list to open.
+    /// Explore: the map preview, the filters-only search, then the places.
+    /// The first two show in every state (loading, error, empty): neither
+    /// needs the place list.
     @ViewBuilder
     private var exploreView: some View {
         // The first read shows a spinner outside the scroll container; every
@@ -656,6 +657,7 @@ struct SearchView: View {
         if case .loading = vm.exploreState {
             VStack(spacing: PVSpacing.s24) {
                 mapEntry
+                filtersEntry
                 ProgressView()
                     .pvLoadingIndicator("exploreLoading")
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -666,6 +668,7 @@ struct SearchView: View {
             ScrollView {
                 VStack(alignment: .leading, spacing: PVSpacing.s12) {
                     mapEntry
+                    filtersEntry
                     switch vm.exploreState {
                     case .loading:
                         EmptyView()
@@ -729,24 +732,33 @@ struct SearchView: View {
         }
     }
 
-    /// Opens the map of every geolocated photo — what used to be the third
-    /// segment of a mode switch, now one entry among the things to explore.
+    /// Opens the map of every geolocated photo: a live preview of the
+    /// library's places (`MapPreviewCard`) at the head of Explore, in place of
+    /// the large "Map" row that used to sit under the field.
     private var mapEntry: some View {
+        MapPreviewCard(vm: mapVM) { vm.viewMode = .map }
+    }
+
+    /// A search made of criteria alone (people, places, dates, media type…),
+    /// nothing typed: the Filters sheet, whose Done runs it as a Metadata
+    /// search. The toolbar's filter glyph leads there too, but small and
+    /// unlabeled at the top of the screen it went unnoticed.
+    private var filtersEntry: some View {
         Button {
-            vm.viewMode = .map
+            showFilters = true
         } label: {
             HStack(spacing: PVSpacing.s12) {
-                Image(systemName: "map")
+                Image(systemName: "line.3.horizontal.decrease")
                     .font(.pvH5)
                     .foregroundStyle(Color.immichPrimary)
                     .frame(width: 44, height: 44)
                     .background(Color.immichPrimary.opacity(0.12), in: Circle())
                     .accessibilityHidden(true)
                 VStack(alignment: .leading, spacing: PVSpacing.s2) {
-                    Text("Map")
+                    Text("Search with filters")
                         .font(.pvHeadline)
                         .foregroundStyle(Color.textPrimaryPV)
-                    Text("Your photos on a map")
+                    Text("People, places, dates… nothing to type")
                         .font(.pvSubhead)
                         .foregroundStyle(Color.textSecondaryPV)
                 }
@@ -763,7 +775,7 @@ struct SearchView: View {
         }
         .buttonStyle(.plain)
         .accessibilityElement(children: .combine)
-        .accessibilityIdentifier("searchMapEntry")
+        .accessibilityIdentifier("exploreFiltersEntry")
     }
 }
 

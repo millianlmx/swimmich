@@ -38,6 +38,11 @@ final class TimelineViewModel {
     /// whose answer arrives after a newer one must not touch the window.
     @ObservationIgnored private var jumpGeneration = 0
     @ObservationIgnored private var activeJump: Int?
+    /// Months already fetched during the scrub in progress (`timeBucket` →
+    /// answer), so a month the finger comes back to is shown at once instead
+    /// of asked again. `nil` outside a gesture: the cache lives a few seconds
+    /// and never outlives it, so it cannot serve a month edited meanwhile.
+    @ObservationIgnored private var scrubCache: [String: TimeBucketAssetResponseDto]?
     /// Bumped each time the window of loaded months is replaced; a neighbour
     /// load that started before the replacement is discarded on arrival.
     @ObservationIgnored private(set) var windowEpoch = 0
@@ -539,6 +544,7 @@ final class TimelineViewModel {
 
     /// A reload replaces any jump in flight and invalidates neighbour loads.
     private func supersedeJumps() {
+        if scrubCache != nil { scrubCache = [:] }
         jumpGeneration &+= 1
         activeJump = nil
         pendingJump = nil
@@ -589,7 +595,7 @@ final class TimelineViewModel {
         scrubPosition = TimelineScrubPosition(monthIndex: index, fraction: fraction)
         let key = buckets[index].timeBucket
         do {
-            let columnar = try await fetchBucket(key)
+            let columnar = try await fetchBucketForJump(key)
             // A newer jump or a reload owns the window now: touch nothing.
             guard gen == jumpGeneration else { return nil }
             activeJump = nil
@@ -736,6 +742,25 @@ final class TimelineViewModel {
     /// the same ones as `fetchBuckets()`, or the server applies its defaults
     /// to the month (e.g. non-favorites slip into the Favorites filter).
     @MainActor
+    /// Opens a scrub: the months fetched until `endScrubbing()` are kept.
+    func beginScrubbing() {
+        if scrubCache == nil { scrubCache = [:] }
+    }
+
+    /// Closes the scrub and drops the months it kept.
+    func endScrubbing() {
+        scrubCache = nil
+    }
+
+    /// A jump's month: from the scrub cache when the gesture already fetched
+    /// it, else from the server (and kept while a scrub is open).
+    private func fetchBucketForJump(_ timeBucket: String) async throws -> TimeBucketAssetResponseDto {
+        if let cached = scrubCache?[timeBucket] { return cached }
+        let columnar = try await fetchBucket(timeBucket)
+        if scrubCache != nil { scrubCache?[timeBucket] = columnar }
+        return columnar
+    }
+
     private func fetchBucket(_ timeBucket: String) async throws -> TimeBucketAssetResponseDto {
         try await client.getTimeBucket(timeBucket: timeBucket, isFavorite: filterIsFavorite, isTrashed: filterIsTrashed, personId: nil, withPartners: filterWithPartners, visibility: filterVisibility, withStacked: withStacked, orderBy: nil)
     }
