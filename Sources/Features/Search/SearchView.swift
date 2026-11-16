@@ -312,21 +312,28 @@ struct SearchView: View {
         isSearchPresented || vm.hasSearched || !vm.query.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
     }
 
-    /// One line under the field: how the typed text is read — a chip that
-    /// names the current mode and lists the four (Smart (CLIP), Metadata, file
-    /// name, description; identifier `searchTextMode_<mode>`, the current one
-    /// checked; a pick with a text re-runs the search) — the detected-text
-    /// toggle while the mode is Metadata, the only one that carries it, then
-    /// the two result actions, "Save search…" and "Select", in plain sight.
-    /// Stacked at accessibility sizes, where one line cannot hold them.
+    /// Under the field: how the typed text is read — a chip that names the
+    /// current mode and lists the four (Smart (CLIP), Metadata, file name,
+    /// description; identifier `searchTextMode_<mode>`, the current one
+    /// checked; a pick with a text re-runs the search) — and the two result
+    /// actions, "Save search…" and "Select", in plain sight, on one line
+    /// (stacked at accessibility sizes). The detected-text toggle, carried by
+    /// Metadata alone, takes a second line while that mode is on: its label
+    /// and the mode's do not fit beside the actions on a phone.
     private var resultsBar: some View {
-        PVAdaptiveStack(hAlignment: .center, vAlignment: .leading, spacing: PVSpacing.s8) {
-            HStack(spacing: PVSpacing.s8) {
-                modeMenu
-                if vm.searchMode == .metadata {
-                    ocrFilterToggle
-                }
+        VStack(alignment: .leading, spacing: PVSpacing.s4) {
+            resultsBarMainLine
+            if vm.searchMode == .metadata {
+                ocrFilterToggle
             }
+        }
+        .padding(.horizontal, PVSpacing.s16)
+        .padding(.bottom, PVSpacing.s4)
+    }
+
+    private var resultsBarMainLine: some View {
+        PVAdaptiveStack(hAlignment: .center, vAlignment: .leading, spacing: PVSpacing.s8) {
+            modeMenu
             Spacer(minLength: 0)
             HStack(spacing: PVSpacing.s16) {
                 Button {
@@ -350,8 +357,6 @@ struct SearchView: View {
             }
             .font(.pvSubhead.weight(.semibold))
         }
-        .padding(.horizontal, PVSpacing.s16)
-        .padding(.bottom, PVSpacing.s4)
     }
 
     /// The mode chip: the current mode in words and its glyph — no lone
@@ -418,7 +423,7 @@ struct SearchView: View {
     }
 
     /// Restricts the results to photos whose detected text matches the query
-    /// (ocr-text): the chip next to the mode, shown while the mode is Metadata —
+    /// (ocr-text): the chip under the mode, shown while the mode is Metadata —
     /// it changes how the query is interpreted, not which grid is shown. Only a
     /// server with the v3.2.0 structured filter has a field for it: on an older
     /// one the chip stays, disabled, rather than silently searching something

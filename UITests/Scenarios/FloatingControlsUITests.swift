@@ -30,7 +30,10 @@ final class FloatingControlsUITests: XCTestCase {
     }
 
     override func tearDown() {
-        XCUIDevice.shared.appearance = .unspecified
+        // Back to the simulator's default. `.unspecified` (raw value 0) is refused
+        // by the current runtime ("Requested appearance value (0) is not valid"),
+        // which failed the scenario after its body had passed.
+        XCUIDevice.shared.appearance = .light
         super.tearDown()
     }
 
