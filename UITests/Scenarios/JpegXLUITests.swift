@@ -376,7 +376,6 @@ final class JpegXLUITests: XCTestCase {
 
     func test_AC_97_thumbnailDecodedInTimelineAlbumSearch() {
         launchSignedIn()
-        _ = 0
 
         // Timeline.
         waitForValue("assetTile_\(jxlPhoto)", prefix: thumbnailValue)
