@@ -54,6 +54,13 @@ final class ListStatesUITests: XCTestCase {
         XCTAssertTrue(element("partnerLibraryLink-\(incomingPartner)").waitForExistence(timeout: 20),
                       "Partners shows no data after the last pull — \(screenText())")
         goBack()
+        // The Search bubble opens Search only from Photos; from Albums it opens New Album (RootView, onChange(of: selection)).
+        let photos = app.tabBars.buttons["Photos"]
+        XCTAssertTrue(photos.waitForExistence(timeout: 15), "Photos tab missing — \(screenText())")
+        photos.tap()
+        let photosSelected = XCTNSPredicateExpectation(predicate: NSPredicate(format: "isSelected == true"), object: photos)
+        XCTAssertEqual(XCTWaiter().wait(for: [photosSelected], timeout: 10), .completed,
+                       "the Photos tab was not selected — \(screenText())")
 
         // Search results
         arm("search")
@@ -125,6 +132,13 @@ final class ListStatesUITests: XCTestCase {
         XCTAssertTrue(element("partnerLibraryLink-\(incomingPartner)").waitForExistence(timeout: 20))
         goBack()
 
+        // The Search bubble opens Search only from Photos; from Albums it opens New Album (RootView, onChange(of: selection)).
+        let photos = app.tabBars.buttons["Photos"]
+        XCTAssertTrue(photos.waitForExistence(timeout: 15), "Photos tab missing — \(screenText())")
+        photos.tap()
+        let photosSelected = XCTNSPredicateExpectation(predicate: NSPredicate(format: "isSelected == true"), object: photos)
+        XCTAssertEqual(XCTWaiter().wait(for: [photosSelected], timeout: 10), .completed,
+                       "the Photos tab was not selected — \(screenText())")
         arm("search", steps: "ok", delay: 3)
         search()
         assertLoadingOnly("searchLoading", forbidden: ["searchEmptyState", "searchError"])
