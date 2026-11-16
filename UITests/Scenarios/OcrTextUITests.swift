@@ -19,15 +19,14 @@ import XCTest
 /// leave the search toggle disabled. See its docstring.
 ///
 /// The search half's criterion is typed into the **Filters sheet's "Detected
-/// text" field**, which is the writer a scenario can reach: the toolbar toggle
-/// rewrites the *typed query* as the filter (`toggleCarriesCriterion`), but iOS
-/// 26 hands a `role: .search` tab a bottom search field whose presentation takes
-/// the app toolbar — filter button included — out of the accessibility tree, and
-/// leaving that presentation clears the query (both measured). The toggle is
-/// therefore asserted as a control (present, gated on the v3.2.0 shape the stub
-/// answers, able to latch) while the WIRE contract the card pins — the criterion
-/// as `filter.ocr.matches`, never as the deprecated scalar `ocr` — is read off
-/// the request the sheet's Done dispatches.
+/// text" field**. The "Search options" menu's detected-text item
+/// (`searchOcrFilterToggle`, next to the text modes) rewrites the *typed query*
+/// as the filter (`toggleCarriesCriterion`); that path, typed query to
+/// `filter.ocr.matches`, is proven by `SearchRedesignUITests.test_AC_9`. Here
+/// the item is asserted as a control (present, enabled on the v3.2.0 shape the
+/// stub answers, its title latched to "…: On") while the WIRE contract the card
+/// pins — the criterion as `filter.ocr.matches`, never as the deprecated scalar
+/// `ocr` — is read off the request the sheet's Done dispatches.
 ///
 /// Run it with the launcher, never by hand (it owns the slot's simulator,
 /// DerivedData and stub port, and refuses a scenario that skipped itself):
@@ -573,17 +572,14 @@ final class OcrTextUITests: XCTestCase {
 
         // MARK: - Search: the criterion travels as a structured filter
 
-        // The Filters sheet's "Detected text" field is the criterion's only
-        // writer a scenario can reach. The menu's toggle rewrites the QUERY as
-        // the filter (`SearchViewModel.toggleCarriesCriterion`), but that query
-        // cannot survive to a dispatch: iOS 26 hands a `role: .search` tab a
-        // bottom search field whose presentation takes the app toolbar — filter
-        // button included — out of the accessibility tree, and leaving the
-        // presentation clears the query (both measured). What the card pins is
-        // the WIRE contract, and it is what is asserted here: the criterion as
-        // `filter.ocr.matches`, never as the deprecated scalar `ocr`. The
-        // toggle is proven as a control — present, gated on the v3.2.0 shape
-        // the stub answers, and able to latch.
+        // The criterion is written by the Filters sheet's "Detected text"
+        // field. The menu's toggle rewrites the typed QUERY as the filter
+        // (`SearchViewModel.toggleCarriesCriterion`), a path proven by
+        // `SearchRedesignUITests.test_AC_9`; here the toggle is proven as a
+        // control — present, gated on the v3.2.0 shape the stub answers, and
+        // latched "…: On" — and what the card pins is the WIRE contract,
+        // asserted on the sheet's Done: the criterion as `filter.ocr.matches`,
+        // never as the deprecated scalar `ocr`.
         XCTAssertFalse(tile(searchAsset).exists,
                        "the photo whose detected text matches is on screen before any search was sent")
         let filtersButton = app.buttons["searchFilterButton"]
