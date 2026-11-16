@@ -89,7 +89,9 @@ final class DynamicTypeScreenTests: XCTestCase {
                 .environment(auth)
                 .environment(AlbumsViewModel(client: mock))
                 .environment(AppSettingsStore(defaults: makeDefaults()))
-                .environment(ReadOnlyModeStore(defaults: makeDefaults())),
+                .environment(ReadOnlyModeStore(defaults: makeDefaults()))
+                // The avatar of the bars draws the backup ring.
+                .environment(DependencyContainer.shared.upload),
             size: size, language: language, height: height
         )
     }
@@ -146,13 +148,14 @@ final class DynamicTypeScreenTests: XCTestCase {
         }
     }
 
-    func test_AC_26_3_searchPrompt() async {
+    /// The Search tab before any search: Explore, led by its Map entry.
+    func test_AC_26_3_searchExplore() async {
         for language in Self.languages {
             let screen = searchScreen(makeMock(), language: language)
             defer { screen.close() }
-            guard await screen.waitFor("searchPromptTitle") else { continue }
+            guard await screen.waitFor("searchMapEntry") else { continue }
             screen.assertNoOverlap()
-            screen.assertInWindow("searchPromptTitle")
+            screen.assertInWindow("searchMapEntry")
         }
     }
 
@@ -260,7 +263,7 @@ final class DynamicTypeScreenTests: XCTestCase {
             ("partnerRowName-dt-partner-short", partnersScreen(mock, size: .xSmall, language: "en")),
             ("preferencesResetButton", preferencesScreen(mock, size: .xSmall, language: "en")),
             ("createAlbumNameHeader", createAlbumScreen(mock, size: .xSmall, language: "en")),
-            ("searchPromptTitle", searchScreen(mock, size: .xSmall, language: "en")),
+            ("searchMapEntry", searchScreen(mock, size: .xSmall, language: "en")),
         ]
         for (landmark, screen) in screens {
             defer { screen.close() }
@@ -277,7 +280,7 @@ final class DynamicTypeScreenTests: XCTestCase {
             ("partnerRowName-dt-partner-short", { self.partnersScreen(mock, size: $0, language: "en") }),
             ("preferencesGroupPicker", { self.preferencesScreen(mock, size: $0, language: "en") }),
             ("createAlbumNameHeader", { self.createAlbumScreen(mock, size: $0, language: "en") }),
-            ("searchPromptTitle", { self.searchScreen(mock, size: $0, language: "en") }),
+            ("searchMapEntry", { self.searchScreen(mock, size: $0, language: "en") }),
         ]
         for (landmark, make) in landmarks {
             var heights: [CGFloat] = []

@@ -413,6 +413,16 @@ final class ConfirmationsUITests: XCTestCase {
         sleep(4) // the sheet animates in; its Form is not hittable before it does
     }
 
+    /// Sync Status is the first row of the Me hub: the avatar (which carries the
+    /// backup ring in every bar), then the row.
+    private func openSyncStatus() {
+        openHub()
+        let row = app.buttons.matching(identifier: "syncStatusButton").firstMatch
+        XCTAssertTrue(row.waitForExistence(timeout: 15), "the Sync Status row is missing from the Me hub")
+        row.tap()
+        sleep(3) // the screen is pushed; it is not hittable before it lands
+    }
+
     /// Back `levels` times inside the hub, then the hub's sheet dragged down from
     /// its navigation bar: the timeline's own controls are reachable again.
     private func leaveHub(back levels: Int) {
@@ -706,12 +716,9 @@ final class ConfirmationsUITests: XCTestCase {
         XCTAssertEqual(count("backupTrackedPhotos"), tracked, "Cancel changed the tracked count (Backup screen)")
 
         leaveHub(back: 1)
-        let syncButton = app.buttons.matching(identifier: "syncStatusButton").firstMatch
-        XCTAssertTrue(syncButton.waitForExistence(timeout: 15), "the sync status button is missing from the timeline")
-        syncButton.tap()
-        sleep(3)
+        openSyncStatus()
         scrollTo("syncStatusTrackedValue")
-        XCTAssertEqual(count("syncStatusTrackedValue"), tracked, "the sync status sheet disagrees with the Backup screen")
+        XCTAssertEqual(count("syncStatusTrackedValue"), tracked, "the sync status screen disagrees with the Backup screen")
 
         scrollTo("syncStatusResetLedger").tap()
         alertWithButtons("syncStatusResetLedgerConfirm", "syncStatusResetLedgerCancel", "resetting the ledger")
@@ -1136,14 +1143,11 @@ final class ConfirmationsUITests: XCTestCase {
         assertProbe("backupStop.uploadDetail", "stop calls=1")
     }
 
-    /// AC-809: the sync status sheet's "Run now" plays a start, its "Stop" a stop.
+    /// AC-809: the sync status screen's "Run now" plays a start, its "Stop" a stop.
     func test_AC_809_syncStatusStartStop() throws {
         launchSignedIn(uploadDelay: longUploadSeconds)
         turnAutoBackupOffAtTeardown()
-        let syncButton = app.buttons.matching(identifier: "syncStatusButton").firstMatch
-        XCTAssertTrue(syncButton.waitForExistence(timeout: 15), "the sync status button is missing from the timeline")
-        syncButton.tap()
-        sleep(3)
+        openSyncStatus()
         assertProbe("backupStart.syncStatus", "none calls=0")
 
         scrollTo("syncStatusRunNow").tap()

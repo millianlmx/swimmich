@@ -110,7 +110,7 @@ final class FloatingControlStyleTests: XCTestCase {
         let bar: Int
     }
 
-    /// The closed table of the style's call sites (29 + 22 + 11).
+    /// The closed table of the style's call sites (28 + 22 + 10).
     private static let expectedCounts: [String: RoleCounts] = [
         "Sources/Features/PhotoViewer/PhotoViewer.swift": RoleCounts(circle: 8, pill: 5, bar: 2),
         "Sources/Features/PhotoViewer/PhotoInfoPanel.swift": RoleCounts(circle: 1, pill: 0, bar: 0),
@@ -122,11 +122,10 @@ final class FloatingControlStyleTests: XCTestCase {
         "Sources/Features/Memories/MemoriesView.swift": RoleCounts(circle: 1, pill: 1, bar: 0),
         "Sources/Features/RoadTrip/RoadTripView.swift": RoleCounts(circle: 2, pill: 2, bar: 2),
         "Sources/Features/SharedLinks/SharedLinkViewerView.swift": RoleCounts(circle: 1, pill: 1, bar: 0),
-        "Sources/Features/Timeline/TimelineView.swift": RoleCounts(circle: 3, pill: 1, bar: 0),
+        "Sources/Features/Timeline/TimelineView.swift": RoleCounts(circle: 2, pill: 1, bar: 0),
         "Sources/Features/Timeline/TimelineScrubber.swift": RoleCounts(circle: 0, pill: 2, bar: 0),
         "Sources/Features/Search/MapView.swift": RoleCounts(circle: 2, pill: 2, bar: 1),
         "Sources/Features/Search/MapSettingsSheet.swift": RoleCounts(circle: 0, pill: 0, bar: 1),
-        "Sources/Features/Search/SearchModeGlassBar.swift": RoleCounts(circle: 0, pill: 0, bar: 1),
         "Sources/Features/Albums/AlbumsView.swift": RoleCounts(circle: 0, pill: 1, bar: 0),
         "Sources/Features/Albums/ActivityFeedSheet.swift": RoleCounts(circle: 0, pill: 0, bar: 1),
         "Sources/Features/Auth/Onboarding/OnboardingFlowView.swift": RoleCounts(circle: 0, pill: 0, bar: 1),
@@ -171,7 +170,7 @@ final class FloatingControlStyleTests: XCTestCase {
             let expected = Self.expectedCounts[path]?.circle ?? 0
             XCTAssertEqual(actual.circle, expected, "\(path): .pvFloating(.circle) count")
         }
-        XCTAssertEqual(total, 29, "29 round buttons float in the app")
+        XCTAssertEqual(total, 28, "28 round buttons float in the app")
     }
 
     func test_AC_30_2_pillsAndBarsUseTheirStyle() throws {
@@ -186,7 +185,7 @@ final class FloatingControlStyleTests: XCTestCase {
             XCTAssertEqual(actual.bar, expected.bar, "\(path): .pvFloating(.bar) count")
         }
         XCTAssertEqual(pills, 22)
-        XCTAssertEqual(bars, 11)
+        XCTAssertEqual(bars, 10)
 
         let roadTrip = try Self.normalizedLines("Sources/Features/RoadTrip/RoadTripView.swift")
         XCTAssertFalse(roadTrip.contains { $0.text.contains(".black.opacity(0.5)") },
@@ -342,8 +341,6 @@ final class FloatingControlStyleTests: XCTestCase {
     private static let floatingMembers: [String: [String]] = [
         "Sources/Features/PhotoViewer/PhotoViewer.swift": ["actions", "topBarPill", "bottomBar", "header", "ocrStatusCapsule"],
         "Sources/Features/Albums/ActivityFeedSheet.swift": ["composer"],
-        "Sources/Features/Timeline/TimelineView.swift": ["backupProgressRing"],
-        "Sources/Features/Search/SearchModeGlassBar.swift": ["body", "segmentButton"],
         "Sources/Features/Settings/LanguageToast.swift": ["body"],
         "Sources/Features/Search/MapView.swift": ["activeFilterBadge", "settingsButton", "myLocationButton", "filteredEmptyOverlay"],
         "Sources/Features/PhotoViewer/AssetLocationMapSheet.swift": ["doneButton"],

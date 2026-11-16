@@ -1,10 +1,10 @@
 import SwiftUI
 
-/// Sync status screen — raised by the `SyncStatusButton` every tab's bar
-/// carries, and presented in a sheet by `RootView`. The sheet owns the
-/// navigation stack (this view declares none of its own: a second one would draw
-/// two navigation bars), and "Done" only closes the screen — a run it started
-/// keeps going.
+/// Sync status screen — the first row of the Me hub, which the avatar of every
+/// tab's bar opens (the avatar carries the run's ring). Pushed on the hub's
+/// navigation stack (this view declares none of its own: a second one would
+/// draw two navigation bars), and "Done" only closes the screen — a run it
+/// started keeps going.
 ///
 /// Every figure on screen is a projection of the ledger, of the current run or
 /// of the offline index, all read through `SyncStatusViewModel`: the screen
@@ -48,9 +48,8 @@ struct SyncStatusView: View {
         .background(Color.bgPrimary)
         .navigationTitle("Sync Status")
         .navigationBarTitleDisplayMode(.inline)
-        // The only way out: the screen is a sheet now, and its destructive
-        // actions are behind confirmation dialogs a swipe-down would dismiss
-        // mid-question.
+        // Back to the hub; the same as the back button, kept so the screen
+        // reads the same wherever it is shown.
         .toolbar {
             ToolbarItem(placement: .confirmationAction) {
                 Button("Done") { dismiss() }

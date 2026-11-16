@@ -16,7 +16,6 @@ struct AlbumsView: View {
     let library: LibraryDestinations
     @Environment(AuthViewModel.self) private var auth
     @Environment(\.openProfile) private var openProfile
-    @Environment(\.openSyncStatus) private var openSyncStatus
     @Environment(\.colorScheme) private var colorScheme
     @PVReduceMotion private var reduceMotion
     @State private var presentingCreate = false
@@ -44,7 +43,6 @@ struct AlbumsView: View {
             .navigationBarTitleDisplayMode(.large)
             .toolbar {
                 ToolbarItemGroup(placement: .topBarTrailing) {
-                    SyncStatusButton { openSyncStatus() }
                     ProfileAvatarButton { openProfile() }
                 }
             }

@@ -68,10 +68,11 @@ final class AppStringsTests: XCTestCase {
         XCTAssertEqual(incomplete.sorted(), [], "Keys shipped without a translation")
     }
 
-    /// AC-28: the labels the Search redesign adds read in every shipped language.
+    /// AC-28: the labels of the Search screen (results bar, Explore, the
+    /// field's invite) read in every shipped language.
     func test_AC_28_searchOptionsKeysInFourLanguages() throws {
         let strings = try XCTUnwrap(Self.loadCatalog()["strings"] as? [String: Any])
-        let keys = ["Search options", "Search typed text in detected text: On", "Search typed text in detected text: Off", "Save search…"]
+        let keys = ["Search mode", "Search in detected text", "Save search…", "Places, people, things…", "Places", "Your photos on a map"]
         for key in keys {
             let entry = try XCTUnwrap(strings[key] as? [String: Any], "no catalog entry for \(key)")
             let localizations = try XCTUnwrap(entry["localizations"] as? [String: Any], "no localizations for \(key)")

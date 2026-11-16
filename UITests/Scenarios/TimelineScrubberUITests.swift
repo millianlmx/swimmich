@@ -351,7 +351,7 @@ final class TimelineScrubberUITests: XCTestCase {
         return (2025 - yyyy) * 12 + (12 - mm)
     }
 
-    /// "MMMM yyyy" in `locale`, the app's own bubble/value format. Comparing to
+    /// "MMMM yyyy" in `locale`, sentence-cased: the app's own bubble/value format. Comparing to
     /// the formatter (not to a literal) is what lets AC-90 run in two languages.
     private func expectedLabel(_ yyyy: Int, _ mm: Int, _ locale: Locale) -> String {
         var calendar = Calendar(identifier: .gregorian)
@@ -362,7 +362,10 @@ final class TimelineScrubberUITests: XCTestCase {
         formatter.calendar = calendar
         formatter.timeZone = calendar.timeZone
         formatter.dateFormat = "MMMM yyyy"
-        return formatter.string(from: date)
+        // The app sentence-cases the label ("Juin 2024" in French).
+        let text = formatter.string(from: date)
+        guard let first = text.first else { return text }
+        return String(first).uppercased() + text.dropFirst()
     }
 
     private func firstVisibleMonthAndRank() -> (yyyy: Int, mm: Int, rank: Int)? {

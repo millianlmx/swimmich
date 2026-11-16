@@ -16,7 +16,6 @@ struct MemoriesView: View {
     @Bindable var vm: MemoriesViewModel
     @Environment(AuthViewModel.self) private var auth
     @Environment(\.openProfile) private var openProfile
-    @Environment(\.openSyncStatus) private var openSyncStatus
 
     /// The full-screen playback, created by the list's view model so it reads the
     /// live list: a memory whose assets were just edited (or emptied) is never
@@ -55,7 +54,6 @@ struct MemoriesView: View {
                     .accessibilityIdentifier("memoriesCreateButton")
                 }
                 ToolbarItemGroup(placement: .topBarTrailing) {
-                    SyncStatusButton { openSyncStatus() }
                     ProfileAvatarButton { openProfile() }
                 }
             }

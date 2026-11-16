@@ -410,9 +410,10 @@ final class AdjustLocationUITests: XCTestCase {
         let searchTab = app.tabBars.buttons.matching(labelPredicate(["Search", "Recherche", "Suche"])).firstMatch
         XCTAssertTrue(searchTab.waitForExistence(timeout: 20), "Search tab missing")
         searchTab.tap()
-        let segment = app.buttons.matching(NSPredicate(format: "label IN %@", ["Map", "Carte", "Karte"])).firstMatch
-        XCTAssertTrue(segment.waitForExistence(timeout: 20), "the Map segment of the search bar is missing")
-        segment.tap()
+        // Explore's Map entry: the search opens on Explore until a search ran.
+        let entry = app.buttons.matching(identifier: "searchMapEntry").firstMatch
+        XCTAssertTrue(entry.waitForExistence(timeout: 20), "Explore's Map entry is missing")
+        entry.tap()
         XCTAssertTrue(element("mapMyLocationButton").waitForExistence(timeout: 25), "the map never drew My Location")
     }
 

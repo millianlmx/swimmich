@@ -336,19 +336,25 @@ final class SearchCriteriaUITests: XCTestCase {
         searchField.typeText(String(repeating: XCUIKeyboardKey.delete.rawValue, count: current.count))
     }
 
-    /// Picks a text mode in the menu: `searchModeMenu`, then `searchTextMode_<mode>`.
-    /// Returns once the menu is gone and its button answers again — a touch on
-    /// the field made while the menu still closes is swallowed by it, and the
-    /// text that follows is typed into nothing.
+    /// Picks a text mode in the mode chip's menu: `searchModeMenu`, then
+    /// `searchTextMode_<mode>`. The chip sits in the results bar, which shows
+    /// once the field is active: the field is touched first when it is not
+    /// there yet. Returns once the menu is gone and its chip answers again — a
+    /// touch on the field made while the menu still closes is swallowed by it.
     private func chooseMode(_ mode: String) {
         let menu = app.buttons.matching(identifier: "searchModeMenu").firstMatch
-        XCTAssertTrue(menu.waitForExistence(timeout: 20), "the search mode menu is missing")
+        if !menu.waitForExistence(timeout: 3) {
+            let field = app.searchFields.firstMatch
+            XCTAssertTrue(field.waitForExistence(timeout: 20), "no search field — \(screenText())")
+            field.tap()
+        }
+        XCTAssertTrue(menu.waitForExistence(timeout: 20), "the search mode chip is missing")
         menu.tap()
         let item = app.buttons.matching(identifier: "searchTextMode_\(mode)").firstMatch
         XCTAssertTrue(item.waitForExistence(timeout: 10), "no `searchTextMode_\(mode)` item — \(screenText())")
         item.tap()
         XCTAssertTrue(item.waitForNonExistence(timeout: 5), "the mode menu did not close after `\(mode)` — \(screenText())")
-        XCTAssertTrue(waitUntil(5) { menu.exists && menu.isHittable }, "the mode menu's button never answered again — \(screenText())")
+        XCTAssertTrue(waitUntil(5) { menu.exists && menu.isHittable }, "the mode chip never answered again — \(screenText())")
     }
 
     /// Ids of the fixture photos the results grid shows now.
@@ -854,36 +860,22 @@ final class SearchCriteriaUITests: XCTestCase {
         assertTiles([p1, p2, p3], "Alice")
     }
 
-    /// Starts the multi-selection from the "Search options" menu: `searchModeMenu`,
-    /// then `searchSelectButton`, which stays disabled while the results are
-    /// not in — so the menu is closed and opened again until it answers.
+    /// Starts the multi-selection from the results bar: `searchSelectButton`,
+    /// which stays disabled while the results are not in.
     private func enterSelection() {
-        let menu = app.buttons.matching(identifier: "searchModeMenu").firstMatch
         let select = app.buttons.matching(identifier: "searchSelectButton").firstMatch
-        let deadline = Date().addingTimeInterval(30)
-        var entered = false
-        while !entered && Date() < deadline {
-            XCTAssertTrue(waitUntil(20) { menu.exists && menu.isHittable },
-                          "no Search options menu above the results — \(screenText())")
-            menu.tap()
-            if select.waitForExistence(timeout: 5) && select.isEnabled {
-                select.tap()
-                entered = true
-            } else {
-                // Outside the menu (anchored top right): closes it without a side effect.
-                app.windows.firstMatch.coordinate(withNormalizedOffset: CGVector(dx: 0.1, dy: 0.5)).tap()
-                _ = select.waitForNonExistence(timeout: 5)
-            }
-        }
-        XCTAssertTrue(entered, "the Select entry of the Search options menu never became enabled — \(screenText())")
-        XCTAssertTrue(select.waitForNonExistence(timeout: 5), "the Search options menu did not close on Select — \(screenText())")
+        XCTAssertTrue(select.waitForExistence(timeout: 20), "no Select above the results — \(screenText())")
+        XCTAssertTrue(waitUntil(30) { select.isEnabled && select.isHittable },
+                      "the Select action of the results bar never became enabled — \(screenText())")
+        select.tap()
+        XCTAssertTrue(select.waitForNonExistence(timeout: 5), "the results bar did not give way to the selection — \(screenText())")
     }
 
     /// The selection is over: the bar is back (it is not drawn during a
     /// selection) and the count line is gone.
     private func assertSelectionEnded(_ message: String) {
-        let menu = app.buttons.matching(identifier: "searchModeMenu").firstMatch
-        XCTAssertTrue(waitUntil(15) { menu.exists && menu.isHittable }, "\(message) — \(screenText())")
+        let select = app.buttons.matching(identifier: "searchSelectButton").firstMatch
+        XCTAssertTrue(waitUntil(15) { select.exists && select.isHittable }, "\(message) — \(screenText())")
         XCTAssertFalse(element("searchSelectionCount").exists, "\(message): the count line is still shown — \(screenText())")
     }
 

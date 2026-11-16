@@ -851,10 +851,10 @@ final class DynamicTypeUITests: XCTestCase {
         assertNoOverlap()
         setEmptyCollections(false)
 
-        // Search: filters sheet, then the mode bar against the "Filters" label.
+        // Search: filters sheet, then the results bar against the "Filters" label.
         relaunch(.ax5, language: language)
         openSearchTab()
-        XCTAssertTrue(element("searchPromptTitle").waitForExistence(timeout: 20), "no search prompt — \(screenText())")
+        XCTAssertTrue(element("searchMapEntry").waitForExistence(timeout: 20), "no Explore (Map entry) — \(screenText())")
         assertNoOverlap()
         tapElement("searchFilterButton")
         XCTAssertTrue(element("searchFilterDone").waitForExistence(timeout: 15), "no filter sheet")
@@ -864,11 +864,12 @@ final class DynamicTypeUITests: XCTestCase {
         tapElement("searchFilterDone")
         XCTAssertTrue(element("searchActiveFiltersBar").waitForExistence(timeout: 20),
                       "the favourites filter shows no active-filters bar — \(screenText())")
-        for segment in ["searchModeSegment_results", "searchModeSegment_explore", "searchModeSegment_map"] {
-            XCTAssertTrue(element(segment).waitForExistence(timeout: 10), "no \(segment)")
-            assertNotShrunk(segment, reference: "searchActiveFiltersBar")
-            XCTAssertGreaterThanOrEqual(element(segment).frame.minX, 0, "\(segment) starts left of the window")
-            XCTAssertLessThanOrEqual(element(segment).frame.maxX, windowFrame.width + 0.5, "\(segment) runs past the window")
+        // The mode chip and the two result actions, stacked at AX5.
+        for control in ["searchModeMenu", "searchSaveButton", "searchSelectButton"] {
+            XCTAssertTrue(element(control).waitForExistence(timeout: 10), "no \(control)")
+            assertNotShrunk(control, reference: "searchActiveFiltersBar")
+            XCTAssertGreaterThanOrEqual(element(control).frame.minX, 0, "\(control) starts left of the window")
+            XCTAssertLessThanOrEqual(element(control).frame.maxX, windowFrame.width + 0.5, "\(control) runs past the window")
         }
         assertNoOverlap()
 
@@ -919,7 +920,7 @@ final class DynamicTypeUITests: XCTestCase {
         // Search.
         relaunch(size)
         openSearchTab()
-        XCTAssertTrue(element("searchPromptTitle").waitForExistence(timeout: 20), "no search prompt — \(screenText())")
+        XCTAssertTrue(element("searchMapEntry").waitForExistence(timeout: 20), "no Explore (Map entry) — \(screenText())")
         assertNoOverlap()
 
         // The create-album sheet, from the empty state.
@@ -967,8 +968,8 @@ final class DynamicTypeUITests: XCTestCase {
 
             relaunch(size)
             openSearchTab()
-            XCTAssertTrue(element("searchPromptTitle").waitForExistence(timeout: 20), "no search prompt")
-            record("searchPromptTitle", size, "searchPromptTitle")
+            XCTAssertTrue(element("searchMapEntry").waitForExistence(timeout: 20), "no Explore (Map entry)")
+            record("searchMapEntry", size, "searchMapEntry")
         }
         assertOrdered(heights, landmarks: 3)
     }
@@ -1060,7 +1061,7 @@ final class DynamicTypeUITests: XCTestCase {
             let headers = grouping == "Day"
                 ? ["timelinePinnedYearHeader", "timelinePinnedDayHeader"]
                 : ["timelinePinnedMonthHeader"]
-            let group = ["selectButton", "filterMenu", "syncStatusButton", "profileAvatar"]
+            let group = ["selectButton", "filterMenu", "profileAvatar"]
             for header in headers {
                 XCTAssertTrue(element(header).waitForExistence(timeout: 20), "no \(header) at \(size) — \(screenText())")
                 for member in group where element(member).exists {
@@ -1136,7 +1137,7 @@ final class DynamicTypeUITests: XCTestCase {
         // The map: the active-filter badge whole.
         relaunch(.ax5)
         openSearchTab()
-        tapElement("searchModeSegment_map")
+        tapElement("searchMapEntry")
         tapElement("mapSettingsButton")
         // At AX5 the sheet opens at half height with the favourites switch under its
         // Done bar; the window-centre swipe of `scrollToHittable` would land on the

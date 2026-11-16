@@ -113,10 +113,16 @@ enum AppDateFormat {
         calendar: Calendar = .current
     ) -> String {
         let text = formatter(style, locale: locale, calendar: calendar).string(from: date)
-        // ICU renders `"EEEE d MMMM"` with the locale's own casing, which is
-        // lowercase in French/Italian ("mercredi 29 juillet"). These labels
-        // start a section header, so the weekday and month are capitalized.
-        return style == .dayMonth ? capitalizedWords(text) : text
+        // ICU renders day and month names with the locale's own casing, which
+        // is lowercase in French, Italian and Spanish ("mercredi 29 juillet",
+        // "juin 2024"). The pinned header and the scrubber bubble START with
+        // these labels, so they are sentence-cased: the first letter only,
+        // never each word — "Mercredi 29 juillet", not "Mercredi 29 Juillet",
+        // and the same rule for both so the two dates never disagree in form.
+        switch style {
+        case .dayMonth, .monthYear: return sentenceCased(text)
+        default: return text
+        }
     }
 
     /// A `.short` relative phrase for `date` counted from `reference`
@@ -150,12 +156,10 @@ enum AppDateFormat {
         return formatter.localizedString(for: date, relativeTo: reference)
     }
 
-    /// Uppercases the first character of every space-separated token, leaving
-    /// the rest of each token untouched (only `.dayMonth` needs it).
-    private static func capitalizedWords(_ text: String) -> String {
-        text.components(separatedBy: " ").map { token in
-            guard let first = token.first else { return token }
-            return String(first).uppercased() + token.dropFirst()
-        }.joined(separator: " ")
+    /// Uppercases the first character of `text` and leaves the rest as the
+    /// locale wrote it (`.dayMonth` and `.monthYear`).
+    private static func sentenceCased(_ text: String) -> String {
+        guard let first = text.first else { return text }
+        return String(first).uppercased() + text.dropFirst()
     }
 }

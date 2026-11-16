@@ -414,7 +414,7 @@ final class ContentCollectionsUITests: XCTestCase {
         XCTAssertTrue(element("sharedLinksCreateButton").waitForExistence(timeout: 15), "Shared root missing")
         selectTab("Photos")
         selectTab("Search")
-        XCTAssertTrue(element("searchModeSegment_results").waitForExistence(timeout: 15), "Search root missing")
+        XCTAssertTrue(element("searchMapEntry").waitForExistence(timeout: 15), "Search root (Explore) missing")
 
         // The album grid.
         goToAlbumsRoot()
@@ -465,8 +465,8 @@ final class ContentCollectionsUITests: XCTestCase {
             goToPhotosRoot()
             chooseFilter("archived", label: "Archived")
         case .places:
+            // The Search tab opens on Explore: the places are its content.
             goToSearchRoot()
-            tapCounted(element("searchModeSegment_explore"))
         default:
             goToAlbumsRoot()
             tapCounted(scrolledButton(collection.tile!))
@@ -546,7 +546,7 @@ final class ContentCollectionsUITests: XCTestCase {
         case .favorites, .archive:
             if element("filterMenu").exists { chooseFilter("all", label: "All", counted: false) }
         case .places:
-            element("searchModeSegment_results").tap()
+            break // Explore is the Search tab's root: nothing to leave.
         default:
             popToAlbumsRoot()
         }
@@ -580,8 +580,10 @@ final class ContentCollectionsUITests: XCTestCase {
     private func goToSearchRoot() {
         selectTab("Photos")
         selectTab("Search")
-        XCTAssertTrue(element("searchModeSegment_results").waitForExistence(timeout: 20), "no Search root")
-        element("searchModeSegment_results").tap()
+        // On the map, its back button; on Explore (the root), nothing to do.
+        let mapClose = element("searchMapClose")
+        if mapClose.exists { mapClose.tap() }
+        XCTAssertTrue(element("searchMapEntry").waitForExistence(timeout: 20), "no Search root (Explore)")
     }
 
     private func chooseFilter(_ raw: String, label: String, counted: Bool = true) {
@@ -675,7 +677,7 @@ final class ContentCollectionsUITests: XCTestCase {
     }
 
     private func assertNoCollectionVisible(on row: String) {
-        for id in Self.libraryRows + Self.screenIDs + ["filterMenu", "searchModeSegment_explore",
+        for id in Self.libraryRows + Self.screenIDs + ["filterMenu", "searchMapEntry",
                                                       "albumsLibrarySection", "lockedFolderPINField"] {
             XCTAssertFalse(element(id).exists, "\(row) exposes \(id)")
         }
