@@ -101,6 +101,13 @@ struct AuthenticatedAsyncImage: View {
     var localFileURL: URL? = nil
     var localMaxPixelSize: Int = 2048
 
+    /// A photo of this device's library (`AssetReactItem.deviceAssetID`): read
+    /// from Photos at `localMaxPixelSize`, never from the network tiers.
+    var deviceAssetID: String? = nil
+    /// Lets Photos download an iCloud-only original (the viewer); a grid tile
+    /// never does.
+    var deviceAllowsNetwork: Bool = false
+
     /// Progressive placeholder: cached thumbnail URL to display immediately
     /// while the full-resolution preview is in-flight.
     var thumbnailURL: URL? = nil
@@ -137,6 +144,8 @@ struct AuthenticatedAsyncImage: View {
         contentMode: ContentMode = .fill,
         localFileURL: URL? = nil,
         localMaxPixelSize: Int = 2048,
+        deviceAssetID: String? = nil,
+        deviceAllowsNetwork: Bool = false,
         thumbnailURL: URL? = nil,
         thumbhash: String? = nil,
         probeExtra: String? = nil,
@@ -150,6 +159,8 @@ struct AuthenticatedAsyncImage: View {
         self.contentMode = contentMode
         self.localFileURL = localFileURL
         self.localMaxPixelSize = localMaxPixelSize
+        self.deviceAssetID = deviceAssetID
+        self.deviceAllowsNetwork = deviceAllowsNetwork
         self.thumbnailURL = thumbnailURL
         self.thumbhash = thumbhash
         self.probeExtra = probeExtra
@@ -200,7 +211,9 @@ struct AuthenticatedAsyncImage: View {
     /// replaced file is decoded again. Read with `FileManager`, which does not cache the value.
     private var loadKey: String {
         let base: String
-        if let localFileURL {
+        if let deviceAssetID {
+            base = "device:\(deviceAssetID)|\(localMaxPixelSize)"
+        } else if let localFileURL {
             let modified = (try? FileManager.default.attributesOfItem(atPath: localFileURL.path))?[.modificationDate] as? Date
             base = "\(localFileURL.path)|\(modified?.timeIntervalSinceReferenceDate ?? 0)"
         } else {
@@ -232,6 +245,28 @@ struct AuthenticatedAsyncImage: View {
                     self.placeholderImage = decoded
                 }
             }
+        }
+
+        // Device photo: Photos is the only source (it has no server copy yet).
+        if let deviceAssetID {
+            let fromLibrary = await DeviceMedia.image(
+                localIdentifier: deviceAssetID,
+                maxPixelSize: localMaxPixelSize,
+                fill: contentMode == .fill,
+                allowsNetwork: deviceAllowsNetwork
+            )
+            if Task.isCancelled { return }
+            if let fromLibrary {
+                self.image = fromLibrary
+                loadState = ImageLoadState(loaded: fromLibrary)
+                onImageSize?(fromLibrary.size)
+                onSourceOutcome?(.loaded)
+            } else {
+                didFail = true
+                loadState = .failed
+                onSourceOutcome?(.failed)
+            }
+            return
         }
 
         // Tier 0 — offline copy. Downsampling a multi-megapixel original is

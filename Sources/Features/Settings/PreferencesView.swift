@@ -41,10 +41,15 @@ struct PreferencesView: View {
 
                 Toggle("Smooth Scrubbing", isOn: $vm.smoothScrubbing)
                     .accessibilityIdentifier("preferencesSmoothScrubbingToggle")
+
+                Toggle("Show Photos from This Device", isOn: $vm.showsDeviceAssets)
+                    .accessibilityIdentifier("preferencesShowsDeviceAssetsToggle")
             } header: {
                 Text("Photos")
             } footer: {
                 Text("When on, releasing the date scrubber stops at the exact spot in the month. When off, it snaps to the month's first photo.")
+                    + Text(verbatim: " ")
+                    + Text("Photos from this device that are not backed up yet appear in the timeline with a crossed-out cloud.")
             }
 
             Section("Viewer") {

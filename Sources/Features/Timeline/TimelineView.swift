@@ -36,6 +36,10 @@ struct TimelineView: View {
     /// the store, so the pinch gesture, the Preferences stepper and this grid
     /// all drive one value.
     @Environment(AppSettingsStore.self) private var appSettings
+    /// The backup, for "Back Up Now" on a device-only photo. Optional: the tab
+    /// tree injects it, a preview or a test host may not.
+    @Environment(UploadViewModel.self) private var upload: UploadViewModel?
+    @Environment(\.scenePhase) private var scenePhase
 
     // Grid zoom (Photos-style pinch): 2-7 columns. `baseColumns` is the density
     // with no gesture on it — seeded once from the store and re-seeded when the
@@ -400,6 +404,16 @@ struct TimelineView: View {
             columnCount = stored
             gridScale = 1
         }
+        // The merged timeline: back in the foreground, the device half is read
+        // again — a photo taken, deleted in Photos or backed up meanwhile.
+        .onChange(of: scenePhase) { _, phase in
+            guard phase == .active else { return }
+            Task { await vm.refreshIfDeviceLibraryChanged() }
+        }
+        // "Show Photos from This Device" switched in Preferences.
+        .onChange(of: appSettings.showsDeviceAssets) { _, _ in
+            Task { await vm.refresh() }
+        }
         // A change made in Preferences lands without a relaunch: the stepper
         // writes the same property the pinch does, and the grid re-seeds itself.
         .onChange(of: appSettings.tilesPerRow) { _, newValue in
@@ -421,6 +435,17 @@ struct TimelineView: View {
                     }
                 }
                 pendingDeleteSingleID = nil
+            }
+            // A backed-up photo this device still holds: both copies at once.
+            if let id = pendingDeleteSingleID, !vm.deviceCopies(of: [id]).isEmpty {
+                Button("Delete from This Device Too", role: .destructive) {
+                    Task {
+                        await vm.delete(id: id, alsoFromDevice: true)
+                        lastDeleteTick &+= 1
+                    }
+                    pendingDeleteSingleID = nil
+                }
+                .accessibilityIdentifier("timelineDeleteEverywhere")
             }
             Button("Cancel", role: .cancel) { pendingDeleteSingleID = nil }
         } message: {
@@ -647,7 +672,14 @@ struct TimelineView: View {
                 }
             },
             onDelete: {
-                pendingDeleteSingleID = item.id
+                if item.isDeviceOnly {
+                    // Photos asks for the confirmation itself: no second alert.
+                    Task {
+                        if await vm.delete(id: item.id) { lastDeleteTick &+= 1 }
+                    }
+                } else {
+                    pendingDeleteSingleID = item.id
+                }
             },
             onArchive: unarchive ? nil : {
                 Task {
@@ -663,7 +695,9 @@ struct TimelineView: View {
                 Task {
                     await vm.moveToLockedFolder(id: item.id)
                 }
-            }
+            },
+            onBackUp: item.isDeviceOnly ? { backUpDevicePhoto(item) } : nil,
+            onShareDevicePhoto: item.isDeviceOnly ? { shareDevicePhoto(item) } : nil
         )
         .buttonStyle(.plain)
 
@@ -680,6 +714,41 @@ struct TimelineView: View {
                     vm.toggleSelection(id: item.id)
                     lastSelectionTick &+= 1
                 }
+        }
+    }
+
+    // MARK: - Device-only photos (merged timeline)
+
+    /// "Back Up Now": a backup pass restricted to this one photo. Once the
+    /// ledger has it, the grid reloads and shows its server copy instead.
+    private func backUpDevicePhoto(_ item: AssetReactItem) {
+        guard let deviceID = item.deviceAssetID, let upload else { return }
+        Task {
+            switch await upload.runBackup(manual: true, only: [deviceID]) {
+            case .refused(let message):
+                vm.actionErrorMessage = message
+            case .completed(let outcome):
+                if outcome.backedUpIDs.contains(deviceID) {
+                    await vm.refresh()
+                } else {
+                    vm.actionErrorMessage = String(localized: "This photo couldn't be backed up. Try again later.")
+                }
+            }
+        }
+    }
+
+    /// Shares the photo's original, read from Photos (no server copy yet).
+    private func shareDevicePhoto(_ item: AssetReactItem) {
+        guard let deviceID = item.deviceAssetID else { return }
+        Task {
+            do {
+                let file = try await DeviceMedia.exportForSharing(localIdentifier: deviceID)
+                ActivityPresenter.present(items: [file]) {
+                    try? FileManager.default.removeItem(at: file.deletingLastPathComponent())
+                }
+            } catch {
+                vm.actionErrorMessage = error.userFacingMessage ?? String(localized: "Couldn't Share")
+            }
         }
     }
 

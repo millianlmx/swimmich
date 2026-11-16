@@ -132,14 +132,19 @@ struct ZoomableImageView: View {
             // so a content-sized `.fit` image would sit at the top, not centered.
             // The frame fills the page and centers the fitted image in both axes.
             let base = AuthenticatedAsyncImage(
-                url: imageURL,
+                // A device-only photo (merged timeline) has no server copy:
+                // Photos draws it, downloading an iCloud-only original if needed.
+                url: asset.isDeviceOnly ? nil : imageURL,
                 token: token,
                 contentMode: .fit,
                 localFileURL: localFileURL,
                 // Full screen: decode cap for the offline copy. The zoom ceiling
                 // may exceed what these pixels support; it follows the original.
                 localMaxPixelSize: 4096,
-                thumbnailURL: asset.thumbnailURL(base: baseURL, size: .thumbnail, sharedLink: sharedLink),
+                deviceAssetID: asset.deviceAssetID,
+                deviceAllowsNetwork: true,
+                thumbnailURL: asset.isDeviceOnly
+                    ? nil : asset.thumbnailURL(base: baseURL, size: .thumbnail, sharedLink: sharedLink),
                 // Read by the test probe only (`-uiTestImageProbe`): POSIX locale
                 // so the value never depends on the device's decimal separator.
                 probeExtra: String(

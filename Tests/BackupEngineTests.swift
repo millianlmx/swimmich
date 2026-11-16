@@ -2897,7 +2897,7 @@ final class TemporaryExportPurgeTests: XCTestCase {
         try fm.createDirectory(at: tmp, withIntermediateDirectories: true)
         defer { try? fm.removeItem(at: tmp) }
 
-        for directory in ["immich-backup", "immich-local-check", "immich-upload"] {
+        for directory in ["immich-backup", "immich-local-check", "immich-upload", "immich-share"] {
             let dir = tmp.appendingPathComponent(directory, isDirectory: true)
             try fm.createDirectory(at: dir, withIntermediateDirectories: true)
             try Data(repeating: 1, count: 1_024).write(to: dir.appendingPathComponent("IMG_0001.HEIC"))

@@ -17,8 +17,21 @@ protocol BatchSelectionModel: AnyObject {
     func ownerScopedSelection(currentUserId: String?) -> (ids: [String], skipped: Int)
     func favoriteSelected(currentUserId: String?) async
     func deleteSelected(currentUserId: String?) async
+    /// The library ids of the copies this device still holds of `serverIDs`
+    /// (the Photos tab only; empty elsewhere).
+    func deviceCopies(of serverIDs: [String]) -> [String]
+    /// Deletes the selection from the server, then those device copies.
+    func deleteSelectedEverywhere(currentUserId: String?) async
     func archiveSelected(currentUserId: String?) async
     func unarchiveSelected() async
     func moveSelectedToLockedFolder(currentUserId: String?) async
     func stackSelected(currentUserId: String?) async
+}
+
+extension BatchSelectionModel {
+    /// A grid with no device photos (the search results): nothing to offer.
+    func deviceCopies(of serverIDs: [String]) -> [String] { [] }
+    func deleteSelectedEverywhere(currentUserId: String?) async {
+        await deleteSelected(currentUserId: currentUserId)
+    }
 }

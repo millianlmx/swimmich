@@ -47,6 +47,27 @@ struct AssetReactItem: Identifiable, Equatable, Hashable, Sendable {
     /// default, so every existing memberwise call site is unchanged.
     var pixelSize: PixelSize? = nil
 
+    /// The Photos `localIdentifier` of a photo or video that is on this device
+    /// only — not proven on the server yet — and shown in the Photos tab's
+    /// merged timeline (`DeviceTimelineSource`). `nil` for every server asset.
+    /// Such an item's `id` is `deviceIDPrefix + deviceAssetID`: it never
+    /// collides with a server UUID, and no server route may be called with it.
+    var deviceAssetID: String? = nil
+
+    /// Prefix of the `id` of a device-only item.
+    static let deviceIDPrefix = "device:"
+
+    /// True for a photo that only this device holds (see `deviceAssetID`).
+    var isDeviceOnly: Bool { deviceAssetID != nil }
+
+    /// The library id behind a device-only item's `id`; nil for a server id.
+    static func deviceAssetID(fromID id: String) -> String? {
+        id.hasPrefix(deviceIDPrefix) ? String(id.dropFirst(deviceIDPrefix.count)) : nil
+    }
+
+    /// True when `id` names a device-only item.
+    static func isDeviceOnlyID(_ id: String) -> Bool { id.hasPrefix(deviceIDPrefix) }
+
     /// True for video assets.
     var isVideo: Bool { !isImage }
 
@@ -178,7 +199,8 @@ struct AssetReactItem: Identifiable, Equatable, Hashable, Sendable {
             latitude: latitude,
             longitude: longitude,
             stack: stack,
-            pixelSize: pixelSize
+            pixelSize: pixelSize,
+            deviceAssetID: deviceAssetID
         )
     }
 
@@ -209,7 +231,8 @@ struct AssetReactItem: Identifiable, Equatable, Hashable, Sendable {
             latitude: latitude,
             longitude: longitude,
             stack: stack,
-            pixelSize: pixelSize
+            pixelSize: pixelSize,
+            deviceAssetID: deviceAssetID
         )
     }
 

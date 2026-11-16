@@ -122,6 +122,16 @@ final class BackupLedger: BackupLedgerStoring, @unchecked Sendable {
         return Set(entries.keys)
     }
 
+    func localIDsByServerID() -> [String: String] {
+        lock.lock(); defer { lock.unlock() }
+        ensureLoaded()
+        var map: [String: String] = [:]
+        for (id, entry) in entries {
+            if let server = entry.serverAssetId { map[server] = id }
+        }
+        return map
+    }
+
     func hasUploaded(id: String) -> Bool {
         lock.lock(); defer { lock.unlock() }
         ensureLoaded()

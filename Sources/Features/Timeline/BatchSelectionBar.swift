@@ -54,6 +54,16 @@ struct BatchSelectionBar<Model: BatchSelectionModel>: ViewModifier {
                         deleteTick &+= 1
                     }
                 }
+                // Backed-up photos this device still holds: their copies too.
+                if !model.deviceCopies(of: model.ownerScopedSelection(currentUserId: userId).ids).isEmpty {
+                    Button("Delete from This Device Too", role: .destructive) {
+                        Task {
+                            await model.deleteSelectedEverywhere(currentUserId: userId)
+                            deleteTick &+= 1
+                        }
+                    }
+                    .accessibilityIdentifier("batchDeleteEverywhere")
+                }
                 Button("Cancel", role: .cancel) {}
             } message: {
                 let skipped = model.ownerScopedSelection(currentUserId: userId).skipped

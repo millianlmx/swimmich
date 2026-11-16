@@ -46,6 +46,10 @@ struct AssetThumbnailCell: View {
     /// folder. Optional like `onArchive` — surfaces that show assets the user
     /// cannot lock (trash) leave it nil and get no menu entry.
     var onMoveToLockedFolder: (() -> Void)? = nil
+    /// "Back Up Now" — offered on a device-only photo (merged timeline).
+    var onBackUp: (() -> Void)? = nil
+    /// "Share" — offered on a device-only photo (its file comes from Photos).
+    var onShareDevicePhoto: (() -> Void)? = nil
     /// Trash-only callbacks. When `onRestore` is set, the context menu switches
     /// to Restore + Delete Permanently (AC-301 / AC-303). Callers that leave
     /// these `nil` keep the existing Favorite + Delete menu (TimelineView).
@@ -75,9 +79,12 @@ struct AssetThumbnailCell: View {
             .aspectRatio(1, contentMode: .fit)
             .overlay {
                 AuthenticatedAsyncImage(
-                    url: url,
+                    // A device-only photo has no server copy: Photos draws it.
+                    url: asset.isDeviceOnly ? nil : url,
                     token: token,
-                    localFileURL: offline?.localURL(for: asset.id),
+                    localFileURL: asset.isDeviceOnly ? nil : offline?.localURL(for: asset.id),
+                    localMaxPixelSize: asset.isDeviceOnly ? 400 : 2048,
+                    deviceAssetID: asset.deviceAssetID,
                     thumbhash: asset.thumbhash
                 )
                     // Identifier on the image LAYER, never on the whole cell: an
@@ -129,7 +136,28 @@ struct AssetThumbnailCell: View {
             cell
         } else {
             cell.contextMenu {
-                if let onRestore {
+                if asset.isDeviceOnly {
+                    // A photo only this device has: no server action applies.
+                    if let onBackUp {
+                        Button {
+                            onBackUp()
+                        } label: {
+                            Label("Back Up Now", systemImage: "icloud.and.arrow.up")
+                        }
+                    }
+                    if let onShareDevicePhoto {
+                        Button {
+                            onShareDevicePhoto()
+                        } label: {
+                            Label("Share", systemImage: "square.and.arrow.up")
+                        }
+                    }
+                    Button(role: .destructive) {
+                        onDelete()
+                    } label: {
+                        Label("Delete from This Device", systemImage: "trash")
+                    }
+                } else if let onRestore {
                     // Trash tab menu (AC-301 / AC-303).
                     Button {
                         onRestore()
@@ -272,8 +300,13 @@ struct AssetThumbnailCell: View {
     /// absence of an answer stays an absence of a badge.
     @ViewBuilder
     private func cloudBadge(isCompact: Bool) -> some View {
-        if cloudStatus?.isEnabled == true,
-           let status = cloudStatus?.status(forServerAssetID: asset.id) {
+        // A device-only photo always says so — whatever the preference, which
+        // governs the badges of server photos: it is the one fact that tells it
+        // apart from a backed-up one in the merged timeline.
+        let deviceStatus: CloudBackupStatus? = asset.isDeviceOnly ? .localOnly : nil
+        let serverStatus: CloudBackupStatus? = cloudStatus?.isEnabled == true
+            ? cloudStatus?.status(forServerAssetID: asset.id) : nil
+        if let status = deviceStatus ?? serverStatus {
             Image(systemName: status.systemImage)
                 .font(.system(size: isCompact ? 10 : 12, weight: .semibold)) // DS-exempt: badge micro-glyph §8.6
                 .foregroundStyle(.white) // DS-exempt: badge contrast
