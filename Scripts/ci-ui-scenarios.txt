@@ -70,6 +70,11 @@ immich_stub_voiceover.py VoiceOverLabelsUITests/test_AC_34_5_ratingStars --erase
 immich_stub_voiceover.py VoiceOverLabelsUITests/test_AC_34_6_otherScreens --erase --release
 immich_stub_voiceover.py VoiceOverLabelsUITests/test_AC_34_11_mapMarkersAreButtons --erase --release
 immich_stub_floating_controls.py FloatingControlsUITests/test_AC_30_4_controlsOnWhitePhotoAndLightMapKeepTheirIdentifiers --erase --release
+# MapSettingsUITests/test_mapSettings: Search tab, "Map" segment, then the map settings sheet. A custom range puts
+# both fileCreatedAfter and fileCreatedBefore on GET /api/map/markers; an inverted range shows mapSettingsRangeError,
+# keeps Done disabled and sends no request; favourites on top of the range send a new request (isFavorite=true, same
+# bounds); then the viewer's location preview opens the full-screen map. --erase: the app caches markers on disk per
+# filter, and a previous run's markers.json would serve the first map without the request the test reads (class doc).
 immich_stub_map_settings.py MapSettingsUITests/test_mapSettings --erase --release
 immich_stub_plurals.py PluralsUITests/test_AC_32_6_versionNoticeInFiveLanguages --erase --release
 immich_stub_list_states.py ListStatesUITests/test_AC_31 --erase --release
@@ -82,9 +87,9 @@ immich_stub_jpeg_xl.py JpegXLUITests/test_AC_97_thumbnailDecodedInTimelineAlbumS
 # test_AC_133 adds each collection's proof of opening (its own tile, row or card; GET /api/search/cities for
 # Places); test_AC_141: the five tabs, each root one touch away, the Search root, and the album list in its
 # normal, error and empty states under the Library section; --erase: the launch command of its class doc.
-immich_stub_collections.py ContentCollectionsUITests/test_AC_24 --erase --erase --release
-immich_stub_collections.py ContentCollectionsUITests/test_AC_133 --erase --erase --release
-immich_stub_collections.py ContentCollectionsUITests/test_AC_141 --erase --erase --release
+immich_stub_collections.py ContentCollectionsUITests/test_AC_24 --erase --erase --erase --release
+immich_stub_collections.py ContentCollectionsUITests/test_AC_133 --erase --erase --erase --release
+immich_stub_collections.py ContentCollectionsUITests/test_AC_141 --erase --erase --erase --release
 # AdjustLocationUITests, My Location on the Search tab's map (AC-48, AC-230, AC-234): ScriptedDeviceLocationService
 # plays the permission, the answers to the system prompts and the fix given as launch arguments (-uiTestLocation*),
 # and the DEBUG element mapMyLocationProbe reads what the map did: center, dot, prompts, precise. No --erase: the
