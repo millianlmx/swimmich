@@ -62,7 +62,7 @@ immich_stub_ocr_text.py OcrTextUITests/test_ocrText --erase --release
 # 3.2.0 (structured `filter`, page 2 by `cursor`, OCR field on) then 1.120.0 (flat fields with `page`, no
 # `filter`/`cursor`, OCR field off); --erase: pass 2 relaunches the app, the version probe is cached per session.
 immich_stub_search_filters.py SearchFiltersUITests/test_searchFilters --erase --release
-# VoiceOverLabelsUITests/test_AC_34_sixSurfacesAnnounceTheirActions: not listed — fails before the redesign: XCTAssertTrue "en, viewer: no viewerOcrToggle among the app's buttons (missing, or not a button)" (VoiceOverLabelsUITests.swift:631, the Photos viewer's top bar collapses it into the "⋯" menu; check-run 133004722739, d9eb3d27ab79). Out of this lot.
+# VoiceOverLabelsUITests/test_AC_34_sixSurfacesAnnounceTheirActions: not listed — fails before the redesign: XCTAssertTrue "en, viewer: no viewerOcrToggle among the app's buttons (missing, or not a button)" (VoiceOverLabelsUITests.swift:631, cause presumed and not observed: the Photos viewer's top bar collapses it into the "⋯" menu; check-run 133004722739, d9eb3d27ab79). Out of this lot.
 immich_stub_voiceover.py VoiceOverLabelsUITests/test_AC_34_2_labelsInFourLanguages --erase --release
 immich_stub_voiceover.py VoiceOverLabelsUITests/test_AC_34_3_mapThumbnailIsAButton --erase --release
 immich_stub_voiceover.py VoiceOverLabelsUITests/test_AC_34_4_twoStateButtonsFollowState --erase --release

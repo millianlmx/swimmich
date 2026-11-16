@@ -28,14 +28,16 @@ import XCTest
 /// * A state the stub cannot provide in the forced language fails loudly: no
 ///   assertion is skipped or relaxed because an element is missing.
 ///
-/// RUN ON CI for six of the seven tests that select the Search tab
-/// (`test_AC_34_2_labelsInFourLanguages`, `test_AC_34_3_mapThumbnailIsAButton`,
-/// `test_AC_34_4_twoStateButtonsFollowState`, `test_AC_34_5_ratingStars`,
-/// `test_AC_34_6_otherScreens`, `test_AC_34_11_mapMarkersAreButtons`): each has its own
-/// `--release` line, on an erased device, in `Scripts/ci-ui-scenarios.txt`.
+/// CI (`Scripts/ci-ui-scenarios.txt`): `test_AC_34_2_labelsInFourLanguages`,
+/// `test_AC_34_3_mapThumbnailIsAButton`, `test_AC_34_4_twoStateButtonsFollowState`,
+/// `test_AC_34_5_ratingStars`, `test_AC_34_6_otherScreens` and `test_AC_34_11_mapMarkersAreButtons`
+/// each have their own `--release` line, on an erased device. None of them has been observed
+/// to pass or fail there yet: a "Run workflow" `suite: all` shows it.
 /// `test_AC_34_sixSurfacesAnnounceTheirActions` selects the Search tab too but has no line:
-/// it failed on CI before the redesign (`assertViewer`: no `viewerOcrToggle` among the buttons,
-/// the Photos viewer's top bar having collapsed it into the "⋯" menu), see the comment there.
+/// it failed on CI before the redesign (`assertViewer`: no `viewerOcrToggle` among the buttons;
+/// the presumed cause, a pill folded into the "⋯" menu whose item announces no state, was not
+/// observed), see the comment there. Its failure message now ends with `viewerBarReads()`, which
+/// tells that cause from a pill that lost its button role or is absent.
 /// `test_AC_34_7_widgetButtonsInFrench`, `test_AC_34_7_shareExtensionButtons`,
 /// `test_AC_34_9_gridThumbnails` and `test_AC_34_12_filmstripNamesType` are compiled but not
 /// run there; they are run by hand with the launcher, on an erased device:
@@ -57,7 +59,7 @@ import XCTest
 /// A Menu is expected to be published as a button by XCUITest (as
 /// `viewerOverflowMenu` is in the other scenarios); the map markers are
 /// `MKAnnotationView`s whose accessibility depends on the photo sheet above the
-/// map. Neither has been run: a failure there is a finding to look at, not a
+/// map. None of this has been observed on CI: a failure there is a finding to look at, not a
 /// reason to relax the assertion.
 final class VoiceOverLabelsUITests: XCTestCase {
 
