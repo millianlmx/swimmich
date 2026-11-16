@@ -261,7 +261,7 @@ final class VoiceOverLabelsUITests: XCTestCase {
                       "the heart did not turn back into \"Favorite\" — it reads \"\(heart.label)\"")
 
         // The viewer's detected-text toggle announces its state as a value.
-        let ocr = assertButton("viewerOcrToggle", label: text("Detected text", lang), "viewer, detected text off")
+        let ocr = assertViewerOcrPill(lang, "viewer, detected text off")
         XCTAssertEqual(ocr.value as? String, text("off", lang), "the detected-text toggle starts off")
         ocr.tap()
         XCTAssertTrue(waitForValue(ocr, text("on", lang)),
@@ -630,7 +630,7 @@ final class VoiceOverLabelsUITests: XCTestCase {
         assertButton("viewerBackButton", label: text("Back", lang), context)
         assertButton("viewerFavoriteButton", label: text("Favorite", lang), context)
         assertButton("viewerSlideshowButton", label: text("Slideshow", lang), context)
-        let ocr = assertButton("viewerOcrToggle", label: text("Detected text", lang), context)
+        let ocr = assertViewerOcrPill(lang, context)
         XCTAssertEqual(ocr.value as? String, text("off", lang), "\(context): the detected-text toggle starts off")
         assertFilmstrip(lang)
 
@@ -772,6 +772,53 @@ final class VoiceOverLabelsUITests: XCTestCase {
 
     private func screenReads() -> String {
         app.staticTexts.allElementsBoundByIndex.prefix(25).map(\.label).joined(separator: " | ")
+    }
+
+    /// The viewer's detected-text pill, read as a BUTTON with the label of the action: the same
+    /// query, wait and equality as `assertButton`. Only the failure message differs: it tells why
+    /// the pill is missing (`viewerBarReads`), which `screenReads` cannot.
+    @discardableResult
+    private func assertViewerOcrPill(_ lang: Lang, _ context: String) -> XCUIElement {
+        let control = button("viewerOcrToggle")
+        XCTAssertTrue(control.waitForExistence(timeout: 20),
+                      "\(context): no viewerOcrToggle among the app's buttons (missing, or not a button) — \(viewerBarReads())")
+        XCTAssertEqual(control.label, text("Detected text", lang), "\(context): viewerOcrToggle")
+        return control
+    }
+
+    /// What the viewer's top bar holds, for a failure message only (it is never evaluated on a
+    /// passing path: an assertion message is an autoclosure). It separates a pill folded into
+    /// the "⋯" menu from a pill that lost its button role or that is absent: the viewer's
+    /// buttons, the pill by role, the place and date badge, the window width, then, with the
+    /// "⋯" menu opened, its items.
+    private func viewerBarReads() -> String {
+        let ids = app.buttons.allElementsBoundByIndex.map(\.identifier)
+            .filter { $0.hasPrefix("viewer") && !$0.hasPrefix("viewerFilmstripCell") }
+            .sorted().joined(separator: ", ")
+        let pill: String
+        if button("viewerOcrToggle").exists {
+            pill = "viewerOcrToggle as button"
+        } else if element("viewerOcrToggle").exists {
+            pill = "viewerOcrToggle as \(element("viewerOcrToggle").elementType.rawValue)"
+        } else {
+            pill = "viewerOcrToggle absent"
+        }
+        let badge = ["viewerBadgePlace", "viewerBadgeDate", "viewerBadgeSingleLine"]
+            .filter { element($0).exists }
+            .map { "\($0)=\(element($0).label)" }.joined(separator: ", ")
+        let menu: String
+        if button("viewerOverflowMenu").exists {
+            button("viewerOverflowMenu").tap()
+            let items = app.descendants(matching: .any)
+                .matching(NSPredicate(format: "identifier BEGINSWITH 'viewerMenu'"))
+            _ = items.firstMatch.waitForExistence(timeout: 5)
+            let open = items.allElementsBoundByIndex.map(\.identifier).sorted().joined(separator: ", ")
+            menu = "viewerOverflowMenu present, open [\(open)]"
+        } else {
+            menu = "viewerOverflowMenu absent"
+        }
+        return "viewer bar: buttons [\(ids)]; \(pill); badge [\(badge)]; "
+            + "window \(Int(app.windows.firstMatch.frame.width)) pt; \(menu)"
     }
 
     /// A slideshow control: waits 2 s for its identifier; absent (the controls hide 3 s
