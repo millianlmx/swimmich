@@ -1,20 +1,23 @@
 import SwiftUI
 
-/// Search tab — Apple-Photos-like search with three modes (Results | Explore | Map).
+/// Search tab — Apple-Photos-like search. One screen, no mode switch: what it
+/// shows follows what the user did.
 ///
-/// - **Results**: native `.searchable` field with debounced live search.
-///   LazyVGrid of `AssetThumbnailCell` (corner radius 0 — project convention).
-///   Tap → `AssetDetailView` (NavigationLink pattern from TimelineView.swift:253).
-///   The "Search options" menu (text mode, detected-text toggle, save, select)
-///   lives in a toolbar `Menu` next to Filters (default Smart/CLIP).
-/// - **Explore**: a vertical list of every place you've photographed, powered by
-///   `GET /api/search/cities` (one representative asset per city) + per-place
-///   counts from `POST /api/search/statistics`. Tap a card →
-///   `searchByExplore(field: .city, value:)` filters results by that city.
-/// - **Map**: clustered MapKit view of all geolocated photos (AC-710).
+/// - **Nothing searched yet → Explore**: a "Map" entry, then every place you've
+///   photographed, powered by `GET /api/search/cities` (one representative
+///   asset per city) + per-place counts from `POST /api/search/statistics`.
+///   Tap a card → `searchByExplore(field: .city, value:)` filters results by
+///   that city. The search field stays on top: there is no state in which it
+///   disappears.
+/// - **A search ran → Results**: a LazyVGrid of `AssetThumbnailCell` (corner
+///   radius 0 — project convention), under a row of chips that say how the
+///   typed text is read (Smart, Metadata, file name, description, detected
+///   text) and the result actions (Save search, Select). Clearing the field
+///   goes back to Explore.
+/// - **Map**: clustered MapKit view of all geolocated photos (AC-710), opened
+///   from Explore's entry and closed by the bar's back button.
 ///
-/// People, tags and the display options live in the Filters sheet; the file
-/// name and description are modes of the search field.
+/// People, tags and the display options live in the Filters sheet.
 struct SearchView: View {
     @PVReduceMotion private var reduceMotion
     @Bindable var vm: SearchViewModel
@@ -24,7 +27,6 @@ struct SearchView: View {
     let downloads: DownloadQueueViewModel
     @Environment(AuthViewModel.self) private var auth
     @Environment(\.openProfile) private var openProfile
-    @Environment(\.openSyncStatus) private var openSyncStatus
 
     @State private var viewerItem: PhotoViewerItem? // Full-screen photo viewer
     @State private var showSaveSearch = false
@@ -49,11 +51,11 @@ struct SearchView: View {
         NavigationStack {
             modeContent
                 .onChange(of: vm.viewMode) { _, newMode in
-                    // Leaving the map segment takes the map photo sheet down
-                    // (and clears any marker filter) — the sheet is owned by
-                    // RootView and would otherwise stay open over the other
-                    // segments.
-                    if newMode != .results { vm.exitSelectionMode() }
+                    // Leaving the map takes the map photo sheet down (and
+                    // clears any marker filter) — the sheet is owned by RootView
+                    // and would otherwise stay open over the search. Opening the
+                    // map ends a selection of results it hides.
+                    if newMode == .map { vm.exitSelectionMode() }
                     if newMode != .map {
                         mapVM.isPhotoSheetPresented = false
                         mapVM.deselectMarker()
@@ -65,50 +67,50 @@ struct SearchView: View {
                 .sheet(isPresented: $showFilters) {
                     SearchFilterSheet(vm: vm)
                 }
-                // Floating Liquid-Glass segmented control over all three modes.
-                // The map ignores the safe area and extends *under* this pill
-                // (Apple Maps-style); Résultats/Explorer content sits below it.
+                // Under the field: how the text is read and what to do with the
+                // results — shown once there is something to read or act on.
+                // While selecting, the selection's count takes the line (the
+                // navigation title says it too, but iOS drops the title when the
+                // seven selection actions fill the bar: this line always shows).
                 .safeAreaInset(edge: .top, spacing: 0) {
-                    VStack(spacing: PVSpacing.s4) {
-                        // Compact pill centered with guaranteed side margins (never
-                        // kisses the screen edges).
-                        HStack {
-                            Spacer(minLength: PVSpacing.s16)
-                            SearchModeGlassBar(mode: $vm.viewMode)
-                            Spacer(minLength: PVSpacing.s16)
-                        }
-                        // The selection's count, a line of its own (names no action).
-                        // The navigation title says it too, but iOS drops the title
-                        // when the seven selection actions fill the bar: this line
-                        // is the one that always shows.
-                        if vm.selectionMode && vm.viewMode == .results {
+                    if vm.viewMode == .results {
+                        if vm.selectionMode {
                             Text("\(vm.selectedIds.count) selected")
                                 .font(.pvSubhead.weight(.semibold))
                                 .foregroundStyle(Color.textSecondaryPV)
                                 .accessibilityIdentifier("searchSelectionCount")
+                                .padding(.vertical, PVSpacing.s8)
+                        } else if showsResultsBar {
+                            resultsBar
                         }
                     }
-                    .padding(.top, PVSpacing.s8)
-                    .padding(.bottom, PVSpacing.s4)
                 }
                 // `verbatim`: the bar intentionally carries no title, and an
                 // empty `LocalizedStringKey` would be extracted as a `""` key.
                 .navigationTitle(vm.selectionMode ? Text("\(vm.selectedIds.count) selected") : Text(verbatim: ""))
                 .navigationBarTitleDisplayMode(.inline)
-                // Filters + the "Search options" menu (text mode, detected-text
-                // toggle, save, select) + sync status + avatar as a nav-bar row
-                // (topBarTrailing): iOS 26 renders its own Liquid-Glass chrome,
-                // so no manual glassEffect — a manual circle on the label would
-                // double-glass and clip. Filters and the menu only in results
-                // mode; the two pinned buttons are always visible.
+                // Filters + avatar (topBarTrailing): iOS 26 renders its own
+                // Liquid-Glass chrome, so no manual glassEffect — a manual circle
+                // on the label would double-glass and clip. Filters only over the
+                // search (a filter alone, without text, is a search too); the
+                // avatar, which carries the backup ring, always. On the map, a
+                // back button returns to the search.
                 .toolbar {
+                    if vm.viewMode == .map {
+                        ToolbarItem(placement: .topBarLeading) {
+                            Button {
+                                vm.viewMode = .results
+                            } label: {
+                                Label("Search", systemImage: "chevron.backward")
+                            }
+                            .accessibilityIdentifier("searchMapClose")
+                        }
+                    }
                     if !(vm.selectionMode && vm.viewMode == .results) {
                         ToolbarItemGroup(placement: .topBarTrailing) {
                             if vm.viewMode == .results {
                                 filtersButton
-                                searchOptionsMenu
                             }
-                            SyncStatusButton { openSyncStatus() }
                             ProfileAvatarButton { openProfile() }
                         }
                     }
@@ -144,13 +146,13 @@ struct SearchView: View {
         }
     }
 
-    /// The active mode's content. Results keeps the native `.searchable` field;
-    /// Explore loads its curated suggestions once; Map is full-screen.
+    /// The search (Explore until a search ran, then its results) under the
+    /// native `.searchable` field, or the full-screen map.
     @ViewBuilder
     private var modeContent: some View {
         switch vm.viewMode {
         case .results:
-            resultsContent
+            searchContent
                 .searchable(
                     text: $vm.query,
                     placement: .navigationBarDrawer(displayMode: .always),
@@ -168,12 +170,6 @@ struct SearchView: View {
                     // offer, so the question is asked when the screen appears —
                     // once per session (the ViewModel caches the answer).
                     await vm.probeSearchShape()
-                }
-        case .explore:
-            exploreView
-                .task {
-                    // AC-404a / AC-404c: load explore once per VM lifetime.
-                    await vm.loadExplore()
                 }
         case .map:
             MapSegmentView(vm: mapVM)
@@ -305,51 +301,75 @@ struct SearchView: View {
         Task { await vm.removeConstraint(field) }
     }
 
-    /// The "Search options" menu: how the typed text is read — Smart (CLIP),
-    /// Metadata, file name or description, each its own button (identifier
-    /// `searchTextMode_<mode>`, the current one checked; a pick with a text
-    /// re-runs the search) — then the detected-text toggle, "Save search…" and
-    /// "Select". One compact menu keeps the bar at four commands.
-    @ViewBuilder
-    private var searchOptionsMenu: some View {
-        Menu {
-            ForEach(SearchViewModel.SearchMode.allCases, id: \.self) { mode in
-                Button {
-                    Task { await vm.selectSearchMode(mode) }
-                } label: {
-                    if mode == vm.searchMode {
-                        Label(modeTitle(mode), systemImage: "checkmark")
-                    } else {
-                        Text(modeTitle(mode))
+    /// The results bar shows once there is text to read or results to act on.
+    private var showsResultsBar: Bool {
+        vm.hasSearched || !vm.query.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+    }
+
+    /// Under the field, in plain sight instead of behind a menu: how the typed
+    /// text is read — Smart (CLIP), Metadata, file name or description, one chip
+    /// each (identifier `searchTextMode_<mode>`, the current one filled; a pick
+    /// with a text re-runs the search) — then the detected-text toggle, and the
+    /// two result actions, "Save search…" and "Select".
+    private var resultsBar: some View {
+        VStack(alignment: .leading, spacing: PVSpacing.s4) {
+            ScrollView(.horizontal, showsIndicators: false) {
+                HStack(spacing: PVSpacing.s8) {
+                    ForEach(SearchViewModel.SearchMode.allCases, id: \.self) { mode in
+                        modeChip(mode)
                     }
+                    ocrFilterToggle
                 }
-                .accessibilityIdentifier("searchTextMode_\(mode.rawValue)")
+                .padding(.horizontal, PVSpacing.s16)
+                .padding(.vertical, PVSpacing.s2)
             }
-            ocrFilterToggle
-            Button {
-                saveSearchName = vm.query.trimmingCharacters(in: .whitespacesAndNewlines)
-                showSaveSearch = true
-            } label: {
-                Label("Save search…", systemImage: "bookmark")
+            .accessibilityElement(children: .contain)
+            .accessibilityLabel(Text("Search mode"))
+
+            HStack(spacing: PVSpacing.s16) {
+                Spacer(minLength: 0)
+                Button {
+                    saveSearchName = vm.query.trimmingCharacters(in: .whitespacesAndNewlines)
+                    showSaveSearch = true
+                } label: {
+                    Label("Save search…", systemImage: "bookmark")
+                }
+                .disabled(vm.query.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+                .accessibilityIdentifier("searchSaveButton")
+                Button {
+                    vm.enterSelectionMode()
+                } label: {
+                    Text("Select")
+                }
+                .disabled(vm.results.isEmpty)
+                .accessibilityIdentifier("searchSelectButton")
             }
-            .disabled(vm.query.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
-            .accessibilityIdentifier("searchSaveButton")
-            Button {
-                vm.enterSelectionMode()
-            } label: {
-                Label("Select", systemImage: "checkmark.circle")
-            }
-            .disabled(vm.results.isEmpty)
-            .accessibilityIdentifier("searchSelectButton")
-        } label: {
-            Image(systemName: modeIcon(vm.searchMode))
-                .font(.pvBody.weight(.semibold))
-                .foregroundStyle(Color.immichPrimary)
-                .frame(minWidth: 44, minHeight: 44)
+            .font(.pvSubhead.weight(.semibold))
+            .padding(.horizontal, PVSpacing.s16)
         }
-        .accessibilityLabel(Text("Search options"))
-        .accessibilityValue(Text(modeTitle(vm.searchMode)))
-        .accessibilityIdentifier("searchModeMenu")
+        .padding(.top, PVSpacing.s4)
+        .padding(.bottom, PVSpacing.s8)
+    }
+
+    /// One way of reading the text. Selected: the brand fill; otherwise the
+    /// same outlined capsule as the filter chips.
+    private func modeChip(_ mode: SearchViewModel.SearchMode) -> some View {
+        let isSelected = mode == vm.searchMode
+        return Button {
+            Task { await vm.selectSearchMode(mode) }
+        } label: {
+            Label(modeTitle(mode), systemImage: modeIcon(mode))
+                .font(.pvSubhead.weight(isSelected ? .semibold : .regular))
+                .foregroundStyle(isSelected ? Color.white : Color.textPrimaryPV)
+                .padding(.horizontal, PVSpacing.s12)
+                .frame(minHeight: 44)
+                .background(isSelected ? Color.immichPrimary : Color.bgSecondary, in: Capsule())
+                .overlay(Capsule().stroke(isSelected ? Color.clear : Color.separatorPV, lineWidth: 1))
+                .contentShape(Capsule())
+        }
+        .buttonStyle(.plain)
+        .accessibilityAddTraits(isSelected ? .isSelected : [])
+        .accessibilityIdentifier("searchTextMode_\(mode.rawValue)")
     }
 
     private func modeTitle(_ mode: SearchViewModel.SearchMode) -> String {
@@ -373,36 +393,38 @@ struct SearchView: View {
     /// The search field's invite follows the mode.
     private var searchPrompt: Text {
         switch vm.searchMode {
-        case .smart, .metadata: Text("Search photos and places")
+        case .smart, .metadata: Text("Places, people, things…")
         case .filename: Text("Search by file name")
         case .description: Text("Search descriptions")
         }
     }
 
     /// Restricts the results to photos whose detected text matches the query
-    /// (ocr-text). Sits with the mode menu — it changes how the query is
-    /// interpreted, not which grid is shown. Only the metadata route carries
+    /// (ocr-text): the last chip of the results bar — it changes how the query
+    /// is interpreted, not which grid is shown. Only the metadata route carries
     /// the criterion, and only a server with the v3.2.0 structured filter has a
-    /// field for it: on an older one the item stays in the menu, disabled,
-    /// rather than silently searching something else. The iOS 26 menu item
-    /// reads only its title — no `.accessibilityValue`, no subtitle — so the
-    /// title itself carries the state ("…: On" / "…: Off"), with a check mark
-    /// when on. Its label differs from the Filters sheet's "Detected text"
-    /// field, which sets the text itself.
+    /// field for it: elsewhere the chip stays, disabled, rather than silently
+    /// searching something else. A toggle: a check mark and the brand outline
+    /// when on, and VoiceOver reads its state as the value.
     private var ocrFilterToggle: some View {
-        Button {
-            Task { await vm.setOcrFilterEnabled(!vm.ocrFilterEnabled) }
+        let isOn = vm.ocrFilterEnabled
+        let isUsable = vm.searchMode == .metadata && vm.supportsStructuredSearch
+        return Button {
+            Task { await vm.setOcrFilterEnabled(!isOn) }
         } label: {
-            let title = Text(vm.ocrFilterEnabled
-                ? LocalizedStringKey("Search typed text in detected text: On")
-                : LocalizedStringKey("Search typed text in detected text: Off"))
-            if vm.ocrFilterEnabled {
-                Label { title } icon: { Image(systemName: "checkmark") }
-            } else {
-                title
-            }
+            Label("Detected text", systemImage: isOn ? "checkmark" : "text.viewfinder")
+                .font(.pvSubhead.weight(isOn ? .semibold : .regular))
+                .foregroundStyle(isOn ? Color.immichPrimary : Color.textPrimaryPV)
+                .padding(.horizontal, PVSpacing.s12)
+                .frame(minHeight: 44)
+                .background(Color.bgSecondary, in: Capsule())
+                .overlay(Capsule().stroke(isOn ? Color.immichPrimary : Color.separatorPV, lineWidth: 1))
+                .contentShape(Capsule())
+                .opacity(isUsable ? 1 : 0.45)
         }
-        .disabled(vm.searchMode != .metadata || !vm.supportsStructuredSearch)
+        .buttonStyle(.plain)
+        .disabled(!isUsable)
+        .accessibilityValue(isOn ? Text("On") : Text("Off"))
         .accessibilityIdentifier("searchOcrFilterToggle")
     }
 
@@ -441,24 +463,27 @@ struct SearchView: View {
         }
     }
 
-    // MARK: - Content (results grid | explore cards | map | loading | error)
+    // MARK: - Content (explore | results grid | loading | error)
+
+    /// Explore until a search ran — the screen is never an empty page that
+    /// repeats the field's placeholder — then the results. Clearing the field
+    /// (`resetToIdle`) brings Explore back.
+    @ViewBuilder
+    private var searchContent: some View {
+        if !vm.hasSearched {
+            exploreView
+                .task {
+                    // AC-404a / AC-404c: load explore once per VM lifetime.
+                    await vm.loadExplore()
+                }
+        } else {
+            resultsContent
+        }
+    }
 
     @ViewBuilder
     private var resultsContent: some View {
-        if !vm.hasSearched {
-            // No search done: nothing to refresh, so no `.refreshable` here.
-            ContentUnavailableView {
-                Label {
-                    Text("Search your library")
-                        .accessibilityIdentifier("searchPromptTitle")
-                } icon: {
-                    Image(systemName: "magnifyingglass")
-                }
-            } description: {
-                Text("Find photos by place, object, camera, or natural language.")
-            }
-            .frame(maxWidth: .infinity, maxHeight: .infinity)
-        } else if case .loading = vm.resultsState {
+        if case .loading = vm.resultsState {
             ProgressView()
                 .pvLoadingIndicator("searchLoading")
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -596,71 +621,123 @@ struct SearchView: View {
         }
     }
 
+    /// Explore: the map entry, then the places. The map entry shows in every
+    /// state (loading, error, empty): the map needs no place list to open.
     @ViewBuilder
     private var exploreView: some View {
         // The first read shows a spinner outside the scroll container; every
         // other state lives in one ScrollView that carries the pull-to-refresh.
         if case .loading = vm.exploreState {
-            ProgressView()
-                .pvLoadingIndicator("exploreLoading")
-                .frame(maxWidth: .infinity, maxHeight: .infinity)
+            VStack(spacing: PVSpacing.s24) {
+                mapEntry
+                ProgressView()
+                    .pvLoadingIndicator("exploreLoading")
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+            }
+            .padding(.horizontal, PVSpacing.s12)
+            .padding(.top, PVSpacing.s8)
         } else {
             ScrollView {
-                switch vm.exploreState {
-                case .loading:
-                    EmptyView()
-                case .error(let message):
-                    PVErrorStateView(
-                        title: "Couldn't load places",
-                        message: message,
-                        identifierPrefix: "explore",
-                        retry: { Task { await vm.loadExplore(force: true) } }
-                    )
-                    .frame(maxWidth: .infinity)
-                    .padding(PVSpacing.s24)
-                    .containerRelativeFrame(.vertical)
-                case .empty:
-                    ContentUnavailableView(
-                        "No places yet",
-                        systemImage: "mappin.and.ellipse",
-                        description: Text("Photos with a recognized location will appear here as places you can explore.")
-                    )
-                    .accessibilityIdentifier("exploreEmptyState")
-                    .frame(maxWidth: .infinity)
-                    .containerRelativeFrame(.vertical)
-                case .data(let status):
-                    LazyVStack(spacing: PVSpacing.s12) {
-                        switch status {
-                        case .idle:
-                            EmptyView()
-                        case .reloading:
-                            ProgressView()
-                                .pvLoadingIndicator("exploreLoading")
-                        case .failed(let message):
-                            InlineErrorBadge(message: message, retry: { Task { await vm.loadExplore(force: true) } })
-                                .accessibilityIdentifier("exploreRefreshError")
-                        }
-                        ForEach(vm.explorePlaces) { place in
-                            Button {
-                                Task { await vm.searchByExplore(field: .city, value: place.city) }
-                            } label: {
-                                ExplorePlaceCard(
-                                    place: place,
-                                    baseURL: auth.baseURL ?? URL(string: "https://example.com")!,
-                                    token: auth.accessToken
-                                )
+                VStack(alignment: .leading, spacing: PVSpacing.s12) {
+                    mapEntry
+                    switch vm.exploreState {
+                    case .loading:
+                        EmptyView()
+                    case .error(let message):
+                        PVErrorStateView(
+                            title: "Couldn't load places",
+                            message: message,
+                            identifierPrefix: "explore",
+                            retry: { Task { await vm.loadExplore(force: true) } }
+                        )
+                        .frame(maxWidth: .infinity)
+                        .padding(PVSpacing.s24)
+                    case .empty:
+                        ContentUnavailableView(
+                            "No places yet",
+                            systemImage: "mappin.and.ellipse",
+                            description: Text("Photos with a recognized location will appear here as places you can explore.")
+                        )
+                        .accessibilityIdentifier("exploreEmptyState")
+                        .frame(maxWidth: .infinity)
+                        .padding(.vertical, PVSpacing.s24)
+                    case .data(let status):
+                        Text("Places")
+                            .font(.pvH5)
+                            .foregroundStyle(Color.textPrimaryPV)
+                            .accessibilityAddTraits(.isHeader)
+                            .accessibilityIdentifier("explorePlacesHeader")
+                            .padding(.top, PVSpacing.s8)
+                        LazyVStack(spacing: PVSpacing.s12) {
+                            switch status {
+                            case .idle:
+                                EmptyView()
+                            case .reloading:
+                                ProgressView()
+                                    .pvLoadingIndicator("exploreLoading")
+                            case .failed(let message):
+                                InlineErrorBadge(message: message, retry: { Task { await vm.loadExplore(force: true) } })
+                                    .accessibilityIdentifier("exploreRefreshError")
                             }
-                            .buttonStyle(.plain)
-                            .disabled(vm.isLoadingExplore)
-                            .accessibilityIdentifier("explorePlaceCard_\(place.city)")
+                            ForEach(vm.explorePlaces) { place in
+                                Button {
+                                    Task { await vm.searchByExplore(field: .city, value: place.city) }
+                                } label: {
+                                    ExplorePlaceCard(
+                                        place: place,
+                                        baseURL: auth.baseURL ?? URL(string: "https://example.com")!,
+                                        token: auth.accessToken
+                                    )
+                                }
+                                .buttonStyle(.plain)
+                                .disabled(vm.isLoadingExplore)
+                                .accessibilityIdentifier("explorePlaceCard_\(place.city)")
+                            }
                         }
                     }
-                    .padding(.horizontal, PVSpacing.s12)
-                    .padding(.vertical, PVSpacing.s8)
                 }
+                .padding(.horizontal, PVSpacing.s12)
+                .padding(.vertical, PVSpacing.s8)
             }
             .refreshable { await vm.refreshExplore() }
         }
+    }
+
+    /// Opens the map of every geolocated photo — what used to be the third
+    /// segment of a mode switch, now one entry among the things to explore.
+    private var mapEntry: some View {
+        Button {
+            vm.viewMode = .map
+        } label: {
+            HStack(spacing: PVSpacing.s12) {
+                Image(systemName: "map")
+                    .font(.pvH5)
+                    .foregroundStyle(Color.immichPrimary)
+                    .frame(width: 44, height: 44)
+                    .background(Color.immichPrimary.opacity(0.12), in: Circle())
+                    .accessibilityHidden(true)
+                VStack(alignment: .leading, spacing: PVSpacing.s2) {
+                    Text("Map")
+                        .font(.pvHeadline)
+                        .foregroundStyle(Color.textPrimaryPV)
+                    Text("Your photos on a map")
+                        .font(.pvSubhead)
+                        .foregroundStyle(Color.textSecondaryPV)
+                }
+                Spacer(minLength: PVSpacing.s8)
+                Image(systemName: "chevron.forward")
+                    .font(.pvSubhead.weight(.semibold))
+                    .foregroundStyle(Color.textTertiaryPV)
+                    .accessibilityHidden(true)
+            }
+            .padding(PVSpacing.s12)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .background(Color.bgSecondary, in: RoundedRectangle(cornerRadius: PVRadius.lg, style: .continuous))
+            .contentShape(RoundedRectangle(cornerRadius: PVRadius.lg, style: .continuous))
+        }
+        .buttonStyle(.plain)
+        .accessibilityElement(children: .combine)
+        .accessibilityIdentifier("searchMapEntry")
     }
 }
 

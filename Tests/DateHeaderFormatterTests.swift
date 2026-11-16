@@ -127,9 +127,10 @@ final class DateHeaderFormatterTests: XCTestCase {
         XCTAssertEqual(result, "Wednesday 29 July")
     }
 
-    func test_dayMonthString_capitalizesLowercaseLocaleWeekdayAndMonth() {
+    func test_dayMonthString_sentenceCasesLowercaseLocale() {
         // French locale emits lowercase weekday/month names ("mercredi",
-        // "juillet") — both first letters must be capitalized.
+        // "juillet"): the label starts with a capital, the month keeps the
+        // locale's lowercase (French typography — no capital mid-phrase).
         var fr = Calendar(identifier: .gregorian)
         fr.timeZone = TimeZone(identifier: "Pacific/Honolulu")!
         fr.locale = Locale(identifier: "fr_FR")
@@ -137,7 +138,22 @@ final class DateHeaderFormatterTests: XCTestCase {
             for: "2026-07-29",
             calendar: fr
         )
-        XCTAssertEqual(result, "Mercredi 29 Juillet")
+        XCTAssertEqual(result, "Mercredi 29 juillet")
+    }
+
+    /// The scrubber bubble and the month header follow the same rule as the
+    /// day header: one capital, at the start ("Juin 2024", never "juin 2024").
+    func test_monthLabel_sentenceCasesLowercaseLocale() {
+        let french = TimelineSectionBuilder.monthLabel(
+            forTimeBucket: "2024-06-01",
+            locale: Locale(identifier: "fr_FR")
+        )
+        XCTAssertEqual(french, "Juin 2024")
+        let english = TimelineSectionBuilder.monthLabel(
+            forTimeBucket: "2024-06-01",
+            locale: Locale(identifier: "en_US")
+        )
+        XCTAssertEqual(english, "June 2024")
     }
 
     func test_dayMonthString_malformedPrefixReturnsRaw() {

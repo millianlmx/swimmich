@@ -38,7 +38,7 @@ final class SearchViewModel {
     /// toggle; file name and description are `POST /api/search/metadata`
     /// criteria (a substring, case and accent insensitive).
     enum SearchMode: String, CaseIterable, Hashable { case smart, metadata, filename, description }
-    enum ViewMode: Hashable { case results, explore, map }
+    enum ViewMode: Hashable { case results, map }
 
     /// EXIF field a user can drill into from an Explore card. Maps the server's
     /// `fieldName` ("exifInfo.city" …) onto the matching `MetadataSearchDto`
@@ -744,7 +744,7 @@ final class SearchViewModel {
             break
         }
 
-        // The "Search options" menu's detected-text toggle keeps its meaning:
+        // The results bar's detected-text chip keeps its meaning:
         // *the typed query is* the criterion, so that route replaces free
         // text. An OCR criterion typed into the sheet is a filter like any
         // other (`filter.apply` already wrote it) and joins the query instead

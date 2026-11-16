@@ -12,7 +12,6 @@ import SwiftUI
 /// - Spring-animated selection mode w/ pro cell treatment (scale, tint, symbol morph).
 /// - Pull-to-refresh, scroll-to-top, pinned headers, sensoryFeedback.
 struct TimelineView: View {
-    @Environment(UploadViewModel.self) private var upload
     @State private var vm: TimelineViewModel
     /// Stack hub state, borrowed from the root so a stack opened from a tile is
     /// the same object the «Me» hub shows (and vice versa).
@@ -32,7 +31,6 @@ struct TimelineView: View {
     @Binding var linkedAsset: LinkedAssetRequest?
     @Environment(AuthViewModel.self) private var auth
     @Environment(\.openProfile) private var openProfile
-    @Environment(\.openSyncStatus) private var openSyncStatus
     @PVReduceMotion private var reduceMotion
     /// App preferences (gap G22): the persisted density and grouping live in
     /// the store, so the pinch gesture, the Preferences stepper and this grid
@@ -63,6 +61,12 @@ struct TimelineView: View {
     @State private var pinnedHeaderWidth: CGFloat = 0
     @State private var topGroupSize: CGSize = .zero
     @State private var containerWidth: CGFloat = 0
+    /// The scrubber's month bubble is on screen: the pinned header steps aside
+    /// so only one date shows at a time.
+    @State private var scrubberBubbleVisible = false
+    /// Height of the scrim behind the header and the top controls, status bar
+    /// included.
+    private static let scrimHeight: CGFloat = 220
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
     @State private var showScrollToTop = false
     @State private var lastFavoriteTick = 0
@@ -129,12 +133,34 @@ struct TimelineView: View {
                 .onPreferenceChange(PinnedDayPreferenceKey.self) { frames in
                     pinnedDay = PinnedHeaderResolver.currentDay(from: frames)
                 }
-                // Photos-style pinned year + day (D8): floats over the grid,
-                // top-left, no background — photos slide beneath. White text +
+                // Legibility scrim behind the floating header and controls:
+                // white text and dark glass read on a bright sky as on a dark
+                // photo. Clear over the status bar (its glyphs stay dark), the
+                // darkest band under the header, gone by the second row.
+                .overlay(alignment: .top) {
+                    if !vm.selectionMode && !vm.items.isEmpty {
+                        LinearGradient(
+                            stops: [
+                                .init(color: .clear, location: 0), // DS-exempt: scrim over photos
+                                .init(color: .black.opacity(0.35), location: 0.35), // DS-exempt: scrim over photos
+                                .init(color: .clear, location: 1) // DS-exempt: scrim over photos
+                            ],
+                            startPoint: .top,
+                            endPoint: .bottom
+                        )
+                        .frame(height: Self.scrimHeight)
+                        .ignoresSafeArea(edges: .top)
+                        .allowsHitTesting(false)
+                        .accessibilityHidden(true)
+                        .transition(.opacity)
+                    }
+                }
+                // Photos-style pinned day + year (D8): floats over the grid,
+                // top-left, on the scrim — photos slide beneath. White text +
                 // subtle shadow keeps it readable over any photo (Photos app
-                // look). Year flips only at year boundaries; day per day.
+                // look). Day flips per day; year only at year boundaries.
                 .overlay(alignment: .topLeading) {
-                    if let day = pinnedDay, !vm.selectionMode {
+                    if let day = pinnedDay, !vm.selectionMode, !scrubberBubbleVisible {
                         VStack(alignment: .leading, spacing: PVSpacing.s2) {
                             // Under `.month` grouping the pin IS a month key
                             // ("YYYY-MM"), and the label is the one the builder
@@ -156,14 +182,17 @@ struct TimelineView: View {
                                     .foregroundStyle(Color.white)
                                     .accessibilityIdentifier("timelinePinnedMonthHeader")
                             } else {
-                                Text(DateHeaderFormatter.yearString(for: day))
-                                    .font(.pvTitle)
-                                    .foregroundStyle(Color.white)
-                                    .accessibilityIdentifier("timelinePinnedYearHeader")
+                                // The day leads, the year follows in small: the
+                                // day is what changes as you scroll, the year is
+                                // context. Both sentence-cased by AppDateFormat.
                                 Text(DateHeaderFormatter.dayMonthString(for: day))
-                                    .font(.pvSubhead.weight(.bold))
+                                    .font(.pvH5)
                                     .foregroundStyle(Color.white)
                                     .accessibilityIdentifier("timelinePinnedDayHeader")
+                                Text(DateHeaderFormatter.yearString(for: day))
+                                    .font(.pvSubhead.weight(.semibold))
+                                    .foregroundStyle(Color.white.opacity(0.85)) // DS-exempt: secondary line over the scrim
+                                    .accessibilityIdentifier("timelinePinnedYearHeader")
                             }
                         }
                         .onGeometryChange(for: CGFloat.self) { $0.size.width } action: { pinnedHeaderWidth = $0 }
@@ -178,15 +207,17 @@ struct TimelineView: View {
                         .padding(.bottom, PVSpacing.s4)
                         .shadow(color: .black.opacity(0.35), radius: 2, y: 1) // DS-exempt: contrast over photos
                         .accessibilityAddTraits(.isHeader)
+                        .transition(.opacity)
                     }
                 }
+                .animation(PVMotion.fading(.easeOut(duration: PVDuration.fast), reduceMotion: reduceMotion),
+                           value: scrubberBubbleVisible)
                 .overlay(alignment: .topTrailing) {
-                    // Sync status + profile avatar + the explicit "Select" entry
-                    // point (Photos-style): a liquid glass pill that rides
-                    // alongside the pinned date header. Long-press entry still
-                    // works; this makes selection discoverable for mass/bulk
-                    // actions. Hidden once selection mode is active (toolbar
-                    // takes over).
+                    // Three controls, no more: the explicit "Select" entry point
+                    // (Photos-style), the filter, and the avatar — which carries
+                    // the backup ring and opens the Me hub, where Sync Status
+                    // lives. Long-press entry to selection still works. Hidden
+                    // once selection mode is active (toolbar takes over).
                     if !vm.selectionMode {
                         PVAdaptiveStack(vAlignment: .trailing, spacing: PVSpacing.s8) {
                             if !vm.items.isEmpty {
@@ -215,16 +246,6 @@ struct TimelineView: View {
                                 // Visible whether or not the grid is empty: under a
                                 // filter with no match it is the way back to "All".
                                 filterMenu
-                                // No bar to draw the chrome, so the button brings its
-                                // own disc — the gesture of the glass pill next to it.
-                                // The run's live ring rides THIS button, not the
-                                // avatar: the profile button carries no sync state.
-                                // The plain style keeps the accent tint off the glyph, so the
-                                // disc's content colour (white) reaches it.
-                                SyncStatusButton { openSyncStatus() }
-                                    .buttonStyle(.plain)
-                                    .pvFloating(.circle)
-                                    .overlay { backupProgressRing }
                                 ProfileAvatarButton { openProfile() }
                             }
                         }
@@ -238,6 +259,11 @@ struct TimelineView: View {
                 // reads `vm.scrubPosition` itself — never read it in this body.
                 .overlay(alignment: .trailing) {
                     dateScrubber
+                }
+                .onChange(of: vm.selectionMode) { _, selecting in
+                    // The scrubber leaves with the selection: its bubble cannot
+                    // report its own disappearance, so the header comes back here.
+                    if selecting { scrubberBubbleVisible = false }
                 }
                 .refreshable { await vm.refresh() }
                 .safeAreaInset(edge: .top, spacing: 0) {
@@ -412,33 +438,6 @@ struct TimelineView: View {
             onDismiss: { viewerOnScreen = false },
             zoomSource: zoomSource
         )
-    }
-
-    // MARK: - Backup progress ring (AC-BK05/BK06)
-    // Backup progress as a circular ring around the sync-status button, on every
-    // device. iOS never shows an app's OWN Live Activity in the Dynamic
-    // Island while that app is frontmost — and this ring is only ever visible
-    // while the app IS frontmost — so the ring and the island never compete:
-    // island (or notification panel) out of app, ring in app. The ring
-    // vanishes the moment the run finishes.
-    @ViewBuilder
-    private var backupProgressRing: some View {
-        let engine = upload.engine
-        if engine.phase == .checking || engine.phase == .uploading {
-            Circle()
-                .trim(from: 0, to: max(0.02, engine.progressFraction))
-                .stroke(
-                    PVFloating.accent,
-                    style: StrokeStyle(lineWidth: 3, lineCap: .round)
-                )
-                .frame(width: 36, height: 36)
-                .rotationEffect(.degrees(-90))
-                .animation(
-                    PVMotion.movement(.spring(duration: 0.5, bounce: 0.15), reduceMotion: reduceMotion),
-                    value: engine.progressFraction
-                )
-                .accessibilityLabel("Backing up — \(engine.progressPercent) percent")
-        }
     }
 
     // MARK: - Content (skeleton / empty / grid)
@@ -729,7 +728,12 @@ struct TimelineView: View {
     /// Date scrubber: fast-scroll handle on the trailing edge. It reads
     /// `vm.scrubPosition` itself — never read it in this body.
     private var dateScrubber: some View {
-        TimelineScrubber(vm: vm, onRelease: scrubberReleased, onAdjust: scrubberAdjusted)
+        TimelineScrubber(
+            vm: vm,
+            onRelease: scrubberReleased,
+            onAdjust: scrubberAdjusted,
+            onBubbleVisibilityChange: { scrubberBubbleVisible = $0 }
+        )
     }
 
     private func scrubberReleased(month: Int, fraction: Double) {
@@ -767,7 +771,7 @@ struct TimelineView: View {
     }
 
     /// Timeline filter (AC-1010, L-12): All / Favorites / Archived. A glass disc
-    /// like `SyncStatusButton`'s, filled once a filter other than "All" is set.
+    /// filled once a filter other than "All" is set.
     private var filterMenu: some View {
         Menu {
             ForEach(TimelineFilter.allCases, id: \.self) { f in
@@ -784,7 +788,7 @@ struct TimelineView: View {
             }
         } label: {
             Image(systemName: vm.filter == .all ? "line.3.horizontal.decrease.circle" : "line.3.horizontal.decrease.circle.fill")
-                .font(.system(size: 17, weight: .semibold)) // DS-exempt: glyph of the 44 pt disc, as SyncStatusButton
+                .font(.system(size: 17, weight: .semibold)) // DS-exempt: glyph of the 44 pt disc, as the avatar
                 .foregroundStyle(PVFloating.content)
                 .frame(width: 44, height: 44)
                 .contentShape(Circle())

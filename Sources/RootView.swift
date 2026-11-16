@@ -223,7 +223,6 @@ private struct AuthenticatedRoot: View {
     @State private var showCreateAlbum = false
     @State private var showCreateSharedLink = false
     @State private var showProfile = false
-    @State private var showSyncStatus = false
     @State private var showWhatsNew = false
     @State private var showDownloadInfo = false
 
@@ -324,7 +323,6 @@ private struct AuthenticatedRoot: View {
         .environment(\.coverDismissalRequest, coverDismissalRequest)
         .environment(upload)
         .environment(\.openProfile) { showProfile = true }
-        .environment(\.openSyncStatus) { showSyncStatus = true }
         .environment(\.openInTimeline) { assetID, day in
             pendingTimelineScrollID = assetID
             pendingTimelineScrollDay = day
@@ -456,6 +454,7 @@ private struct AuthenticatedRoot: View {
                 readOnly: readOnly,
                 freeUpSpace: freeUpSpace,
                 profilePicture: profilePicture,
+                syncStatus: syncStatus,
                 changePassword: changePassword,
                 apiKeys: apiKeys,
                 whatsNew: whatsNew,
@@ -484,13 +483,6 @@ private struct AuthenticatedRoot: View {
             .environment(offline)
             .environment(container.offlineIndex)
             .environment(container.cloudStatus)
-        }
-        // Sync Status, presented from the same stable root presenter as the Me
-        // sheet: its button rides in five navigation bars, and a presentation
-        // declared by a tab view would be torn down with that tab. The stack is
-        // the sheet's — `SyncStatusView` declares none.
-        .sheet(isPresented: $showSyncStatus) {
-            NavigationStack { SyncStatusView(vm: syncStatus) }
         }
         // What's New (gap G23): presented from the stable root presenter, like
         // the Me sheet above — never from a tab view that comes and goes.
@@ -541,7 +533,6 @@ private struct AuthenticatedRoot: View {
             // The root's own sheets. The sheets of the tab screens stay: they may
             // hold something being typed.
             showProfile = false
-            showSyncStatus = false
             showDownloadInfo = false
             showCreateAlbum = false
             showCreateSharedLink = false
@@ -672,26 +663,20 @@ extension EnvironmentValues {
     }
 }
 
-/// Presentation action injected by AuthenticatedRoot so the sync-status button
-/// that every tab's bar carries can raise its screen from the same stable
-/// presenter as the Me sheet (same iOS 26 constraint).
-private struct OpenSyncStatusKey: EnvironmentKey {
-    static let defaultValue: () -> Void = {}
-}
-
-extension EnvironmentValues {
-    var openSyncStatus: () -> Void {
-        get { self[OpenSyncStatusKey.self] }
-        set { self[OpenSyncStatusKey.self] = newValue }
-    }
-}
-
 /// Circular initials avatar pinned to the trailing corner of every tab's
 /// navigation bar. Tapping presents the Me section (`ProfileView`) as a sheet
 /// from AuthenticatedRoot.
+///
+/// It is also the backup's only mark in the bars: a ring around the initials
+/// while a run checks or uploads, gone when it ends. The account and its backup
+/// are one control — Sync Status is the first row of the Me hub it opens — so
+/// every tab's bar holds one disc where it used to hold two. iOS never shows an
+/// app's own Live Activity while that app is frontmost, and the ring is only
+/// visible while it is: the two never compete.
 struct ProfileAvatarButton: View {
     let action: () -> Void
     @Environment(AuthViewModel.self) private var auth
+    @Environment(UploadViewModel.self) private var upload
     /// Read-only mode (gap G17). The same store the hub's switch writes: the
     /// avatar is the second surface of that ONE boolean.
     @Environment(ReadOnlyModeStore.self) private var readOnly
@@ -705,6 +690,7 @@ struct ProfileAvatarButton: View {
                 .foregroundStyle(Color.white)
         }
         .frame(width: 44, height: 44)
+        .overlay { backupRing }
         // The mode's only permanent marker: 12 pt, pinned to the CIRCLE's own
         // corner rather than to a padded frame's — the avatar no longer keeps a
         // ring of dead space, it IS the 44 pt target. Hidden from VoiceOver (the
@@ -733,45 +719,45 @@ struct ProfileAvatarButton: View {
         }
         .accessibilityAddTraits(.isButton)
         .accessibilityLabel("Profile")
-        .accessibilityValue(readOnly.isEnabled ? Text("Read-only") : Text(""))
+        .accessibilityValue(accessibilityState)
         // VoiceOver cannot long-press: the same toggle as a named action.
         .accessibilityAction(named: Text("Read-only Mode")) { readOnly.toggle() }
         // The label is translated, so the UI tests reach for the identifier
         // instead of a string that changes with the language.
         .accessibilityIdentifier("profileAvatar")
     }
-}
 
-/// Standalone entry to the Sync Status screen, pinned immediately to the left of
-/// the profile avatar in every tab's bar. It is a sibling of the avatar, not a
-/// row of the Me hub where it was born: that hub already carries Backup, and a
-/// read-out of the ledger two rows under the screen that feeds it read as the
-/// same feature stated twice.
-///
-/// The glyph is the whole control. Inside a navigation bar iOS 26 draws the
-/// chrome itself — a manual `glassEffect` there double-glasses and clips
-/// (measured on `SearchView`) — so the Photos overlay, the one call site with no
-/// bar under it, is the only one that brings a surface of its own.
-struct SyncStatusButton: View {
-    let action: () -> Void
+    private var isBackingUp: Bool {
+        upload.engine.phase == .checking || upload.engine.phase == .uploading
+    }
 
-    var body: some View {
-        Button(action: action) {
-            // Cloud backup, the app's own vocabulary for this feature: the same
-            // glyph as the Backup row (`icloud.and.arrow.up`) and the Live
-            // Activity. It used to be `arrow.triangle.2.circlepath`, chosen only
-            // to stay distinct from that row while the two sat in the same list —
-            // the button lives in the bar now, and "back up to the cloud" is
-            // what it opens.
-            Image(systemName: "icloud.and.arrow.up")
-                .font(.system(size: 17, weight: .semibold))
-                // 44 pt target, the same circle as the avatar next door: in the
-                // Photos overlay both discs are drawn, and a smaller one would
-                // read as a second-class control.
-                .frame(width: 44, height: 44)
-                .contentShape(Circle())
+    /// Progress of the current run, drawn inside the disc in white so it reads
+    /// on the brand fill in both appearances.
+    @ViewBuilder
+    private var backupRing: some View {
+        if isBackingUp {
+            Circle()
+                .trim(from: 0, to: max(0.02, upload.engine.progressFraction))
+                .stroke(Color.white, style: StrokeStyle(lineWidth: 3, lineCap: .round))
+                .frame(width: 38, height: 38)
+                .rotationEffect(.degrees(-90))
+                .animation(
+                    PVMotion.movement(.spring(duration: 0.5, bounce: 0.15), reduceMotion: reduceMotion),
+                    value: upload.engine.progressFraction
+                )
+                .accessibilityHidden(true)
+                .transition(PVMotion.appearance(.opacityAndScale(0.7), reduceMotion: reduceMotion).anyTransition)
         }
-        .accessibilityLabel("Sync Status")
-        .accessibilityIdentifier("syncStatusButton")
+    }
+
+    /// One announcement for the two states the disc can carry.
+    private var accessibilityState: Text {
+        switch (readOnly.isEnabled, isBackingUp) {
+        case (true, true): Text("Read-only") + Text(verbatim: ", ") + Text("Backing up — \(upload.engine.progressPercent) percent")
+        case (true, false): Text("Read-only")
+        case (false, true): Text("Backing up — \(upload.engine.progressPercent) percent")
+        case (false, false): Text("")
+        }
     }
 }
+

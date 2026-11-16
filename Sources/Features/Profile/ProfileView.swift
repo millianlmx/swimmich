@@ -29,6 +29,10 @@ struct ProfileView: View {
     /// Profile picture screen (gap G16). Built by the composition root and owned
     /// by `RootView`, so the row below and the pushed screen show one photo.
     @State var profilePicture: ProfilePictureViewModel
+    /// Sync Status (the ledger, the current run, the offline cache). Its entry
+    /// is the hub's first row since the avatar absorbed the bars' separate
+    /// sync button: one disc per bar, the backup one tap behind it.
+    @State var syncStatus: SyncStatusViewModel
     /// Change-password screen (gap G18). Built by the composition root: the
     /// screen is pushed, so the row and the form must show one instance.
     @State var changePassword: ChangePasswordViewModel
@@ -97,6 +101,26 @@ struct ProfileView: View {
                     } header: {
                         Text("Account")
                     }
+                }
+
+                // Right under the account, above the fold: the avatar that
+                // opens this hub is the backup's only mark in the tab bars, so
+                // what the ring was saying is the first thing found here.
+                Section {
+                    NavigationLink {
+                        SyncStatusView(vm: syncStatus)
+                    } label: {
+                        LabeledContent {
+                            if syncStatus.isRunning {
+                                Text(syncStatus.progressFraction, format: .percent.precision(.fractionLength(0)))
+                                    .monospacedDigit()
+                                    .accessibilityIdentifier("syncStatusRowProgress")
+                            }
+                        } label: {
+                            Label("Sync Status", systemImage: "checkmark.icloud")
+                        }
+                    }
+                    .accessibilityIdentifier("syncStatusButton")
                 }
 
                 serversSection

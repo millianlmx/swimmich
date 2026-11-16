@@ -373,8 +373,8 @@ final class MotionGuardTests: XCTestCase {
         )
     }
 
-    /// AC-27: the Search results screen — the chips row, the "Search options"
-    /// menu, the Filters sheet — animates only through the gate, and nothing
+    /// AC-27: the Search results screen — the chips rows (filters, modes),
+    /// the Filters sheet — animates only through the gate, and nothing
     /// in it slides, so "Reduce Motion" turns every change into a cut or a fade.
     func test_AC_27_searchResultsMotionGoesThroughTheGate() throws {
         let names = ["SearchView.swift", "SearchFilterSheet.swift"]

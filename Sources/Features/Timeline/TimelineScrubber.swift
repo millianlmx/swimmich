@@ -104,6 +104,11 @@ struct TimelineScrubber: View {
     let onRelease: (_ monthIndex: Int, _ fraction: Double) -> Void
     /// VoiceOver adjustment to `monthIndex`.
     let onAdjust: (_ monthIndex: Int) -> Void
+    /// The bubble appeared (`true`) or went away (`false`). While it shows, the
+    /// timeline hides its pinned date header: the grid only moves on release,
+    /// so the header would name the photos still on screen while the bubble
+    /// names the month under the finger — two dates that disagree.
+    var onBubbleVisibilityChange: (_ visible: Bool) -> Void = { _ in }
 
     @PVReduceMotion private var reduceMotion
     @State private var gesture = TimelineScrubberGesture()
@@ -160,6 +165,10 @@ struct TimelineScrubber: View {
             )
         HStack(spacing: PVSpacing.s8) {
             if let month = gesture.labelMonthIndex, vm.buckets.indices.contains(month) {
+                // The pill hugs its text: the width cap is an outer, invisible
+                // frame. Capped INSIDE the pill (the former order), the glass
+                // stretched over the whole cap — a dark band across a row of
+                // photos for a two-word label.
                 Text(verbatim: labelText)
                     .font(.pvHeadline)
                     .foregroundStyle(.white)
@@ -167,10 +176,10 @@ struct TimelineScrubber: View {
                     .fixedSize(horizontal: false, vertical: true)
                     .padding(.horizontal, PVSpacing.s12)
                     .padding(.vertical, PVSpacing.s8)
-                    .frame(maxWidth: max(width - 44 - PVSpacing.s8, 0))
                     .pvFloating(.pill)
                     .allowsHitTesting(false)
                     .accessibilityIdentifier("timelineScrubberLabel")
+                    .frame(maxWidth: max(width - 44 - PVSpacing.s8, 0), alignment: .trailing)
                     .transition(.opacity)
             }
             handle(height: height, monthCount: n, rest: rest)
@@ -179,6 +188,10 @@ struct TimelineScrubber: View {
         .offset(y: CGFloat(fraction) * height - Self.handleHeight / 2)
         .onChange(of: gesture.labelMonthIndex, initial: true) { _, month in
             if let month { labelText = monthLabel(month) }
+        }
+        // Fires on show/hide only, not on every month the finger crosses.
+        .onChange(of: gesture.labelMonthIndex != nil) { _, visible in
+            onBubbleVisibilityChange(visible)
         }
     }
 
