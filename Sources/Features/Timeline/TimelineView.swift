@@ -64,13 +64,18 @@ struct TimelineView: View {
     /// The scrubber's month bubble is on screen: the pinned header steps aside
     /// so only one date shows at a time.
     @State private var scrubberBubbleVisible = false
-    /// The live jump of a scrub in progress, debounced so that a fast drag
-    /// across ten months does not fire ten loads: only the month the finger
-    /// pauses on (even briefly) is fetched.
-    @State private var liveScrubTask: Task<Void, Never>?
-    /// The month the last completed live jump landed on, so the release does
-    /// not load it a second time when it only needs its first photo.
-    @State private var liveScrubbedMonth: Int?
+    /// The month under the finger during a scrub; `nil` outside one. The live
+    /// jumps chase it (`scrubberMoved`).
+    @State private var liveScrubTarget: Int?
+    /// The month a live jump is loading: the next one waits for it rather than
+    /// replacing it, so the grid lands on SOMETHING while the finger keeps
+    /// moving. `nil` when none is in flight.
+    @State private var liveScrubInFlightMonth: Int?
+    /// How the last live jump of the gesture ended, so the release does not
+    /// load that month a second time: shown already, or failed already (its
+    /// banner is up; a second request would hide the failure behind a success
+    /// the user never asked for — "Try Again" is theirs).
+    @State private var liveScrubOutcome: LiveScrubOutcome?
     /// Height of the scrim behind the header and the top controls, status bar
     /// included.
     private static let scrimHeight: CGFloat = 220
@@ -743,39 +748,66 @@ struct TimelineView: View {
     }
 
     /// The finger crossed into `month`: the grid follows while it is still
-    /// down. Debounced — a month the finger only flies over is never loaded;
-    /// a newer jump supersedes an older one still in flight (`jumpGeneration`).
+    /// down. One live jump at a time, never cancelled by the next month: the
+    /// former version superseded the jump in flight on every month crossed, so
+    /// during a continuous drag no month ever landed and the grid only moved on
+    /// release. Now the jump in flight lands, then the next one goes straight
+    /// to wherever the finger is by then — the grid trails the finger by one
+    /// load, and a month the finger came back to is instant (the scrub cache).
     private func scrubberMoved(month: Int) {
-        liveScrubTask?.cancel()
-        liveScrubbedMonth = nil
-        liveScrubTask = Task { @MainActor in
-            try? await Task.sleep(for: Self.liveScrubDebounce)
-            guard !Task.isCancelled else { return }
-            if let id = await vm.jumpToMonth(at: month, fraction: 0) {
-                guard !Task.isCancelled else { return }
-                liveScrubbedMonth = month
+        if liveScrubTarget == nil {
+            // A new gesture: nothing of the previous one counts.
+            vm.beginScrubbing()
+            liveScrubOutcome = nil
+        }
+        liveScrubTarget = month
+        if liveScrubInFlightMonth == nil { startLiveJump() }
+    }
+
+    private func startLiveJump() {
+        guard let target = liveScrubTarget else { return }
+        liveScrubInFlightMonth = target
+        Task { @MainActor in
+            let bucket = vm.buckets.indices.contains(target) ? vm.buckets[target].timeBucket : nil
+            let id = await vm.jumpToMonth(at: target, fraction: 0)
+            liveScrubInFlightMonth = nil
+            if let id {
+                liveScrubOutcome = LiveScrubOutcome(month: target, failed: false)
                 requestScroll(to: id)
+            } else if let bucket, vm.pendingJump?.timeBucket == bucket {
+                liveScrubOutcome = LiveScrubOutcome(month: target, failed: true)
             }
+            // Released meanwhile: this jump was the release's (same month), or
+            // the release's own jump owns the grid. Either way the scrub is over.
+            guard let current = liveScrubTarget else {
+                vm.endScrubbing()
+                return
+            }
+            if current != target { startLiveJump() }
         }
     }
 
-    /// Short enough to feel live, long enough to skip the months a fast
-    /// drag only flies over.
-    private static let liveScrubDebounce: Duration = .milliseconds(90)
-
     private func scrubberReleased(month: Int, fraction: Double) {
-        liveScrubTask?.cancel()
-        liveScrubTask = nil
+        liveScrubTarget = nil
         // Read at release, so a change in Preferences applies without a
         // relaunch.
         let anchorFraction: Double = appSettings.smoothScrubbing ? fraction : 0
-        // Already on screen from the live scrub, at its first photo, and the
-        // grid has not moved since: nothing left to load.
-        if anchorFraction == 0, liveScrubbedMonth == month, vm.scrubPosition?.monthIndex == month { return }
+        // Settled by the live scrub: on screen at its first photo (and the grid
+        // has not moved since), or failed with its banner up. Nothing to load.
+        if anchorFraction == 0, let outcome = liveScrubOutcome, outcome.month == month,
+           outcome.failed || vm.scrubPosition?.monthIndex == month {
+            vm.endScrubbing()
+            return
+        }
+        // Released on the month a live jump is loading: that jump IS the
+        // release's (it ends the scrub when it lands). Asking again would
+        // send the same request twice.
+        if anchorFraction == 0, liveScrubInFlightMonth == month { return }
         Task {
-            if let id = await vm.jumpToMonth(at: month, fraction: anchorFraction) {
-                requestScroll(to: id)
-            }
+            // From the scrub cache when the gesture already fetched the month.
+            let id = await vm.jumpToMonth(at: month, fraction: anchorFraction)
+            vm.endScrubbing()
+            if let id { requestScroll(to: id) }
         }
     }
 
@@ -867,4 +899,10 @@ private struct PinnedDayPreferenceKey: PreferenceKey {
     static func reduce(value: inout [String: CGFloat], nextValue: () -> [String: CGFloat]) {
         value.merge(nextValue(), uniquingKeysWith: { _, new in new })
     }
+}
+
+/// How a live jump of the date scrubber ended (`TimelineView.scrubberMoved`).
+private struct LiveScrubOutcome: Equatable {
+    let month: Int
+    let failed: Bool
 }

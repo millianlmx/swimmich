@@ -142,7 +142,13 @@ final class MapViewModel {
         }
     }
 
-    private(set) var markers: [MapPhoto] = []
+    private(set) var markers: [MapPhoto] = [] {
+        didSet { previewPins = Self.previewSample(markers) }
+    }
+    /// A few dozen markers spread over the whole set, for the non-interactive
+    /// map preview of Explore (`MapPreviewCard`): thousands of SwiftUI
+    /// annotations would make the Explore scroll stutter for a thumbnail.
+    private(set) var previewPins: [MapPhoto] = []
     private(set) var visibleAnnotations: [MapAnnotationMarker] = []
     private(set) var visiblePhotos: [MapPhoto] = []
     private(set) var isLoading: Bool = false
@@ -510,5 +516,38 @@ final class MapViewModel {
         if let lastRect {
             filterVisible(lastRect)
         }
+    }
+}
+
+extension MapViewModel {
+    /// At most `limit` markers spread over the area `photos` cover: the area is
+    /// cut into a grid, one marker per occupied cell, and the grid is refined
+    /// as long as the sample still fits. Deterministic (first marker of each
+    /// cell, in input order), so the preview does not reshuffle on a refresh.
+    nonisolated static func previewSample(_ photos: [MapPhoto], limit: Int = 80) -> [MapPhoto] {
+        guard photos.count > limit, limit > 0 else { return photos }
+        var minLat = Double.greatestFiniteMagnitude, maxLat = -Double.greatestFiniteMagnitude
+        var minLon = Double.greatestFiniteMagnitude, maxLon = -Double.greatestFiniteMagnitude
+        for photo in photos {
+            minLat = min(minLat, photo.latitude); maxLat = max(maxLat, photo.latitude)
+            minLon = min(minLon, photo.longitude); maxLon = max(maxLon, photo.longitude)
+        }
+        let span = max(maxLat - minLat, maxLon - minLon, 0.0001)
+        var best: [MapPhoto] = []
+        var cells = 2
+        while cells <= 256 {
+            let size = span / Double(cells)
+            var seen = Set<Int>()
+            var sample: [MapPhoto] = []
+            for photo in photos {
+                let row = Int(((photo.latitude - minLat) / size).rounded(.down))
+                let column = Int(((photo.longitude - minLon) / size).rounded(.down))
+                if seen.insert(row * 1_000 + column).inserted { sample.append(photo) }
+            }
+            if sample.count > limit { break }
+            best = sample
+            cells *= 2
+        }
+        return best.isEmpty ? Array(photos.prefix(limit)) : best
     }
 }
