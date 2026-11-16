@@ -74,6 +74,7 @@ immich_stub_map_settings.py MapSettingsUITests/test_mapSettings --erase --releas
 immich_stub_plurals.py PluralsUITests/test_AC_32_6_versionNoticeInFiveLanguages --erase --release
 immich_stub_list_states.py ListStatesUITests/test_AC_31 --erase --release
 immich_stub_list_states.py ListStatesUITests/test_AC_142 --erase --release
+# JpegXLUITests/test_AC_97_thumbnailDecodedInTimelineAlbumSearch: the JPEG XL photo's thumbnail decodes at 200x200 and the truncated one reads "failed", in the timeline, the album "JXL Album" and the Search results, with one GET /api/assets/{id}/thumbnail?size=thumbnail in the stub's log; --erase: the launch command of its class doc.
 immich_stub_jpeg_xl.py JpegXLUITests/test_AC_97_thumbnailDecodedInTimelineAlbumSearch --erase --release
 immich_stub_collections.py ContentCollectionsUITests/test_AC_24 --erase --release
 immich_stub_collections.py ContentCollectionsUITests/test_AC_133 --erase --release
