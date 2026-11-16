@@ -116,10 +116,46 @@ final class ListStatesUITests: XCTestCase {
         search()
         expectLoading("searchLoading")
         expectRetry("searchErrorRetry")
+        // Each pull on the search results must send the search again, as on API keys below: the stub logs a request
+        // before answering it. Gate f11cba9: after pull() the error stayed 20 s. A pull the results did not take is
+        // made again from inside them, under the mode bar, slowly and held at the bottom: at most 2 more pulls.
+        func searchPosts() -> Int {
+            stubRequests().filter { $0.method == "POST" && $0.path.hasPrefix("/api/search/") }.count
+        }
+        func searchSent(since count: Int) -> Bool {
+            let pollUntil = Date().addingTimeInterval(8)
+            while Date() < pollUntil {
+                if searchPosts() > count { return true }
+                Thread.sleep(forTimeInterval: 0.5)
+            }
+            return false
+        }
+        func pullSearchAgainUntilSent(since count: Int) -> Bool {
+            var sent = searchSent(since: count)
+            for _ in 0..<2 where !sent {
+                let window = app.windows.firstMatch.frame
+                let modeBar = element("searchModeSegment_results")
+                let top = modeBar.exists ? modeBar.frame.maxY + 40 : window.height * 0.3
+                let origin = app.windows.firstMatch.coordinate(withNormalizedOffset: .zero)
+                origin.withOffset(CGVector(dx: window.width / 2, dy: top))
+                    .press(forDuration: 0.2,
+                           thenDragTo: origin.withOffset(CGVector(dx: window.width / 2, dy: window.height * 0.85)),
+                           withVelocity: .slow, thenHoldForDuration: 1)
+                sent = searchSent(since: count)
+            }
+            return sent
+        }
+        let searchesAfterError = searchPosts()
+        XCTAssertGreaterThanOrEqual(searchesAfterError, 1, "the first search never reached the stub — \(screenText())")
         pull()
+        XCTAssertTrue(pullSearchAgainUntilSent(since: searchesAfterError),
+                      "a pull from the search error sent no request — \(screenText())")
         XCTAssertTrue(element("searchEmptyState").waitForExistence(timeout: 20),
                       "the search shows no empty state after a pull — \(screenText())")
+        let searchesAfterEmpty = searchPosts()
         pull()
+        XCTAssertTrue(pullSearchAgainUntilSent(since: searchesAfterEmpty),
+                      "a pull from the search empty state sent no request — \(screenText())")
         XCTAssertTrue(element("assetTile_\(firstPhoto)").waitForExistence(timeout: 20),
                       "the search shows no results after the last pull — \(screenText())")
         leaveSearch()
