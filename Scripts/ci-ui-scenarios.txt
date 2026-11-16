@@ -81,15 +81,12 @@ immich_stub_list_states.py ListStatesUITests/test_AC_31 --erase --release
 immich_stub_list_states.py ListStatesUITests/test_AC_142 --erase --release
 # JpegXLUITests/test_AC_97_thumbnailDecodedInTimelineAlbumSearch: the JPEG XL photo's thumbnail decodes at 200x200 and the truncated one reads "failed", in the timeline, the album "JXL Album" and the Search results, with one GET /api/assets/{id}/thumbnail?size=thumbnail in the stub's log; --erase: the launch command of its class doc.
 immich_stub_jpeg_xl.py JpegXLUITests/test_AC_97_thumbnailDecodedInTimelineAlbumSearch --erase --release
-# ContentCollectionsUITests (L-12), against the stub's one element per collection: test_AC_24 reaches each of
-# the 15 content collections in at most two counted touches from its host tab, never through the Me avatar
-# ("Me"), Places by the Search tab's Explore (Photos, then Search, then searchModeSegment_explore);
-# test_AC_133 adds each collection's proof of opening (its own tile, row or card; GET /api/search/cities for
-# Places); test_AC_141: the five tabs, each root one touch away, the Search root, and the album list in its
-# normal, error and empty states under the Library section; --erase: the launch command of its class doc.
-immich_stub_collections.py ContentCollectionsUITests/test_AC_24 --erase --erase --erase --release
-immich_stub_collections.py ContentCollectionsUITests/test_AC_133 --erase --erase --erase --release
-immich_stub_collections.py ContentCollectionsUITests/test_AC_141 --erase --erase --erase --release
+# ContentCollectionsUITests/test_AC_24: not listed — fails before the redesign: XCTAssertTrue "Authorize link not reachable in the auth sheet" (ContentCollectionsUITests.swift:793, the sign-in of start(), before any Search screen; check-runs 133293348832, 133304634905, d2b546624968). Out of this lot.
+# ContentCollectionsUITests/test_AC_133: not listed — fails before the redesign: XCTAssertTrue "Authorize link not reachable in the auth sheet" (ContentCollectionsUITests.swift:793, the sign-in of start(), before any Search screen; check-runs 133293348832, 133304634905, d2b546624968). Out of this lot.
+# ContentCollectionsUITests/test_AC_141 (L-12), against the stub's one element per collection: the five tabs,
+# each root one touch away, the Search root, and the album list in its normal, error and empty states under
+# the Library section; --erase: the launch command of its class doc.
+immich_stub_collections.py ContentCollectionsUITests/test_AC_141 --erase --erase --release
 # AdjustLocationUITests, My Location on the Search tab's map (AC-48, AC-230, AC-234): ScriptedDeviceLocationService
 # plays the permission, the answers to the system prompts and the fix given as launch arguments (-uiTestLocation*),
 # and the DEBUG element mapMyLocationProbe reads what the map did: center, dot, prompts, precise. No --erase: the
