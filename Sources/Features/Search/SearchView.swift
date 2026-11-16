@@ -101,6 +101,19 @@ struct SearchView: View {
                 // avatar, which carries the backup ring, always. On the map, a
                 // back button returns to the search.
                 .toolbar {
+                    // Results of filters alone (nothing typed): the field has
+                    // no ✕ to clear, so without this the screen could not go
+                    // back to Explore — and to the map — short of a relaunch.
+                    if showsBackToExplore {
+                        ToolbarItem(placement: .topBarLeading) {
+                            Button {
+                                vm.clearSearch()
+                            } label: {
+                                Label("Back", systemImage: "chevron.backward")
+                            }
+                            .accessibilityIdentifier("searchBackToExplore")
+                        }
+                    }
                     if vm.viewMode == .map {
                         ToolbarItem(placement: .topBarLeading) {
                             Button {
@@ -164,6 +177,15 @@ struct SearchView: View {
                     placement: .navigationBarDrawer(displayMode: .always),
                     prompt: searchPrompt
                 )
+                // The field closed (✕) with nothing typed: back to Explore, the
+                // map preview and the places — a search of filters alone ends
+                // here too, as a typed one ends by clearing its text.
+                .onChange(of: isSearchPresented) { _, presented in
+                    if !presented, vm.hasSearched,
+                       vm.query.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                        vm.clearSearch()
+                    }
+                }
                 // While the field is active iOS hides the navigation bar's items:
                 // the Filters button and the avatar would be out of reach as soon
                 // as something is typed.
@@ -305,6 +327,12 @@ struct SearchView: View {
     /// file name / description chips go back to Smart and keep the text.
     private func removeFilter(_ field: SearchFilter.Field) {
         Task { await vm.removeConstraint(field) }
+    }
+
+    /// Results with no text to clear: a search of filters alone.
+    private var showsBackToExplore: Bool {
+        vm.viewMode == .results && vm.hasSearched && !vm.selectionMode && !isSearchPresented
+            && vm.query.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
     }
 
     /// The results bar shows from the moment the field is active — a mode can
@@ -456,7 +484,10 @@ struct SearchView: View {
 
     @ViewBuilder
     private var searchSuggestions: some View {
-        if vm.query.isEmpty {
+        // Not over results: after a search of filters alone (field active,
+        // nothing typed) the saved and recent searches covered the grid, and
+        // the search looked impossible without typing.
+        if vm.query.isEmpty, !vm.hasSearched {
             if !vm.savedSearches.isEmpty {
                 Section("Saved") {
                     ForEach(vm.savedSearches) { saved in
@@ -647,9 +678,9 @@ struct SearchView: View {
         }
     }
 
-    /// Explore: the map preview, the filters-only search, then the places.
-    /// The first two show in every state (loading, error, empty): neither
-    /// needs the place list.
+    /// Explore: the map preview, then the places. The preview shows in every
+    /// state (loading, error, empty): the map needs no place list. A search
+    /// made of filters alone starts from the toolbar's Filters button.
     @ViewBuilder
     private var exploreView: some View {
         // The first read shows a spinner outside the scroll container; every
@@ -657,7 +688,6 @@ struct SearchView: View {
         if case .loading = vm.exploreState {
             VStack(spacing: PVSpacing.s24) {
                 mapEntry
-                filtersEntry
                 ProgressView()
                     .pvLoadingIndicator("exploreLoading")
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -668,7 +698,6 @@ struct SearchView: View {
             ScrollView {
                 VStack(alignment: .leading, spacing: PVSpacing.s12) {
                     mapEntry
-                    filtersEntry
                     switch vm.exploreState {
                     case .loading:
                         EmptyView()
@@ -737,45 +766,6 @@ struct SearchView: View {
     /// the large "Map" row that used to sit under the field.
     private var mapEntry: some View {
         MapPreviewCard(vm: mapVM) { vm.viewMode = .map }
-    }
-
-    /// A search made of criteria alone (people, places, dates, media type…),
-    /// nothing typed: the Filters sheet, whose Done runs it as a Metadata
-    /// search. The toolbar's filter glyph leads there too, but small and
-    /// unlabeled at the top of the screen it went unnoticed.
-    private var filtersEntry: some View {
-        Button {
-            showFilters = true
-        } label: {
-            HStack(spacing: PVSpacing.s12) {
-                Image(systemName: "line.3.horizontal.decrease")
-                    .font(.pvH5)
-                    .foregroundStyle(Color.immichPrimary)
-                    .frame(width: 44, height: 44)
-                    .background(Color.immichPrimary.opacity(0.12), in: Circle())
-                    .accessibilityHidden(true)
-                VStack(alignment: .leading, spacing: PVSpacing.s2) {
-                    Text("Search with filters")
-                        .font(.pvHeadline)
-                        .foregroundStyle(Color.textPrimaryPV)
-                    Text("People, places, dates… nothing to type")
-                        .font(.pvSubhead)
-                        .foregroundStyle(Color.textSecondaryPV)
-                }
-                Spacer(minLength: PVSpacing.s8)
-                Image(systemName: "chevron.forward")
-                    .font(.pvSubhead.weight(.semibold))
-                    .foregroundStyle(Color.textTertiaryPV)
-                    .accessibilityHidden(true)
-            }
-            .padding(PVSpacing.s12)
-            .frame(maxWidth: .infinity, alignment: .leading)
-            .background(Color.bgSecondary, in: RoundedRectangle(cornerRadius: PVRadius.lg, style: .continuous))
-            .contentShape(RoundedRectangle(cornerRadius: PVRadius.lg, style: .continuous))
-        }
-        .buttonStyle(.plain)
-        .accessibilityElement(children: .combine)
-        .accessibilityIdentifier("exploreFiltersEntry")
     }
 }
 

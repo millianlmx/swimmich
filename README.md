@@ -159,7 +159,7 @@ System surfaces:
 
 ### Navigation
 
-`AuthenticatedRoot`: TabView (Photos, Memories, Albums, Shared) + native iOS 26 Search tab (`role: .search`). The Albums tab opens with a **Library** section: the content collections (Recently Taken, Recently Added, People, Tags, Folders, Stacks, Partners, On this device, Offline Storage, Duplicates, Trash, Locked Folder), one touch each, pushed onto the tab's own `NavigationStack`. Favorites and Archive are the filter button of the Photos tab; places are Explore, the Search tab's home until a search runs (the map opens from the map preview at its head; the next entry searches with filters alone, nothing typed). Profile ("Me") is presented as a sheet from the avatar on each tab — the avatar also carries the backup's progress ring, and Sync Status is the hub's first row — and keeps the account, settings and tools only.
+`AuthenticatedRoot`: TabView (Photos, Memories, Albums, Shared) + native iOS 26 Search tab (`role: .search`). The Albums tab opens with a **Library** section: the content collections (Recently Taken, Recently Added, People, Tags, Folders, Stacks, Partners, On this device, Offline Storage, Duplicates, Trash, Locked Folder), one touch each, pushed onto the tab's own `NavigationStack`. Favorites and Archive are the filter button of the Photos tab; places are Explore, the Search tab's home until a search runs (the map opens from the map preview at its head; a search of filters alone starts from the Filters button, and Back or the field's ✕ returns to Explore). Profile ("Me") is presented as a sheet from the avatar on each tab — the avatar also carries the backup's progress ring, and Sync Status is the hub's first row — and keeps the account, settings and tools only.
 
 ## Quick Start
 
