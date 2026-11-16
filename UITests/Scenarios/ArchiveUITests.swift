@@ -522,7 +522,15 @@ final class ArchiveUITests: XCTestCase {
         let thumb = app.descendants(matching: .any)
             .matching(NSPredicate(format: "label CONTAINS 'Arch-4'")).firstMatch
         XCTAssertTrue(thumb.waitForExistence(timeout: 30), "the photo sheet never showed the archived photo")
-        thumb.tap()
+        // "Arch-4" also labels the map marker ("Item, Arch-4") and the sheet's place title, and a marker tap only
+        // filters the sheet; the viewer opens from the sheet's thumbnail (MapPhotosSheet, mapPhotoThumb_<id>).
+        let sheetThumb = element("mapPhotoThumb_\(A)")
+        _ = sheetThumb.waitForExistence(timeout: 30)
+        if sheetThumb.isHittable {
+            sheetThumb.tap()
+        } else {
+            sheetThumb.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5)).tap()
+        }
         XCTAssertTrue(element("viewerBackButton").waitForExistence(timeout: 20), "the viewer never opened")
 
         let unarchive = element("viewerUnarchiveButton")
