@@ -1,3 +1,4 @@
+import Photos
 import SwiftUI
 
 /// The Preferences screen (settings-parity, gap G22) — reached from the "Me"
@@ -44,6 +45,12 @@ struct PreferencesView: View {
 
                 Toggle("Show Photos from This Device", isOn: $vm.showsDeviceAssets)
                     .accessibilityIdentifier("preferencesShowsDeviceAssetsToggle")
+                    // Switched on with Photos access never asked: ask now, it
+                    // is what the switch needs (the timeline never asks alone).
+                    .onChange(of: vm.showsDeviceAssets) { _, on in
+                        guard on, PHPhotoLibrary.authorizationStatus(for: .readWrite) == .notDetermined else { return }
+                        Task { _ = await PHPhotoLibrary.requestAuthorization(for: .readWrite) }
+                    }
             } header: {
                 Text("Photos")
             } footer: {

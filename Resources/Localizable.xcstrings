@@ -40215,6 +40215,34 @@
         }
       }
     },
+    "See this device's photos here too" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Auch die Fotos dieses Geräts hier sehen"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Ver también aquí las fotos de este dispositivo"
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Voir aussi ici les photos de cet appareil"
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Vedi qui anche le foto di questo dispositivo"
+          }
+        }
+      }
+    },
     "Your photos on a map" : {
       "localizations" : {
         "de" : {
