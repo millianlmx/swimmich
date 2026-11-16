@@ -53,6 +53,10 @@
 # Release: the night's suite is at its budget of 40 lines. First in the file: a push's gate runs
 # its changed lines in file order, one per free simulator, so test_ocrText (the menu toggle's
 # On/Off title) and test_searchFilters (the Filters sheet and the chips) run first.
+# OcrTextUITests/test_ocrText: the viewer's detected-text layer (boxes announced most-confident-first, the one
+# under the display threshold not announced, one GET /api/assets/{id}/ocr per photo, "no text" on an empty array),
+# then Search on a 3.2.0 server: the "Search options" menu's toggle latches "…: On" and the Filters sheet's field
+# travels as `filter.ocr.matches`, never the scalar `ocr`; --erase: the launch command of its class doc.
 immich_stub_ocr_text.py OcrTextUITests/test_ocrText --erase --release
 # SearchFiltersUITests/test_searchFilters: the Filters sheet's city and rating on two server generations,
 # 3.2.0 (structured `filter`, page 2 by `cursor`, OCR field on) then 1.120.0 (flat fields with `page`, no
