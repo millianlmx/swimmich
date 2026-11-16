@@ -1059,13 +1059,23 @@ final class ImmichAPIClient: ImmichClient, SessionRenewing, @unchecked Sendable 
         fields: [(name: String, value: String)]
     ) throws -> (file: URL, contentType: String) {
         var multipart = MultipartBody()
-        let bodyURL = URL(fileURLWithPath: NSTemporaryDirectory())
-            .appendingPathComponent("immich-upload-\(UUID().uuidString).multipart")
-        try multipart.writeStreamed(
-            fileField: (fieldName, filename, contentType, fileURL),
-            fields: fields,
-            to: bodyURL
-        )
+        // In a directory of its own, emptied at launch
+        // (`BackupExportDirectory.purgeOrphans`): a body outlives its upload
+        // only when the process dies mid-upload, and it is a full copy.
+        let directory = BackupExportDirectory.uploadBodies
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        let bodyURL = directory.appendingPathComponent("\(UUID().uuidString).multipart")
+        do {
+            try multipart.writeStreamed(
+                fileField: (fieldName, filename, contentType, fileURL),
+                fields: fields,
+                to: bodyURL
+            )
+        } catch {
+            // A body cut short (disk full, unreadable source) is no use to anyone.
+            try? FileManager.default.removeItem(at: bodyURL)
+            throw error
+        }
         return (bodyURL, multipart.contentType)
     }
 

@@ -773,7 +773,8 @@ struct PhotoViewer: View {
                             controlsVisible: showChrome,
                             onSingleTap: dismissOrToggleChrome,
                             posterURL: zoomSource == nil ? nil : asset.thumbnailURL(base: baseURL),
-                            posterPlaceholder: asset.id == openingAssetID ? openingImage : nil
+                            posterPlaceholder: asset.id == openingAssetID ? openingImage : nil,
+                            isActive: i == selectedIndex
                         )
                     } else if let pairID = asset.livePhotoVideoId, livePlayingIDs.contains(asset.id) {
                         // Live Photo playing its video pair (Photos-style).
@@ -784,7 +785,8 @@ struct PhotoViewer: View {
                             assetID: pairID,
                             controlsVisible: showChrome,
                             onSingleTap: dismissOrToggleChrome,
-                            onPlaybackEnded: { livePlayingIDs.remove(asset.id) }
+                            onPlaybackEnded: { livePlayingIDs.remove(asset.id) },
+                            isActive: i == selectedIndex
                         )
                     } else {
                         ZStack {

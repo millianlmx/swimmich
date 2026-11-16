@@ -181,6 +181,9 @@ final class DependencyContainer {
     }
 
     init() {
+        // First, before anything can upload or export: the full-size temp
+        // copies a killed process left behind (uploads, backup exports).
+        BackupExportDirectory.purgeOrphans()
         self.keychain = KeychainStoreImpl()
         let identities = KeychainClientIdentityStore()
         self.clientIdentities = identities
