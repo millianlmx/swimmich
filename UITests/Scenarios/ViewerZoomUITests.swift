@@ -18,6 +18,8 @@ import XCTest
 /// Set `TEST_RUNNER_SWIMMICH_EVIDENCE_DIR` to keep each film next to the proofs
 /// (`.harness/evidence/<ac>/`); every film is also attached to the result.
 ///
+/// CI (Scripts/ci-ui-scenarios.txt): test_AC_27_1, test_AC_27_3 and test_AC_27_5 are listed, `--release`, and have never run there yet. CI does not start the recorder, so each is expected to fail ("enregistreur vidéo absent"; test_AC_27_5 first at "never reached the far photo", where `swipeLeft` does not page the viewer on the CI simulator); a "Run workflow" `suite: all` shows it.
+///
 /// Run one method at a time with the launcher, never by hand:
 ///
 ///     .omp/orchestration/uitest.sh <worktree> /tmp/viewer-zoom-<méthode>.log \

@@ -93,7 +93,7 @@ immich_stub_adjust_location.py AdjustLocationUITests/test_AC_234_theMapCentersOn
 immich_stub_archive.py ArchiveUITests/test_AC10_searchViewerUnarchives --release
 immich_stub_archive.py ArchiveUITests/test_AC18_mapViewerResolvesArchivedPhoto --release
 immich_stub_locked_folder.py AppLockUITests/test_AC_21_searchKeyboardNotOverLock --erase --release
-# ViewerZoomUITests films the simulator through UITests/stubs/tools/sim_video_watcher.sh (its class doc); CI does not start it.
+# ViewerZoomUITests films the simulator through UITests/stubs/tools/sim_video_watcher.sh (its class doc), which CI does not start: its three lines have never run in CI, so they stay listed (--release) until a run shows each one's failure; none is observed, none is removed.
 immich_stub_viewer_zoom.py ViewerZoomUITests/test_AC_27_1 --erase --release
 immich_stub_viewer_zoom.py ViewerZoomUITests/test_AC_27_3 --erase --release
 immich_stub_viewer_zoom.py ViewerZoomUITests/test_AC_27_5 --erase --release
