@@ -95,15 +95,15 @@ immich_stub_adjust_location.py AdjustLocationUITests/test_AC_230_alreadyAllowedS
 immich_stub_adjust_location.py AdjustLocationUITests/test_AC_230_servicesOffExplainsAndTheMapStays --release
 immich_stub_adjust_location.py AdjustLocationUITests/test_AC_230_noFixExplainsAndTheMapStays --release
 immich_stub_adjust_location.py AdjustLocationUITests/test_AC_234_theMapCentersOnReducedAccuracyWithoutAskingForMore --release
-# ArchiveUITests/test_AC18_mapViewerResolvesArchivedPhoto: the viewer opened from the Search tab's map (marker "Arch-4"),
-# which knows no visibility, reads GET /api/assets/{id} and offers Unarchive, not Archive; Unarchive sends PUT /api/assets
-# {ids: [A], visibility: timeline} and the viewer leaves A. No --erase: the launch command of its class doc has none.
-immich_stub_archive.py ArchiveUITests/test_AC18_mapViewerResolvesArchivedPhoto --stub-version 2.0.0 --release
 # ArchiveUITests/test_AC10_searchViewerUnarchives: the viewer opened from Search (Filters sheet, city "Arch"; no archive
 # callback, the standalone path) offers Unarchive and not Archive for an archived photo; Unarchive sends PUT /api/assets
 # {ids: [A], visibility: timeline}, then the viewer moves on to B, whose Unarchive sends ids [B]. No --erase: the launch
 # command of its class doc has none.
-immich_stub_archive.py ArchiveUITests/test_AC10_searchViewerUnarchives --release
+immich_stub_archive.py ArchiveUITests/test_AC10_searchViewerUnarchives --stub-version 2.0.0 --release
+# ArchiveUITests/test_AC18_mapViewerResolvesArchivedPhoto: the viewer opened from the Search tab's map (marker "Arch-4"),
+# which knows no visibility, reads GET /api/assets/{id} and offers Unarchive, not Archive; Unarchive sends PUT /api/assets
+# {ids: [A], visibility: timeline} and the viewer leaves A. No --erase: the launch command of its class doc has none.
+immich_stub_archive.py ArchiveUITests/test_AC18_mapViewerResolvesArchivedPhoto --release
 immich_stub_locked_folder.py AppLockUITests/test_AC_21_searchKeyboardNotOverLock --erase --release
 # ViewerZoomUITests films the simulator through UITests/stubs/tools/sim_video_watcher.sh (its class doc), which CI does not start: its three lines have never run in CI, so they stay listed (--release) until a run shows each one's failure; none is observed, none is removed.
 immich_stub_viewer_zoom.py ViewerZoomUITests/test_AC_27_1 --erase --release
