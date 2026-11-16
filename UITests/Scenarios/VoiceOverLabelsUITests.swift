@@ -28,19 +28,19 @@ import XCTest
 /// * A state the stub cannot provide in the forced language fails loudly: no
 ///   assertion is skipped or relaxed because an element is missing.
 ///
-/// CI (`Scripts/ci-ui-scenarios.txt`): `test_AC_34_2_labelsInFourLanguages`,
-/// `test_AC_34_3_mapThumbnailIsAButton`, `test_AC_34_4_twoStateButtonsFollowState`,
-/// `test_AC_34_5_ratingStars`, `test_AC_34_6_otherScreens` and `test_AC_34_11_mapMarkersAreButtons`
-/// each have their own `--release` line, on an erased device. None of them has been observed
-/// to pass or fail there yet: a "Run workflow" `suite: all` shows it.
-/// `test_AC_34_sixSurfacesAnnounceTheirActions` selects the Search tab too but has no line:
-/// it failed on CI before the redesign (`assertViewer`: no `viewerOcrToggle` among the buttons;
-/// the presumed cause, a pill folded into the "⋯" menu whose item announces no state, was not
-/// observed), see the comment there. Its failure message now ends with `viewerBarReads()`, which
-/// tells that cause from a pill that lost its button role or is absent.
+/// CI (`Scripts/ci-ui-scenarios.txt`): `test_AC_34_sixSurfacesAnnounceTheirActions`,
+/// `test_AC_34_2_labelsInFourLanguages`, `test_AC_34_3_mapThumbnailIsAButton`,
+/// `test_AC_34_4_twoStateButtonsFollowState`, `test_AC_34_5_ratingStars`, `test_AC_34_6_otherScreens`
+/// and `test_AC_34_11_mapMarkersAreButtons` each have their own `--release` line, on an erased
+/// device. None of them has a recorded pass or failure there yet: the observation pushes and a
+/// "Run workflow" `suite: all` show it. The failure message of the viewer's detected-text pill
+/// (`assertViewerOcrPill`, called by `assertViewer` and by `test_AC_34_4`) ends with
+/// `viewerBarReads()`, which tells a pill folded into the "⋯" menu from a pill that lost its
+/// button role or is absent. `sixSurfaces` failed on CI before the redesign at that pill
+/// (check-run 133004722739); its cause was presumed, not observed.
 /// `test_AC_34_7_widgetButtonsInFrench`, `test_AC_34_7_shareExtensionButtons`,
-/// `test_AC_34_9_gridThumbnails` and `test_AC_34_12_filmstripNamesType` are compiled but not
-/// run there; they are run by hand with the launcher, on an erased device:
+/// `test_AC_34_9_gridThumbnails` and `test_AC_34_12_filmstripNamesType` have no line: they are
+/// compiled but not run there; they are run by hand with the launcher, on an erased device:
 ///
 ///     .omp/orchestration/uitest.sh <worktree> /tmp/voiceover.uitest.log \
 ///         UITests/stubs/immich_stub_voiceover.py VoiceOverLabelsUITests/<test> --erase
