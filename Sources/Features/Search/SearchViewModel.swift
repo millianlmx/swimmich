@@ -549,6 +549,20 @@ final class SearchViewModel {
         await restartSearch()
     }
 
+    /// Done in the Filters sheet. With something to search — a constraint or a
+    /// text — it is `applyFilters()`. With nothing (no filter, no text) it is
+    /// the way back to Explore, not a search of the whole library: that left
+    /// the screen on results with no ✕ to clear and no way back to the map.
+    func confirmFilters() async {
+        let typed = query.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard typed.isEmpty, !isFilterActive else {
+            await applyFilters()
+            return
+        }
+        pendingExploreFilter = nil
+        clearSearch()
+    }
+
     /// Reset, from the sheet or the chips bar: back to `SearchFilter()`, then
     /// the same dispatch path. The query is **not** touched — only the
     /// constraints go; the file name / description text mode is one of them

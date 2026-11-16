@@ -146,7 +146,7 @@ struct SearchFilterSheet: View {
                     // Closes at once; the search carries on in its own task.
                     // One already in flight is superseded, never skipped.
                     Button("Done") {
-                        Task { await vm.applyFilters() }
+                        Task { await vm.confirmFilters() }
                         dismiss()
                     }
                     .fontWeight(.semibold)

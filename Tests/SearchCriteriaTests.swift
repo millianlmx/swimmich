@@ -255,6 +255,43 @@ final class SearchCriteriaTests: XCTestCase {
         XCTAssertTrue(mock.searchMetadataCalls.isEmpty)
     }
 
+    /// Done in the sheet with no filter and no text sends nothing and stays on
+    /// (or goes back to) Explore: the whole library as "results" left a screen
+    /// with no ✕ to clear and no way back to the map.
+    func test_confirmFilters_withNothingGoesBackToExplore() async {
+        let mock = makeMock()
+        let vm = SearchViewModel(client: mock)
+
+        await vm.confirmFilters()
+        XCTAssertTrue(mock.searchMetadataCalls.isEmpty, "no filter, no text: no request")
+        XCTAssertTrue(mock.searchSmartCalls.isEmpty)
+        XCTAssertFalse(vm.hasSearched, "Explore stays")
+
+        // A search of filters alone, then the filter taken off in the sheet.
+        vm.togglePerson(alice)
+        await vm.confirmFilters()
+        XCTAssertEqual(mock.lastMetadataSearchDto?.personIds, ["p-alice"], "a filter alone is a search")
+        XCTAssertTrue(vm.hasSearched)
+        let sent = mock.searchMetadataCalls.count
+
+        vm.togglePerson(alice)
+        await vm.confirmFilters()
+        XCTAssertEqual(mock.searchMetadataCalls.count, sent, "nothing left to search: no request")
+        XCTAssertFalse(vm.hasSearched, "back to Explore")
+        XCTAssertTrue(vm.results.isEmpty)
+    }
+
+    func test_confirmFilters_withATextSearches() async {
+        let mock = makeMock()
+        let vm = SearchViewModel(client: mock)
+        vm.query = "plage"
+
+        await vm.confirmFilters()
+
+        XCTAssertEqual(mock.searchSmartCalls.count, 1, "a text alone is still searched on Done")
+        XCTAssertTrue(vm.hasSearched)
+    }
+
     func test_AC_218_emptyTextFallsBackToMetadata() async {
         let mock = makeMock()
         let vm = SearchViewModel(client: mock)
