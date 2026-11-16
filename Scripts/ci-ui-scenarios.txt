@@ -99,11 +99,12 @@ immich_stub_adjust_location.py AdjustLocationUITests/test_AC_234_theMapCentersOn
 # callback, the standalone path) offers Unarchive and not Archive for an archived photo; Unarchive sends PUT /api/assets
 # {ids: [A], visibility: timeline}, then the viewer moves on to B, whose Unarchive sends ids [B]. No --erase: the launch
 # command of its class doc has none.
-immich_stub_archive.py ArchiveUITests/test_AC10_searchViewerUnarchives --stub-version 2.0.0 --release
+immich_stub_archive.py ArchiveUITests/test_AC10_searchViewerUnarchives --release
 # ArchiveUITests/test_AC18_mapViewerResolvesArchivedPhoto: the viewer opened from the Search tab's map (marker "Arch-4"),
 # which knows no visibility, reads GET /api/assets/{id} and offers Unarchive, not Archive; Unarchive sends PUT /api/assets
 # {ids: [A], visibility: timeline} and the viewer leaves A. No --erase: the launch command of its class doc has none.
 immich_stub_archive.py ArchiveUITests/test_AC18_mapViewerResolvesArchivedPhoto --release
+# AppLockUITests/test_AC_21_searchKeyboardNotOverLock: App Lock on, "plage" typed in the Search field with the keyboard up, then background, Face ID failed and its prompt cancelled: the lock is full screen and pure white (pixels, not the accessibility tree the lock hides) over the window and over the keyboard's frame read before backgrounding, and after the Face ID unlock the field still reads "plage"; --erase: the launch command of its class doc.
 immich_stub_locked_folder.py AppLockUITests/test_AC_21_searchKeyboardNotOverLock --erase --release
 # ViewerZoomUITests films the simulator through UITests/stubs/tools/sim_video_watcher.sh (its class doc), which CI does not start: its three lines have never run in CI, so they stay listed (--release) until a run shows each one's failure; none is observed, none is removed.
 immich_stub_viewer_zoom.py ViewerZoomUITests/test_AC_27_1 --erase --release
