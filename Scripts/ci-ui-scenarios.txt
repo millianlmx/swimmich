@@ -70,6 +70,11 @@ immich_stub_voiceover.py VoiceOverLabelsUITests/test_AC_34_5_ratingStars --erase
 immich_stub_voiceover.py VoiceOverLabelsUITests/test_AC_34_6_otherScreens --erase --release
 immich_stub_voiceover.py VoiceOverLabelsUITests/test_AC_34_11_mapMarkersAreButtons --erase --release
 immich_stub_floating_controls.py FloatingControlsUITests/test_AC_30_4_controlsOnWhitePhotoAndLightMapKeepTheirIdentifiers --erase --release
+# MapSettingsUITests/test_mapSettings: Search tab, "Map" segment, then the map settings sheet. A custom range puts
+# both fileCreatedAfter and fileCreatedBefore on GET /api/map/markers; an inverted range shows mapSettingsRangeError,
+# keeps Done disabled and sends no request; favourites on top of the range send a new request (isFavorite=true, same
+# bounds); then the viewer's location preview opens the full-screen map. --erase: the app caches markers on disk per
+# filter, and a previous run's markers.json would serve the first map without the request the test reads (class doc).
 immich_stub_map_settings.py MapSettingsUITests/test_mapSettings --erase --release
 immich_stub_plurals.py PluralsUITests/test_AC_32_6_versionNoticeInFiveLanguages --erase --release
 immich_stub_list_states.py ListStatesUITests/test_AC_31 --erase --release
