@@ -164,8 +164,8 @@ struct SearchView: View {
                     prompt: searchPrompt
                 )
                 // While the field is active iOS hides the navigation bar's items:
-                // the Filters button and the text-mode menu would be out of reach
-                // as soon as something is typed.
+                // the Filters button and the avatar would be out of reach as soon
+                // as something is typed.
                 .searchPresentationToolbarBehavior(.avoidHidingContent)
                 .onChange(of: vm.query) { _, _ in vm.queryDidChange() }
                 .searchSuggestions { searchSuggestions }
@@ -191,10 +191,10 @@ struct SearchView: View {
 
     // MARK: - Shared chrome
 
-    /// Opens the Filters sheet (search-filters). It sits with the mode menu —
-    /// the filter applies to whatever the mode shows — and only in results mode,
-    /// where there is a grid to filter. The active count rides a circular
-    /// overlay: `.badge(_:)` exists only inside a `List` or a tab bar.
+    /// Opens the Filters sheet (search-filters), over the search only — a
+    /// filter alone, with no text, is a search too; the map has its own. The
+    /// active count rides a circular overlay: `.badge(_:)` exists only inside a
+    /// `List` or a tab bar.
     private var filtersButton: some View {
         Button {
             showFilters = true

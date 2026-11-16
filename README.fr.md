@@ -159,7 +159,7 @@ Surfaces système :
 
 ### Navigation
 
-`AuthenticatedRoot` : TabView (Photos, Memories, Albums, Shared) + onglet Recherche natif iOS 26 (`role: .search`). L'onglet Albums s'ouvre sur une section **Bibliothèque** : les collections de contenu (Recently Taken, Recently Added, People, Tags, Folders, Stacks, Partners, On this device, Offline Storage, Duplicates, Trash, Locked Folder), un toucher chacune, poussées sur la `NavigationStack` propre de l'onglet. Favoris et Archive sont le bouton de filtre de l'onglet Photos ; les lieux sont le segment Explorer de la Recherche. Le profil (« Me ») est présenté en sheet depuis l'avatar de chaque onglet et ne garde que le compte, les réglages et les outils.
+`AuthenticatedRoot` : TabView (Photos, Memories, Albums, Shared) + onglet Recherche natif iOS 26 (`role: .search`). L'onglet Albums s'ouvre sur une section **Bibliothèque** : les collections de contenu (Recently Taken, Recently Added, People, Tags, Folders, Stacks, Partners, On this device, Offline Storage, Duplicates, Trash, Locked Folder), un toucher chacune, poussées sur la `NavigationStack` propre de l'onglet. Favoris et Archive sont le bouton de filtre de l'onglet Photos ; les lieux sont Explorer, l'accueil de la Recherche tant qu'aucune recherche n'a eu lieu (la carte s'ouvre depuis sa première entrée). Le profil (« Me ») est présenté en sheet depuis l'avatar de chaque onglet — l'avatar porte aussi l'anneau de progression de la sauvegarde, et le statut de synchronisation est la première ligne du hub — et ne garde que le compte, les réglages et les outils.
 
 ## Démarrage rapide
 
