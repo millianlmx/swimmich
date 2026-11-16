@@ -388,7 +388,7 @@ final class JpegXLUITests: XCTestCase {
         shot("ac97-album")
 
         // Search.
-        // The Search bubble opens Search only from Photos (RootView's per-tab bubble): Photos first.
+        // Photos first, so the step starts from the same tab as the others.
         let photosTab = app.tabBars.buttons["Photos"].firstMatch
         XCTAssertTrue(photosTab.waitForExistence(timeout: 30), "the Photos tab is missing — \(screenText())")
         photosTab.tap()

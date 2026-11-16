@@ -93,21 +93,25 @@ struct TimelineScrubberGesture: Equatable {
 }
 
 /// Fast-scroll handle on the trailing edge of the Photos timeline: dragging it
-/// names the targeted month in a bubble; releasing loads that month.
+/// names the targeted month in a bubble and the grid follows the finger, one
+/// month at a time (`onScrub`); releasing settles on the exact place.
 ///
 /// The view reads `vm.scrubPosition` itself, so the grid's body never does
-/// (a row change would re-evaluate the whole grid). During the gesture only
-/// this view's `@State` changes: no request, no write to the model.
+/// (a row change would re-evaluate the whole grid). During the gesture this
+/// view only reports the month under the finger when it changes, never every
+/// point of the drag.
 struct TimelineScrubber: View {
     let vm: TimelineViewModel
+    /// The finger reached another month: the grid moves there while the
+    /// finger is still down. Called once per month crossed, not per point.
+    var onScrub: (_ monthIndex: Int) -> Void = { _ in }
     /// Release on `(monthIndex, fractionInMonth)`.
     let onRelease: (_ monthIndex: Int, _ fraction: Double) -> Void
     /// VoiceOver adjustment to `monthIndex`.
     let onAdjust: (_ monthIndex: Int) -> Void
     /// The bubble appeared (`true`) or went away (`false`). While it shows, the
-    /// timeline hides its pinned date header: the grid only moves on release,
-    /// so the header would name the photos still on screen while the bubble
-    /// names the month under the finger — two dates that disagree.
+    /// timeline hides its pinned date header: the bubble already names the
+    /// month, and the header would lag behind it while the month loads.
     var onBubbleVisibilityChange: (_ visible: Bool) -> Void = { _ in }
 
     @PVReduceMotion private var reduceMotion
@@ -188,6 +192,9 @@ struct TimelineScrubber: View {
         .offset(y: CGFloat(fraction) * height - Self.handleHeight / 2)
         .onChange(of: gesture.labelMonthIndex, initial: true) { _, month in
             if let month { labelText = monthLabel(month) }
+            // Live scrubbing: only while the finger is down (the linger after
+            // the release, and its fade, move nothing).
+            if let month, gesture.isScrubbing { onScrub(month) }
         }
         // Fires on show/hide only, not on every month the finger crosses.
         .onChange(of: gesture.labelMonthIndex != nil) { _, visible in

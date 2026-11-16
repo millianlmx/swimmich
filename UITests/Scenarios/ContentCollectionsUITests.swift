@@ -575,8 +575,8 @@ final class ContentCollectionsUITests: XCTestCase {
         if (element("filterMenu").value as? String) != "All" { chooseFilter("all", label: "All", counted: false) }
     }
 
-    /// Search is only reachable from Photos or Memories (the bubble keeps its
-    /// action on Albums and Shared).
+    /// The Search root, always reached from Photos so every step starts from
+    /// the same tab.
     private func goToSearchRoot() {
         selectTab("Photos")
         selectTab("Search")

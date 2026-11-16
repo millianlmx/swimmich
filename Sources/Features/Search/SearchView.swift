@@ -93,9 +93,10 @@ struct SearchView: View {
                 // empty `LocalizedStringKey` would be extracted as a `""` key.
                 .navigationTitle(vm.selectionMode ? Text("\(vm.selectedIds.count) selected") : Text(verbatim: ""))
                 .navigationBarTitleDisplayMode(.inline)
-                // Filters + avatar (topBarTrailing): iOS 26 renders its own
-                // Liquid-Glass chrome, so no manual glassEffect — a manual circle
-                // on the label would double-glass and clip. Filters only over the
+                // Filters + avatar (topBarTrailing), each its own item: grouped,
+                // they shared one capsule that overflowed the avatar. Filters
+                // keep the bar's own glass; the avatar draws its own circle
+                // (`ProfileAvatarToolbarItem`). Filters only over the
                 // search (a filter alone, without text, is a search too); the
                 // avatar, which carries the backup ring, always. On the map, a
                 // back button returns to the search.
@@ -111,12 +112,12 @@ struct SearchView: View {
                         }
                     }
                     if !(vm.selectionMode && vm.viewMode == .results) {
-                        ToolbarItemGroup(placement: .topBarTrailing) {
-                            if vm.viewMode == .results {
+                        if vm.viewMode == .results {
+                            ToolbarItem(placement: .topBarTrailing) {
                                 filtersButton
                             }
-                            ProfileAvatarButton { openProfile() }
                         }
+                        ProfileAvatarToolbarItem { openProfile() }
                     }
                 }
                 // L-23b: the same selection bar as the Photos tab, written once.

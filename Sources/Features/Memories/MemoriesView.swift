@@ -53,9 +53,7 @@ struct MemoriesView: View {
                     }
                     .accessibilityIdentifier("memoriesCreateButton")
                 }
-                ToolbarItemGroup(placement: .topBarTrailing) {
-                    ProfileAvatarButton { openProfile() }
-                }
+                ProfileAvatarToolbarItem { openProfile() }
             }
             .task { await vm.load() }
             .sheet(isPresented: $vm.showCreate) {

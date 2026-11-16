@@ -317,12 +317,10 @@ final class MapSettingsUITests: XCTestCase {
         return settled()
     }
 
-    /// The settings sheet's own bottom bar — a `safeAreaInset`, so it is pinned
-    /// to the sheet's visible bottom edge, which the sheet's content frame does
-    /// NOT describe (it overhangs by the bar's height).
+    /// The lowest point of the settings sheet a row can be read at: the
+    /// window's bottom edge (the sheet has no bottom bar of its own).
     private func settingsFloor() -> CGFloat {
-        let done = element("mapSettingsDoneButton")
-        return (done.exists ? done.frame.minY : app.frame.maxY) - 12
+        app.frame.maxY - 12
     }
 
     /// Same as `scrollSheet(fully: true)`, spelled for the call sites.
@@ -531,6 +529,31 @@ final class MapSettingsUITests: XCTestCase {
     /// sheet down in the same breath as it presents this one (one host
     /// controller, one presentation at a time), and a dismissal still animating
     /// can swallow the first presentation.
+    /// Closes the settings sheet the only way it closes — a drag down from its
+    /// top edge (there is no Done button: closing applies). Repeated, because
+    /// from the large detent the first drag may only lower it. Returns whether
+    /// the sheet is gone.
+    @discardableResult
+    private func closeSettingsSheet() -> Bool {
+        let sheetMarker = element("mapSettingsRangePicker")
+        for _ in 0..<3 where sheetMarker.exists {
+            let sheet = app.collectionViews.firstMatch
+            let start = sheet.exists
+                ? sheet.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0))
+                    .withOffset(CGVector(dx: 0, dy: -8))
+                : app.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5))
+            start.press(forDuration: 0.1,
+                        thenDragTo: app.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.99)))
+            _ = waitUntilGone(sheetMarker, timeout: 3)
+        }
+        return !sheetMarker.exists
+    }
+
+    private func waitUntilGone(_ element: XCUIElement, timeout: TimeInterval) -> Bool {
+        let gone = XCTNSPredicateExpectation(predicate: NSPredicate(format: "exists == false"), object: element)
+        return XCTWaiter().wait(for: [gone], timeout: timeout) == .completed
+    }
+
     private func openSettingsSheet() {
         let sheetMarker = element("mapSettingsRangePicker")
         element("mapSettingsButton").tap()
@@ -632,15 +655,14 @@ final class MapSettingsUITests: XCTestCase {
                       "an inverted range must be reported in the sheet — \(sheetDiagnosis())")
         shot("m07-inverted-range")
 
-        let done = app.buttons.matching(identifier: "mapSettingsDoneButton").firstMatch
-        XCTAssertTrue(done.exists, "the sheet has no Done button")
-        XCTAssertFalse(done.isEnabled,
-                       "Done must stay disabled while the range is inverted — otherwise the empty answer would be cached under a valid-looking key")
+        // No Done button: the sheet closes by a swipe down, which an inverted
+        // range blocks — otherwise the empty answer would be cached under a
+        // valid-looking key.
+        XCTAssertFalse(app.buttons.matching(identifier: "mapSettingsDoneButton").firstMatch.exists,
+                       "the sheet must not carry a Done button — closing it applies")
         let beforeRefusal = markerRequests().count
-        // Tapped at its own coordinates rather than through `tap()`: a disabled
-        // control is still on screen, and the point is what the APP does with
-        // the tap, not what the harness can reach.
-        done.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5)).tap()
+        XCTAssertFalse(closeSettingsSheet(),
+                       "the sheet closed on an inverted range — it must stay up until the range is valid")
         Thread.sleep(forTimeInterval: 4)
         XCTAssertEqual(markerRequests().count, beforeRefusal,
                        "the inverted range reached the network — got:\n\(describe(markerRequests()))")
@@ -655,11 +677,9 @@ final class MapSettingsUITests: XCTestCase {
         setToggle("mapSettingsCustomRangeButton", on: true)
         XCTAssertTrue(scrollSheet(to: "mapSettingsToDate"),
                       "the custom range never came back — \(sheetDiagnosis())")
-        XCTAssertTrue(done.isEnabled, "Done must be enabled again once the range is valid")
+        // MARK: - Closing the sheet applies it: BOTH bounds on the wire
 
-        // MARK: - Applying it puts BOTH bounds on the wire
-
-        done.tap()
+        XCTAssertTrue(closeSettingsSheet(), "the sheet did not close once the range was valid — \(sheetDiagnosis())")
         let afterApply = waitForMarkerRequests(2)
         XCTAssertEqual(afterApply.count, 2,
                        "applying the range did not reach the server exactly once — got:\n\(describe(afterApply))")
@@ -697,7 +717,7 @@ final class MapSettingsUITests: XCTestCase {
 
         openSettingsSheet()
         setToggle("mapSettingsFavoritesToggle", on: true)
-        element("mapSettingsDoneButton").tap()
+        XCTAssertTrue(closeSettingsSheet(), "the settings sheet did not close — \(sheetDiagnosis())")
         let afterFavorites = waitForMarkerRequests(3)
         XCTAssertEqual(afterFavorites.count, 3,
                        "the favourites filter reused the previous answer instead of re-asking — got:\n\(describe(afterFavorites))")

@@ -42,9 +42,16 @@ struct SharedLinksView: View {
                     }
                     .accessibilityIdentifier("openSharedLinkViewer")
                 }
-                ToolbarItemGroup(placement: .topBarTrailing) {
-                    ProfileAvatarButton { openProfile() }
+                ToolbarItem(placement: .topBarLeading) {
+                    Button {
+                        presentingCreate = true
+                    } label: {
+                        Label("New Link", systemImage: "plus")
+                            .labelStyle(.iconOnly)
+                    }
+                    .accessibilityIdentifier("sharedLinksToolbarCreateButton")
                 }
+                ProfileAvatarToolbarItem { openProfile() }
             }
             .task {
                 await vm.load()

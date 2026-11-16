@@ -94,7 +94,7 @@ Composition points:
 
 - **`Sources/DependencyContainer.swift`** — composition root: singleton `@MainActor`, `make*ViewModel()` methods that inject what each view model needs: mostly a protocol via `init(client:)`, sometimes a process-wide store (`AppLogStore`, `WhatsNewStore`) or the view model of the screen that opens it (Backup remainder and upload details take the `UploadViewModel`, download info takes the `OfflineDownloadViewModel`).
 - **`Sources/RootView.swift`** — auth-gated router: onboarding → `AuthenticatedRoot` (TabView). Account switch destroys the full subtree (`.id(activeAccountID)`), no residual state.
-- **`Sources/DesignSystem/`** — `Tokens/` (`Color.immich*`, `bgPrimary`/`bgSecondary`, spacing, motion, fonts) + `Components/` (app bar, buttons, badges, skeletons, floating controls: `pvFloating(.circle|.pill|.bar)`). Colors come from these tokens; some feature views still use literal SwiftUI colors (`Color.white`, `Color.red`…), to migrate, not to copy.
+- **`Sources/DesignSystem/`** — `Tokens/` (`Color.immich*`, `bgPrimary`/`bgSecondary`, spacing, motion, fonts) + `Components/` (app bar, buttons, badges, skeletons, floating controls: `pvFloating(.circle|.pill|.bar)` over photos, `pvGlass(…)` — the system's adaptive glass — over the map). Colors come from these tokens; some feature views still use literal SwiftUI colors (`Color.white`, `Color.red`…), to migrate, not to copy.
 - **`Sources/ImmichSharedKit/`** — shared framework app ⇄ extensions: ActivityKit attributes and views for the Live Activity, the widget session, `MultipartBody` (upload bodies written to disk).
 - **`ImmichWidgets/`** — widget extension (home screen widgets + Live Activity). **`ImmichShareExtension/`** — share extension.
 

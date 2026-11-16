@@ -2,10 +2,13 @@ import SwiftUI
 
 /// Trash tab — Apple-Photos-grade "Recently Deleted" experience.
 ///
-/// Mirrors the TimelineView grid conventions (spacing 0, cornerRadius 0,
-/// `.padding(.horizontal, 4)` screen-edge inset) but keeps a separate
-/// simplified feature surface: no selection mode, no favorite, no detail
-/// navigation. Actions:
+/// Same grid and day bands as the two "recent" screens of the Library
+/// (`RecentAssetsView`): three columns 2 pt apart, a 4 pt screen-edge inset,
+/// one opaque pinned band per day in the timeline's wording, 24 pt between
+/// days. It used to draw its own (cells touching, a translucent band indented
+/// further than the grid), which made it the odd one out of the section. It
+/// keeps a separate simplified feature surface: no selection mode, no
+/// favorite, no detail navigation. Actions:
 /// - Restore single (context menu) — non destructive, no confirmation.
 /// - Delete Permanently single (context menu) — destructive, confirmation alert.
 /// - Restore All (toolbar) — non destructive, no confirmation.
@@ -17,7 +20,8 @@ struct TrashView: View {
     @State var vm: TrashViewModel
     @Environment(AuthViewModel.self) private var auth
 
-    private let columns = Array(repeating: GridItem(.flexible(), spacing: 0), count: 3)
+    /// The timeline's grid convention: three flexible columns, 2 pt apart.
+    private let columns = Array(repeating: GridItem(.flexible(), spacing: PVSpacing.s2), count: 3)
 
     // UI-only haptic / alert state.
     @State private var lastRestoreTick = 0
@@ -41,11 +45,10 @@ struct TrashView: View {
             trashLoadErrorBanner
         }
         .scrollDismissesKeyboard(.immediately)
-        .navigationTitle(Text(verbatim: ""))
+        .navigationTitle("Trash")
         .navigationBarTitleDisplayMode(.inline)
+        .background(Color.bgPrimary)
         .toolbar { toolbarContent }
-        .toolbarBackground(.visible, for: .navigationBar)
-        .immichAppBarTitleHeader("Trash")
         .appSensoryFeedback(.success, trigger: lastRestoreTick)
         .appSensoryFeedback(.warning, trigger: lastDeleteTick)
         .alert(
@@ -150,11 +153,11 @@ struct TrashView: View {
                 .padding(.top, 80)
             }
         } else {
-            LazyVStack(alignment: .leading, spacing: 0, pinnedViews: [.sectionHeaders]) {
+            LazyVStack(alignment: .leading, spacing: PVSpacing.s24, pinnedViews: [.sectionHeaders]) {
                 trashInfoBanner
                 ForEach(vm.groupedByDay, id: \.day) { group in
                     Section {
-                        LazyVGrid(columns: columns, spacing: 0) {
+                        LazyVGrid(columns: columns, spacing: PVSpacing.s2) {
                             ForEach(group.items) { item in
                                 cellView(for: item)
                                     .task {
@@ -164,7 +167,6 @@ struct TrashView: View {
                                     }
                             }
                         }
-                        .padding(.horizontal, PVSpacing.s4)
                     } header: {
                         TrashSectionHeader(
                             label: DateHeaderFormatter.displayString(for: group.day)
@@ -174,26 +176,27 @@ struct TrashView: View {
                 }
                 if vm.canLoadMore {
                     ProgressView()
-                        .padding(.vertical, PVSpacing.s12)
+                        .padding(.vertical, PVSpacing.s16)
                         .frame(maxWidth: .infinity)
                 }
             }
+            .padding(.horizontal, PVSpacing.s4)
         }
     }
 
-    /// Pinned section header — mirrors TimelineView.TimelineSectionHeader
-    /// (kept private there; duplicated here to stay self-contained).
+    /// One-line pinned day band — the same as `RecentAssetsView.dayHeader`
+    /// (title in the timeline's wording, `DateHeaderFormatter`). Opaque
+    /// background: a pinned header otherwise lets the grid show through.
     private struct TrashSectionHeader: View {
         let label: String
 
         var body: some View {
             Text(label)
                 .font(.pvHeadline)
-                .foregroundStyle(Color.textSecondaryPV)
+                .foregroundStyle(Color.textPrimaryPV)
                 .frame(maxWidth: .infinity, alignment: .leading)
-                .padding(.horizontal, PVSpacing.s24)
                 .padding(.vertical, PVSpacing.s8)
-                .background(.regularMaterial)
+                .background(Color.bgPrimary)
                 .accessibilityAddTraits(.isHeader)
         }
     }
@@ -209,7 +212,6 @@ struct TrashView: View {
                 .foregroundStyle(Color.textSecondaryPV)
             Spacer()
         }
-        .padding(.horizontal, PVSpacing.s12)
         .padding(.vertical, PVSpacing.s8)
     }
 
@@ -241,9 +243,6 @@ struct TrashView: View {
 
     @ToolbarContentBuilder
     private var toolbarContent: some ToolbarContent {
-        ToolbarItem(placement: .principal) {
-            ImmichAppBar(title: "Trash")
-        }
         ToolbarItem(placement: .topBarTrailing) {
             Button {
                 Task {

@@ -230,8 +230,7 @@ final class SearchCapturesUITests: XCTestCase {
             + "keyboards \(app.keyboards.count); screen reads \(Array(texts))"
     }
 
-    /// Selects the Photos tab and waits until it is the selection. The Search bubble lands on Search only when
-    /// the last content tab is Photos (`RootView`, `onChange(of: selection)`).
+    /// Selects the Photos tab and waits until it is the selection: every step starts from the same tab.
     private func selectPhotosTab() {
         let photos = app.tabBars.buttons.matching(labelPredicate(["Photos"])).firstMatch
         XCTAssertTrue(photos.waitForExistence(timeout: 20), "no Photos tab — \(screenState())")
@@ -239,8 +238,8 @@ final class SearchCapturesUITests: XCTestCase {
         XCTAssertTrue(waitUntil(10) { photos.isSelected }, "the Photos tab was not selected — \(screenState())")
     }
 
-    /// Opens the Search tab and returns its search field. From Albums the Search bubble is a "+" that opens
-    /// New Album and puts Albums back (`handleBubbleTap`), so Photos is selected first.
+    /// Opens the Search tab and returns its search field. The bubble is Search from every tab; Photos is
+    /// selected first so each step starts from the same place.
     private func openSearchField() -> XCUIElement {
         selectPhotosTab()
         XCTAssertTrue(searchTab.waitForExistence(timeout: 20), "no Search tab — \(screenState())")

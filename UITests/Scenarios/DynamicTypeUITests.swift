@@ -1139,15 +1139,21 @@ final class DynamicTypeUITests: XCTestCase {
         openSearchTab()
         tapElement("searchMapEntry")
         tapElement("mapSettingsButton")
-        // At AX5 the sheet opens at half height with the favourites switch under its
-        // Done bar; the window-centre swipe of `scrollToHittable` would land on the
+        // At AX5 the sheet opens at half height with the favourites switch below
+        // its fold; the window-centre swipe of `scrollToHittable` would land on the
         // mode bar above the sheet. A drag from inside the sheet raises it first.
-        XCTAssertTrue(element("mapSettingsDoneButton").waitForExistence(timeout: 15), "no map settings — \(screenText())")
+        XCTAssertTrue(element("mapSettingsThemePicker").waitForExistence(timeout: 15), "no map settings — \(screenText())")
         app.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.6))
             .press(forDuration: 0.1, thenDragTo: app.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.08)))
         Thread.sleep(forTimeInterval: 1)
         flipSwitch("mapSettingsFavoritesToggle")
-        tapElement("mapSettingsDoneButton")
+        // No Done button: a drag down from the sheet's top edge closes it and
+        // applies (twice, from the large detent).
+        for _ in 0..<2 where element("mapSettingsThemePicker").exists {
+            app.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.1))
+                .press(forDuration: 0.1, thenDragTo: app.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.99)))
+            Thread.sleep(forTimeInterval: 1.5)
+        }
         XCTAssertTrue(element("mapFilterActiveBadge").waitForExistence(timeout: 20), "no active-filter badge — \(screenText())")
         let badge = element("mapFilterActiveBadge").frame
         XCTAssertGreaterThanOrEqual(badge.minX, 0, "the badge starts left of the window")

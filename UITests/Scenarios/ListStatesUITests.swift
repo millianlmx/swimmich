@@ -103,7 +103,7 @@ final class ListStatesUITests: XCTestCase {
         XCTAssertTrue(element("partnerLibraryLink-\(incomingPartner)").waitForExistence(timeout: 20),
                       "Partners shows no data after the last pull — \(screenText())")
         goBack()
-        // The Search bubble opens Search only from Photos; from Albums it opens New Album (RootView, onChange(of: selection)).
+        // Photos first, so the step starts from the same tab as the others.
         let photos = app.tabBars.buttons["Photos"]
         XCTAssertTrue(photos.waitForExistence(timeout: 15), "Photos tab missing — \(screenText())")
         photos.tap()
@@ -267,7 +267,7 @@ final class ListStatesUITests: XCTestCase {
         XCTAssertTrue(element("partnerLibraryLink-\(incomingPartner)").waitForExistence(timeout: 20))
         goBack()
 
-        // The Search bubble opens Search only from Photos; from Albums it opens New Album (RootView, onChange(of: selection)).
+        // Photos first, so the step starts from the same tab as the others.
         let photos = app.tabBars.buttons["Photos"]
         XCTAssertTrue(photos.waitForExistence(timeout: 15), "Photos tab missing — \(screenText())")
         photos.tap()

@@ -106,13 +106,15 @@ struct RootView: View {
 /// Owns every tab view model so the parent can recreate the whole subtree on
 /// account switch (`.id(activeAccountID)`) — fresh VMs = fresh loads.
 ///
-/// From Photos the bubble lands on the real Search tab (a plain tab, so a
-/// `.sheet` can be presented safely on top of it — the search full-screen
-/// cover was removed because SwiftUI serializes presentations from the same
-/// presenter, which made a sheet above it impossible, and a sheet inside the
-/// cover crashed on teardown). From Albums/Shared/Me the bubble keeps its
-/// contextual action (create / placeholder / logout) and the selection snaps
-/// back. The bubble icon mirrors the active tab.
+/// The bubble is Search, and only Search, from every tab: a magnifying glass
+/// that lands on the real Search tab (a plain tab, so a `.sheet` can be
+/// presented safely on top of it). It used to turn into a "+" on the other tabs
+/// and snap the selection back to the tab it came from: the label still read
+/// "Search", and tapping it there crashed the app — the selection of a
+/// `role: .search` tab was reset from inside its own `onChange`, while the
+/// tab bar was already moving to the search, then a sheet was presented in
+/// the same pass. No selection is ever rewritten now. Creating an album or a
+/// shared link is each tab's own toolbar "+".
 private struct AuthenticatedRoot: View {
     @Environment(AuthViewModel.self) private var auth
     @PVReduceMotion private var reduceMotion
@@ -201,7 +203,6 @@ private struct AuthenticatedRoot: View {
     /// Log level and image cache of the Advanced section (B-31).
     @State private var advanced: AdvancedSettingsViewModel
     @State private var selection: RootTab = .photos
-    @State private var lastContentTab: RootTab = .photos
     @State private var pendingTimelineScrollID: String?
     @State private var pendingTimelineScrollDay: String?
     /// The widget link taken from the root (L-28): the photo it names, handed
@@ -220,8 +221,6 @@ private struct AuthenticatedRoot: View {
     /// A widget link reached this root: no automatic What's New in this launch.
     @State private var widgetLinkReceived = false
     @Binding private var pendingWidgetLink: PendingWidgetLink?
-    @State private var showCreateAlbum = false
-    @State private var showCreateSharedLink = false
     @State private var showProfile = false
     @State private var showWhatsNew = false
     @State private var showDownloadInfo = false
@@ -315,7 +314,7 @@ private struct AuthenticatedRoot: View {
                     )
                 }
             }
-            Tab("Search", systemImage: bubbleIcon, value: RootTab.search, role: .search) {
+            Tab("Search", systemImage: "magnifyingglass", value: RootTab.search, role: .search) {
                 SearchView(vm: search, mapVM: map, downloads: downloads)
             }
         }
@@ -366,20 +365,9 @@ private struct AuthenticatedRoot: View {
             applyWidgetLink(pending.link)
         }
         .onChange(of: selection) { _, newValue in
-            if newValue == .search {
-                if lastContentTab == .photos {
-                    // Bubble from Photos: land on the Search tab itself.
-                    lastContentTab = newValue
-                } else {
-                    handleBubbleTap()
-                    selection = lastContentTab
-                }
-            } else {
-                lastContentTab = newValue
-                // Leaving the search tab takes the map photo sheet down with
-                // it (stable presenter — AuthenticatedRoot — so no teardown trap).
-                map.isPhotoSheetPresented = false
-            }
+            // Leaving the search tab takes the map photo sheet down with it
+            // (stable presenter — AuthenticatedRoot — so no teardown trap).
+            if newValue != .search { map.isPhotoSheetPresented = false }
         }
         // An evaluation of the server address ended (L-26): the tab on screen
         // reloads from the address now in use. Pushed screens are left alone;
@@ -427,12 +415,6 @@ private struct AuthenticatedRoot: View {
         // declares none, so there is exactly one navigation bar.
         .sheet(isPresented: $showDownloadInfo) {
             NavigationStack { DownloadInfoView(vm: downloads) }
-        }
-        .sheet(isPresented: $showCreateAlbum) {
-            CreateAlbumSheet(vm: albums, preselectedAssetIds: nil)
-        }
-        .sheet(isPresented: $showCreateSharedLink) {
-            CreateSharedLinkSheet(vm: sharedLinks)
         }
         // Native map photo sheet, owned by AuthenticatedRoot (never deallocated
         // while the tab tree lives): the only presentation active while browsing
@@ -534,8 +516,6 @@ private struct AuthenticatedRoot: View {
             // hold something being typed.
             showProfile = false
             showDownloadInfo = false
-            showCreateAlbum = false
-            showCreateSharedLink = false
             map.isPhotoSheetPresented = false
             if showWhatsNew {
                 whatsNewYieldedToLink = true
@@ -556,22 +536,6 @@ private struct AuthenticatedRoot: View {
             pendingLinkedAsset = request
         }
         if route.startsBackup { container.startManualBackup() }
-    }
-
-    private var bubbleIcon: String {
-        switch selection {
-        case .photos, .memories, .search: "magnifyingglass"
-        case .albums, .shared: "plus"
-        }
-    }
-
-    private func handleBubbleTap() {
-        switch lastContentTab {
-        case .photos, .memories: break // Landing on the Search tab is handled by the TabView itself.
-        case .albums: showCreateAlbum = true
-        case .shared: showCreateSharedLink = true
-        case .search: break
-        }
     }
 }
 
@@ -690,6 +654,10 @@ struct ProfileAvatarButton: View {
                 .foregroundStyle(Color.white)
         }
         .frame(width: 44, height: 44)
+        // The glass is the disc's own, in its shape: in a navigation bar the
+        // item's shared capsule is hidden (`ProfileAvatarToolbarItem`), so
+        // nothing spills left and right of the avatar.
+        .pvGlass(.circle)
         .overlay { backupRing }
         // The mode's only permanent marker: 12 pt, pinned to the CIRCLE's own
         // corner rather than to a padded frame's — the avatar no longer keeps a
@@ -761,3 +729,18 @@ struct ProfileAvatarButton: View {
     }
 }
 
+/// The avatar as a navigation-bar item. On iOS 26 every bar item sits in a
+/// shared Liquid Glass capsule sized for text buttons: around a 44 pt disc it
+/// stuck out left and right. The capsule is hidden here — the avatar carries
+/// its own circular glass — and the item is never grouped with another control,
+/// which would put both back in one capsule.
+struct ProfileAvatarToolbarItem: ToolbarContent {
+    let action: () -> Void
+
+    var body: some ToolbarContent {
+        ToolbarItem(placement: .topBarTrailing) {
+            ProfileAvatarButton(action: action)
+        }
+        .sharedBackgroundVisibility(.hidden)
+    }
+}
