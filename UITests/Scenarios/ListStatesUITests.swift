@@ -40,7 +40,56 @@ final class ListStatesUITests: XCTestCase {
     /// AC-31: 500, then an empty list, then data, on Partners, the search
     /// results, Media Stats, Download Info and API keys, pulling down each time.
     func test_AC_31() throws {
-        launchSignedIn()
+        // launchSignedIn(), inline. On an --erase simulator the system sign-in alert and a cold SafariViewService come late:
+        // the wait for "Authorize" answers the system alerts on the way and a stuck attempt restarts from the onboarding
+        // (ConfirmationsUITests.signIn). The same steps and assertions as launchSignedIn(), none weakened.
+        get("/__reset")
+        get("/__provider?mode=manual")
+        app.launchArguments = ["-AppleLanguages", "(en)", "-AppleLocale", "en_US"]
+        app.launch()
+        if waitForStaticText(["Your photo library", "Votre photothèque"], timeout: 30) {
+            let safari = XCUIApplication(bundleIdentifier: "com.apple.SafariViewService")
+            let springboard = XCUIApplication(bundleIdentifier: "com.apple.springboard")
+            let authorize = NSPredicate(format: "label CONTAINS 'Authorize'")
+            let systemAnswer = NSPredicate(format: "label IN %@", ["Continue", "Continuer", "Allow", "Autoriser", "Allow Full Access"])
+            var authorized = false
+            for attempt in 0..<3 where !authorized {
+                if attempt > 0 {
+                    app.terminate()
+                    get("/__provider?mode=manual")
+                    app.launch()
+                    XCTAssertTrue(waitForStaticText(["Your photo library", "Votre photothèque"], timeout: 30),
+                                  "the onboarding did not come back for a new sign-in attempt")
+                }
+                walkOnboardingToLogin()
+                XCTAssertTrue(tapAnyButton(["Immich SSO"]), "SSO button missing on login screen")
+                let deadline = Date().addingTimeInterval(45)
+                while !authorized && Date() < deadline {
+                    for link in [safari.links.matching(authorize).firstMatch, safari.buttons.matching(authorize).firstMatch]
+                    where link.exists {
+                        link.tap()
+                        authorized = true
+                        break
+                    }
+                    if authorized { break }
+                    for alerts in [springboard.alerts, app.alerts] {
+                        let answer = alerts.firstMatch.buttons.matching(systemAnswer).firstMatch
+                        if answer.exists {
+                            answer.tap()
+                            break
+                        }
+                    }
+                    Thread.sleep(forTimeInterval: 0.5)
+                }
+            }
+            XCTAssertTrue(authorized, "Authorize link not reachable in the auth sheet after 3 attempts — \(screenText())")
+        }
+        XCTAssertTrue(app.tabBars.buttons["Photos"].waitForExistence(timeout: 30),
+                      "OAuth did not reach the authenticated shell")
+        let whatsNewDone = element("whatsNewDoneButton")
+        if whatsNewDone.waitForExistence(timeout: 10) { whatsNewDone.tap() }
+        XCTAssertTrue(element("assetTile_\(firstPhoto)").waitForExistence(timeout: 30),
+                      "the timeline never rendered against \(stub) — \(screenText())")
 
         // Partners
         arm("partners")
@@ -124,7 +173,56 @@ final class ListStatesUITests: XCTestCase {
     /// AC-142: an indicator, labelled for VoiceOver, until the first answer; no
     /// empty state and no error before it.
     func test_AC_142() throws {
-        launchSignedIn()
+        // launchSignedIn(), inline. On an --erase simulator the system sign-in alert and a cold SafariViewService come late:
+        // the wait for "Authorize" answers the system alerts on the way and a stuck attempt restarts from the onboarding
+        // (ConfirmationsUITests.signIn). The same steps and assertions as launchSignedIn(), none weakened.
+        get("/__reset")
+        get("/__provider?mode=manual")
+        app.launchArguments = ["-AppleLanguages", "(en)", "-AppleLocale", "en_US"]
+        app.launch()
+        if waitForStaticText(["Your photo library", "Votre photothèque"], timeout: 30) {
+            let safari = XCUIApplication(bundleIdentifier: "com.apple.SafariViewService")
+            let springboard = XCUIApplication(bundleIdentifier: "com.apple.springboard")
+            let authorize = NSPredicate(format: "label CONTAINS 'Authorize'")
+            let systemAnswer = NSPredicate(format: "label IN %@", ["Continue", "Continuer", "Allow", "Autoriser", "Allow Full Access"])
+            var authorized = false
+            for attempt in 0..<3 where !authorized {
+                if attempt > 0 {
+                    app.terminate()
+                    get("/__provider?mode=manual")
+                    app.launch()
+                    XCTAssertTrue(waitForStaticText(["Your photo library", "Votre photothèque"], timeout: 30),
+                                  "the onboarding did not come back for a new sign-in attempt")
+                }
+                walkOnboardingToLogin()
+                XCTAssertTrue(tapAnyButton(["Immich SSO"]), "SSO button missing on login screen")
+                let deadline = Date().addingTimeInterval(45)
+                while !authorized && Date() < deadline {
+                    for link in [safari.links.matching(authorize).firstMatch, safari.buttons.matching(authorize).firstMatch]
+                    where link.exists {
+                        link.tap()
+                        authorized = true
+                        break
+                    }
+                    if authorized { break }
+                    for alerts in [springboard.alerts, app.alerts] {
+                        let answer = alerts.firstMatch.buttons.matching(systemAnswer).firstMatch
+                        if answer.exists {
+                            answer.tap()
+                            break
+                        }
+                    }
+                    Thread.sleep(forTimeInterval: 0.5)
+                }
+            }
+            XCTAssertTrue(authorized, "Authorize link not reachable in the auth sheet after 3 attempts — \(screenText())")
+        }
+        XCTAssertTrue(app.tabBars.buttons["Photos"].waitForExistence(timeout: 30),
+                      "OAuth did not reach the authenticated shell")
+        let whatsNewDone = element("whatsNewDoneButton")
+        if whatsNewDone.waitForExistence(timeout: 10) { whatsNewDone.tap() }
+        XCTAssertTrue(element("assetTile_\(firstPhoto)").waitForExistence(timeout: 30),
+                      "the timeline never rendered against \(stub) — \(screenText())")
 
         arm("partners", steps: "ok", delay: 3)
         openPartners()
