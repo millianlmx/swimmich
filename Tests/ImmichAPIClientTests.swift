@@ -191,6 +191,45 @@ final class ImmichAPIClientTests: XCTestCase {
         XCTAssertNil(CapturingURLProtocol.lastRequest?.value(forHTTPHeaderField: "Authorization"), "the probe carries no token")
     }
 
+    /// The multipart body is a full copy of the photo: written in its own
+    /// directory (emptied at launch), gone after the upload, and gone too when
+    /// it could not be written whole.
+    func test_uploadBody_leavesNothingBehind() async throws {
+        let session = makeMockedSession()
+        let client = ImmichAPIClient(session: session)
+        client.configure(baseURL: URL(string: "https://example.com")!, token: "tok")
+        CapturingURLProtocol.nextData = #"{"id":"new","status":"created"}"#.data(using: .utf8)!
+        CapturingURLProtocol.nextStatus = 201
+        CapturingURLProtocol.nextHeaders = ["Content-Type": "application/json"]
+        let bodies = BackupExportDirectory.uploadBodies
+        func leftovers() -> [String] {
+            ((try? FileManager.default.contentsOfDirectory(atPath: bodies.path)) ?? []).filter { $0.hasSuffix(".multipart") }
+        }
+        let before = Set(leftovers())
+
+        func upload(_ url: URL) async throws {
+            _ = try await client.uploadAsset(
+                fileURL: url, fileCreatedAt: "2024-07-01T00:00:00.000Z", fileModifiedAt: "2024-07-01T00:00:00.000Z",
+                filename: "photo.jpg", duration: nil, isFavorite: false, visibility: .timeline,
+                livePhotoVideoId: nil, checksum: "Y2hlY2tzdW0=", deviceAssetId: "local://asset-1", deviceId: "device-uuid"
+            )
+        }
+
+        let photo = URL(fileURLWithPath: NSTemporaryDirectory()).appendingPathComponent("body-\(UUID().uuidString).bin")
+        try Data(repeating: 0xAB, count: 1024).write(to: photo)
+        defer { try? FileManager.default.removeItem(at: photo) }
+        try await upload(photo)
+        XCTAssertEqual(Set(leftovers()), before, "the body of a finished upload is deleted")
+
+        // A source that cannot be read: the body is cut short, then deleted.
+        let missing = URL(fileURLWithPath: NSTemporaryDirectory()).appendingPathComponent("missing-\(UUID().uuidString).bin")
+        do {
+            try await upload(missing)
+            XCTFail("an unreadable source must fail the upload")
+        } catch {}
+        XCTAssertEqual(Set(leftovers()), before, "a body that could not be written whole is deleted")
+    }
+
     // AC-008: multipart upload shape + checksum header.
     func test_AC_008_multipartUploadShape() async throws {
         let session = makeMockedSession()

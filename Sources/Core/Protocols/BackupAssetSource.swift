@@ -91,9 +91,10 @@ enum BackupExportError: Error, Sendable {
     case cloudDownloadPending
 }
 
-/// Temp directories exports are written to. Two on purpose: every backup run
-/// deletes `backup` entirely at its start (`purgeStaleExports()`), so an export
-/// made outside the engine needs a directory that purge does not touch.
+/// Temp directories exports are written to. Separate on purpose: every backup
+/// run deletes `backup` entirely at its start (`purgeStaleExports()`), so an
+/// export made outside the engine needs a directory that purge does not touch.
+/// All of them are emptied at launch (`purgeOrphans()`).
 enum BackupExportDirectory {
     /// The backup engine's exports.
     static var backup: URL {
@@ -102,6 +103,36 @@ enum BackupExportDirectory {
     /// The "On this device" Check's exports, purged by that screen alone.
     static var localCheck: URL {
         URL(fileURLWithPath: NSTemporaryDirectory()).appendingPathComponent("immich-local-check", isDirectory: true)
+    }
+    /// The multipart bodies of uploads (`ImmichAPIClient.makeUploadBody`):
+    /// each one a full copy of the photo or video it carries.
+    static var uploadBodies: URL {
+        URL(fileURLWithPath: NSTemporaryDirectory()).appendingPathComponent("immich-upload", isDirectory: true)
+    }
+
+    /// Deletes what a previous process left behind: the three directories
+    /// above, and the bodies older versions wrote at the root of `tmp`
+    /// (`immich-upload-<uuid>.multipart`). Each is a full-size copy of a
+    /// photo or video, and every process killed mid-upload or mid-export (the
+    /// system ending a background pass, the user swiping the app away) used to
+    /// leave one for good: over a first backup of an iCloud library, as much
+    /// as the library itself in the app's "Documents & Data".
+    ///
+    /// Safe at launch only, before anything uploads or exports: uploads go
+    /// through the app's default session, which does not outlive the process,
+    /// so at that point every one of these files is an orphan. `tmp` is the
+    /// app's own; nothing else of the app writes these names.
+    static func purgeOrphans(
+        in temporaryDirectory: URL = URL(fileURLWithPath: NSTemporaryDirectory()),
+        fileManager: FileManager = .default
+    ) {
+        for name in ["immich-backup", "immich-local-check", "immich-upload"] {
+            try? fileManager.removeItem(at: temporaryDirectory.appendingPathComponent(name, isDirectory: true))
+        }
+        let legacy = (try? fileManager.contentsOfDirectory(atPath: temporaryDirectory.path)) ?? []
+        for name in legacy where name.hasPrefix("immich-upload-") && name.hasSuffix(".multipart") {
+            try? fileManager.removeItem(at: temporaryDirectory.appendingPathComponent(name))
+        }
     }
 }
 
