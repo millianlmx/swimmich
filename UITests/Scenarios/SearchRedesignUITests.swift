@@ -567,8 +567,9 @@ final class SearchRedesignUITests: XCTestCase {
 
         for (state, before) in buttonsBefore.sorted(by: { $0.key < $1.key }) {
             let controls = counts[state] ?? []
-            XCTAssertLessThanOrEqual(controls.count, 8, "\(state): \(controls.count) commands: \(controls)")
-            XCTAssertLessThan(controls.count, before, "\(state): \(controls.count) commands, \(before) before: \(controls)")
+            XCTAssertLessThanOrEqual(controls.count, 8, "\(state): \(controls.count) commands: \(controls) — \(screenText())")
+            XCTAssertLessThan(controls.count, before,
+                              "\(state): \(controls.count) commands, \(before) before: \(controls) — \(screenText())")
         }
     }
 
@@ -622,12 +623,15 @@ final class SearchRedesignUITests: XCTestCase {
         waitForSearch("file name", { $0.path == "/api/search/metadata" && $0.fileName == "plage" })
         XCTAssertTrue(element("searchFilterChip_originalFileName").waitForExistence(timeout: 20),
                       "no file name chip — \(screenText())")
-        XCTAssertEqual(optionItem("searchModeMenu").value as? String, "File name", "the menu's value is not the current mode")
+        XCTAssertEqual(optionItem("searchModeMenu").value as? String, "File name",
+                       "the menu's value is not the current mode — \(screenText())")
         openOptions()
-        XCTAssertEqual(optionItem("searchTextMode_filename").label, "File name")
+        XCTAssertEqual(optionItem("searchTextMode_filename").label, "File name",
+                       "the File name item is not labelled File name — \(screenText())")
         closeOptions()
         clearQuery("plage")
-        XCTAssertEqual(searchField.placeholderValue, "Search by file name", "the invite does not follow the mode")
+        XCTAssertEqual(searchField.placeholderValue, "Search by file name",
+                       "the invite does not follow the mode — \(screenText())")
     }
 
     // MARK: - AC-8: the one rating control
@@ -668,7 +672,7 @@ final class SearchRedesignUITests: XCTestCase {
         let latched = optionItem("searchOcrFilterToggle")
         let state = latched.label
         XCTAssertEqual(state, "Search typed text in detected text: On",
-                       "VoiceOver would not hear the toggle is on: label '\(state)', value \(String(describing: latched.value)) — \(buttonsDump())")
+                       "VoiceOver would not hear the toggle is on: label '\(state)', value \(String(describing: latched.value)) — \(buttonsDump()) — \(screenText())")
         closeOptions()
     }
 
@@ -679,16 +683,18 @@ final class SearchRedesignUITests: XCTestCase {
         openOptions()
         let toggle = optionItem("searchOcrFilterToggle")
         XCTAssertTrue(toggle.waitForExistence(timeout: 10), "no detected-text toggle in the menu — \(screenText())")
-        XCTAssertFalse(toggle.isEnabled, "the detected-text toggle is on offer on a 2.0 server")
+        XCTAssertFalse(toggle.isEnabled, "the detected-text toggle is on offer on a 2.0 server — \(screenText())")
         XCTAssertEqual(toggle.label, "Search typed text in detected text: Off",
-                       "the detected-text toggle does not read off: label '\(toggle.label)'")
+                       "the detected-text toggle does not read off: label '\(toggle.label)' — \(screenText())")
         closeOptions()
 
         openFilters()
-        XCTAssertTrue(sheetControl("searchFilterVersionNotice").exists, "no version notice in the sheet")
-        XCTAssertFalse(sheetControl("searchFilterOCR").isEnabled, "the sheet's OCR field is enabled on a 2.0 server")
+        XCTAssertTrue(sheetControl("searchFilterVersionNotice").exists, "no version notice in the sheet — \(screenText())")
+        XCTAssertFalse(sheetControl("searchFilterOCR").isEnabled,
+                       "the sheet's OCR field is enabled on a 2.0 server — \(screenText())")
         let withOcr = searches().filter { $0.bodyJSON.contains("\"ocr\"") }
-        XCTAssertTrue(withOcr.isEmpty, "a search carried the detected-text criterion:\n\(describe(withOcr))")
+        XCTAssertTrue(withOcr.isEmpty,
+                      "a search carried the detected-text criterion:\n\(describe(withOcr)) — \(screenText())")
     }
 
     // MARK: - AC-11: save a search
@@ -699,18 +705,18 @@ final class SearchRedesignUITests: XCTestCase {
         openOptions()
         let save = optionItem("searchSaveButton")
         XCTAssertTrue(save.waitForExistence(timeout: 10), "no Save search item — \(screenText())")
-        XCTAssertTrue(save.isEnabled, "Save search is disabled with a text typed")
+        XCTAssertTrue(save.isEnabled, "Save search is disabled with a text typed — \(screenText())")
         save.tap()
 
         let alert = app.alerts.firstMatch
         XCTAssertTrue(alert.waitForExistence(timeout: 10), "the name alert did not come up — \(screenText())")
         let nameField = alert.textFields.firstMatch
-        XCTAssertTrue(nameField.waitForExistence(timeout: 5), "no name field in the alert")
+        XCTAssertTrue(nameField.waitForExistence(timeout: 5), "no name field in the alert — \(screenText())")
         nameField.tap()
         nameField.typeText(String(repeating: XCUIKeyboardKey.delete.rawValue, count: ((nameField.value as? String) ?? "plage").count))
         nameField.typeText("Beach days")
         alert.buttons["Save"].tap()
-        XCTAssertTrue(alert.waitForNonExistence(timeout: 5), "the alert stayed up")
+        XCTAssertTrue(alert.waitForNonExistence(timeout: 5), "the alert stayed up — \(screenText())")
 
         clearQuery("plage")
         searchField.tap()
@@ -718,12 +724,13 @@ final class SearchRedesignUITests: XCTestCase {
         XCTAssertTrue(saved.waitForExistence(timeout: 15), "no Saved section on the empty field — \(screenText())")
         let entry = staticText("Beach days")
         XCTAssertTrue(entry.waitForExistence(timeout: 15), "the saved search is not listed — \(screenText())")
-        XCTAssertGreaterThan(entry.frame.minY, saved.frame.minY, "'Beach days' is not under 'Saved'")
+        XCTAssertGreaterThan(entry.frame.minY, saved.frame.minY, "'Beach days' is not under 'Saved' — \(screenText())")
 
         let cancel = app.buttons["Cancel"]
         if cancel.exists { cancel.tap() }
         openOptions()
-        XCTAssertFalse(optionItem("searchSaveButton").isEnabled, "Save search is available with an empty field")
+        XCTAssertFalse(optionItem("searchSaveButton").isEnabled,
+                       "Save search is available with an empty field — \(screenText())")
         closeOptions()
     }
 
@@ -735,12 +742,12 @@ final class SearchRedesignUITests: XCTestCase {
         openOptions()
         let select = optionItem("searchSelectButton")
         XCTAssertTrue(select.waitForExistence(timeout: 10), "no Select item — \(screenText())")
-        XCTAssertTrue(select.isEnabled, "Select is disabled with results on screen")
+        XCTAssertTrue(select.isEnabled, "Select is disabled with results on screen — \(screenText())")
         select.tap()
 
         let count = element("searchSelectionCount")
         XCTAssertTrue(count.waitForExistence(timeout: 15), "the selection did not start — \(screenText())")
-        XCTAssertTrue(count.label.contains("0 selected"), "the count reads '\(count.label)'")
+        XCTAssertTrue(count.label.contains("0 selected"), "the count reads '\(count.label)' — \(screenText())")
         let cancel = element("selectionCancelButton")
         XCTAssertTrue(cancel.waitForExistence(timeout: 10), "no batch bar — \(screenText())")
         cancel.tap()
@@ -767,11 +774,11 @@ final class SearchRedesignUITests: XCTestCase {
         other.press(forDuration: 1.0)
         let count = element("searchSelectionCount")
         XCTAssertTrue(count.waitForExistence(timeout: 15), "the long press did not start the selection — \(screenText())")
-        XCTAssertTrue(count.label.contains("1 selected"), "the count reads '\(count.label)'")
+        XCTAssertTrue(count.label.contains("1 selected"), "the count reads '\(count.label)' — \(screenText())")
         element("selectionCancelButton").tap()
 
         // The last tile asks for the next page.
-        XCTAssertNotNil(stubGET("/__paging?size=4"))
+        XCTAssertNotNil(stubGET("/__paging?size=4"), "the stub did not take /__paging — \(screenText())")
         chooseMode("metadata")
         clearQuery("plage")
         typeQuery("x")
@@ -782,7 +789,7 @@ final class SearchRedesignUITests: XCTestCase {
             asked = searches().contains { $0.number("page") == 2 }
         }
         XCTAssertTrue(asked || waitUntil(30) { self.searches().contains { $0.number("page") == 2 } },
-                      "scrolling to the last tile asked for no second page — log:\n\(describe(searches()))")
+                      "scrolling to the last tile asked for no second page — log:\n\(describe(searches())) — \(screenText())")
     }
 
     // MARK: - AC-13: one control each
@@ -792,27 +799,29 @@ final class SearchRedesignUITests: XCTestCase {
         chooseMode("metadata")
         typeQuery("sunset")
 
-        XCTAssertEqual(count("searchRatingFilterMenu"), 0, "a rating menu is on the screen")
-        XCTAssertEqual(count("searchOcrFilterToggle"), 0, "the toggle is on the screen, not in the menu")
-        XCTAssertEqual(count("searchFilterOCR"), 0, "the sheet's OCR field is on the screen")
+        XCTAssertEqual(count("searchRatingFilterMenu"), 0, "a rating menu is on the screen — \(screenText())")
+        XCTAssertEqual(count("searchOcrFilterToggle"), 0, "the toggle is on the screen, not in the menu — \(screenText())")
+        XCTAssertEqual(count("searchFilterOCR"), 0, "the sheet's OCR field is on the screen — \(screenText())")
 
         openOptions()
-        XCTAssertEqual(count("searchOcrFilterToggle"), 1, "the menu does not hold exactly one detected-text toggle")
-        XCTAssertEqual(count("searchRatingFilterMenu"), 0, "a rating menu is in the Search options menu")
+        XCTAssertEqual(count("searchOcrFilterToggle"), 1,
+                       "the menu does not hold exactly one detected-text toggle — \(screenText())")
+        XCTAssertEqual(count("searchRatingFilterMenu"), 0, "a rating menu is in the Search options menu — \(screenText())")
         let toggleLabel = optionItem("searchOcrFilterToggle").label
         closeOptions()
 
         openFilters()
         _ = sheetControl("searchFilterOCR")
-        XCTAssertEqual(count("searchFilterStar4"), 1, "the sheet does not hold exactly one 4-star control")
-        XCTAssertEqual(count("searchFilterOCR"), 1, "the sheet does not hold exactly one OCR field")
-        XCTAssertEqual(count("searchOcrFilterToggle"), 0, "the toggle is also in the sheet")
-        XCTAssertEqual(count("searchRatingFilterMenu"), 0, "a rating menu is on the sheet's screen")
+        XCTAssertEqual(count("searchFilterStar4"), 1, "the sheet does not hold exactly one 4-star control — \(screenText())")
+        XCTAssertEqual(count("searchFilterOCR"), 1, "the sheet does not hold exactly one OCR field — \(screenText())")
+        XCTAssertEqual(count("searchOcrFilterToggle"), 0, "the toggle is also in the sheet — \(screenText())")
+        XCTAssertEqual(count("searchRatingFilterMenu"), 0, "a rating menu is on the sheet's screen — \(screenText())")
         let field = element("searchFilterOCR")
         let fieldLabels = [field.label, field.placeholderValue ?? ""].filter { !$0.isEmpty }
-        XCTAssertFalse(fieldLabels.isEmpty, "the OCR field reads nothing")
-        XCTAssertFalse(toggleLabel.isEmpty, "the toggle reads nothing")
-        XCTAssertFalse(fieldLabels.contains(toggleLabel), "the toggle and the OCR field read the same: '\(toggleLabel)'")
+        XCTAssertFalse(fieldLabels.isEmpty, "the OCR field reads nothing — \(screenText())")
+        XCTAssertFalse(toggleLabel.isEmpty, "the toggle reads nothing — \(screenText())")
+        XCTAssertFalse(fieldLabels.contains(toggleLabel),
+                       "the toggle and the OCR field read the same: '\(toggleLabel)' — \(screenText())")
     }
 
     // MARK: - AC-14, AC-15: the chips
@@ -829,11 +838,12 @@ final class SearchRedesignUITests: XCTestCase {
     func test_AC_14() {
         startSession(major: 2, minor: 0)
         setThreeCriteria()
-        XCTAssertEqual(optionItem("searchFilterButton").value as? String, "3 active")
+        XCTAssertEqual(optionItem("searchFilterButton").value as? String, "3 active",
+                       "the Filters button does not read 3 active — \(screenText())")
         guard let tile = firstTile else { return XCTFail("no tile — \(screenText())") }
         for field in ["city", "rating", "type"] {
             let chip = element("searchFilterChip_\(field)")
-            XCTAssertLessThanOrEqual(chip.frame.maxY, tile.frame.minY, "the \(field) chip is not above the grid")
+            XCTAssertLessThanOrEqual(chip.frame.maxY, tile.frame.minY, "the \(field) chip is not above the grid — \(screenText())")
         }
     }
 
@@ -852,18 +862,18 @@ final class SearchRedesignUITests: XCTestCase {
         }
         let frame = last.cross.frame
         XCTAssertTrue(frame.minX >= 0 && frame.maxX <= width && last.cross.isHittable,
-                      "the cross of \(last.field) is not fully on screen: \(frame)")
-        XCTAssertGreaterThanOrEqual(frame.width, 44, "the cross is narrower than 44 pt")
-        XCTAssertGreaterThanOrEqual(frame.height, 44, "the cross is shorter than 44 pt")
+                      "the cross of \(last.field) is not fully on screen: \(frame) — \(screenText())")
+        XCTAssertGreaterThanOrEqual(frame.width, 44, "the cross is narrower than 44 pt — \(screenText())")
+        XCTAssertGreaterThanOrEqual(frame.height, 44, "the cross is shorter than 44 pt — \(screenText())")
 
         let mark = searches().count
         last.cross.tap()
         XCTAssertTrue(element("searchFilterChip_\(last.field)").waitForNonExistence(timeout: 20),
-                      "the \(last.field) chip is still there")
+                      "the \(last.field) chip is still there — \(screenText())")
         for field in ["city", "rating", "type"] where field != last.field {
-            XCTAssertTrue(element("searchFilterChip_\(field)").exists, "the \(field) chip went with it")
+            XCTAssertTrue(element("searchFilterChip_\(field)").exists, "the \(field) chip went with it — \(screenText())")
         }
-        XCTAssertTrue(waitUntil(30) { self.searches().count > mark }, "removing a criterion sent no search")
+        XCTAssertTrue(waitUntil(30) { self.searches().count > mark }, "removing a criterion sent no search — \(screenText())")
     }
 
     // MARK: - AC-16, AC-17: the field and the home
@@ -873,15 +883,15 @@ final class SearchRedesignUITests: XCTestCase {
         func assertFieldAtTop(_ state: String) {
             let window = app.windows.firstMatch.frame
             XCTAssertTrue(searchField.waitForExistence(timeout: 20), "\(state): no search field — \(screenText())")
-            XCTAssertTrue(searchField.isHittable, "\(state): the search field cannot be touched")
-            XCTAssertLessThan(searchField.frame.minY, window.height * 0.25, "\(state): the field is not at the top")
+            XCTAssertTrue(searchField.isHittable, "\(state): the search field cannot be touched — \(screenText())")
+            XCTAssertLessThan(searchField.frame.minY, window.height * 0.25, "\(state): the field is not at the top — \(screenText())")
         }
         assertFieldAtTop("without results")
         searchBeach()
         assertFieldAtTop("with results")
 
         element("searchModeSegment_explore").tap()
-        XCTAssertTrue(searchField.waitForNonExistence(timeout: 15), "Explorer still shows the field")
+        XCTAssertTrue(searchField.waitForNonExistence(timeout: 15), "Explorer still shows the field — \(screenText())")
         XCTAssertTrue(waitUntil(15) {
             self.element("exploreEmptyState").exists
                 || self.app.descendants(matching: .any)
@@ -899,10 +909,10 @@ final class SearchRedesignUITests: XCTestCase {
         XCTAssertTrue(title.waitForExistence(timeout: 20), "no prompt title — \(screenText())")
         let tabTop = app.tabBars.firstMatch.exists ? app.tabBars.firstMatch.frame.minY : CGFloat.greatestFiniteMagnitude
         let sentence = app.staticTexts.allElementsBoundByIndex.first {
-            !$0.label.isEmpty && $0.frame.minY >= title.frame.maxY - 1 && $0.frame.maxY <= tabTop + 1
+            !$0.label.isEmpty && $0.frame.minY >= title.frame.maxY && $0.frame.maxY <= tabTop + 1
         }
         XCTAssertNotNil(sentence, "no sentence under the title — \(screenText())")
-        XCTAssertTrue(searches().isEmpty, "opening the tab sent a search:\n\(describe(searches()))")
+        XCTAssertTrue(searches().isEmpty, "opening the tab sent a search:\n\(describe(searches())) — \(screenText())")
     }
 
     // MARK: - AC-18: recents and saved
@@ -942,12 +952,16 @@ final class SearchRedesignUITests: XCTestCase {
 
         let mark = searches().count
         element("searchNoResultsReset").tap()
-        XCTAssertTrue(element("searchNoResultsReset").waitForNonExistence(timeout: 20), "the reset is still offered")
-        XCTAssertFalse(element("searchFilterChip_city").exists, "the city chip stayed after the reset")
-        XCTAssertTrue(waitUntil(30) { self.searches().count > mark }, "the reset sent no search")
+        XCTAssertTrue(element("searchNoResultsReset").waitForNonExistence(timeout: 20),
+                      "the reset is still offered — \(screenText())")
+        XCTAssertEqual(app.descendants(matching: .any)
+                           .matching(NSPredicate(format: "identifier BEGINSWITH 'searchFilterChip_'")).count, 0,
+                       "a filter chip stayed after the reset — \(screenText())")
+        XCTAssertTrue(waitUntil(30) { self.searches().count > mark }, "the reset sent no search — \(screenText())")
         let first = searches()[mark]
         for key in ["city", "rating", "type", "personIds", "tagIds"] {
-            XCTAssertFalse(first.bodyJSON.contains("\"\(key)\""), "the search after the reset still carries \(key): \(first.bodyJSON)")
+            XCTAssertFalse(first.bodyJSON.contains("\"\(key)\""),
+                           "the search after the reset still carries \(key): \(first.bodyJSON) — \(screenText())")
         }
     }
 
@@ -958,7 +972,8 @@ final class SearchRedesignUITests: XCTestCase {
         openSearchTab()
         launched = true
         sessionMark = stubRequests().count
-        XCTAssertNotNil(stubGET("/control/script?route=search&steps=500,ok&delay=0"))
+        XCTAssertNotNil(stubGET("/control/script?route=search&steps=500,ok&delay=0"),
+                        "the stub did not take the search script — \(screenText())")
 
         typeQuery("liststates")
         XCTAssertTrue(element("searchError").waitForExistence(timeout: 30), "no error state after the 500 — \(screenText())")
@@ -967,7 +982,8 @@ final class SearchRedesignUITests: XCTestCase {
         retry.tap()
         waitForTile("after Try Again")
         let sent = searches().filter { $0.bodyJSON.contains("liststates") }
-        XCTAssertGreaterThanOrEqual(sent.count, 2, "Try Again sent no new search — log:\n\(describe(searches()))")
+        XCTAssertGreaterThanOrEqual(sent.count, 2,
+                                    "Try Again sent no new search — log:\n\(describe(searches())) — \(screenText())")
     }
 
     // MARK: - AC-25: labels, values and targets
@@ -994,16 +1010,18 @@ final class SearchRedesignUITests: XCTestCase {
         XCTAssertTrue(element("searchPromptTitle").waitForExistence(timeout: 20), "no home — \(screenText())")
         assertBarReadable("home")
         let menu = optionItem("searchModeMenu")
-        XCTAssertEqual(menu.label, "Search options")
-        XCTAssertEqual(menu.value as? String, "Smart")
-        XCTAssertEqual(optionItem("searchFilterButton").value as? String, "No active filters")
+        XCTAssertEqual(menu.label, "Search options", "the menu is not labelled Search options — \(screenText())")
+        XCTAssertEqual(menu.value as? String, "Smart", "the menu does not read the Smart mode — \(screenText())")
+        XCTAssertEqual(optionItem("searchFilterButton").value as? String, "No active filters",
+                       "the Filters button does not read No active filters — \(screenText())")
 
         // Results with a city chip.
         searchBeach()
         applyFilters(city: "Paris")
         XCTAssertTrue(element("searchFilterChip_city").waitForExistence(timeout: 30), "no city chip — \(screenText())")
         assertBarReadable("results")
-        XCTAssertEqual(optionItem("searchFilterButton").value as? String, "1 active")
+        XCTAssertEqual(optionItem("searchFilterButton").value as? String, "1 active",
+                       "the Filters button does not read 1 active — \(screenText())")
         for cross in app.buttons.matching(NSPredicate(format: "identifier BEGINSWITH 'searchFilterChipRemove_'")).allElementsBoundByIndex
         where cross.isHittable {
             assertReadable([cross], "chip")
@@ -1016,7 +1034,7 @@ final class SearchRedesignUITests: XCTestCase {
         assertReadable(items.map(optionItem), "menu")
         let ocrLabel = optionItem("searchOcrFilterToggle").label
         XCTAssertEqual(ocrLabel, "Search typed text in detected text: Off",
-                       "the detected-text toggle does not read off: label '\(ocrLabel)'")
+                       "the detected-text toggle does not read off: label '\(ocrLabel)' — \(screenText())")
         closeOptions()
     }
 
