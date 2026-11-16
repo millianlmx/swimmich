@@ -388,6 +388,11 @@ final class JpegXLUITests: XCTestCase {
         shot("ac97-album")
 
         // Search.
+        // The Search bubble opens Search only from Photos (RootView's per-tab bubble): Photos first.
+        let photosTab = app.tabBars.buttons["Photos"].firstMatch
+        XCTAssertTrue(photosTab.waitForExistence(timeout: 30), "the Photos tab is missing — \(screenText())")
+        photosTab.tap()
+        XCTAssertTrue(tile(pngPhoto).waitForExistence(timeout: 20), "the timeline did not come back — \(screenText())")
         openSearchAndType("jxl")
         waitForValue("assetTile_\(jxlPhoto)", prefix: thumbnailValue)
         waitForValue("assetTile_\(brokenPhoto)", prefix: "failed")

@@ -74,10 +74,21 @@ immich_stub_map_settings.py MapSettingsUITests/test_mapSettings --erase --releas
 immich_stub_plurals.py PluralsUITests/test_AC_32_6_versionNoticeInFiveLanguages --erase --release
 immich_stub_list_states.py ListStatesUITests/test_AC_31 --erase --release
 immich_stub_list_states.py ListStatesUITests/test_AC_142 --erase --release
+# JpegXLUITests/test_AC_97_thumbnailDecodedInTimelineAlbumSearch: the JPEG XL photo's thumbnail decodes at 200x200 and the truncated one reads "failed", in the timeline, the album "JXL Album" and the Search results, with one GET /api/assets/{id}/thumbnail?size=thumbnail in the stub's log; --erase: the launch command of its class doc.
 immich_stub_jpeg_xl.py JpegXLUITests/test_AC_97_thumbnailDecodedInTimelineAlbumSearch --erase --release
-immich_stub_collections.py ContentCollectionsUITests/test_AC_24 --erase --release
-immich_stub_collections.py ContentCollectionsUITests/test_AC_133 --erase --release
-immich_stub_collections.py ContentCollectionsUITests/test_AC_141 --erase --release
+# ContentCollectionsUITests (L-12), against the stub's one element per collection: test_AC_24 reaches each of
+# the 15 content collections in at most two counted touches from its host tab, never through the Me avatar
+# ("Me"), Places by the Search tab's Explore (Photos, then Search, then searchModeSegment_explore);
+# test_AC_133 adds each collection's proof of opening (its own tile, row or card; GET /api/search/cities for
+# Places); test_AC_141: the five tabs, each root one touch away, the Search root, and the album list in its
+# normal, error and empty states under the Library section; --erase: the launch command of its class doc.
+immich_stub_collections.py ContentCollectionsUITests/test_AC_24 --erase --erase --release
+immich_stub_collections.py ContentCollectionsUITests/test_AC_133 --erase --erase --release
+immich_stub_collections.py ContentCollectionsUITests/test_AC_141 --erase --erase --release
+# AdjustLocationUITests, My Location on the Search tab's map (AC-48, AC-230, AC-234): ScriptedDeviceLocationService
+# plays the permission, the answers to the system prompts and the fix given as launch arguments (-uiTestLocation*),
+# and the DEBUG element mapMyLocationProbe reads what the map did: center, dot, prompts, precise. No --erase: the
+# launch command of the class doc has none; signIn() walks the onboarding only when it shows.
 immich_stub_adjust_location.py AdjustLocationUITests/test_AC_48 --release
 immich_stub_adjust_location.py AdjustLocationUITests/test_AC_48_refusedExplainsAndTheMapStays --release
 immich_stub_adjust_location.py AdjustLocationUITests/test_AC_230 --release
@@ -88,7 +99,7 @@ immich_stub_adjust_location.py AdjustLocationUITests/test_AC_234_theMapCentersOn
 immich_stub_archive.py ArchiveUITests/test_AC10_searchViewerUnarchives --release
 immich_stub_archive.py ArchiveUITests/test_AC18_mapViewerResolvesArchivedPhoto --release
 immich_stub_locked_folder.py AppLockUITests/test_AC_21_searchKeyboardNotOverLock --erase --release
-# ViewerZoomUITests films the simulator through UITests/stubs/tools/sim_video_watcher.sh (its class doc); CI does not start it.
+# ViewerZoomUITests films the simulator through UITests/stubs/tools/sim_video_watcher.sh (its class doc), which CI does not start: its three lines have never run in CI, so they stay listed (--release) until a run shows each one's failure; none is observed, none is removed.
 immich_stub_viewer_zoom.py ViewerZoomUITests/test_AC_27_1 --erase --release
 immich_stub_viewer_zoom.py ViewerZoomUITests/test_AC_27_3 --erase --release
 immich_stub_viewer_zoom.py ViewerZoomUITests/test_AC_27_5 --erase --release
@@ -339,8 +350,10 @@ immich_stub_adjust_date.py AdjustDateUITests/test_AC_66_4_editedTimeIsWallClock 
 immich_stub_adjust_date.py AdjustDateUITests/test_AC_66_6_reopenAfterSave --release
 
 # L-25 "My Location" (AC-231): "Open Settings" in the refusal alert brings the Settings app (another
-# process) to the foreground, which no unit test can show. The other AdjustLocationUITests are compiled,
-# not run: their criteria have unit tests of the same name (AdjustLocationViewModelTests, DeviceLocationTests).
+# process) to the foreground, which no unit test can show. The map's other My Location tests run in --release
+# (Search tab block above); the adjust-location sheet's ones (AC-47, AC-228, AC-229, AC-232, AC-233, AC-234)
+# are compiled, not run: their criteria have unit tests of the same name (AdjustLocationViewModelTests,
+# DeviceLocationTests).
 immich_stub_adjust_location.py AdjustLocationUITests/test_AC_231
 
 # Tiers of the lines below: `--release` where a unit test of the same criterion exists
