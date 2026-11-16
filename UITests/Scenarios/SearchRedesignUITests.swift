@@ -909,7 +909,7 @@ final class SearchRedesignUITests: XCTestCase {
         XCTAssertTrue(title.waitForExistence(timeout: 20), "no prompt title — \(screenText())")
         let tabTop = app.tabBars.firstMatch.exists ? app.tabBars.firstMatch.frame.minY : CGFloat.greatestFiniteMagnitude
         let sentence = app.staticTexts.allElementsBoundByIndex.first {
-            !$0.label.isEmpty && $0.frame.minY >= title.frame.maxY - 1 && $0.frame.maxY <= tabTop + 1
+            !$0.label.isEmpty && $0.frame.minY >= title.frame.maxY && $0.frame.maxY <= tabTop + 1
         }
         XCTAssertNotNil(sentence, "no sentence under the title — \(screenText())")
         XCTAssertTrue(searches().isEmpty, "opening the tab sent a search:\n\(describe(searches())) — \(screenText())")
