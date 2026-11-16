@@ -54,6 +54,9 @@
 # its changed lines in file order, one per free simulator, so test_ocrText (the menu toggle's
 # On/Off title) and test_searchFilters (the Filters sheet and the chips) run first.
 immich_stub_ocr_text.py OcrTextUITests/test_ocrText --erase --release
+# SearchFiltersUITests/test_searchFilters: the Filters sheet's city and rating on two server generations,
+# 3.2.0 (structured `filter`, page 2 by `cursor`, OCR field on) then 1.120.0 (flat fields with `page`, no
+# `filter`/`cursor`, OCR field off); --erase: pass 2 relaunches the app, the version probe is cached per session.
 immich_stub_search_filters.py SearchFiltersUITests/test_searchFilters --erase --release
 # VoiceOverLabelsUITests/test_AC_34_sixSurfacesAnnounceTheirActions: not listed — fails before the redesign: XCTAssertTrue "en, viewer: no viewerOcrToggle among the app's buttons (missing, or not a button)" (VoiceOverLabelsUITests.swift:631, the Photos viewer's top bar collapses it into the "⋯" menu; check-run 133004722739, d9eb3d27ab79). Out of this lot.
 immich_stub_voiceover.py VoiceOverLabelsUITests/test_AC_34_2_labelsInFourLanguages --erase --release
