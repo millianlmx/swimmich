@@ -119,19 +119,47 @@ final class MergedTimelineTests: XCTestCase {
         XCTAssertEqual(mock.timeBucketCalls.map(\.timeBucket), ["2024-07-01"])
     }
 
+    /// A photo the server has without the ledger knowing it (sent by another
+    /// app, or before this install) is shown once — by its server copy —
+    /// from the very first launch, with no backup pass needed.
     @MainActor
-    func test_beforeTheFirstBackup_deviceHalfWaits() async {
+    func test_withoutTheLedger_serverCopyIsRecognisedByCaptureTime() async {
         let mock = MockImmichClient()
         mock.bucketsResponse = [TimeBucketsResponseDto(timeBucket: "2024-07-01", count: 1)]
         mock.bucketResponses = ["2024-07-01": columnar(["s1"], at: "2024-07-05T10:00:00.000Z")]
-        let (vm, _) = makeVM(mock, device: [deviceItem("d1", "2024-07-09T09:00:00.000Z")], uploaded: [])
+        let (vm, _) = makeVM(mock, device: [
+            deviceItem("same", "2024-07-05T10:00:00.250Z"),
+            deviceItem("other", "2024-07-09T09:00:00.000Z"),
+        ], uploaded: [])
         await vm.load()
-        XCTAssertEqual(vm.items.map(\.id), ["s1"], "an empty ledger proves nothing: no photo shown twice")
+        XCTAssertEqual(vm.items.map(\.id), ["device:other", "s1"])
+    }
 
-        // The first pass recorded what it sent or found: the rest is device-only.
-        vm.uploadedDeviceIDs = { ["sent-earlier"] }
-        await vm.refresh()
-        XCTAssertEqual(Set(vm.items.map(\.id)), ["s1", "device:d1"])
+    /// The server's copy can sit in the next month the server sends (a photo
+    /// taken near midnight on the 1st): the device photo shown earlier leaves.
+    @MainActor
+    func test_serverCopyInALaterMonth_prunesTheDevicePhoto() async {
+        let mock = MockImmichClient()
+        mock.bucketsResponse = [
+            TimeBucketsResponseDto(timeBucket: "2024-08-01", count: 1),
+            TimeBucketsResponseDto(timeBucket: "2024-07-01", count: 1),
+        ]
+        mock.bucketResponses = [
+            "2024-08-01": columnar(["aug"], at: "2024-08-10T10:00:00.000Z"),
+            "2024-07-01": columnar(["edge"], at: "2024-08-01T02:30:00.000Z"),
+        ]
+        let (vm, _) = makeVM(mock, device: [deviceItem("edge", "2024-08-01T02:30:00.000Z")], uploaded: [])
+        await vm.load()
+        XCTAssertEqual(Set(vm.items.map(\.id)), ["aug", "device:edge"])
+        await vm.loadMore()
+        XCTAssertEqual(Set(vm.items.map(\.id)), ["aug", "edge"], "shown once, by its server copy")
+        XCTAssertEqual(vm.loadedIds, Set(vm.items.map(\.id)))
+    }
+
+    func test_dedupeKey_kindAndSecond() {
+        let photo = deviceItem("a", "2024-07-05T10:00:00.250Z")
+        XCTAssertEqual(MergedTimeline.dedupeKey(photo), MergedTimeline.dedupeKey(serverItem("s", "2024-07-05T10:00:00.000Z")))
+        XCTAssertNotEqual(MergedTimeline.dedupeKey(photo), MergedTimeline.dedupeKey(serverItem("s", "2024-07-05T10:00:01.000Z")))
     }
 
     @MainActor

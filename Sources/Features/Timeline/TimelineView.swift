@@ -1,3 +1,4 @@
+import Photos
 import SwiftUI
 
 /// Main photo-grid timeline — Apple-Photos-grade premium experience.
@@ -40,6 +41,10 @@ struct TimelineView: View {
     /// tree injects it, a preview or a test host may not.
     @Environment(UploadViewModel.self) private var upload: UploadViewModel?
     @Environment(\.scenePhase) private var scenePhase
+    /// Photos access, for the device half of the timeline. Read again on every
+    /// return to the foreground (the user may have changed it in Settings).
+    @State private var photoAccess = PHPhotoLibrary.authorizationStatus(for: .readWrite)
+    @Environment(\.openURL) private var openURL
 
     // Grid zoom (Photos-style pinch): 2-7 columns. `baseColumns` is the density
     // with no gesture on it — seeded once from the store and re-seeded when the
@@ -281,7 +286,10 @@ struct TimelineView: View {
                 }
                 .refreshable { await vm.refresh() }
                 .safeAreaInset(edge: .top, spacing: 0) {
-                    loadErrorBanner
+                    VStack(spacing: 0) {
+                        deviceAccessBanner
+                        loadErrorBanner
+                    }
                 }
                 // Cross-tab "view in timeline" teleport: jump to the target
                 // day when the asset isn't already loaded, then scroll to it.
@@ -408,7 +416,13 @@ struct TimelineView: View {
         // again — a photo taken, deleted in Photos or backed up meanwhile.
         .onChange(of: scenePhase) { _, phase in
             guard phase == .active else { return }
-            Task { await vm.refreshIfDeviceLibraryChanged() }
+            let access = PHPhotoLibrary.authorizationStatus(for: .readWrite)
+            if access != photoAccess {
+                photoAccess = access
+                Task { await vm.refresh() }
+            } else {
+                Task { await vm.refreshIfDeviceLibraryChanged() }
+            }
         }
         // "Show Photos from This Device" switched in Preferences.
         .onChange(of: appSettings.showsDeviceAssets) { _, _ in
@@ -476,6 +490,51 @@ struct TimelineView: View {
     }
 
     // MARK: - Content (skeleton / empty / grid)
+
+    /// The way back to the device half when Photos access was refused: without
+    /// it the tab silently showed the server alone — not the library the Photos
+    /// app shows. Leads to Settings. Never shown while access was simply never
+    /// asked (the backup setup and the Preferences switch ask for it), nor with
+    /// "Show Photos from This Device" off.
+    @ViewBuilder
+    private var deviceAccessBanner: some View {
+        if appSettings.showsDeviceAssets, photoAccess == .denied {
+            HStack(spacing: PVSpacing.s12) {
+                Image(systemName: "photo.on.rectangle")
+                    .font(.pvHeadline)
+                    .foregroundStyle(Color.immichPrimary)
+                    .accessibilityHidden(true)
+                Text("See this device's photos here too")
+                    .font(.pvSubhead)
+                    .foregroundStyle(Color.textPrimaryPV)
+                    .fixedSize(horizontal: false, vertical: true)
+                Spacer(minLength: PVSpacing.s8)
+                Button("Open Settings") {
+                    requestDeviceAccess()
+                }
+                .font(.pvSubhead.weight(.semibold))
+                .accessibilityIdentifier("timelineDeviceAccessButton")
+            }
+            .padding(PVSpacing.s12)
+            .background(Color.bgSecondary, in: RoundedRectangle(cornerRadius: PVRadius.lg, style: .continuous))
+            .padding(.horizontal, PVSpacing.s16)
+            .padding(.top, PVSpacing.s8)
+            .accessibilityElement(children: .contain)
+            .accessibilityIdentifier("timelineDeviceAccessBanner")
+        }
+    }
+
+    private func requestDeviceAccess() {
+        guard photoAccess == .notDetermined else {
+            if let url = URL(string: UIApplication.openSettingsURLString) { openURL(url) }
+            return
+        }
+        Task {
+            let granted = await PHPhotoLibrary.requestAuthorization(for: .readWrite)
+            photoAccess = granted
+            if granted == .authorized || granted == .limited { await vm.refresh() }
+        }
+    }
 
     /// Non-blocking banner for a failed refresh/load over photos already shown.
     @ViewBuilder

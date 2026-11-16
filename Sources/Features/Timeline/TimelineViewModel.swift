@@ -77,6 +77,9 @@ final class TimelineViewModel {
     /// The ids of the device half last merged, so a return to the foreground
     /// reloads only when the library actually changed.
     @ObservationIgnored private(set) var deviceItemIDs: Set<String> = []
+    /// `MergedTimeline.dedupeKey` of every server photo loaded since the last
+    /// reload: a device photo matching one is that photo, already on screen.
+    @ObservationIgnored private var serverKeys: Set<String> = []
     /// Bumped each time the window of loaded months is replaced; a neighbour
     /// load that started before the replacement is discarded on arrival.
     @ObservationIgnored private(set) var windowEpoch = 0
@@ -600,6 +603,7 @@ final class TimelineViewModel {
     /// A reload replaces any jump in flight and invalidates neighbour loads.
     private func supersedeJumps() {
         if scrubCache != nil { scrubCache = [:] }
+        serverKeys = []
         jumpGeneration &+= 1
         activeJump = nil
         pendingJump = nil
@@ -738,6 +742,7 @@ final class TimelineViewModel {
             let newItems = zipped.filter { !loadedIds.contains($0.id) }
             items.insert(contentsOf: newItems, at: 0)
             loadedIds.formUnion(newItems.map(\.id))
+            pruneDeviceDuplicates()
             recordPlaces(of: zipped, month: index)
             upperBucketIndex -= 1
         } catch let e {
@@ -763,6 +768,7 @@ final class TimelineViewModel {
                 items.append(item)
                 loadedIds.insert(item.id)
             }
+            pruneDeviceDuplicates()
             recordPlaces(of: zipped, month: index)
             bucketIndex += 1
         } catch let e {
@@ -803,17 +809,14 @@ final class TimelineViewModel {
     /// the switch off, or under Archived (a device photo is never archived);
     /// its favorites alone under Favorites.
     ///
-    /// Nothing either before this device's first backup pass: until then the
-    /// ledger knows nothing, and every photo of the library would read "only on
-    /// this device" — those the server already has (sent by another app)
-    /// included, shown twice. The first pass records them all, sent or found
-    /// already there.
+    /// A photo the ledger does not know is still never shown twice: the month
+    /// merge recognises the server's copy by its capture time
+    /// (`MergedTimeline.dedupeKey`), so the device half needs no backup pass
+    /// to be right — it is the whole library from the first launch.
     @MainActor
     private func deviceItems() async -> [AssetReactItem] {
         guard let deviceSource, filter != .archived, showsDeviceAssets() else { return [] }
-        let uploaded = uploadedDeviceIDs()
-        guard !uploaded.isEmpty else { return [] }
-        return await deviceSource.deviceOnlyItems(excluding: uploaded, favoritesOnly: filter == .favorites)
+        return await deviceSource.deviceOnlyItems(excluding: uploadedDeviceIDs(), favoritesOnly: filter == .favorites)
     }
 
     /// Back in the foreground: the library may have changed behind the app (a
@@ -834,9 +837,28 @@ final class TimelineViewModel {
     private func fetchMonthItems(_ timeBucket: String) async throws -> [AssetReactItem] {
         let month = MergedTimeline.monthKey(timeBucket)
         let device = deviceItemsByMonth[month] ?? []
-        if !device.isEmpty, !serverMonths.contains(month) { return device }
+        if !device.isEmpty, !serverMonths.contains(month) {
+            return MergedTimeline.items(server: [], device: device, serverKeys: serverKeys)
+        }
         let server = AssetReactItem.zip(try await fetchBucket(timeBucket))
-        return MergedTimeline.items(server: server, device: device)
+        let merged = MergedTimeline.items(server: server, device: device, serverKeys: serverKeys)
+        serverKeys.formUnion(server.map(MergedTimeline.dedupeKey))
+        return merged
+    }
+
+    /// A server month just loaded may hold the server copy of a device photo
+    /// shown by an earlier month (the two halves do not always file a photo
+    /// taken near midnight on the 1st under the same month): that device
+    /// photo leaves the grid.
+    @MainActor
+    private func pruneDeviceDuplicates() {
+        guard deviceSource != nil, !serverKeys.isEmpty else { return }
+        let duplicates = Set(items.lazy
+            .filter { $0.isDeviceOnly && self.serverKeys.contains(MergedTimeline.dedupeKey($0)) }
+            .map(\.id))
+        guard !duplicates.isEmpty else { return }
+        items.removeAll { duplicates.contains($0.id) }
+        loadedIds.subtract(duplicates)
     }
 
     /// The single place listing the filters of `GET /api/timeline/bucket`:

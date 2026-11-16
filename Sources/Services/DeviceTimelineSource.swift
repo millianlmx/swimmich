@@ -10,9 +10,11 @@ import UIKit
 /// the whole library like Apple Photos does — a photo just taken is there
 /// before the backup sends it.
 ///
-/// "Proven on the server" is the backup ledger's answer (`uploadedLocalIDs`):
-/// the ledger tracks every asset the backup sent or found already there, under
-/// its library id. Such an asset is shown by its server copy only, never twice.
+/// Never twice: an asset the backup ledger proves on the server
+/// (`uploadedLocalIDs`) is left out here, and a photo the server has without
+/// the ledger knowing it (sent by another app, or before this install) is
+/// recognised by its capture time when the months are merged
+/// (`MergedTimeline.dedupeKey`).
 protocol DeviceTimelineSource: Sendable {
     /// Device-only items, newest first. `excluding` holds the library ids the
     /// ledger proves on the server. Empty without read access to the library:
@@ -115,10 +117,29 @@ enum MergedTimeline {
         return merged.sorted { monthKey($0.timeBucket) > monthKey($1.timeBucket) }
     }
 
-    /// One month's server items and device items, newest first.
-    static func items(server: [AssetReactItem], device: [AssetReactItem]) -> [AssetReactItem] {
+    /// What makes a device photo "the same" as a server photo when the ledger
+    /// does not know it: its kind and its capture time to the second. Every
+    /// uploader sends the library's creation date as `fileCreatedAt` (this
+    /// app, the official one), so a photo already on the server matches; two
+    /// different photos of the same kind taken in the same second do not
+    /// exist outside a burst, whose frames Photos keeps as one asset.
+    static func dedupeKey(_ item: AssetReactItem) -> String {
+        "\(item.isImage ? "i" : "v")|\(item.fileCreatedAt.prefix(19))"
+    }
+
+    /// One month's server items and device items, newest first. A device item
+    /// whose key is in `serverKeys` (this month's server items, and any loaded
+    /// before) is the server's copy already on screen: left out.
+    static func items(
+        server: [AssetReactItem],
+        device: [AssetReactItem],
+        serverKeys: Set<String> = []
+    ) -> [AssetReactItem] {
         guard !device.isEmpty else { return server }
-        return (server + device).sorted { $0.fileCreatedAt > $1.fileCreatedAt }
+        let known = serverKeys.union(server.map(dedupeKey))
+        let fresh = device.filter { !known.contains(dedupeKey($0)) }
+        guard !fresh.isEmpty else { return server }
+        return (server + fresh).sorted { $0.fileCreatedAt > $1.fileCreatedAt }
     }
 }
 
