@@ -134,8 +134,9 @@ final class ListStatesUITests: XCTestCase {
             var sent = searchSent(since: count)
             for _ in 0..<2 where !sent {
                 let window = app.windows.firstMatch.frame
-                let modeBar = element("searchModeSegment_results")
-                let top = modeBar.exists ? modeBar.frame.maxY + 40 : window.height * 0.3
+                // From under the results bar (its lowest control), inside the results.
+                let resultsBar = element("searchSelectButton")
+                let top = resultsBar.exists ? resultsBar.frame.maxY + 40 : window.height * 0.3
                 let origin = app.windows.firstMatch.coordinate(withNormalizedOffset: .zero)
                 origin.withOffset(CGVector(dx: window.width / 2, dy: top))
                     .press(forDuration: 0.2,

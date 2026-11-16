@@ -72,7 +72,7 @@ final class AppStringsTests: XCTestCase {
     /// field's invite) read in every shipped language.
     func test_AC_28_searchOptionsKeysInFourLanguages() throws {
         let strings = try XCTUnwrap(Self.loadCatalog()["strings"] as? [String: Any])
-        let keys = ["Search mode", "Detected text", "Save search…", "Places, people, things…", "Places", "Your photos on a map"]
+        let keys = ["Search mode", "Search in detected text", "Save search…", "Places, people, things…", "Places", "Your photos on a map"]
         for key in keys {
             let entry = try XCTUnwrap(strings[key] as? [String: Any], "no catalog entry for \(key)")
             let localizations = try XCTUnwrap(entry["localizations"] as? [String: Any], "no localizations for \(key)")

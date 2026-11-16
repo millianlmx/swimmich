@@ -192,12 +192,15 @@ final class FloatingControlsUITests: XCTestCase {
             let search = app.tabBars.buttons.matching(labelPredicate(["Search", "Recherche", "Suche"])).firstMatch
             XCTAssertTrue(search.waitForExistence(timeout: 20), "Search tab missing \(context)")
             search.tap()
-            let mapSegment = element("searchModeSegment_map")
-            XCTAssertTrue(mapSegment.waitForExistence(timeout: 20), "the Map segment is missing \(context)")
-            mapSegment.tap()
+            let mapEntry = element("searchMapEntry")
+            XCTAssertTrue(mapEntry.waitForExistence(timeout: 20), "Explore's Map entry is missing \(context)")
+            mapEntry.tap()
             assertTouchable("mapSettingsButton", "on the map \(context)", timeout: 25)
             sleep(2) // map tiles
             capture("map-\(name)")
+            // Back to the search, so the next appearance finds Explore again.
+            assertTouchable("searchMapClose", "on the map \(context)")
+            element("searchMapClose").tap()
 
             app.tabBars.buttons["Photos"].tap()
         }
@@ -209,7 +212,8 @@ final class FloatingControlsUITests: XCTestCase {
         reachTimeline()
         assertTouchable("selectButton", "on the timeline")
         assertTouchable("filterMenu", "on the timeline")
-        assertTouchable("syncStatusButton", "on the timeline")
+        // The backup lives in the avatar now (its ring): no separate disc.
+        assertTouchable("profileAvatar", "on the timeline")
 
         let toTop = element("timelineScrollToTopButton")
         for _ in 0..<6 where !toTop.exists {

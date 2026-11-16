@@ -10,10 +10,11 @@ import SwiftUI
 ///   that city. The search field stays on top: there is no state in which it
 ///   disappears.
 /// - **A search ran → Results**: a LazyVGrid of `AssetThumbnailCell` (corner
-///   radius 0 — project convention), under a row of chips that say how the
-///   typed text is read (Smart, Metadata, file name, description, detected
-///   text) and the result actions (Save search, Select). Clearing the field
-///   goes back to Explore.
+///   radius 0 — project convention), under one line that says how the typed
+///   text is read (a chip naming the mode, plus detected text in Metadata) and
+///   holds the result actions (Save search, Select). The line shows as soon as
+///   the field is active, so a mode can be picked before typing. Clearing the
+///   field goes back to Explore.
 /// - **Map**: clustered MapKit view of all geolocated photos (AC-710), opened
 ///   from Explore's entry and closed by the bar's back button.
 ///
@@ -32,6 +33,9 @@ struct SearchView: View {
     @State private var showSaveSearch = false
     @State private var saveSearchName = ""
     @State private var showFilters = false
+    /// The search field is active (focused, or Cancel not yet tapped): the
+    /// mode chips show from then on, so a mode can be picked before typing.
+    @State private var isSearchPresented = false
     /// Ticks on a touch or a long press that checks a thumbnail (the haptic the timeline gives).
     @State private var lastSelectionTick = 0
     /// What the photo viewer needs to grow out of a thumbnail and shrink back
@@ -155,6 +159,7 @@ struct SearchView: View {
             searchContent
                 .searchable(
                     text: $vm.query,
+                    isPresented: $isSearchPresented,
                     placement: .navigationBarDrawer(displayMode: .always),
                     prompt: searchPrompt
                 )
@@ -301,38 +306,36 @@ struct SearchView: View {
         Task { await vm.removeConstraint(field) }
     }
 
-    /// The results bar shows once there is text to read or results to act on.
+    /// The results bar shows from the moment the field is active — a mode can
+    /// be picked before typing — and stays while there are results to act on.
     private var showsResultsBar: Bool {
-        vm.hasSearched || !vm.query.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+        isSearchPresented || vm.hasSearched || !vm.query.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
     }
 
-    /// Under the field, in plain sight instead of behind a menu: how the typed
-    /// text is read — Smart (CLIP), Metadata, file name or description, one chip
-    /// each (identifier `searchTextMode_<mode>`, the current one filled; a pick
-    /// with a text re-runs the search) — then the detected-text toggle, and the
-    /// two result actions, "Save search…" and "Select".
+    /// One line under the field: how the typed text is read — a chip that
+    /// names the current mode and lists the four (Smart (CLIP), Metadata, file
+    /// name, description; identifier `searchTextMode_<mode>`, the current one
+    /// checked; a pick with a text re-runs the search) — the detected-text
+    /// toggle while the mode is Metadata, the only one that carries it, then
+    /// the two result actions, "Save search…" and "Select", in plain sight.
+    /// Stacked at accessibility sizes, where one line cannot hold them.
     private var resultsBar: some View {
-        VStack(alignment: .leading, spacing: PVSpacing.s4) {
-            ScrollView(.horizontal, showsIndicators: false) {
-                HStack(spacing: PVSpacing.s8) {
-                    ForEach(SearchViewModel.SearchMode.allCases, id: \.self) { mode in
-                        modeChip(mode)
-                    }
+        PVAdaptiveStack(hAlignment: .center, vAlignment: .leading, spacing: PVSpacing.s8) {
+            HStack(spacing: PVSpacing.s8) {
+                modeMenu
+                if vm.searchMode == .metadata {
                     ocrFilterToggle
                 }
-                .padding(.horizontal, PVSpacing.s16)
-                .padding(.vertical, PVSpacing.s2)
             }
-            .accessibilityElement(children: .contain)
-            .accessibilityLabel(Text("Search mode"))
-
+            Spacer(minLength: 0)
             HStack(spacing: PVSpacing.s16) {
-                Spacer(minLength: 0)
                 Button {
                     saveSearchName = vm.query.trimmingCharacters(in: .whitespacesAndNewlines)
                     showSaveSearch = true
                 } label: {
                     Label("Save search…", systemImage: "bookmark")
+                        .labelStyle(.iconOnly)
+                        .frame(minWidth: 44, minHeight: 44)
                 }
                 .disabled(vm.query.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
                 .accessibilityIdentifier("searchSaveButton")
@@ -340,36 +343,51 @@ struct SearchView: View {
                     vm.enterSelectionMode()
                 } label: {
                     Text("Select")
+                        .frame(minHeight: 44)
                 }
                 .disabled(vm.results.isEmpty)
                 .accessibilityIdentifier("searchSelectButton")
             }
             .font(.pvSubhead.weight(.semibold))
-            .padding(.horizontal, PVSpacing.s16)
         }
-        .padding(.top, PVSpacing.s4)
-        .padding(.bottom, PVSpacing.s8)
+        .padding(.horizontal, PVSpacing.s16)
+        .padding(.bottom, PVSpacing.s4)
     }
 
-    /// One way of reading the text. Selected: the brand fill; otherwise the
-    /// same outlined capsule as the filter chips.
-    private func modeChip(_ mode: SearchViewModel.SearchMode) -> some View {
-        let isSelected = mode == vm.searchMode
-        return Button {
-            Task { await vm.selectSearchMode(mode) }
+    /// The mode chip: the current mode in words and its glyph — no lone
+    /// sparkle to decode — opening the list of the four.
+    private var modeMenu: some View {
+        Menu {
+            ForEach(SearchViewModel.SearchMode.allCases, id: \.self) { mode in
+                Button {
+                    Task { await vm.selectSearchMode(mode) }
+                } label: {
+                    if mode == vm.searchMode {
+                        Label(modeTitle(mode), systemImage: "checkmark")
+                    } else {
+                        Text(modeTitle(mode))
+                    }
+                }
+                .accessibilityIdentifier("searchTextMode_\(mode.rawValue)")
+            }
         } label: {
-            Label(modeTitle(mode), systemImage: modeIcon(mode))
-                .font(.pvSubhead.weight(isSelected ? .semibold : .regular))
-                .foregroundStyle(isSelected ? Color.white : Color.textPrimaryPV)
-                .padding(.horizontal, PVSpacing.s12)
-                .frame(minHeight: 44)
-                .background(isSelected ? Color.immichPrimary : Color.bgSecondary, in: Capsule())
-                .overlay(Capsule().stroke(isSelected ? Color.clear : Color.separatorPV, lineWidth: 1))
-                .contentShape(Capsule())
+            HStack(spacing: PVSpacing.s4) {
+                Image(systemName: modeIcon(vm.searchMode))
+                Text(modeTitle(vm.searchMode))
+                Image(systemName: "chevron.down")
+                    .font(.pvCaption.weight(.semibold))
+            }
+            .font(.pvSubhead.weight(.semibold))
+            .foregroundStyle(Color.textPrimaryPV)
+            .padding(.horizontal, PVSpacing.s12)
+            .frame(minHeight: 44)
+            .background(Color.bgSecondary, in: Capsule())
+            .overlay(Capsule().stroke(Color.separatorPV, lineWidth: 1))
+            .contentShape(Capsule())
         }
-        .buttonStyle(.plain)
-        .accessibilityAddTraits(isSelected ? .isSelected : [])
-        .accessibilityIdentifier("searchTextMode_\(mode.rawValue)")
+        .accessibilityLabel(Text("Search mode"))
+        .accessibilityValue(Text(modeTitle(vm.searchMode)))
+        .accessibilityIdentifier("searchModeMenu")
     }
 
     private func modeTitle(_ mode: SearchViewModel.SearchMode) -> String {
@@ -400,19 +418,21 @@ struct SearchView: View {
     }
 
     /// Restricts the results to photos whose detected text matches the query
-    /// (ocr-text): the last chip of the results bar — it changes how the query
-    /// is interpreted, not which grid is shown. Only the metadata route carries
-    /// the criterion, and only a server with the v3.2.0 structured filter has a
-    /// field for it: elsewhere the chip stays, disabled, rather than silently
-    /// searching something else. A toggle: a check mark and the brand outline
-    /// when on, and VoiceOver reads its state as the value.
+    /// (ocr-text): the chip next to the mode, shown while the mode is Metadata —
+    /// it changes how the query is interpreted, not which grid is shown. Only a
+    /// server with the v3.2.0 structured filter has a field for it: on an older
+    /// one the chip stays, disabled, rather than silently searching something
+    /// else. A toggle: a check mark and the brand outline when on, and VoiceOver
+    /// reads its state as the value.
     private var ocrFilterToggle: some View {
         let isOn = vm.ocrFilterEnabled
         let isUsable = vm.searchMode == .metadata && vm.supportsStructuredSearch
         return Button {
             Task { await vm.setOcrFilterEnabled(!isOn) }
         } label: {
-            Label("Detected text", systemImage: isOn ? "checkmark" : "text.viewfinder")
+            // Not "Detected text": that is the Filters sheet's field, which sets
+            // the text itself — two controls must not read the same.
+            Label("Search in detected text", systemImage: isOn ? "checkmark" : "text.viewfinder")
                 .font(.pvSubhead.weight(isOn ? .semibold : .regular))
                 .foregroundStyle(isOn ? Color.immichPrimary : Color.textPrimaryPV)
                 .padding(.horizontal, PVSpacing.s12)
@@ -424,7 +444,7 @@ struct SearchView: View {
         }
         .buttonStyle(.plain)
         .disabled(!isUsable)
-        .accessibilityValue(isOn ? Text("On") : Text("Off"))
+        .accessibilityValue(isOn ? Text("on") : Text("off"))
         .accessibilityIdentifier("searchOcrFilterToggle")
     }
 

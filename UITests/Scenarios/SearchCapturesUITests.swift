@@ -12,7 +12,7 @@ import XCTest
 ///
 /// It reaches the screen only through identifiers that survive the redesign (`searchFilterButton`,
 /// `searchFilterCity`, `searchFilterDone`, `searchFilterChip_city`, `searchEmptyState`, `searchNoResultsReset`,
-/// `searchSelectionCount`, `searchPromptTitle`, `assetTile_<id>`) and never targets a control of the old top bar,
+/// `searchSelectionCount`, `searchMapEntry`, `assetTile_<id>`) and never targets a control of the old top bar,
 /// so the same file photographs the original layout and the new one.
 ///
 /// One `XCTestCase` per feature, in its own file: the helpers are copied from `ReadmeScreenshotsUITests` on
@@ -283,10 +283,10 @@ final class SearchCapturesUITests: XCTestCase {
         get("/__provider?mode=manual")
         signIn()
 
-        // 1. Home: the prompt, before any search.
+        // 1. Home: Explore (its Map entry first), before any search.
         let field = openSearchField()
-        XCTAssertTrue(element("searchPromptTitle").waitForExistence(timeout: 20),
-                      "home: no searchPromptTitle — \(screenState())")
+        XCTAssertTrue(element("searchMapEntry").waitForExistence(timeout: 20),
+                      "home: no searchMapEntry — \(screenState())")
         try capture("home")
 
         // 2. Suggestions: the empty field lists the seeded saved and recent searches.

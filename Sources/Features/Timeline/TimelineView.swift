@@ -210,8 +210,6 @@ struct TimelineView: View {
                         .transition(.opacity)
                     }
                 }
-                .animation(PVMotion.fading(.easeOut(duration: PVDuration.fast), reduceMotion: reduceMotion),
-                           value: scrubberBubbleVisible)
                 .overlay(alignment: .topTrailing) {
                     // Three controls, no more: the explicit "Select" entry point
                     // (Photos-style), the filter, and the avatar — which carries
