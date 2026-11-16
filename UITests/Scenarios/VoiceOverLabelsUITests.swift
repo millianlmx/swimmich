@@ -930,7 +930,14 @@ final class VoiceOverLabelsUITests: XCTestCase {
         XCTAssertTrue(avatar.waitForExistence(timeout: 30), "no profile avatar — \(screenReads())")
         avatar.tap()
         sleep(4) // the sheet animates in; the Form is not hittable before it does
+        // The Security section sits below the fold of the hub's lazy List, which
+        // only publishes the rows it has rendered: scroll until the row exists,
+        // then wait (the pattern of ChangePasswordUITests.hubRow).
         let row = button("changePasswordRow")
+        for _ in 0..<12 where !row.exists {
+            app.swipeUp()
+            sleep(1)
+        }
         XCTAssertTrue(row.waitForExistence(timeout: 15), "no Change Password row in the Me hub — \(screenReads())")
         for _ in 0..<5 where !row.isHittable {
             app.swipeUp()
