@@ -1,6 +1,8 @@
 import Foundation
 import AVFoundation
 import CoreGraphics
+import CoreImage
+import CoreImage.CIFilterBuiltins
 import ImageIO
 import UIKit
 import MapKit
@@ -23,7 +25,9 @@ struct RoadTripRenderConfig: Sendable {
 ///    applied at draw time).
 /// 3. Title cards pre-rendered once via `ImageRenderer`.
 /// 4. Frame loop draws straight into `CVPixelBuffer`s from a reuse pool with
-///    Core Graphics (no per-frame SwiftUI layout), streamed to `AVAssetWriter`.
+///    Core Graphics (no per-frame SwiftUI layout; the map's perspective warp
+///    through Core Image), streamed to `AVAssetWriter`. The context is y-down:
+///    every bitmap goes through `drawUpright`.
 /// The live player shares the same timing math and the same chase-camera
 /// geometry (`RoadTripDriveCamera`); the player renders real 3D MapKit while
 /// the export warps the 2D snapshots into that driving perspective, so car
@@ -41,35 +45,47 @@ final class RoadTripVideoRenderer: @unchecked Sendable {
     // MARK: - Prepared visuals
 
     /// One snapshot window of a map leg: the image, the route points mapped
-    /// into its pixel space (parallel `fractions` of the route arc length),
-    /// and the exact map-point → pixel affine.
-    private struct MapFrame {
+    /// into its point space (parallel `fractions` of the route arc length),
+    /// and the exact map-point → snapshot-point affine.
+    ///
+    /// `affine` lands in snapshot POINTS (`MKMapSnapshotter.Snapshot.point(for:)`),
+    /// while `base` holds `pointSize × scale` pixels: the warp converts.
+    struct MapFrame {
         let base: CGImage
+        /// Size of the snapshot in points (`snapshot.image.size`).
+        let pointSize: CGSize
         let points: [CGPoint]
         let fractions: [Double]
         let affine: RoadTripAffine
         let window: RoadTripDriveWindow
     }
 
-    private struct VisualAssets {
+    struct VisualAssets {
         let opening: CGImage?
         let ending: CGImage?
         let intertitles: [String: CGImage]
     }
 
-    /// Reused across every frame of the map warp (no per-frame CALayer alloc).
-    private let warpLayer = CALayer()
+    /// Renders the map warp (one context for the whole export).
+    private let ciContext = CIContext(options: [
+        .workingColorSpace: CGColorSpace(name: CGColorSpace.sRGB)!,
+        .outputColorSpace: CGColorSpace(name: CGColorSpace.sRGB)!,
+        .cacheIntermediates: false
+    ])
 
     // MARK: - Public entry point
 
+    /// `preloaded`: photos already decoded by the caller (asset id → image);
+    /// only the missing ones are downloaded.
     func render(
         clusters: [RoadTripCluster],
         timeline: RoadTripTimeline,
         config: RoadTripRenderConfig,
+        preloaded: [String: CGImage] = [:],
         progress: @escaping @Sendable (Double) -> Void
     ) async throws -> URL {
         try Task.checkCancellation()
-        let images = try await preloadImages(clusters: clusters, timeline: timeline, config: config)
+        let images = try await preloadImages(clusters: clusters, timeline: timeline, config: config, preloaded: preloaded)
         try Task.checkCancellation()
         let visuals = await prepareCards(clusters: clusters, timeline: timeline, config: config)
         try Task.checkCancellation()
@@ -84,7 +100,8 @@ final class RoadTripVideoRenderer: @unchecked Sendable {
     private func preloadImages(
         clusters: [RoadTripCluster],
         timeline: RoadTripTimeline,
-        config: RoadTripRenderConfig
+        config: RoadTripRenderConfig,
+        preloaded: [String: CGImage]
     ) async throws -> [String: CGImage] {
         var assetByID: [String: AssetReactItem] = [:]
         for cluster in clusters {
@@ -103,8 +120,11 @@ final class RoadTripVideoRenderer: @unchecked Sendable {
         }
 
         let session = self.session
-        let ids = Array(needed)
         var result: [String: CGImage] = [:]
+        for id in needed {
+            if let image = preloaded[id] { result[id] = image }
+        }
+        let ids = needed.filter { result[$0] == nil }.sorted()
         let chunkSize = 6
         var offset = 0
         while offset < ids.count {
@@ -209,7 +229,7 @@ final class RoadTripVideoRenderer: @unchecked Sendable {
                     denseFracs.append(dense.fractions[i])
                 }
                 frames.append(MapFrame(
-                    base: cg, points: points, fractions: denseFracs,
+                    base: cg, pointSize: snapshot.image.size, points: points, fractions: denseFracs,
                     affine: affine, window: window
                 ))
             } catch {
@@ -486,7 +506,8 @@ final class RoadTripVideoRenderer: @unchecked Sendable {
 
     // MARK: - Frame drawing
 
-    private func drawFrame(
+    /// Draws the frame at `time` into `pixelBuffer` (internal for the tests).
+    func drawFrame(
         at time: TimeInterval,
         into pixelBuffer: CVPixelBuffer,
         clusters: [RoadTripCluster],
@@ -585,7 +606,28 @@ final class RoadTripVideoRenderer: @unchecked Sendable {
         }
         let fill = aspectFillRect(image: image, canvas: canvas)
         let rect = transformed(fill, canvas: canvas, transform: transform)
+        drawUpright(ctx, image, in: rect)
+    }
+
+    /// Draws `image` upright into `rect` of this renderer's y-down context.
+    /// `CGContext.draw` lays an image out for a y-up space: called as is in
+    /// the flipped context it renders every photo, card and sprite upside down.
+    private func drawUpright(_ ctx: CGContext, _ image: CGImage, in rect: CGRect) {
+        ctx.saveGState()
+        ctx.translateBy(x: 0, y: rect.minY + rect.maxY)
+        ctx.scaleBy(x: 1, y: -1)
         ctx.draw(image, in: rect)
+        ctx.restoreGState()
+    }
+
+    /// `image` aspect-filled into `rect` (centered, overflow clipped) and
+    /// drawn upright — the photo framing of the live player.
+    private func drawFilled(_ ctx: CGContext, _ image: CGImage, in rect: CGRect) {
+        let fill = aspectFillRect(image: image, canvas: rect.size).offsetBy(dx: rect.minX, dy: rect.minY)
+        ctx.saveGState()
+        ctx.clip(to: rect)
+        drawUpright(ctx, image, in: fill)
+        ctx.restoreGState()
     }
 
     /// Which photo of the neighbor slideshow the transitions use.
@@ -646,17 +688,16 @@ final class RoadTripVideoRenderer: @unchecked Sendable {
 
         // Warped map plane, crossfaded onto the following window near the end
         // of this one so the snapshot switch never pops.
-        drawWarpedMap(ctx, image: active.base, matrix: matrix, canvas: canvas)
+        drawWarpedMap(ctx, frame: active, sourceQuad: pixelCorners, destination: drive.destinationCorners, canvas: canvas)
         if let next = windows.first(where: { $0.window.startFraction > active.window.startFraction + 0.001 }) {
             let fadeSpan = min(0.12, RoadTripDriveCamera.windowOverlapMeters / max(total, 1))
             let fadeStart = active.window.endFraction - fadeSpan
             if timing.progress > fadeStart {
                 let alpha = min(max((timing.progress - fadeStart) / fadeSpan, 0), 1)
                 let nextCorners = drive.sourceCorners.map { next.affine.point($0) }
-                let nextMatrix = RoadTripMatrix3.homography(from: nextCorners, to: drive.destinationCorners)
                 ctx.saveGState()
                 ctx.setAlpha(CGFloat(alpha))
-                drawWarpedMap(ctx, image: next.base, matrix: nextMatrix, canvas: canvas)
+                drawWarpedMap(ctx, frame: next, sourceQuad: nextCorners, destination: drive.destinationCorners, canvas: canvas)
                 ctx.restoreGState()
             }
         }
@@ -751,7 +792,7 @@ final class RoadTripVideoRenderer: @unchecked Sendable {
                     let radius: CGFloat = dive >= 0.99 ? 0 : 18 * (1 - dive)
                     ctx.addPath(CGPath(roundedRect: rect, cornerWidth: radius, cornerHeight: radius, transform: nil))
                     ctx.clip()
-                    ctx.draw(divePhoto, in: rect)
+                    drawFilled(ctx, divePhoto, in: rect)
                     ctx.restoreGState()
                 }
             }
@@ -763,7 +804,7 @@ final class RoadTripVideoRenderer: @unchecked Sendable {
             if alpha > 0 {
                 ctx.saveGState()
                 ctx.setAlpha(CGFloat(alpha))
-                ctx.draw(outgoingPhoto, in: CGRect(origin: .zero, size: canvas))
+                drawFilled(ctx, outgoingPhoto, in: CGRect(origin: .zero, size: canvas))
                 ctx.restoreGState()
             }
         }
@@ -823,18 +864,47 @@ final class RoadTripVideoRenderer: @unchecked Sendable {
         ctx.restoreGState()
     }
 
-    /// Rasterizes the snapshot into the canvas trapezoid via a 3D layer
-    /// transform (CALayer honors the projective divide, so the warp is exact).
-    private func drawWarpedMap(_ ctx: CGContext, image: CGImage, matrix: RoadTripMatrix3, canvas: CGSize) {
-        warpLayer.bounds = CGRect(x: 0, y: 0, width: image.width, height: image.height)
-        warpLayer.position = .zero
-        warpLayer.anchorPoint = .zero
-        warpLayer.contents = image
-        // CALayer content space is y-up; the homography is y-down (image
-        // pixels / CG context), so flip before warping.
-        let flip = RoadTripMatrix3(1, 0, 0, 0, -1, Double(image.height), 0, 0, 1)
-        warpLayer.transform = matrix.multiplied(by: flip).catTransform3D
-        warpLayer.render(in: ctx)
+    /// Projects the snapshot onto the canvas so that `sourceQuad` (the chase
+    /// rect, in snapshot POINTS) lands exactly on `destination` (the canvas
+    /// trapezoid): a perspective correction of the quad into a rectangle, then
+    /// a perspective transform of that rectangle onto the trapezoid — two
+    /// projective maps that compose into the one homography between the quads.
+    ///
+    /// Replaces a CALayer warp that could not land there: `render(in:)` does
+    /// not render 3D transforms (documented), the layer was sized in snapshot
+    /// pixels (2× the points the homography is computed in), and its content
+    /// was flipped although a layer's content is already y-down.
+    private func drawWarpedMap(_ ctx: CGContext, frame: MapFrame, sourceQuad: [CGPoint], destination: [CGPoint], canvas: CGSize) {
+        guard sourceQuad.count == 4, destination.count == 4 else { return }
+        let image = frame.base
+        let scaleX = CGFloat(image.width) / max(frame.pointSize.width, 1)
+        let scaleY = CGFloat(image.height) / max(frame.pointSize.height, 1)
+        let imageHeight = CGFloat(image.height)
+        // Snapshot points (y down) → Core Image pixels (y up).
+        func source(_ p: CGPoint) -> CGPoint { CGPoint(x: p.x * scaleX, y: imageHeight - p.y * scaleY) }
+        // Canvas points (y down) → Core Image (y up) over the canvas.
+        func target(_ p: CGPoint) -> CGPoint { CGPoint(x: p.x, y: canvas.height - p.y) }
+
+        let correction = CIFilter.perspectiveCorrection()
+        correction.inputImage = CIImage(cgImage: image)
+        correction.topLeft = source(sourceQuad[0])
+        correction.topRight = source(sourceQuad[1])
+        correction.bottomRight = source(sourceQuad[2])
+        correction.bottomLeft = source(sourceQuad[3])
+        correction.crop = true
+        guard let rectified = correction.outputImage else { return }
+
+        let projection = CIFilter.perspectiveTransform()
+        projection.inputImage = rectified
+        projection.topLeft = target(destination[0])
+        projection.topRight = target(destination[1])
+        projection.bottomRight = target(destination[2])
+        projection.bottomLeft = target(destination[3])
+        guard let warped = projection.outputImage else { return }
+
+        let bounds = CGRect(origin: .zero, size: canvas)
+        guard let rendered = ciContext.createCGImage(warped, from: bounds) else { return }
+        drawUpright(ctx, rendered, in: bounds)
     }
 
     private func drawChaseCar(_ ctx: CGContext, at point: CGPoint, roadAngle: Double, size: CGFloat) {
@@ -852,7 +922,7 @@ final class RoadTripVideoRenderer: @unchecked Sendable {
         // Residual rotation around the ground contact keeps the turn
         // continuous between the quantized sprite frames (≤ half a step).
         ctx.rotate(by: CGFloat(yaw - frameYaw))
-        ctx.draw(sprite, in: CGRect(x: -size / 2, y: -contact * size, width: size, height: size))
+        drawUpright(ctx, sprite, in: CGRect(x: -size / 2, y: -contact * size, width: size, height: size))
         ctx.restoreGState()
     }
 
@@ -936,7 +1006,7 @@ final class RoadTripVideoRenderer: @unchecked Sendable {
         ctx.saveGState()
         ctx.setAlpha(CGFloat(alpha))
         let w = canvas.width * CGFloat(scale), h = canvas.height * CGFloat(scale)
-        ctx.draw(image, in: CGRect(x: (canvas.width - w) / 2, y: (canvas.height - h) / 2, width: w, height: h))
+        drawUpright(ctx, image, in: CGRect(x: (canvas.width - w) / 2, y: (canvas.height - h) / 2, width: w, height: h))
         ctx.restoreGState()
     }
 
@@ -947,7 +1017,7 @@ final class RoadTripVideoRenderer: @unchecked Sendable {
         let rise = (1 - KenBurnsRecipe.smoothstep(p < 0.25 ? p / 0.25 : 1)) * 24
         ctx.saveGState()
         ctx.setAlpha(CGFloat(alpha))
-        ctx.draw(image, in: CGRect(x: 0, y: -CGFloat(rise), width: canvas.width, height: canvas.height))
+        drawUpright(ctx, image, in: CGRect(x: 0, y: -CGFloat(rise), width: canvas.width, height: canvas.height))
         ctx.restoreGState()
     }
 
@@ -979,18 +1049,5 @@ final class RoadTripVideoRenderer: @unchecked Sendable {
         let dx = CGFloat(transform.offsetX) * canvas.width
         let dy = CGFloat(transform.offsetY) * canvas.height
         return CGRect(x: rect.midX - w / 2 + dx, y: rect.midY - h / 2 + dy, width: w, height: h)
-    }
-}
-
-extension RoadTripMatrix3 {
-    /// 4×4 Core Animation form: maps (x, y, 0, 1) → (x′, y′, 0, w′) with the
-    /// same projective divide as `transformed(_:)`.
-    var catTransform3D: CATransform3D {
-        CATransform3D(
-            m11: m00, m12: m01, m13: 0, m14: m02,
-            m21: m10, m22: m11, m23: 0, m24: m12,
-            m31: 0, m32: 0, m33: 1, m34: 0,
-            m41: m20, m42: m21, m43: 0, m44: m22
-        )
     }
 }

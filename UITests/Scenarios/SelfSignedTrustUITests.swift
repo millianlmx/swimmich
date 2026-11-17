@@ -680,7 +680,7 @@ final class SelfSignedTrustUITests: XCTestCase {
     private let roadTripLeg = "Paris, France → Versailles, France"
     /// Seconds of the player clock (`RoadTripFramePlan.swift`: opening 2.5 s, then the 6 photos of
     /// Paris alternating 3.9 s and 2.6 s, the last one 1.04 s, then a leg of 8.53 s for 17.9 km).
-    /// The clock starts when the view is created, so it includes the preparation.
+    /// The clock starts when the player appears, once the preparation is over.
     private let parisEnd = 20.4
     private let legEnd = 29.0
 

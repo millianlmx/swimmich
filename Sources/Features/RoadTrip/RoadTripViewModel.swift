@@ -5,12 +5,20 @@ import UIKit
 
 /// Road-trip feature orchestration. Fetches the album's photos WITH EXIF
 /// (latitude/longitude/city drive the clustering and the map legs), clusters
-/// them, builds the deterministic timeline (straight-line travel legs
-/// immediately, upgraded to real MKDirections routes in the background), and
-/// drives the video export.
+/// them, loads the photos the film shows and the real driving routes, then
+/// builds the deterministic timeline ONCE — the player and the export both play
+/// that one timeline, which never changes once it is up — and drives the video
+/// export.
 @MainActor
 @Observable
 final class RoadTripViewModel {
+
+    /// How long the preparation waits for the driving routes (MKDirections). A
+    /// leg whose route has not arrived by then keeps its straight line: the
+    /// routes are resolved BEFORE playback, because swapping them in later
+    /// rebuilt the timeline under the playing film (new leg durations moved
+    /// every later segment, and the leg on screen jumped to another geometry).
+    static let routeDeadline: Duration = .seconds(8)
 
     let client: any ImmichClient
     let albumId: String
@@ -30,6 +38,15 @@ final class RoadTripViewModel {
     private(set) var timeline: RoadTripTimeline?
     private(set) var isPreparing = true
     private(set) var errorMessage: String?
+    /// The decoded previews of the photos the film shows (asset id → image),
+    /// loaded once by the preparation. The player draws them directly: an
+    /// asynchronous loader per slide cleared its image at every cut and showed
+    /// a shimmering placeholder for a few frames, so each photo change, each
+    /// crossfade and each arrival dive flashed gray.
+    private(set) var slideImages: [String: UIImage] = [:]
+    /// `prepare()` runs once per player: a second `.task` (the view appearing
+    /// again) must not refetch and rebuild the film under the playback.
+    private var preparationStarted = false
 
     // MARK: - Export state
 
@@ -44,7 +61,6 @@ final class RoadTripViewModel {
     private(set) var exportState: ExportState = .idle
     private(set) var isExporting = false
 
-    private var routeTask: Task<Void, Never>?
     private var renderTask: Task<Void, Never>?
     private var lastReportedProgress = 0.0
     /// Quality score per asset id (computed during preflight) — drives the
@@ -78,10 +94,15 @@ final class RoadTripViewModel {
 
     /// Fetches album assets WITH `withExif: true` (search omits exifInfo
     /// otherwise, so latitude/longitude would be nil → no map legs), clusters
-    /// off the main thread, and builds the timeline so playback can start
-    /// immediately. Real driving routes are fetched in the background.
+    /// off the main thread, then — concurrently — loads the photos the film
+    /// shows, resolves the driving routes (bounded by `routeDeadline`) and warms
+    /// the 3D car sprites. The timeline is built once, when all three are in.
     func prepare() async {
+        guard !preparationStarted else { return }
+        preparationStarted = true
         isPreparing = true
+        errorMessage = nil
+        defer { isPreparing = false }
 
         var assets: [AssetReactItem] = []
         do {
@@ -89,8 +110,9 @@ final class RoadTripViewModel {
             let response = try await client.searchMetadata(dto: dto)
             assets = response.assets.items.map(AssetReactItem.init(from:))
         } catch {
+            // Cancelled (the player closed): a later appearance may start over.
+            if Task.isCancelled { preparationStarted = false }
             errorMessage = error.userFacingMessage
-            isPreparing = false
             return
         }
 
@@ -99,27 +121,74 @@ final class RoadTripViewModel {
         }
         guard !assets.isEmpty else {
             errorMessage = String(localized: "No photos in this selection.")
-            isPreparing = false
             return
         }
 
         let clustered = await Task.detached(priority: .userInitiated) {
             RoadTripClusterer.cluster(assets)
         }.value
-        clusters = clustered
-        rebuildTimeline()
-        await preflightAssets()
+        let straight = Self.straightLegs(between: clustered)
+        // The photos to load are those the straight-line film shows. A real
+        // road only lengthens its leg, which leaves less time for photos, so
+        // the final film shows a subset of them.
+        guard let provisional = RoadTripTimelineBuilder.build(clusters: clustered, legs: straight) else {
+            errorMessage = String(localized: "No displayable photos.")
+            return
+        }
+        let candidates = Self.shownAssets(in: provisional, clusters: clustered)
 
-        // Warm the 3D car sprite sheet off the main thread BEFORE playback so
-        // the map leg never blocks on its first appearance.
-        await Task.detached(priority: .userInitiated) { RoadTripCar3D.warm() }.value
+        async let routed = resolveRoutes(straight)
+        async let carWarmed: Void = Self.warmCar()
+        let validIDs = await validAssetIDs(candidates)
+        let resolvedLegs = await routed
+        await carWarmed
 
-        errorMessage = nil
-        isPreparing = false
+        guard !Task.isCancelled else {
+            preparationStarted = false
+            return
+        }
+        guard !validIDs.isEmpty else {
+            // Kept on screen: the film would otherwise play black frames.
+            errorMessage = String(localized: "No displayable photos.")
+            return
+        }
 
-        // Non-blocking upgrade: real driving routes replace the straight-line
-        // legs once resolved; the map already animates on the fallback legs.
-        routeTask = Task { await fetchRoutes() }
+        // Only the photos that loaded stay, so neither the player nor the
+        // export draws a dead frame. A stop left without a photo disappears and
+        // the legs around it are joined again (a straight line where no route
+        // was resolved for the new pair).
+        let kept: [RoadTripCluster] = clustered.compactMap { cluster in
+            let loaded = cluster.assets.filter { validIDs.contains($0.id) }
+            guard !loaded.isEmpty else { return nil }
+            return RoadTripCluster(
+                id: cluster.id,
+                assets: loaded,
+                latitude: cluster.latitude,
+                longitude: cluster.longitude,
+                placeName: cluster.placeName,
+                startDate: cluster.startDate,
+                endDate: cluster.endDate
+            )
+        }
+        var routeByPair: [String: RoadTripLeg] = [:]
+        for leg in resolvedLegs {
+            routeByPair["\(leg.fromClusterID)>\(leg.toClusterID)"] = leg
+        }
+        let finalLegs = Self.straightLegs(between: kept).map { leg in
+            routeByPair["\(leg.fromClusterID)>\(leg.toClusterID)"] ?? leg
+        }
+
+        clusters = kept
+        legs = finalLegs
+        let built = RoadTripTimelineBuilder.build(clusters: kept, legs: finalLegs, scores: assetScores)
+        timeline = built
+        guard let built else {
+            errorMessage = String(localized: "No displayable photos.")
+            return
+        }
+        // Only the photos of the film stay in memory.
+        let shown = Set(Self.shownAssets(in: built, clusters: kept).map(\.id))
+        slideImages = slideImages.filter { shown.contains($0.key) }
     }
 
     func cluster(by id: String) -> RoadTripCluster? {
@@ -140,51 +209,62 @@ final class RoadTripViewModel {
         return placeName(forClusterIndex: index)
     }
 
+    /// The decoded preview of `asset` when the preparation loaded it.
+    func slideImage(for asset: AssetReactItem) -> UIImage? {
+        slideImages[asset.id]
+    }
+
     // MARK: - Timeline + routes
 
-    /// Validates the thumbnails of the photos the timeline actually shows,
-    /// dropping the ones that fail to load/decode so neither the player nor the
-    /// export renders dead frames. Warms `ImageCache` so the live player hits
-    /// memory instead of refetching.
-    private func preflightAssets() async {
-        guard let timeline, !clusters.isEmpty else { return }
+    /// Straight-line legs between consecutive located stops (a stop without a
+    /// location has no leg on either side).
+    static func straightLegs(between clusters: [RoadTripCluster]) -> [RoadTripLeg] {
+        guard clusters.count >= 2 else { return [] }
+        var built: [RoadTripLeg] = []
+        for i in 0..<(clusters.count - 1) {
+            guard let from = clusters[i].coordinate, let to = clusters[i + 1].coordinate else { continue }
+            built.append(RoadTripLeg(
+                fromClusterID: clusters[i].id,
+                toClusterID: clusters[i + 1].id,
+                distanceMeters: RoadTripClusterer.haversine(from, to),
+                route: [
+                    RoutePoint(latitude: from.latitude, longitude: from.longitude),
+                    RoutePoint(latitude: to.latitude, longitude: to.longitude)
+                ]
+            ))
+        }
+        return built
+    }
 
-        var needed: [AssetReactItem] = []
+    /// The assets the slideshows of `timeline` show, each once, in film order.
+    static func shownAssets(in timeline: RoadTripTimeline, clusters: [RoadTripCluster]) -> [AssetReactItem] {
+        var clusterByID: [String: RoadTripCluster] = [:]
+        for cluster in clusters { clusterByID[cluster.id] = cluster }
         var seen = Set<String>()
+        var result: [AssetReactItem] = []
         for segment in timeline.segments {
             guard case .slideshow(let slideshow) = segment,
-                  let cluster = clusters.first(where: { $0.id == slideshow.clusterID }) else { continue }
+                  let cluster = clusterByID[slideshow.clusterID] else { continue }
             for index in slideshow.assetIndices where cluster.assets.indices.contains(index) {
                 let asset = cluster.assets[index]
                 if seen.insert(asset.id).inserted {
-                    needed.append(asset)
+                    result.append(asset)
                 }
             }
         }
-        guard !needed.isEmpty else { return }
-
-        let validIDs = await validAssetIDs(needed)
-        guard !validIDs.isEmpty else {
-            errorMessage = String(localized: "No displayable photos.")
-            return
-        }
-
-        let filtered = clusters.map { cluster in
-            RoadTripCluster(
-                id: cluster.id,
-                assets: cluster.assets.filter { validIDs.contains($0.id) },
-                latitude: cluster.latitude,
-                longitude: cluster.longitude,
-                placeName: cluster.placeName,
-                startDate: cluster.startDate,
-                endDate: cluster.endDate
-            )
-        }.filter { !$0.assets.isEmpty }
-
-        clusters = filtered
-        rebuildTimeline()
+        return result
     }
 
+    /// Renders the 3D car sprite sheets (SceneKit, a few seconds the first
+    /// time) off the main actor, so the first map leg never blocks on them.
+    private nonisolated static func warmCar() async {
+        RoadTripCar3D.warm()
+    }
+
+    /// Loads the previews of `assets` (batches of 8, the address read per
+    /// batch — L-26) and returns the ids that loaded and decoded. Each image is
+    /// kept decoded in `slideImages` for the player and stored in `ImageCache`;
+    /// its quality score feeds the "best of the trip" selection.
     func validAssetIDs(_ assets: [AssetReactItem]) async -> Set<String> {
         let session = self.session
         let tok = token
@@ -210,6 +290,7 @@ final class RoadTripViewModel {
             for (id, image, score) in results {
                 guard let image else { continue }
                 valid.insert(id)
+                slideImages[id] = image
                 if let score {
                     assetScores[id] = score
                 }
@@ -233,66 +314,79 @@ final class RoadTripViewModel {
             let (data, _) = try await AssetFileTransfer.fetchData(from: url, token: token, session: session())
             guard let image = UIImage(data: data) else { return (asset.id, nil, nil) }
             let score = image.cgImage.map { RoadTripPhotoScore.score($0) }
-            return (asset.id, image, score)
+            // Decoded here, off the main actor: the player draws it on the
+            // frame of its cut without a decode hitch.
+            return (asset.id, image.preparingForDisplay() ?? image, score)
         } catch {
             return (asset.id, nil, nil)
         }
     }
 
-    private func rebuildTimeline() {
-        guard !clusters.isEmpty else {
-            timeline = nil
-            legs = []
-            return
-        }
-        var built: [RoadTripLeg] = []
-        for i in 0..<(clusters.count - 1) {
-            guard let from = clusters[i].coordinate, let to = clusters[i + 1].coordinate else { continue }
-            let distance = RoadTripClusterer.haversine(from, to)
-            built.append(RoadTripLeg(
-                fromClusterID: clusters[i].id,
-                toClusterID: clusters[i + 1].id,
-                distanceMeters: distance,
-                route: [
-                    RoutePoint(latitude: from.latitude, longitude: from.longitude),
-                    RoutePoint(latitude: to.latitude, longitude: to.longitude)
-                ]
-            ))
-        }
-        legs = built
-        timeline = RoadTripTimelineBuilder.build(clusters: clusters, legs: built, scores: assetScores)
+    private enum RouteOutcome {
+        case route(Int, [RoutePoint]?)
+        case deadline
     }
 
-    /// Sequential MKDirections calls; straight-line legs are kept on failure or
-    /// cancellation, so the map never waits for the network.
-    private func fetchRoutes() async {
-        guard !legs.isEmpty else { return }
-        var updated = legs
-        for i in updated.indices {
-            if Task.isCancelled { return }
-            let leg = updated[i]
-            guard leg.route.count >= 2 else { continue }
-            if let route = await fetchRoute(from: leg.route[0], to: leg.route[1]) {
-                updated[i] = RoadTripLeg(
-                    fromClusterID: leg.fromClusterID,
-                    toClusterID: leg.toClusterID,
-                    distanceMeters: leg.distanceMeters,
-                    route: route
-                )
+    /// The driving route of every straight leg, requested concurrently. Stops
+    /// waiting at `routeDeadline`: a leg without its route by then (or whose
+    /// request failed — no road, offline) keeps its straight line.
+    private func resolveRoutes(_ straight: [RoadTripLeg]) async -> [RoadTripLeg] {
+        var requests: [(index: Int, from: RoutePoint, to: RoutePoint)] = []
+        for (index, leg) in straight.enumerated() {
+            guard leg.route.count >= 2, let from = leg.route.first, let to = leg.route.last else { continue }
+            requests.append((index, from, to))
+        }
+        guard !requests.isEmpty else { return straight }
+        let deadline = Self.routeDeadline
+        let found: [Int: [RoutePoint]] = await withTaskGroup(of: RouteOutcome.self) { group in
+            for request in requests {
+                group.addTask {
+                    let route = await self.drivingRoute(from: request.from, to: request.to)
+                    return RouteOutcome.route(request.index, route)
+                }
             }
+            group.addTask {
+                try? await Task.sleep(for: deadline)
+                return RouteOutcome.deadline
+            }
+            var routes: [Int: [RoutePoint]] = [:]
+            var pending = requests.count
+            for await outcome in group {
+                switch outcome {
+                case .route(let index, let route):
+                    if let route { routes[index] = route }
+                    pending -= 1
+                case .deadline:
+                    pending = 0
+                }
+                if pending == 0 { break }
+            }
+            group.cancelAll()
+            return routes
         }
-        guard !Task.isCancelled else { return }
-        legs = updated
-        timeline = RoadTripTimelineBuilder.build(clusters: clusters, legs: updated, scores: assetScores)
+        return straight.enumerated().map { index, leg in
+            guard let route = found[index] else { return leg }
+            return RoadTripLeg(
+                fromClusterID: leg.fromClusterID,
+                toClusterID: leg.toClusterID,
+                distanceMeters: leg.distanceMeters,
+                route: route
+            )
+        }
     }
 
-    private func fetchRoute(from: RoutePoint, to: RoutePoint) async -> [RoutePoint]? {
+    private func drivingRoute(from: RoutePoint, to: RoutePoint) async -> [RoutePoint]? {
         let request = MKDirections.Request()
         request.transportType = .automobile
         request.source = MKMapItem(placemark: MKPlacemark(coordinate: from.coordinate))
         request.destination = MKMapItem(placemark: MKPlacemark(coordinate: to.coordinate))
+        let directions = MKDirections(request: request)
         do {
-            let response = try await MKDirections(request: request).calculate()
+            let response = try await withTaskCancellationHandler {
+                try await directions.calculate()
+            } onCancel: {
+                Task { @MainActor in directions.cancel() }
+            }
             guard let polyline = response.routes.first?.polyline, polyline.pointCount >= 2 else { return nil }
             return densified(simplified(polyline))
         } catch {
@@ -351,12 +445,15 @@ final class RoadTripViewModel {
     /// Densifies a leg's route to ~40 m spacing so the car glides smoothly:
     /// the timing, camera and heading math all interpolate between consecutive
     /// route points, so coarse points make the car snap at every vertex.
+    /// Spacing grows past 40 m on very long routes so a leg never exceeds
+    /// ~10 000 points: every frame of the player and the export walks them.
     private func densified(_ route: [RoutePoint]) -> [RoutePoint] {
         guard route.count >= 2 else { return route }
         let cumulative = RoadTripTravelTiming.cumulativeLengths(route)
         let total = cumulative.last ?? 0
         let fractions = cumulative.map { total > 0 ? $0 / total : 0 }
-        return RoadTripDriveCamera.densified(route: route, fractions: fractions, spacing: 40).points
+        let spacing = max(40, total / 10_000)
+        return RoadTripDriveCamera.densified(route: route, fractions: fractions, spacing: spacing).points
     }
 
     // MARK: - Export
@@ -371,10 +468,15 @@ final class RoadTripViewModel {
         let renderer = RoadTripVideoRenderer(session: session)
         let clusters = self.clusters
         let photos = self.photos
+        // The previews the player already holds: the export does not download
+        // them a second time.
+        let preloaded = slideImages.compactMapValues(\.cgImage)
 
         renderTask = Task { [weak self] in
             do {
-                let url = try await renderer.render(clusters: clusters, timeline: timeline, config: config) { progress in
+                let url = try await renderer.render(
+                    clusters: clusters, timeline: timeline, config: config, preloaded: preloaded
+                ) { progress in
                     Task { @MainActor [weak self] in self?.reportProgress(progress) }
                 }
                 guard let self else { return }
