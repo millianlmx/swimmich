@@ -459,11 +459,16 @@ final class VoiceOverLabelsUITests: XCTestCase {
         let map = element("roadTripMap")
         XCTAssertTrue(map.waitForExistence(timeout: 5), "the playing leg has no roadTripMap — \(screenReads())")
         XCTAssertEqual(map.label, leg, "the map leg names its two stops")
-        let first = percent(map)
-        Thread.sleep(forTimeInterval: 2.5)
-        let later = percent(map)
-        XCTAssertNotNil(first, "the map leg reads no progress: \(String(describing: map.value))")
-        XCTAssertGreaterThan(later ?? -1, first ?? 100, "the car did not move along the route (\(String(describing: first)) % then \(String(describing: later)) %)")
+        // A leg is a short burst of map (2.5 s here): read the progress until
+        // the leg ends, then compare the first and the last reading.
+        var readings: [Int] = []
+        let deadline = Date().addingTimeInterval(4)
+        while Date() < deadline, let value = percent(map) {
+            readings.append(value)
+            Thread.sleep(forTimeInterval: 0.3)
+        }
+        XCTAssertFalse(readings.isEmpty, "the map leg reads no progress: \(String(describing: map.value))")
+        XCTAssertGreaterThan(readings.last ?? -1, readings.first ?? 100, "the car did not move along the route (read \(readings) %)")
     }
 
     /// The whole number a progress value reads ("42%" → 42).

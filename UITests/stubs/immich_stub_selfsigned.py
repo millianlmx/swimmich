@@ -136,8 +136,8 @@ def count(field):
 # a missing `size=preview` request can only mean a failure of the transport:
 #   * 2 or 3 stops, <= 6 assets per stop, <= 14 in total, all geotagged:
 #     `RoadTripTimelineBuilder.maxPhotosPerCluster = 6` and
-#     `desiredTotalPhotos = 14` (a leg costs at most 9 s and does not trim that
-#     budget before 9 stops);
+#     `desiredTotalPhotos = 14` (a leg costs at most 3.5 s and the 40 s target
+#     funds 14 photos up to 4 stops);
 #   * `RoadTripClusterer.cluster(radiusMeters: 2500, mergeRadiusMeters: 4000)`:
 #     an asset joins the stop whose anchor (its first asset) is within 2.5 km, so
 #     every asset is < 2.5 km from the first of its stop; two consecutive stops
@@ -145,8 +145,7 @@ def count(field):
 #     > 4 km apart and have distinct `exifInfo.city`;
 #   * dates strictly increasing (`fileCreatedAt`, `localDateTime`,
 #     `exifInfo.dateTimeOriginal`) in the order of `ROADTRIP_STOPS`.
-# Paris carries the 6-photo ceiling: the player clock starts when the view is
-# created and includes the preparation, so Paris plays until 20.4 s elapsed.
+# Paris carries the 6-photo ceiling; it plays until 8.5 s of the player clock.
 ROADTRIP_ALBUM = "dddddddd-4444-4444-8444-000000000001"
 ROADTRIP_ALBUM_NAME = "Paris Weekend"
 ERROR_ALBUM = "dddddddd-4444-4444-8444-000000000002"
