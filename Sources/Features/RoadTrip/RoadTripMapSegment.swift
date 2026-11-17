@@ -16,15 +16,14 @@ struct RoadTripMapSegment: View {
     let localTime: TimeInterval
     var token: String?
     /// First photo of the destination stop — dives up from the arrival pin.
-    var divePhotoURL: URL?
+    var divePhoto: RoadTripPhotoSource?
     /// Last photo of the previous stop — fades out over the map's opening.
-    var outgoingPhotoURL: URL?
+    var outgoingPhoto: RoadTripPhotoSource?
 
-    /// Densified route polyline (cached per leg — rebuilt when routes upgrade).
-    @State private var denseRoute: (count: Int, coords: [CLLocationCoordinate2D])?
-    /// Last MapCamera applied, for the dead-zone that stops MapKit re-projecting
-    /// every 30 Hz frame (the main source of live-player micro-jitter).
-    @State private var cachedCamera: MapCamera?
+    /// The leg's drawn route and the last camera applied. A reference: `body`
+    /// updates it every frame, which a `@State` value cannot take (a state
+    /// change during a view update is undefined behavior).
+    @State private var memo = RoadTripMapMemo()
 
     var body: some View {
         let timing = RoadTripTravelTiming.frame(travel: travel, localTime: localTime)
@@ -42,10 +41,6 @@ struct RoadTripMapSegment: View {
             )
         }
         .background(Color.black)
-        .onAppear { refreshDenseRoute() }
-        .onChange(of: travel.route.count) { _, _ in refreshDenseRoute() }
-        .onChange(of: travel.fromClusterID) { _, _ in cachedCamera = nil }
-        .onChange(of: travel.toClusterID) { _, _ in cachedCamera = nil }
     }
 
     @ViewBuilder
@@ -53,27 +48,30 @@ struct RoadTripMapSegment: View {
         // Street-level chase: distance tracks the look-ahead (constant per
         // leg), heading follows the smoothed road direction, pitched low.
         let cameraPosition = chaseCamera(center: camera.coordinate, heading: heading, lookAhead: lookAhead)
-        let coords = routeCoordinates
-        let n = coords.count
-        let split = n > 1 ? min(max(Int(carFraction * Double(n - 1)), 0), n - 1) : 0
-        let traveled = n > 1 ? Array(coords.prefix(split + 1)) : []
-        let upcoming = n > 1 ? Array(coords.dropFirst(split)) : []
+        let drawn = memo.route(for: travel)
+        let traveled = RoadTripMapMemo.traveledParts(drawn, carFraction: carFraction, car: car.coordinate)
 
         MapReader { proxy in
             GeometryReader { geo in
                 ZStack {
                     Map(position: Binding(get: { .camera(cameraPosition) }, set: { _ in })) {
-                        if traveled.count >= 2 {
-                            MapPolyline(coordinates: traveled)
+                        // The whole road, then the part already driven over it.
+                        // Only the short tail behind the car changes every
+                        // frame: the long polylines change a few dozen times
+                        // per leg, never with thousands of points.
+                        if drawn.coordinates.count >= 2 {
+                            MapPolyline(coordinates: drawn.coordinates)
                                 .stroke(.black.opacity(0.35), lineWidth: 9)
-                            MapPolyline(coordinates: traveled)
-                                .stroke(routeBlue.opacity(0.4), lineWidth: 5)
-                        }
-                        if upcoming.count >= 2 {
-                            MapPolyline(coordinates: upcoming)
-                                .stroke(.black.opacity(0.35), lineWidth: 9)
-                            MapPolyline(coordinates: upcoming)
+                            MapPolyline(coordinates: drawn.coordinates)
                                 .stroke(.gray.opacity(0.6), lineWidth: 5)
+                        }
+                        if traveled.body.count >= 2 {
+                            MapPolyline(coordinates: traveled.body)
+                                .stroke(routeBlue.opacity(0.9), lineWidth: 5)
+                        }
+                        if traveled.tail.count >= 2 {
+                            MapPolyline(coordinates: traveled.tail)
+                                .stroke(routeBlue.opacity(0.9), lineWidth: 5)
                         }
                         Annotation("", coordinate: car.coordinate) {
                             chaseCar(bearing: bearing, heading: heading, lookAhead: lookAhead)
@@ -120,11 +118,11 @@ struct RoadTripMapSegment: View {
                     .fill(Color(red: 0.95, green: 0.25, blue: 0.22))
                     .frame(width: 20 * pop, height: 20 * pop)
                     .position(p)
-                if let divePhotoURL {
+                if let divePhoto {
                     let size = CGSize(width: canvas.width * RoadTripSegue.thumbSizeFraction,
                                       height: canvas.width * RoadTripSegue.thumbSizeFraction * 0.75)
                     let rect = RoadTripSegue.thumbnailRect(pinCenter: p, pinSize: size, canvas: canvas, dive: dive)
-                    AuthenticatedAsyncImage(url: divePhotoURL, token: token, contentMode: .fill)
+                    RoadTripPhoto(source: divePhoto, token: token)
                         .frame(width: rect.width, height: rect.height)
                         .clipShape(RoundedRectangle(cornerRadius: dive >= 0.99 ? 0 : 18 * (1 - dive), style: .continuous))
                         .position(x: rect.midX, y: rect.midY)
@@ -134,11 +132,12 @@ struct RoadTripMapSegment: View {
             .allowsHitTesting(false)
         }
 
-        if let outgoingPhotoURL {
+        if let outgoingPhoto {
             let alpha = RoadTripSegue.outgoingPhotoAlpha(localTime: localTime)
             if alpha > 0 {
-                AuthenticatedAsyncImage(url: outgoingPhotoURL, token: token, contentMode: .fill)
-                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+                RoadTripPhoto(source: outgoingPhoto, token: token)
+                    .frame(width: canvas.width, height: canvas.height)
+                    .clipped()
                     .opacity(alpha)
                     .allowsHitTesting(false)
             }
@@ -170,8 +169,8 @@ struct RoadTripMapSegment: View {
             heading: heading * 180 / .pi,
             pitch: pitch
         )
-        guard let last = cachedCamera else {
-            cachedCamera = candidate
+        guard let last = memo.camera else {
+            memo.camera = candidate
             return candidate
         }
         let dLat = abs(last.centerCoordinate.latitude - candidate.centerCoordinate.latitude)
@@ -182,23 +181,8 @@ struct RoadTripMapSegment: View {
         let turned = dHead > 0.25
         let zoomed = dDist > 25
         guard moved || turned || zoomed else { return last }
-        cachedCamera = candidate
+        memo.camera = candidate
         return candidate
-    }
-
-    /// Route polyline: densified once per leg (~40 m spacing) so the road
-    /// looks smooth at the driving view's zoom.
-    private var routeCoordinates: [CLLocationCoordinate2D] {
-        if let denseRoute, denseRoute.count == travel.route.count { return denseRoute.coords }
-        return travel.route.map(\.coordinate)
-    }
-
-    private func refreshDenseRoute() {
-        let cumulative = RoadTripTravelTiming.cumulativeLengths(travel.route)
-        let total = cumulative.last ?? 0
-        let fractions = cumulative.map { total > 0 ? $0 / total : 0 }
-        let dense = RoadTripDriveCamera.densified(route: travel.route, fractions: fractions, spacing: 40)
-        denseRoute = (travel.route.count, dense.points.map { $0.coordinate })
     }
 
     /// Rear 3/4 view of the 3D car with a soft ground shadow, anchored so its
@@ -225,5 +209,95 @@ struct RoadTripMapSegment: View {
                 .offset(y: (0.5 - contact) * height)
                 .rotationEffect(.radians(yaw - frameYaw))
         }
+    }
+}
+
+/// Per-leg memory of `RoadTripMapSegment` that its `body` updates without
+/// invalidating the view: the route as drawn, and the last camera applied (the
+/// dead zone that keeps MapKit from re-projecting for sub-meter moves).
+final class RoadTripMapMemo {
+
+    /// A leg's route as drawn, with each point's arc fraction.
+    struct DrawnRoute {
+        let coordinates: [CLLocationCoordinate2D]
+        let fractions: [Double]
+    }
+
+    /// Ceiling on the drawn route. MapKit rebuilds a polyline whose content
+    /// changed; the old code split a route densified to 40 m (tens of
+    /// thousands of points on a long leg) into two new polylines every frame.
+    static let maxDrawnPoints = 1_200
+    /// The driven part's long body moves in this many steps per leg; the
+    /// short tail from its end to the car follows every frame.
+    static let traveledSteps = 48
+
+    private var key = ""
+    private var drawn = DrawnRoute(coordinates: [], fractions: [])
+    var camera: MapCamera?
+
+    /// The drawn route of `travel`, built once per leg.
+    func route(for travel: RoadTripTimeline.Travel) -> DrawnRoute {
+        let key = "\(travel.fromClusterID)>\(travel.toClusterID)|\(travel.route.count)"
+        if key != self.key {
+            self.key = key
+            camera = nil
+            drawn = Self.drawnRoute(travel.route)
+        }
+        return drawn
+    }
+
+    /// `route` resampled to ~40 m (smooth at street zoom), the spacing widened
+    /// on long legs, then thinned so it never exceeds `maxDrawnPoints`.
+    static func drawnRoute(_ route: [RoutePoint]) -> DrawnRoute {
+        guard route.count >= 2 else {
+            return DrawnRoute(coordinates: route.map(\.coordinate), fractions: route.map { _ in 0 })
+        }
+        let cumulative = RoadTripTravelTiming.cumulativeLengths(route)
+        let total = cumulative.last ?? 0
+        let fractions = cumulative.map { total > 0 ? $0 / total : 0 }
+        let spacing = max(40, total / Double(maxDrawnPoints))
+        let dense = RoadTripDriveCamera.densified(route: route, fractions: fractions, spacing: spacing)
+        var coordinates = dense.points.map(\.coordinate)
+        var drawnFractions = dense.fractions
+        if coordinates.count > maxDrawnPoints {
+            let step = Int((Double(coordinates.count) / Double(maxDrawnPoints - 1)).rounded(.up))
+            var thinned: [CLLocationCoordinate2D] = []
+            var thinnedFractions: [Double] = []
+            for i in Swift.stride(from: 0, to: coordinates.count, by: step) {
+                thinned.append(coordinates[i])
+                thinnedFractions.append(drawnFractions[i])
+            }
+            if thinnedFractions.last != drawnFractions.last, let lastPoint = coordinates.last, let lastFraction = drawnFractions.last {
+                thinned.append(lastPoint)
+                thinnedFractions.append(lastFraction)
+            }
+            coordinates = thinned
+            drawnFractions = thinnedFractions
+        }
+        return DrawnRoute(coordinates: coordinates, fractions: drawnFractions)
+    }
+
+    /// The driven part of `route` up to `carFraction`, in two polylines: a
+    /// body that only grows by whole steps (`traveledSteps` per leg), and the
+    /// short tail from the end of that body to the car.
+    static func traveledParts(
+        _ route: DrawnRoute,
+        carFraction: Double,
+        car: CLLocationCoordinate2D
+    ) -> (body: [CLLocationCoordinate2D], tail: [CLLocationCoordinate2D]) {
+        let n = route.coordinates.count
+        guard n >= 2, route.fractions.count == n else { return ([], []) }
+        // Last drawn point at or behind the car (binary search on fractions).
+        var lo = 0, hi = n - 1
+        while lo < hi {
+            let mid = (lo + hi + 1) / 2
+            if route.fractions[mid] <= carFraction { lo = mid } else { hi = mid - 1 }
+        }
+        let behind = lo
+        let quantum = max(1, Int((Double(n) / Double(traveledSteps)).rounded(.up)))
+        let bodyEnd = (behind / quantum) * quantum
+        let body = bodyEnd >= 1 ? Array(route.coordinates[0...bodyEnd]) : []
+        let tail = Array(route.coordinates[bodyEnd...behind]) + [car]
+        return (body, tail)
     }
 }
