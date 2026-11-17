@@ -453,9 +453,12 @@ final class VoiceOverLabelsUITests: XCTestCase {
         openAlbum()
         openAlbumAction("Road Trip")
 
+        // The leg is playing once its pill names it (the map is set up, hidden, before).
+        let leg = "Paris, France → Versailles, France"
+        XCTAssertTrue(app.staticTexts[leg].waitForExistence(timeout: 90), "the Road Trip never reached its map leg — \(screenReads())")
         let map = element("roadTripMap")
-        XCTAssertTrue(map.waitForExistence(timeout: 90), "the Road Trip never reached its map leg — \(screenReads())")
-        XCTAssertEqual(map.label, "Paris, France → Versailles, France", "the map leg names its two stops")
+        XCTAssertTrue(map.waitForExistence(timeout: 5), "the playing leg has no roadTripMap — \(screenReads())")
+        XCTAssertEqual(map.label, leg, "the map leg names its two stops")
         let first = percent(map)
         Thread.sleep(forTimeInterval: 2.5)
         let later = percent(map)

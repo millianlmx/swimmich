@@ -50,6 +50,7 @@ final class RoadTripLiveMapTests: XCTestCase {
         XCTAssertGreaterThan(map.carProgress, earlyProgress + 0.2, "the car must have driven a good part of the leg")
         XCTAssertGreaterThan(RoadTripClusterer.haversine(early, later), 1_000, "the car's coordinate must move on the map")
         XCTAssertTrue(map.isAccessibilityElement, "a leg being driven is read by VoiceOver")
+        XCTAssertFalse(map.accessibilityElementsHidden)
         XCTAssertEqual(map.accessibilityLabel, "Paris → Versailles")
 
         map.render(at: start.addingTimeInterval(8.99))
@@ -78,6 +79,7 @@ final class RoadTripLiveMapTests: XCTestCase {
         XCTAssertFalse(map.isHidden)
         XCTAssertEqual(map.carProgress, 0, accuracy: 1e-9, "the car waits on the start")
         XCTAssertFalse(map.isAccessibilityElement, "hidden under the pictures, the map is not read")
+        XCTAssertTrue(map.accessibilityElementsHidden, "nor is anything inside it (MapKit's legal link)")
     }
 
     func test_mapGoesAwayAfterTheLastLeg() {
@@ -88,6 +90,7 @@ final class RoadTripLiveMapTests: XCTestCase {
 
         XCTAssertTrue(map.isHidden)
         XCTAssertFalse(map.isAccessibilityElement)
+        XCTAssertTrue(map.accessibilityElementsHidden)
     }
 
     func test_beforeTheFilmStartsTheMapHoldsTheFirstLegStart() {

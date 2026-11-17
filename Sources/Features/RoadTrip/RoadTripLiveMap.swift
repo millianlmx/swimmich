@@ -183,6 +183,7 @@ final class RoadTripLiveMapView: UIView, MKMapViewDelegate {
             // Past the last leg: the ending covers everything.
             isHidden = true
             isAccessibilityElement = false
+            accessibilityElementsHidden = true
             return
         }
         isHidden = false
@@ -260,8 +261,12 @@ final class RoadTripLiveMapView: UIView, MKMapViewDelegate {
 
         drawMarkers(travel: travel, localTime: localTime, driving: driving)
 
-        // VoiceOver (and the UI tests) read where the car is.
+        // VoiceOver (and the UI tests) read where the car is — only while a leg
+        // plays. Under the pictures the whole map is hidden from it: MapKit's
+        // own accessible parts (the legal link) made it a container with the
+        // leg's label and a 0 % value before the leg had started.
         isAccessibilityElement = driving
+        accessibilityElementsHidden = !driving
         let percent = Int((timing.routeDrawnFraction * 100).rounded())
         if percent != announcedPercent {
             announcedPercent = percent
