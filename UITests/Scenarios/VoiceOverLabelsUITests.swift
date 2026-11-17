@@ -443,6 +443,32 @@ final class VoiceOverLabelsUITests: XCTestCase {
         assertButton("roadTripExportButton", label: text("Export video", lang), "road trip")
     }
 
+    // MARK: - AC-34.12
+
+    /// The Road Trip's map leg reads the drive (`roadTripMap`: the two stops, then how far
+    /// the car is) — and the car drives: its progress grows while the leg plays. The SwiftUI
+    /// map it replaces froze on its first frame, the car on its start.
+    func test_AC_34_12_roadTripMapReadsTheDrive() throws {
+        try start()
+        openAlbum()
+        openAlbumAction("Road Trip")
+
+        let map = element("roadTripMap")
+        XCTAssertTrue(map.waitForExistence(timeout: 90), "the Road Trip never reached its map leg — \(screenReads())")
+        XCTAssertEqual(map.label, "Paris, France → Versailles, France", "the map leg names its two stops")
+        let first = percent(map)
+        Thread.sleep(forTimeInterval: 2.5)
+        let later = percent(map)
+        XCTAssertNotNil(first, "the map leg reads no progress: \(String(describing: map.value))")
+        XCTAssertGreaterThan(later ?? -1, first ?? 100, "the car did not move along the route (\(String(describing: first)) % then \(String(describing: later)) %)")
+    }
+
+    /// The whole number a progress value reads ("42%" → 42).
+    private func percent(_ element: XCUIElement) -> Int? {
+        guard element.exists, let value = element.value as? String else { return nil }
+        return Int(value.filter(\.isNumber))
+    }
+
     // MARK: - AC-34.7
 
     /// The widgets' heart and shuffle buttons on the Home Screen, with the device in

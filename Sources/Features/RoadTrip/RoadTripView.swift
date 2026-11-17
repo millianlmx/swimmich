@@ -1,19 +1,20 @@
 import SwiftUI
 
 /// Full-screen road-trip player + export surface. Plays the deterministic
-/// timeline (opening → slideshow → map leg → … → ending) driven by a single
-/// `TimelineView` clock; the same timeline seeds the video export.
+/// timeline (opening → slideshow → map leg → … → ending) on one clock
+/// (`RoadTripFilmClock`): the pictures through a `TimelineView`, the map legs
+/// through the live map's own display link. The same timeline seeds the video
+/// export.
 struct RoadTripView: View {
     @Bindable var vm: RoadTripViewModel
     @Environment(\.dismiss) private var dismiss
     @PVReduceMotion private var reduceMotion
 
-    /// Instant the film started playing: set when the player appears, i.e.
-    /// once the preparation is over. A clock started with the view counted
-    /// the preparation (search, previews, routes, car sprites — easily 10 s)
-    /// as film time, so the film opened somewhere in the middle, or straight
-    /// on its ending.
-    @State private var playbackStart: Date?
+    /// When the film started playing: set when the player appears, i.e. once
+    /// the preparation is over (a clock started with the view counted the
+    /// preparation as film time). A reference shared with the live map, which
+    /// reads it at every display refresh.
+    @State private var clock = RoadTripFilmClock()
 
     var body: some View {
         ZStack {
@@ -38,12 +39,26 @@ struct RoadTripView: View {
                 .accessibilityElement(children: .combine)
                 .accessibilityIdentifier("roadTripError")
             } else if let timeline = vm.timeline {
+                // The map of the travel legs, under the pictures: it drives
+                // itself from the clock (`RoadTripLiveMap`), and shows through
+                // only while a leg plays — every other segment is opaque.
+                RoadTripLiveMap(
+                    timeline: timeline,
+                    clock: clock,
+                    photo: { index, first in
+                        neighborPhoto(timeline: timeline, segmentIndex: index, edge: first ? .first : .last)
+                    },
+                    legLabel: { travel in
+                        "\(vm.placeName(forClusterID: travel.fromClusterID)) → \(vm.placeName(forClusterID: travel.toClusterID))"
+                    }
+                )
+                .ignoresSafeArea()
+
                 SwiftUI.TimelineView(.animation(minimumInterval: 1.0 / 30.0)) { context in
-                    let elapsed = playbackStart.map { context.date.timeIntervalSince($0) } ?? 0
-                    content(timeline: timeline, elapsed: elapsed)
+                    content(timeline: timeline, elapsed: clock.elapsed(at: context.date))
                 }
                 .onAppear {
-                    if playbackStart == nil { playbackStart = Date() }
+                    if clock.start == nil { clock.start = Date() }
                 }
                 .accessibilityElement(children: .contain)
                 .accessibilityIdentifier("roadTripPlayer")
@@ -70,17 +85,16 @@ struct RoadTripView: View {
 
     // MARK: - Segment content
 
-    /// Photo used by the travel transitions: `.next` = the FIRST photo of the
-    /// destination stop's slideshow (arrival dive), `.previous` = the LAST
-    /// photo of the outgoing stop's slideshow (fade-out over the map).
-    private func neighborPhoto(timeline: RoadTripTimeline, segmentIndex: Int, edge: Edge) -> RoadTripPhotoSource? {
-        let neighbor = edge == .next ? segmentIndex + 1 : segmentIndex - 1
-        guard timeline.segments.indices.contains(neighbor),
-              case .slideshow(let slideshow) = timeline.segments[neighbor],
+    /// The decoded photo the map's transitions show: the FIRST photo of the
+    /// slideshow segment at `segmentIndex` (the arrival dive into it) or its
+    /// LAST one (fading out over the next leg).
+    private func neighborPhoto(timeline: RoadTripTimeline, segmentIndex: Int, edge: Edge) -> UIImage? {
+        guard timeline.segments.indices.contains(segmentIndex),
+              case .slideshow(let slideshow) = timeline.segments[segmentIndex],
               let cluster = vm.cluster(by: slideshow.clusterID),
-              let position = edge == .next ? slideshow.assetIndices.first : slideshow.assetIndices.last,
+              let position = edge == .first ? slideshow.assetIndices.first : slideshow.assetIndices.last,
               cluster.assets.indices.contains(position) else { return nil }
-        return photoSource(cluster.assets[position])
+        return vm.slideImage(for: cluster.assets[position])
     }
 
     /// The decoded preview of `asset` (loaded by the preparation) and, should
@@ -95,8 +109,8 @@ struct RoadTripView: View {
     }
 
     private enum Edge {
-        case next
-        case previous
+        case first
+        case last
     }
 
     @ViewBuilder
@@ -107,23 +121,6 @@ struct RoadTripView: View {
         let segment = timeline.segments[segmentIndex]
 
         ZStack(alignment: .bottom) {
-            // The map of the leg being driven — or of the next one, under the
-            // opaque pictures that come before it. MapKit is up and its tiles
-            // are loaded when the leg starts: built on the leg's first frame,
-            // the map took long enough to appear that the stop's last photo sat
-            // over the road while the car was already driving under it.
-            if let leg = mapLeg(timeline: timeline, from: segmentIndex) {
-                let driving = leg.index == segmentIndex
-                RoadTripMapSegment(
-                    travel: leg.travel,
-                    localTime: driving ? local : 0,
-                    token: vm.token,
-                    divePhoto: driving ? neighborPhoto(timeline: timeline, segmentIndex: leg.index, edge: .next) : nil,
-                    outgoingPhoto: driving ? neighborPhoto(timeline: timeline, segmentIndex: leg.index, edge: .previous) : nil
-                )
-                .accessibilityHidden(!driving)
-            }
-
             switch segment {
             case .opening:
                 openingView
@@ -132,7 +129,7 @@ struct RoadTripView: View {
                     slideshowView(slideshow: slideshow, cluster: cluster, localTime: local)
                 }
             case .travel:
-                // Drawn by the map layer above.
+                // The live map underneath shows through.
                 EmptyView()
             case .ending:
                 endingView
@@ -148,22 +145,12 @@ struct RoadTripView: View {
         }
     }
 
-    /// The first travel leg at or after `index`, with its segment index.
-    private func mapLeg(timeline: RoadTripTimeline, from index: Int) -> (index: Int, travel: RoadTripTimeline.Travel)? {
-        guard timeline.segments.indices.contains(index) else { return nil }
-        for candidate in index..<timeline.segments.count {
-            if case .travel(let travel) = timeline.segments[candidate] {
-                return (candidate, travel)
-            }
-        }
-        return nil
-    }
-
     @ViewBuilder
     private func slideshowView(slideshow: RoadTripTimeline.Slideshow, cluster: RoadTripCluster, localTime: TimeInterval) -> some View {
         let frame = RoadTripSlideTiming.frame(slideshow: slideshow, localTime: localTime, reduceMotion: reduceMotion)
         ZStack {
-            Color.black
+            // Edge to edge: the live map lies underneath.
+            Color.black.ignoresSafeArea()
             slideImage(position: frame.currentIndex, transform: frame.currentTransform, slideshow: slideshow, cluster: cluster)
             if frame.crossfade > 0, let next = frame.nextIndex {
                 slideImage(position: next, transform: frame.nextTransform ?? .identity, slideshow: slideshow, cluster: cluster)
@@ -193,7 +180,7 @@ struct RoadTripView: View {
 
     private var openingView: some View {
         ZStack {
-            Color.black
+            Color.black.ignoresSafeArea()
             VStack(spacing: 24) {
                 Spacer()
                 Text("Road Trip")
@@ -227,6 +214,7 @@ struct RoadTripView: View {
                 startPoint: .top,
                 endPoint: .bottom
             )
+            .ignoresSafeArea()
             VStack(spacing: 16) {
                 Spacer()
                 Text("Road Trip")
@@ -254,7 +242,7 @@ struct RoadTripView: View {
         VStack(spacing: 12) {
             if finished {
                 Button {
-                    playbackStart = Date()
+                    clock.start = Date()
                 } label: {
                     Label("Replay", systemImage: "arrow.counterclockwise")
                         .font(.pvCaption.weight(.semibold))
