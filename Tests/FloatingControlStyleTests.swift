@@ -122,7 +122,7 @@ final class FloatingControlStyleTests: XCTestCase {
         "Sources/Features/Memories/MemoryMomentView.swift": RoleCounts(circle: 3, pill: 3, bar: 0),
         "Sources/Features/Memories/MemoryEpilogueView.swift": RoleCounts(circle: 1, pill: 0, bar: 0),
         "Sources/Features/Memories/MemoriesView.swift": RoleCounts(circle: 1, pill: 1, bar: 0),
-        "Sources/Features/RoadTrip/RoadTripView.swift": RoleCounts(circle: 2, pill: 3, bar: 2),
+        "Sources/Features/RoadTrip/RoadTripView.swift": RoleCounts(circle: 2, pill: 3, bar: 3),
         "Sources/Features/SharedLinks/SharedLinkViewerView.swift": RoleCounts(circle: 1, pill: 1, bar: 0),
         "Sources/Features/Timeline/TimelineView.swift": RoleCounts(circle: 2, pill: 1, bar: 0),
         "Sources/Features/Timeline/TimelineScrubber.swift": RoleCounts(circle: 0, pill: 2, bar: 0),
@@ -184,7 +184,7 @@ final class FloatingControlStyleTests: XCTestCase {
             XCTAssertEqual(actual.bar, expected.bar, "\(path): .pvFloating(.bar) count")
         }
         XCTAssertEqual(pills, 21)
-        XCTAssertEqual(bars, 8)
+        XCTAssertEqual(bars, 9)
 
         let roadTrip = try Self.normalizedLines("Sources/Features/RoadTrip/RoadTripView.swift")
         XCTAssertFalse(roadTrip.contains { $0.text.contains(".black.opacity(0.5)") },

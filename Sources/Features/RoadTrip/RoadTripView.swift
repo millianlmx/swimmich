@@ -206,7 +206,7 @@ struct RoadTripView: View {
                     .foregroundStyle(.white.opacity(0.9))
                     .multilineTextAlignment(.center)
             }
-            .shadow(color: .black.opacity(0.5), radius: 6, y: 2)
+            .shadow(color: .black.opacity(0.55), radius: 6, y: 2)
             .padding(.horizontal, 32)
             .padding(.top, 96)
             .scaleEffect(0.9 + 0.1 * appear)
@@ -264,7 +264,7 @@ struct RoadTripView: View {
                     .padding(.top, 8)
                 }
             }
-            .shadow(color: .black.opacity(0.5), radius: 6, y: 2)
+            .shadow(color: .black.opacity(0.55), radius: 6, y: 2)
             .padding(.horizontal, 32)
             .padding(.top, 84)
             .opacity(appear)
