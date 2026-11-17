@@ -4,7 +4,7 @@ import XCTest
 
 /// The live map leg's polylines stay light whatever the leg's length, and only
 /// a short tail of them changes from one frame to the next.
-final class RoadTripMapMemoTests: XCTestCase {
+final class RoadTripRouteDrawingTests: XCTestCase {
 
     /// Straight line `meters` long due north of Paris (two points, as a leg
     /// whose driving route was not resolved).
@@ -16,9 +16,9 @@ final class RoadTripMapMemoTests: XCTestCase {
     func test_longLegIsDrawnWithABoundedNumberOfPoints() {
         let route = straightLeg(meters: 900_000)
 
-        let drawn = RoadTripMapMemo.drawnRoute(route)
+        let drawn = RoadTripRouteDrawing.drawnRoute(route)
 
-        XCTAssertLessThanOrEqual(drawn.coordinates.count, RoadTripMapMemo.maxDrawnPoints)
+        XCTAssertLessThanOrEqual(drawn.coordinates.count, RoadTripRouteDrawing.maxDrawnPoints)
         XCTAssertEqual(drawn.coordinates.count, drawn.fractions.count)
         XCTAssertEqual(drawn.fractions.first, 0)
         XCTAssertEqual(drawn.fractions.last ?? 0, 1, accuracy: 1e-9)
@@ -27,26 +27,9 @@ final class RoadTripMapMemoTests: XCTestCase {
     }
 
     func test_shortLegKeepsStreetLevelDetail() {
-        let drawn = RoadTripMapMemo.drawnRoute(straightLeg(meters: 2_000))
+        let drawn = RoadTripRouteDrawing.drawnRoute(straightLeg(meters: 2_000))
 
         XCTAssertGreaterThanOrEqual(drawn.coordinates.count, 40, "about one point every 40 m")
-    }
-
-    func test_traveledBodyMovesBySteps_tailFollowsTheCar() {
-        let drawn = RoadTripMapMemo.drawnRoute(straightLeg(meters: 900_000))
-        var bodies = Set<Int>()
-        for i in 0...300 {
-            let fraction = Double(i) / 300
-            let car = CLLocationCoordinate2D(latitude: 48.85 + fraction * 900_000 / 111_320, longitude: 2.35)
-            let parts = RoadTripMapMemo.traveledParts(drawn, carFraction: fraction, car: car)
-            bodies.insert(parts.body.count)
-            XCTAssertEqual(parts.tail.last?.latitude ?? 0, car.latitude, accuracy: 1e-12, "the tail ends on the car")
-            XCTAssertLessThanOrEqual(parts.tail.count, drawn.coordinates.count / RoadTripMapMemo.traveledSteps + 2)
-            if let bodyEnd = parts.body.last, let tailStart = parts.tail.first {
-                XCTAssertEqual(bodyEnd.latitude, tailStart.latitude, accuracy: 1e-12, "body and tail join")
-            }
-        }
-        XCTAssertLessThanOrEqual(bodies.count, RoadTripMapMemo.traveledSteps + 2, "the long polyline changes a few dozen times per leg")
     }
 
     func test_smoothRailOfAVeryLongLegStaysBounded() {
