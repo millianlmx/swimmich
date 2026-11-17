@@ -6,7 +6,7 @@ import XCTest
 
 /// The frames of the exported film, read back pixel by pixel: the renderer's
 /// context is y-down, which `CGContext.draw` does not account for, and the map
-/// legs are a perspective warp of a 2× snapshot computed in snapshot points.
+/// frames are crops of satellite snapshots placed by their map rects.
 final class RoadTripExportFrameTests: XCTestCase {
 
     private func makeAsset(_ id: String) -> AssetReactItem {
@@ -89,22 +89,6 @@ final class RoadTripExportFrameTests: XCTestCase {
         return context.makeImage()!
     }
 
-    private func mapRect(_ region: MKCoordinateRegion) -> MKMapRect {
-        let topLeft = MKMapPoint(CLLocationCoordinate2D(
-            latitude: region.center.latitude + region.span.latitudeDelta / 2,
-            longitude: region.center.longitude - region.span.longitudeDelta / 2
-        ))
-        let bottomRight = MKMapPoint(CLLocationCoordinate2D(
-            latitude: region.center.latitude - region.span.latitudeDelta / 2,
-            longitude: region.center.longitude + region.span.longitudeDelta / 2
-        ))
-        return MKMapRect(x: topLeft.x, y: topLeft.y, width: bottomRight.x - topLeft.x, height: bottomRight.y - topLeft.y)
-    }
-
-    private func lerp(_ a: CGPoint, _ b: CGPoint, _ t: Double) -> CGPoint {
-        CGPoint(x: a.x + (b.x - a.x) * t, y: a.y + (b.y - a.y) * t)
-    }
-
     func test_exportDrawsThePhotosUpright() throws {
         let canvas = CGSize(width: 180, height: 320)
         let asset = makeAsset("p1")
@@ -122,7 +106,7 @@ final class RoadTripExportFrameTests: XCTestCase {
         RoadTripVideoRenderer(session: { .shared }).drawFrame(
             at: 2, into: buffer, clusters: [cluster], clusterByID: ["c1": cluster], timeline: timeline,
             config: makeConfig(canvas), images: ["p1": twoTonePhoto(width: 90, height: 160)],
-            visuals: noCards, mapFrames: [:]
+            visuals: noCards, map: .empty
         )
 
         let top = rgb(buffer, x: 90, y: 60)
@@ -131,7 +115,60 @@ final class RoadTripExportFrameTests: XCTestCase {
         XCTAssertTrue(bottom.b > 150 && bottom.r < 100, "the bottom of the frame must show its bottom (blue): \(bottom)")
     }
 
-    func test_exportMapLegShowsTheGroundUnderTheChaseCamera() throws {
+    func test_exportMapLegShowsTheGroundUnderTheCamera() throws {
+        let canvas = CGSize(width: 270, height: 480)
+        let aspect = Double(canvas.width / canvas.height)
+        let route = [RoutePoint(latitude: 48.80, longitude: 2.30), RoutePoint(latitude: 48.83, longitude: 2.30)]
+        let travel = RoadTripTimeline.Travel(
+            fromClusterID: "a", toClusterID: "b",
+            distanceMeters: RoadTripClusterer.haversine(route[0].coordinate, route[1].coordinate),
+            route: route, duration: 6
+        )
+        let localTime = 3.0
+        let camera = RoadTripAerialCamera.legRect(travel: travel, localTime: localTime, aspect: aspect)
+        // The snapshot as the export takes it: more ground than the camera
+        // shows, twice the canvas in pixels.
+        let shotRect = RoadTripAerialCamera.scaled(camera, by: 1.5)
+        let shot = RoadTripVideoRenderer.MapShot(
+            image: positionCodedSnapshot(pointSize: canvas, scale: 2), rect: shotRect
+        )
+        var map = RoadTripVideoRenderer.ExportMap()
+        map.legs = [0: [shot]]
+        let timeline = RoadTripTimeline(segments: [.travel(travel)])
+        let buffer = try makePixelBuffer(canvas)
+
+        RoadTripVideoRenderer(session: { .shared }).drawFrame(
+            at: localTime, into: buffer, clusters: [], clusterByID: [:], timeline: timeline,
+            config: makeConfig(canvas), images: [:], visuals: noCards, map: map
+        )
+
+        // Ground beside the road (away from the car mid-frame and the counter
+        // at the top): each point shows the snapshot's color of its own place.
+        var checked = 0
+        for u in [0.08, 0.15, 0.85, 0.92] {
+            for v in [0.3, 0.5, 0.7] {
+                let onCanvas = CGPoint(x: canvas.width * u, y: canvas.height * v)
+                let ground = MKMapPoint(
+                    x: camera.minX + Double(u) * camera.size.width,
+                    y: camera.minY + Double(v) * camera.size.height
+                )
+                let inShot = CGPoint(
+                    x: (ground.x - shotRect.minX) / shotRect.size.width,
+                    y: (ground.y - shotRect.minY) / shotRect.size.height
+                )
+                let expectedRed = Int((inShot.x * 255).rounded())
+                let expectedGreen = Int((inShot.y * 255).rounded())
+                let actual = rgb(buffer, x: Int(onCanvas.x), y: Int(onCanvas.y))
+                let place = "ground (u \(u), v \(v)) at \(onCanvas) on the frame, \(inShot) in the snapshot"
+                XCTAssertEqual(actual.r, expectedRed, accuracy: 14, "red of \(place): \(actual)")
+                XCTAssertEqual(actual.g, expectedGreen, accuracy: 14, "green of \(place): \(actual)")
+                checked += 1
+            }
+        }
+        XCTAssertEqual(checked, 12)
+    }
+
+    func test_exportDrawsTheDrivenRoadInTheTripColor() throws {
         let canvas = CGSize(width: 270, height: 480)
         let route = [RoutePoint(latitude: 48.80, longitude: 2.30), RoutePoint(latitude: 48.83, longitude: 2.30)]
         let travel = RoadTripTimeline.Travel(
@@ -139,51 +176,41 @@ final class RoadTripExportFrameTests: XCTestCase {
             distanceMeters: RoadTripClusterer.haversine(route[0].coordinate, route[1].coordinate),
             route: route, duration: 6
         )
-        let window = try XCTUnwrap(RoadTripDriveCamera.windows(travel: travel, canvas: canvas).first)
-        // The snapshot of the window as MKMapSnapshotter returns it: as many
-        // points as the canvas, twice as many pixels (`options.scale = 2`).
-        let rect = mapRect(window.region)
-        let scaleX = canvas.width / rect.width
-        let scaleY = canvas.height / rect.height
-        let affine = RoadTripAffine(scaleX: scaleX, scaleY: scaleY, offsetX: -rect.minX * scaleX, offsetY: -rect.minY * scaleY)
-        let snapshot = RoadTripVideoRenderer.MapFrame(
-            base: positionCodedSnapshot(pointSize: canvas, scale: 2), pointSize: canvas,
-            points: [], fractions: [], affine: affine, window: window
-        )
-        let timeline = RoadTripTimeline(segments: [.travel(travel)])
-        let buffer = try makePixelBuffer(canvas)
         let localTime = 3.0
+        let camera = RoadTripAerialCamera.legRect(travel: travel, localTime: localTime, aspect: Double(canvas.width / canvas.height))
+        let timeline = RoadTripTimeline(segments: [.travel(travel)])
+        var map = RoadTripVideoRenderer.ExportMap()
+        map.legs = [0: [RoadTripVideoRenderer.MapShot(image: positionCodedSnapshot(pointSize: canvas, scale: 1), rect: camera)]]
+        map.roads = RoadTripVideoRenderer.roads(of: timeline)
+        let buffer = try makePixelBuffer(canvas)
 
         RoadTripVideoRenderer(session: { .shared }).drawFrame(
             at: localTime, into: buffer, clusters: [], clusterByID: [:], timeline: timeline,
-            config: makeConfig(canvas), images: [:], visuals: noCards, mapFrames: [0: [snapshot]]
+            config: makeConfig(canvas), images: [:], visuals: noCards, map: map
         )
 
-        // Ground points beside the road (away from the car, the route and the
-        // horizon haze): each must show the snapshot's color of its own place.
-        let drive = RoadTripDriveCamera.frame(travel: travel, localTime: localTime, canvas: canvas)
-        let corners = drive.sourceCorners   // front-left, front-right, back-right, back-left
-        let horizon = RoadTripDriveCamera.horizonFractionY(lookAheadMeters: drive.lookAheadMeters) * canvas.height
-        var checked = 0
-        for u in [0.06, 0.1, 0.14, 0.86, 0.9, 0.94] {
-            for v in [0.1, 0.2, 0.3, 0.45] {
-                let ground = lerp(lerp(corners[3], corners[2], u), lerp(corners[0], corners[1], u), v)
-                let onCanvas = drive.matrix.transformed(ground)
-                let inSnapshot = affine.point(ground)
-                guard onCanvas.y > horizon + canvas.height * 0.2, onCanvas.y < canvas.height * 0.96,
-                      onCanvas.x > 3, onCanvas.x < canvas.width - 3,
-                      abs(onCanvas.x - canvas.width / 2) > canvas.width * 0.3,
-                      inSnapshot.x > 2, inSnapshot.x < canvas.width - 2,
-                      inSnapshot.y > 2, inSnapshot.y < canvas.height - 2 else { continue }
-                let expectedRed = Int((inSnapshot.x / canvas.width * 255).rounded())
-                let expectedGreen = Int((inSnapshot.y / canvas.height * 255).rounded())
-                let actual = rgb(buffer, x: Int(onCanvas.x), y: Int(onCanvas.y))
-                let place = "ground (u \(u), v \(v)) at \(onCanvas) on the frame, \(inSnapshot) in the snapshot"
-                XCTAssertEqual(actual.r, expectedRed, accuracy: 14, "red of \(place): \(actual)")
-                XCTAssertEqual(actual.g, expectedGreen, accuracy: 14, "green of \(place): \(actual)")
-                checked += 1
-            }
+        // Halfway: a point of the road the car has passed is yellow, one
+        // ahead of it is still the ground.
+        let timing = RoadTripTravelTiming.frame(travel: travel, localTime: localTime)
+        XCTAssertEqual(timing.routeDrawnFraction, 0.5, accuracy: 0.05)
+        func pixel(atFraction fraction: Double) -> (r: Int, g: Int, b: Int) {
+            let point = RoadTripTravelTiming.interpolate(route, fraction: fraction)
+            let p = RoadTripAerialCamera.project(MKMapPoint(point.coordinate), in: camera, canvas: canvas)
+            return rgb(buffer, x: Int(p.x.rounded()), y: Int(p.y.rounded()))
         }
-        XCTAssertGreaterThanOrEqual(checked, 4, "too few ground points checked")
+        let driven = pixel(atFraction: 0.2)
+        XCTAssertTrue(driven.r > 220 && driven.g > 170 && driven.b < 120, "the driven road is the trip's yellow: \(driven)")
+        let ahead = pixel(atFraction: 0.8)
+        XCTAssertFalse(ahead.r > 220 && ahead.g > 170 && ahead.b < 120, "the road ahead is not drawn yet: \(ahead)")
+    }
+
+    func test_bestShotIsTheSharpestHoldingTheCamera() {
+        let image = positionCodedSnapshot(pointSize: CGSize(width: 4, height: 4), scale: 1)
+        let wide = RoadTripVideoRenderer.MapShot(image: image, rect: MKMapRect(x: 0, y: 0, width: 1000, height: 1000))
+        let close = RoadTripVideoRenderer.MapShot(image: image, rect: MKMapRect(x: 100, y: 100, width: 300, height: 300))
+        let shots = [wide, close]
+
+        XCTAssertEqual(RoadTripVideoRenderer.bestShot(shots, for: MKMapRect(x: 150, y: 150, width: 100, height: 100))?.rect.size.width, 300)
+        XCTAssertEqual(RoadTripVideoRenderer.bestShot(shots, for: MKMapRect(x: 300, y: 300, width: 400, height: 400))?.rect.size.width, 1000)
     }
 }

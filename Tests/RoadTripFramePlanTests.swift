@@ -61,8 +61,9 @@ final class RoadTripFramePlanTests: XCTestCase {
     }
 
     func test_build_keepsPhotosPerCluster() {
-        // 5 clusters × 6 photos, 4 legs — budgeted proportional shares
-        // [3,3,3,3,2], duration under the social target.
+        // 5 clusters × 6 photos, 4 short legs (2 s each): a hero per stop,
+        // then the 9 photos left of the 14 go to the climax stops first —
+        // [3,3,3,3,2] — and the film stays a short clip.
         let clusters = (0..<5).map { makeCluster(id: "c\($0)", count: 6) }
         var legs: [RoadTripLeg] = []
         for i in 0..<4 {
@@ -78,8 +79,27 @@ final class RoadTripFramePlanTests: XCTestCase {
             return nil
         }
         XCTAssertEqual(slideshowCounts, [3, 3, 3, 3, 2])
-        XCTAssertLessThanOrEqual(timeline!.totalDuration, 78.5)
-        XCTAssertGreaterThan(timeline!.totalDuration, 45)
+        XCTAssertEqual(timeline!.totalDuration, 30.5, accuracy: 0.001)
+        XCTAssertLessThanOrEqual(timeline!.totalDuration, RoadTripTimelineBuilder.targetDuration)
+    }
+
+    func test_build_everyDurationLandsOnTheBeat() throws {
+        let clusters = (0..<4).map { makeCluster(id: "c\($0)", count: 5) }
+        let legs = (0..<3).map { i in
+            RoadTripLeg(
+                fromClusterID: "c\(i)", toClusterID: "c\(i + 1)", distanceMeters: 30_000,
+                route: [RoutePoint(latitude: 48.85, longitude: 2.29), RoutePoint(latitude: 48.85 + 0.1 * Double(i + 1), longitude: 2.5)]
+            )
+        }
+        let timeline = try XCTUnwrap(RoadTripTimelineBuilder.build(clusters: clusters, legs: legs))
+        let beat = RoadTripTimelineBuilder.beat
+        for start in timeline.segmentStartTimes {
+            let beats = start / beat
+            XCTAssertEqual(beats, beats.rounded(), accuracy: 1e-9, "a cut at \(start) s is off the beat")
+        }
+        for case let .slideshow(slideshow) in timeline.segments {
+            XCTAssertEqual(slideshow.photoDurations.first, RoadTripTimelineBuilder.heroPhotoDuration, "a stop opens on its hero photo")
+        }
     }
 
     func test_build_capsPhotosPerCluster() {
@@ -91,7 +111,7 @@ final class RoadTripFramePlanTests: XCTestCase {
         for case let .slideshow(slideshow) in timeline!.segments {
             XCTAssertEqual(slideshow.assetIndices.count, 1)
         }
-        XCTAssertLessThanOrEqual(timeline!.totalDuration, 78.5)
+        XCTAssertLessThanOrEqual(timeline!.totalDuration, RoadTripTimelineBuilder.targetDuration)
     }
 
     func test_energy_arcPeaksInMiddle() {
@@ -157,14 +177,14 @@ final class RoadTripFramePlanTests: XCTestCase {
 
     // MARK: - Helpers
 
-    func test_travelDuration_clamped() {
-        // Arc-based: base = clamp(arcMeters/1200, 4.0, 9.0); return max(3.5, base*(1-0.15*energy)).
-        XCTAssertEqual(RoadTripTimelineBuilder.travelDuration(arcMeters: 0, energy: 0), 4.0)
-        XCTAssertEqual(RoadTripTimelineBuilder.travelDuration(arcMeters: 4000, energy: 0), 4.0)
-        XCTAssertEqual(RoadTripTimelineBuilder.travelDuration(arcMeters: 16000, energy: 0), 9.0, accuracy: 0.001)
-        XCTAssertEqual(RoadTripTimelineBuilder.travelDuration(arcMeters: 1_000_000, energy: 0), 9.0)
-        // Climax (energy=1) scales the leg toward the 3.5s floor.
-        XCTAssertEqual(RoadTripTimelineBuilder.travelDuration(arcMeters: 16000, energy: 1), 7.65, accuracy: 0.001)
+    func test_travelDuration_shortBurstOnTheBeat() {
+        // (1.5 + 0.6·log2(1 + km/5)) · (1 − 0.15·energy), snapped to 0.5 s, within 2…3.5 s.
+        XCTAssertEqual(RoadTripTimelineBuilder.travelDuration(arcMeters: 0, energy: 0), 2.0)
+        XCTAssertEqual(RoadTripTimelineBuilder.travelDuration(arcMeters: 2_000, energy: 0), 2.0)
+        XCTAssertEqual(RoadTripTimelineBuilder.travelDuration(arcMeters: 20_000, energy: 0), 3.0)
+        XCTAssertEqual(RoadTripTimelineBuilder.travelDuration(arcMeters: 1_000_000, energy: 0), 3.5)
+        // Climax (energy = 1) trims the leg.
+        XCTAssertEqual(RoadTripTimelineBuilder.travelDuration(arcMeters: 20_000, energy: 1), 2.5)
     }
 
     func test_selectedIndices_evenlySpaced() {
@@ -176,15 +196,50 @@ final class RoadTripFramePlanTests: XCTestCase {
         XCTAssertEqual(five.last, 9)
     }
 
-    func test_photoDurations_meanPreserved() {
-        let durations = RoadTripTimelineBuilder.photoDurations(kept: 6, multiplier: 2.6)
-        XCTAssertEqual(durations.count, 6)
-        let mean = durations.reduce(0, +) / Double(durations.count)
-        XCTAssertEqual(mean, 2.6 * RoadTripTimelineBuilder.gridUnit, accuracy: 0.001)
-        for d in durations {
-            XCTAssertGreaterThanOrEqual(d, 2.6 - 0.001)
-            XCTAssertLessThanOrEqual(d, 3.9 + 0.001)
+    func test_photoDurations_heroThenTwoBeats() {
+        XCTAssertEqual(RoadTripTimelineBuilder.photoDurations(kept: 4), [1.5, 1.0, 1.0, 1.0])
+        XCTAssertEqual(RoadTripTimelineBuilder.photoDurations(kept: 1), [1.5])
+        XCTAssertEqual(RoadTripTimelineBuilder.photoDurations(kept: 0), [])
+    }
+
+    // MARK: - Road counter
+
+    func test_drivenMeters_countsLegsBehindAndTheCarsShareOfTheCurrentOne() {
+        let first = RoadTripTimeline.Travel(
+            fromClusterID: "a", toClusterID: "b", distanceMeters: 1_000,
+            route: [RoutePoint(latitude: 0, longitude: 0), RoutePoint(latitude: 0, longitude: 0.1)], duration: 2
+        )
+        let second = RoadTripTimeline.Travel(
+            fromClusterID: "b", toClusterID: "c", distanceMeters: 1_000,
+            route: [RoutePoint(latitude: 0, longitude: 0.1), RoutePoint(latitude: 0, longitude: 0.3)], duration: 2
+        )
+        func stop(_ id: String) -> RoadTripTimeline.Segment {
+            .slideshow(RoadTripTimeline.Slideshow(clusterID: id, assetIndices: [0], photoDurations: [1], recipeOffset: 0, energy: 0.5))
         }
+        // opening 1 | a 1 | leg 2 (2…4) | b 1 | leg 2 (5…7) | c 1 | ending 1
+        let timeline = RoadTripTimeline(segments: [
+            .opening(duration: 1), stop("a"), .travel(first), stop("b"), .travel(second), stop("c"), .ending(duration: 1)
+        ])
+        let firstArc = RoadTripTimeline.arcMeters(first)
+        let secondArc = RoadTripTimeline.arcMeters(second)
+        XCTAssertEqual(firstArc, 11_120, accuracy: 50, "0.1° of longitude at the equator")
+        XCTAssertEqual(timeline.drivenMeters(at: 0.5), 0)
+        XCTAssertEqual(timeline.drivenMeters(at: 3), firstArc / 2, accuracy: 1, "half the first leg at its middle")
+        XCTAssertEqual(timeline.drivenMeters(at: 4.5), firstArc, accuracy: 1)
+        XCTAssertEqual(timeline.drivenMeters(at: 6), firstArc + secondArc / 2, accuracy: 1)
+        XCTAssertEqual(timeline.drivenMeters(at: 100), firstArc + secondArc, accuracy: 1)
+        XCTAssertEqual(timeline.totalDrivenMeters, firstArc + secondArc, accuracy: 1)
+    }
+
+    func test_distanceText_kilometersOrMilesByLocale() {
+        let french = RoadTripTimeline.distanceText(meters: 142_400, locale: Locale(identifier: "fr_FR"))
+        XCTAssertTrue(french.hasPrefix("142"), french)
+        XCTAssertTrue(french.contains("km"), french)
+        let american = RoadTripTimeline.distanceText(meters: 160_934, locale: Locale(identifier: "en_US"))
+        XCTAssertTrue(american.hasPrefix("100"), american)
+        XCTAssertTrue(american.contains("mi"), american)
+        let short = RoadTripTimeline.distanceText(meters: 2_500, locale: Locale(identifier: "en_GB"))
+        XCTAssertTrue(short.hasPrefix("1.6"), "under 10, one decimal (and miles on British roads): \(short)")
     }
 
     // MARK: - Ken Burns

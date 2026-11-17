@@ -39,15 +39,17 @@ struct RoadTripView: View {
                 .accessibilityElement(children: .combine)
                 .accessibilityIdentifier("roadTripError")
             } else if let timeline = vm.timeline {
-                // The map of the travel legs, under the pictures: it drives
-                // itself from the clock (`RoadTripLiveMap`), and shows through
-                // only while a leg plays — every other segment is opaque.
+                // The film's map, under the pictures: it drives itself from
+                // the clock (`RoadTripLiveMap`) and shows through during the
+                // opening, the legs and the ending — the photos are opaque.
                 RoadTripLiveMap(
                     timeline: timeline,
                     clock: clock,
+                    stops: vm.mapStops,
                     photo: { index, first in
                         neighborPhoto(timeline: timeline, segmentIndex: index, edge: first ? .first : .last)
                     },
+                    stopPhoto: { clusterID in vm.heroImage(forClusterID: clusterID) },
                     legLabel: { travel in
                         "\(vm.placeName(forClusterID: travel.fromClusterID)) → \(vm.placeName(forClusterID: travel.toClusterID))"
                     }
@@ -68,11 +70,9 @@ struct RoadTripView: View {
         }
         .statusBarHidden(true)
         .task { await vm.prepare() }
-        .onDisappear { vm.cancelExport() }
-        .alert("Video saved", isPresented: doneAlertBinding) {
-            Button("OK", role: .cancel) { vm.dismissExportResult() }
-        } message: {
-            Text("The road trip was added to your photo library.")
+        .onDisappear {
+            vm.cancelExport()
+            vm.discardExportedVideo()
         }
         .alert("Export failed", isPresented: failedAlertBinding) {
             Button("OK", role: .cancel) { vm.dismissExportResult() }
@@ -122,17 +122,18 @@ struct RoadTripView: View {
 
         ZStack(alignment: .bottom) {
             switch segment {
-            case .opening:
-                openingView
+            case .opening(let duration):
+                openingView(progress: local / max(duration, 0.001))
             case .slideshow(let slideshow):
                 if let cluster = vm.cluster(by: slideshow.clusterID) {
                     slideshowView(slideshow: slideshow, cluster: cluster, localTime: local)
                 }
             case .travel:
-                // The live map underneath shows through.
-                EmptyView()
-            case .ending:
-                endingView
+                // The live map underneath shows through, the road counter
+                // ticking over it.
+                distanceCounter(meters: timeline.drivenMeters(at: clamped))
+            case .ending(let duration):
+                endingView(progress: local / max(duration, 0.001))
             }
 
             if timeline.totalDuration > 0 {
@@ -171,6 +172,9 @@ struct RoadTripView: View {
                     .offset(x: transform.offsetX * proxy.size.width, y: transform.offsetY * proxy.size.height)
                     .clipped()
             }
+            // Edge to edge, like the exported video: no band of map or black
+            // above the photo.
+            .ignoresSafeArea()
             .accessibilityElement(children: .ignore)
             .accessibilityIdentifier("roadTripSlide_\(asset.id)")
         } else {
@@ -178,64 +182,124 @@ struct RoadTripView: View {
         }
     }
 
-    private var openingView: some View {
-        ZStack {
-            Color.black.ignoresSafeArea()
-            VStack(spacing: 24) {
-                Spacer()
+    /// The hook: the album's title over the whole trip on the map (pushing
+    /// in underneath), or over black when nothing is located.
+    private func openingView(progress: Double) -> some View {
+        let appear = RoadTripAerialCamera.easeOut(min(progress / 0.25, 1))
+        return ZStack(alignment: .top) {
+            if vm.mapStops.isEmpty {
+                Color.black.ignoresSafeArea()
+            } else {
+                titleScrim
+            }
+            VStack(spacing: 12) {
                 Text("Road Trip")
                     .font(.pvCaption.weight(.semibold))
                     .tracking(3)
-                    .foregroundStyle(.white.opacity(0.7))
+                    .foregroundStyle(.white.opacity(0.8))
                 Text(vm.albumTitle)
                     .font(.pvH2)
                     .foregroundStyle(.white)
                     .multilineTextAlignment(.center)
                 Text(openingSubtitle)
-                    .font(.pvSubhead)
-                    .foregroundStyle(.white.opacity(0.85))
-                Spacer()
+                    .font(.pvSubhead.weight(.semibold))
+                    .foregroundStyle(.white.opacity(0.9))
+                    .multilineTextAlignment(.center)
             }
-            .padding(48)
+            .shadow(color: .black.opacity(0.55), radius: 6, y: 2)
+            .padding(.horizontal, 32)
+            .padding(.top, 96)
+            .scaleEffect(0.9 + 0.1 * appear)
+            .opacity(appear)
+            .accessibilityElement(children: .combine)
         }
     }
 
+    /// "8 photos · 8 places · 142 km".
     private var openingSubtitle: String {
         let photoCount = vm.clusters.reduce(0) { $0 + $1.assets.count }
         let placeCount = vm.clusters.count
-        return String(localized: "\(photoCount) photos · \(placeCount) places")
+        let counts = String(localized: "\(photoCount) photos · \(placeCount) places")
+        guard let meters = vm.timeline?.totalDrivenMeters, meters > 0 else { return counts }
+        return counts + " · " + RoadTripTimeline.distanceText(meters: meters)
     }
 
-    private var endingView: some View {
+    /// The finale: the whole route drawn on the map, a photo popping on every
+    /// stop, the title and the trip's numbers over it.
+    private func endingView(progress: Double) -> some View {
         let places = RoadTripTimeline.dedupedPlaceNames(vm.clusters.indices.map { vm.placeName(forClusterIndex: $0) })
-        return ZStack {
-            LinearGradient(
-                colors: [Color(red: 0.11, green: 0.07, blue: 0.05), Color.black],
-                startPoint: .top,
-                endPoint: .bottom
-            )
-            .ignoresSafeArea()
-            VStack(spacing: 16) {
-                Spacer()
+        let appear = RoadTripAerialCamera.easeOut(min(progress / 0.2, 1))
+        return ZStack(alignment: .top) {
+            if vm.mapStops.isEmpty {
+                LinearGradient(
+                    colors: [Color(red: 0.11, green: 0.07, blue: 0.05), Color.black],
+                    startPoint: .top,
+                    endPoint: .bottom
+                )
+                .ignoresSafeArea()
+            } else {
+                titleScrim
+            }
+            VStack(spacing: 10) {
                 Text("Road Trip")
                     .font(.pvCaption.weight(.semibold))
                     .tracking(3)
-                    .foregroundStyle(Color(red: 1, green: 0.82, blue: 0.62).opacity(0.9))
+                    .foregroundStyle(Color(red: 1, green: 0.82, blue: 0.62))
                 Text(vm.albumTitle)
                     .font(.pvH3)
                     .foregroundStyle(.white)
                     .multilineTextAlignment(.center)
-                VStack(spacing: 10) {
-                    ForEach(Array(places.enumerated()), id: \.offset) { index, place in
-                        Text(place)
-                            .font(.pvSubhead)
-                            .foregroundStyle(.white.opacity(0.85))
+                Text(openingSubtitle)
+                    .font(.pvSubhead.weight(.semibold))
+                    .foregroundStyle(.white.opacity(0.9))
+                    .multilineTextAlignment(.center)
+                if vm.mapStops.isEmpty {
+                    VStack(spacing: 10) {
+                        ForEach(Array(places.enumerated()), id: \.offset) { _, place in
+                            Text(place)
+                                .font(.pvSubhead)
+                                .foregroundStyle(.white.opacity(0.85))
+                        }
                     }
+                    .padding(.top, 8)
                 }
-                Spacer()
             }
-            .padding(48)
+            .shadow(color: .black.opacity(0.55), radius: 6, y: 2)
+            .padding(.horizontal, 32)
+            .padding(.top, 84)
+            .opacity(appear)
+            .accessibilityElement(children: .combine)
         }
+    }
+
+    /// Darkens the top of the map under a title.
+    private var titleScrim: some View {
+        LinearGradient(
+            colors: [Color.black.opacity(0.75), Color.black.opacity(0.35), Color.black.opacity(0)],
+            startPoint: .top,
+            endPoint: .center
+        )
+        .ignoresSafeArea()
+        .allowsHitTesting(false)
+    }
+
+    /// The road driven so far, ticking up over the map while the car drives.
+    private func distanceCounter(meters: Double) -> some View {
+        VStack {
+            HStack(spacing: 8) {
+                Image(systemName: "car.fill")
+                    .font(.system(size: 22, weight: .bold))
+                Text(verbatim: RoadTripTimeline.distanceText(meters: meters))
+                    .font(.system(size: 34, weight: .heavy, design: .rounded))
+                    .monospacedDigit()
+            }
+            .foregroundStyle(.white)
+            .shadow(color: .black.opacity(0.6), radius: 6, y: 2)
+            .padding(.top, 72)
+            .accessibilityHidden(true)
+            Spacer()
+        }
+        .frame(maxWidth: .infinity)
     }
 
     private func bottomProgress(segment: RoadTripTimeline.Segment, fraction: Double, finished: Bool) -> some View {
@@ -291,6 +355,7 @@ struct RoadTripView: View {
             topBar
             Spacer()
             if vm.isExporting { exportOverlay }
+            if vm.exportState == .done { savedOverlay }
         }
     }
 
@@ -368,11 +433,45 @@ struct RoadTripView: View {
         }
     }
 
-    // MARK: - Alerts
-
-    private var doneAlertBinding: Binding<Bool> {
-        Binding(get: { vm.exportState == .done }, set: { if !$0 { vm.dismissExportResult() } })
+    /// The film is in the photo library: share it straight away (Instagram,
+    /// TikTok, Messages…).
+    private var savedOverlay: some View {
+        VStack(spacing: 14) {
+            Label("Video saved", systemImage: "checkmark.circle.fill")
+                .font(.pvHeadline)
+                .foregroundStyle(.white)
+            Text("The road trip was added to your photo library.")
+                .font(.pvCaption)
+                .foregroundStyle(PVFloating.secondaryContent)
+                .multilineTextAlignment(.center)
+            HStack(spacing: 12) {
+                if let url = vm.exportedVideoURL {
+                    ShareLink(item: url) {
+                        Label("Share", systemImage: "square.and.arrow.up")
+                            .font(.pvSubhead.weight(.semibold))
+                            .foregroundStyle(.black)
+                            .padding(.horizontal, 18)
+                            .padding(.vertical, 10)
+                            .background(Capsule().fill(Color.white))
+                    }
+                    .accessibilityIdentifier("roadTripShareButton")
+                }
+                Button("OK") { vm.dismissExportResult() }
+                    .font(.pvSubhead.weight(.semibold))
+                    .foregroundStyle(.white)
+                    .padding(.horizontal, 18)
+                    .padding(.vertical, 10)
+                    .accessibilityIdentifier("roadTripSavedOKButton")
+            }
+        }
+        .padding(24)
+        .pvFloating(.bar)
+        .padding(.horizontal, 24)
+        .padding(.bottom, 60)
+        .accessibilityIdentifier("roadTripSaved")
     }
+
+    // MARK: - Alerts
 
     private var failedAlertBinding: Binding<Bool> {
         Binding(get: { if case .failed = vm.exportState { return true } else { return false } },

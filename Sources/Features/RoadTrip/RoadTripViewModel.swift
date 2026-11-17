@@ -60,6 +60,9 @@ final class RoadTripViewModel {
 
     private(set) var exportState: ExportState = .idle
     private(set) var isExporting = false
+    /// The exported film, kept once it is in the photo library so the player
+    /// can hand it to the share sheet; removed when the result is dismissed.
+    private(set) var exportedVideoURL: URL?
 
     private var renderTask: Task<Void, Never>?
     private var lastReportedProgress = 0.0
@@ -206,14 +209,28 @@ final class RoadTripViewModel {
     nonisolated static func warmLegGeometry(_ travels: [RoadTripTimeline.Travel]) {
         for travel in travels {
             _ = RoadTripTravelTiming.frame(travel: travel, localTime: 0)
-            _ = RoadTripDriveCamera.cameraState(travel: travel, localTime: 0)
-            _ = RoadTripDriveCamera.carHeading(travel: travel, localTime: 0)
-            _ = RoadTripDriveCamera.carYaw(travel: travel, localTime: 0, bearing: 0)
+            _ = RoadTripAerialCamera.carHeading(travel: travel, localTime: 0)
         }
     }
 
     func cluster(by id: String) -> RoadTripCluster? {
         clusters.first { $0.id == id }
+    }
+
+    /// The trip's located stops, in film order: the pins of the map.
+    var mapStops: [RoadTripMapStop] {
+        RoadTripMapStop.stops(of: clusters)
+    }
+
+    /// The photo a stop opens on (its hero), shown on the ending's map.
+    func heroImage(forClusterID id: String) -> UIImage? {
+        guard let timeline, let cluster = cluster(by: id) else { return nil }
+        for segment in timeline.segments {
+            guard case .slideshow(let slideshow) = segment, slideshow.clusterID == id,
+                  let first = slideshow.assetIndices.first, cluster.assets.indices.contains(first) else { continue }
+            return slideImage(for: cluster.assets[first])
+        }
+        return nil
     }
 
     /// "Paris, France" or a "Stop N" fallback (stable, localized).
@@ -500,10 +517,19 @@ final class RoadTripViewModel {
                 ) { progress in
                     Task { @MainActor [weak self] in self?.reportProgress(progress) }
                 }
-                guard let self else { return }
+                guard let self else {
+                    try? FileManager.default.removeItem(at: url)
+                    return
+                }
                 self.exportState = .saving
-                _ = try await photos.saveVideo(at: url)
-                try? FileManager.default.removeItem(at: url)
+                do {
+                    _ = try await photos.saveVideo(at: url)
+                } catch {
+                    try? FileManager.default.removeItem(at: url)
+                    throw error
+                }
+                self.discardExportedVideo()
+                self.exportedVideoURL = url
                 self.exportState = .done
                 self.isExporting = false
             } catch is CancellationError {
@@ -542,6 +568,15 @@ final class RoadTripViewModel {
 
     func dismissExportResult() {
         exportState = .idle
+        discardExportedVideo()
+    }
+
+    /// Removes the exported film's temporary file (the photo library keeps
+    /// its own copy).
+    func discardExportedVideo() {
+        guard let url = exportedVideoURL else { return }
+        exportedVideoURL = nil
+        try? FileManager.default.removeItem(at: url)
     }
 
     private func reportProgress(_ progress: Double) {

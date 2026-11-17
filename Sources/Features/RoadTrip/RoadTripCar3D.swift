@@ -26,12 +26,11 @@ enum RoadTripCar3D {
     private static let sprites: [CGImage] = generateSprites()
     private static let chaseSprites: [CGImage] = generateChaseSprites()
 
-    /// Warms both sprite caches synchronously. Call off the main thread during
-    /// prepare (or from the renderer, where they're already warm) so the map
-    /// leg never blocks on its first appearance.
+    /// Warms the top-down sprite cache (the film's aerial map) synchronously.
+    /// Call off the main thread during prepare (or from the renderer, where
+    /// it's already warm) so the map leg never blocks on its first appearance.
     static func warm() {
         _ = sprites
-        _ = chaseSprites
     }
 
     /// Sprite for a compass bearing (radians, north = 0, clockwise).

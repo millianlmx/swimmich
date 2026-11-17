@@ -28,9 +28,9 @@ struct RoadTripLeg: Equatable, Sendable {
 
 /// The fully-resolved, deterministic show plan. Both the live player and the
 /// export renderer consume the same timeline — same seeds, same durations,
-/// same transforms — so positions and motion match. (Travel legs: the player
-/// renders real 3D MapKit; the export simulates the same chase perspective
-/// from 2D snapshots via `RoadTripDriveCamera`.)
+/// same transforms — so positions and motion match. (Map shots: the player
+/// moves a live MapKit view, the export crops satellite snapshots, both
+/// through `RoadTripAerialCamera`.)
 struct RoadTripTimeline: Equatable, Sendable {
 
     struct Slideshow: Equatable, Sendable {
@@ -115,33 +115,91 @@ struct RoadTripTimeline: Equatable, Sendable {
     }
 }
 
+extension RoadTripTimeline {
+
+    /// The road length of a leg: its route's arc (a winding road is longer
+    /// than its chord), the straight distance when it has no route.
+    static func arcMeters(_ travel: Travel) -> Double {
+        guard travel.route.count >= 2 else { return travel.distanceMeters }
+        return RoadTripTravelTiming.cumulativeLengths(travel.route).last ?? travel.distanceMeters
+    }
+
+    /// The whole trip's road length.
+    var totalDrivenMeters: Double {
+        segments.reduce(0) { total, segment in
+            if case .travel(let travel) = segment { return total + Self.arcMeters(travel) }
+            return total
+        }
+    }
+
+    /// Road driven by film time `t`: every leg before, and the leg being
+    /// driven up to the car — the counter that ticks up over the map.
+    func drivenMeters(at t: TimeInterval) -> Double {
+        guard !segments.isEmpty else { return 0 }
+        guard t < totalDuration else { return totalDrivenMeters }
+        let (index, local) = localTime(at: max(t, 0))
+        var meters = 0.0
+        for (i, segment) in segments.enumerated() where i <= index {
+            guard case .travel(let travel) = segment else { continue }
+            if i < index {
+                meters += Self.arcMeters(travel)
+            } else {
+                let frame = RoadTripTravelTiming.frame(travel: travel, localTime: local)
+                meters += Self.arcMeters(travel) * min(max(frame.routeDrawnFraction, 0), 1)
+            }
+        }
+        return meters
+    }
+
+    /// "142 km" (miles where the road signs are in miles), one decimal under 10.
+    static func distanceText(meters: Double, locale: Locale = .current) -> String {
+        let unit: UnitLength = locale.measurementSystem == .metric ? .kilometers : .miles
+        let value = Measurement(value: max(meters, 0), unit: UnitLength.meters).converted(to: unit).value
+        return Measurement(value: value, unit: unit).formatted(
+            .measurement(
+                width: .abbreviated,
+                usage: .asProvided,
+                numberFormatStyle: .number.precision(.fractionLength(value < 10 ? 1 : 0))
+            )
+            .locale(locale)
+        )
+    }
+}
+
 // MARK: - Builder + pacing
 
 /// Builds the timeline from clusters + legs — the "best of the trip" film.
 ///
-/// Structure: a deterministic energy arc across the trip (build-up → climax →
-/// resolution) drives photo durations (on a rhythm grid), travel pacing and
-/// Ken Burns speed. A global budget keeps the film at the social-media target
-/// (~78 s max), the best photos are picked first (favorites weighted, quality
-/// scored), and every duration stays quantized so the cuts land on a steady
-/// tempo even without music.
+/// Cut for the vertical travel videos people share (Reels, TikTok, Shorts): a
+/// map hook in the first two seconds, then a quick beat — every cut lands on a
+/// 120 BPM grid (`beat`), a stop opens on its hero photo held three beats and
+/// the others hold two, and a leg is a short burst of map (2–3.5 s, longer for
+/// a longer road) where the trip's line draws itself behind the car. A global
+/// budget keeps the film around `targetDuration`; the best photos are picked
+/// first (favorites weighted, quality scored).
 enum RoadTripTimelineBuilder {
 
-    static let openingDuration: TimeInterval = 2.5
-    static let endingDuration: TimeInterval = 3.5
-    /// Hard duration target: budgets shrink toward it (social-media friendly).
-    /// Raised from 78 s to fund slower, readable travel legs.
-    static let targetDuration: TimeInterval = 90
-    /// Rhythm grid — photo durations are multiples of this unit.
-    static let gridUnit: TimeInterval = 1.3
+    /// The tempo every duration snaps to: one beat at 120 BPM, so a trending
+    /// sound laid over the export in Instagram or TikTok falls on the cuts.
+    static let beat: TimeInterval = 0.5
+    /// The hook: the whole trip on the map under its title.
+    static let openingDuration: TimeInterval = 4 * beat
+    /// The finale: the whole route drawn, a photo on every stop.
+    static let endingDuration: TimeInterval = 8 * beat
+    /// Soft duration target the photo budget shrinks toward.
+    static let targetDuration: TimeInterval = 40
+    /// A stop opens on its hero photo, held this long…
+    static let heroPhotoDuration: TimeInterval = 3 * beat
+    /// …and its other photos cut on every second beat.
+    static let photoDuration: TimeInterval = 2 * beat
     static let maxPhotosPerCluster: Int = 6
     /// Desired photo count across the whole trip (duration is the hard cap).
-    /// Trimmed from 18 so the slower travel legs still fit the budget.
     static let desiredTotalPhotos = 14
-    static let crossfadeDuration: TimeInterval = 0.4
-    /// Photo duration multipliers (grid units) at peak / lowest energy.
-    static let maxMultiplier = 3.0
-    static let minMultiplier = 1.0
+    /// A quick dissolve between two photos of a stop: reads as a cut.
+    static let crossfadeDuration: TimeInterval = 0.15
+    /// Bounds of a leg's duration.
+    static let minTravelDuration: TimeInterval = 4 * beat
+    static let maxTravelDuration: TimeInterval = 7 * beat
 
     /// Energy arc across the cluster sequence: 0.35 → 1 (middle) → 0.35.
     static func energy(at index: Int, count: Int) -> Double {
@@ -150,19 +208,14 @@ enum RoadTripTimelineBuilder {
         return 0.35 + 0.65 * sin(.pi * x)
     }
 
-    /// Travel duration from the leg's ARC length + energy. The old formula
-    /// paced a 6 km leg at 2.5 s (2.4 km/s) — hairpins crossed in 1–2 frames,
-    /// which is what made winding roads strobe. Now: ~1.2 km/s, 4–9 s per
-    /// leg, so any corner receives ≥ 3 frames. Winding legs use their arc
-    /// (≫ chord), not the straight-line distance.
+    /// A leg's duration from its road's ARC length: logarithmic, so a 2 km hop
+    /// and a 200 km drive both stay a short burst of map (2–3.5 s), a little
+    /// shorter at the trip's climax, snapped to the beat.
     static func travelDuration(arcMeters: Double, energy: Double) -> TimeInterval {
-        let base = min(max(arcMeters / 1_200.0, 4.0), 9.0)
-        return max(3.5, base * (1.0 - 0.15 * energy))
-    }
-
-    /// Photo duration multiplier (grid units) at the given energy.
-    static func photoMultiplier(energy: Double) -> Double {
-        maxMultiplier - (maxMultiplier - minMultiplier) * min(max(energy, 0), 1)
+        let km = max(arcMeters, 0) / 1_000
+        let raw = (1.5 + 0.6 * log2(1 + km / 5)) * (1.0 - 0.15 * min(max(energy, 0), 1))
+        let snapped = (raw / beat).rounded() * beat
+        return min(max(snapped, minTravelDuration), maxTravelDuration)
     }
 
     static func build(
@@ -189,23 +242,29 @@ enum RoadTripTimelineBuilder {
             travelTotal += duration
         }
 
-        // Pass 2: photo budget — fit the remaining time under the target.
-        let photoTimeBudget = max(gridUnit, targetDuration - openingDuration - endingDuration - travelTotal)
-        let desiredPhotos = min(desiredTotalPhotos, max(clusters.count, Int(photoTimeBudget / gridUnit)))
+        // Pass 2: photo budget — every stop gets its hero photo, the time left
+        // under the target buys the others, the climax stops first.
+        let photoTimeBudget = targetDuration - openingDuration - endingDuration - travelTotal
+        let heroTotal = heroPhotoDuration * Double(clusters.count)
+        let affordable = max(0, Int(((photoTimeBudget - heroTotal) / photoDuration).rounded(.down)))
+        var extra = min(max(desiredTotalPhotos - clusters.count, 0), affordable)
 
         let caps = clusters.map { min($0.assets.count, maxPhotosPerCluster) }
-        let capTotal = caps.reduce(0, +)
-        var counts = caps.map { cap in
-            capTotal > 0 ? max(1, Int((Double(desiredPhotos) * Double(cap) / Double(capTotal)).rounded())) : 1
+        var counts = clusters.map { _ in 1 }
+        let byEnergy = clusters.indices.sorted { a, b in
+            let ea = energy(at: a, count: clusters.count)
+            let eb = energy(at: b, count: clusters.count)
+            if abs(ea - eb) > 1e-9 { return ea > eb }
+            return a < b
         }
-        // Trim the largest shares (from the end, deterministic) until the
-        // budget holds — never below one photo per stop.
-        while counts.reduce(0, +) > desiredPhotos {
-            var drop = counts.count - 1
-            for i in stride(from: counts.count - 1, through: 0, by: -1) where counts[i] > counts[drop] {
-                drop = i
+        while extra > 0 {
+            var granted = false
+            for i in byEnergy where extra > 0 && counts[i] < caps[i] {
+                counts[i] += 1
+                extra -= 1
+                granted = true
             }
-            if counts[drop] > 1 { counts[drop] -= 1 } else { break }
+            if !granted { break }
         }
 
         var slideshows: [RoadTripTimeline.Slideshow] = []
@@ -216,7 +275,7 @@ enum RoadTripTimelineBuilder {
             slideshows.append(RoadTripTimeline.Slideshow(
                 clusterID: cluster.id,
                 assetIndices: indices,
-                photoDurations: photoDurations(kept: indices.count, multiplier: photoMultiplier(energy: e)),
+                photoDurations: photoDurations(kept: indices.count),
                 recipeOffset: stableHash(cluster.id),
                 energy: e
             ))
@@ -269,18 +328,11 @@ enum RoadTripTimelineBuilder {
         return (0..<k).map { Int((Double($0) * Double(count - 1) / Double(k - 1)).rounded()) }
     }
 
-    /// Per-photo durations on the rhythm grid, alternating ⌈m⌉/⌊m⌋ units so
-    /// the mean stays at `multiplier` units (last duration absorbs the
-    /// remainder) — a musical feel that holds the budget.
-    static func photoDurations(kept: Int, multiplier: Double) -> [TimeInterval] {
+    /// Per-photo durations on the beat grid: the hero photo holds three
+    /// beats, every other photo two.
+    static func photoDurations(kept: Int) -> [TimeInterval] {
         guard kept > 0 else { return [] }
-        let low = max(1.0, floor(multiplier))
-        let high = max(low, ceil(multiplier))
-        var result = (0..<kept).map { i in (i % 2 == 0 ? high : low) * gridUnit }
-        let target = multiplier * gridUnit * Double(kept)
-        let sum = result.reduce(0, +)
-        result[kept - 1] += target - sum
-        return result
+        return [heroPhotoDuration] + Array(repeating: photoDuration, count: kept - 1)
     }
 
     /// FNV-1a-ish stable hash (deterministic across launches) for recipe salts.
@@ -414,7 +466,7 @@ enum RoadTripSlideTiming {
 enum RoadTripSegue {
     /// Slideshow→travel: the last photo of the outgoing slideshow fades out
     /// over the first moments of the map leg.
-    static let photoFadeOutDuration: TimeInterval = 0.4
+    static let photoFadeOutDuration: TimeInterval = 0.3
     /// Travel→slideshow: the "arrival dive" window at the tail of the leg —
     /// a pin pops at the destination, the first photo of the next stop
     /// thumbnails up from the pin and fills the screen as the map fades.
@@ -460,6 +512,15 @@ enum RoadTripSegue {
             y: from.minY + (to.minY - from.minY) * t,
             width: from.width + (to.width - from.width) * t,
             height: from.height + (to.height - from.height) * t
+        )
+    }
+
+    /// A projected point kept inside the canvas margins, so the arrival pin
+    /// never pops at the screen edge.
+    static func clampedToMargins(_ point: CGPoint, canvas: CGSize) -> CGPoint {
+        CGPoint(
+            x: min(max(point.x, canvas.width * 0.12), canvas.width * 0.88),
+            y: min(max(point.y, canvas.height * 0.15), canvas.height * 0.85)
         )
     }
 

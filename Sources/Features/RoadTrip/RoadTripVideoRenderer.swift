@@ -1,8 +1,6 @@
 import Foundation
 import AVFoundation
 import CoreGraphics
-import CoreImage
-import CoreImage.CIFilterBuiltins
 import ImageIO
 import UIKit
 import MapKit
@@ -16,22 +14,22 @@ struct RoadTripRenderConfig: Sendable {
     let reduceMotion: Bool
 }
 
-/// Renders the deterministic road-trip timeline into an H.264 `.mp4`.
+/// Renders the deterministic road-trip timeline into an HEVC `.mp4`: a
+/// 1080 × 1920 vertical video cut for Reels, TikTok and Shorts.
 ///
-/// Pipeline (optimized):
+/// Pipeline:
 /// 1. Photos downloaded once (authenticated), decoded once to `CGImage`.
-/// 2. Map legs snapshotted once via `MKMapSnapshotter` — a chain of window
-///    regions per leg covering the whole route (portrait, night-mode overlay
-///    applied at draw time).
-/// 3. Title cards pre-rendered once via `ImageRenderer`.
+/// 2. The map from satellite snapshots (`MKMapSnapshotter`): one of the whole
+///    trip for the opening and the ending, and per leg (taken when the leg
+///    comes up, released after it) one of all the ground its camera shows plus
+///    sharper close-ups of its start and its end. Each frame crops the
+///    sharpest snapshot holding the camera's rect (`RoadTripAerialCamera`, the
+///    live player's camera) and draws the trip's line, the stops, the car and
+///    the road counter over it.
+/// 3. Title cards and leg labels pre-rendered once.
 /// 4. Frame loop draws straight into `CVPixelBuffer`s from a reuse pool with
-///    Core Graphics (no per-frame SwiftUI layout; the map's perspective warp
-///    through Core Image), streamed to `AVAssetWriter`. The context is y-down:
-///    every bitmap goes through `drawUpright`.
-/// The live player shares the same timing math and the same chase-camera
-/// geometry (`RoadTripDriveCamera`); the player renders real 3D MapKit while
-/// the export warps the 2D snapshots into that driving perspective, so car
-/// positions, headings and motion match.
+///    Core Graphics (no per-frame SwiftUI layout), streamed to `AVAssetWriter`.
+///    The context is y-down: every bitmap goes through `drawUpright`.
 final class RoadTripVideoRenderer: @unchecked Sendable {
 
     /// The process-wide road-trip session (`ServerSessions.roadTrip`): trust
@@ -44,34 +42,41 @@ final class RoadTripVideoRenderer: @unchecked Sendable {
 
     // MARK: - Prepared visuals
 
-    /// One snapshot window of a map leg: the image, the route points mapped
-    /// into its point space (parallel `fractions` of the route arc length),
-    /// and the exact map-point → snapshot-point affine.
-    ///
-    /// `affine` lands in snapshot POINTS (`MKMapSnapshotter.Snapshot.point(for:)`),
-    /// while `base` holds `pointSize × scale` pixels: the warp converts.
-    struct MapFrame {
-        let base: CGImage
-        /// Size of the snapshot in points (`snapshot.image.size`).
-        let pointSize: CGSize
-        let points: [CGPoint]
+    /// A satellite snapshot of the film's map and the exact map rect it covers.
+    struct MapShot {
+        let image: CGImage
+        let rect: MKMapRect
+    }
+
+    /// A leg's road as drawn: map points and their arc fractions.
+    struct Road {
+        let points: [MKMapPoint]
         let fractions: [Double]
-        let affine: RoadTripAffine
-        let window: RoadTripDriveWindow
+    }
+
+    /// Everything the map frames draw.
+    struct ExportMap {
+        /// The whole trip: the opening and the ending.
+        var overview: [MapShot] = []
+        /// Each leg's snapshots, by segment index — only the leg being drawn.
+        var legs: [Int: [MapShot]] = [:]
+        /// Each leg's road, by segment index.
+        var roads: [Int: Road] = [:]
+        /// The located stops, in film order.
+        var stops: [RoadTripMapStop] = []
+        /// The photo each stop opens on (cluster id → image): the ending's pins.
+        var heroes: [String: CGImage] = [:]
+
+        static let empty = ExportMap()
     }
 
     struct VisualAssets {
         let opening: CGImage?
         let ending: CGImage?
         let intertitles: [String: CGImage]
+        /// "Paris, France → Versailles, France" pills, by leg segment index.
+        var legLabels: [Int: CGImage] = [:]
     }
-
-    /// Renders the map warp (one context for the whole export).
-    private let ciContext = CIContext(options: [
-        .workingColorSpace: CGColorSpace(name: CGColorSpace.sRGB)!,
-        .outputColorSpace: CGColorSpace(name: CGColorSpace.sRGB)!,
-        .cacheIntermediates: false
-    ])
 
     // MARK: - Public entry point
 
@@ -178,112 +183,113 @@ final class RoadTripVideoRenderer: @unchecked Sendable {
         config: RoadTripRenderConfig
     ) async -> VisualAssets {
         var intertitles: [String: CGImage] = [:]
+        var names: [String: String] = [:]
         for (i, cluster) in clusters.enumerated() {
             let name = cluster.placeName?.isEmpty == false ? cluster.placeName! : String(localized: "Stop \(i + 1)")
+            names[cluster.id] = name
             intertitles[cluster.id] = Self.intertitleCard(placeName: name, size: config.size)
+        }
+        var legLabels: [Int: CGImage] = [:]
+        for (index, segment) in timeline.segments.enumerated() {
+            guard case .travel(let travel) = segment else { continue }
+            let label = "\(names[travel.fromClusterID] ?? "") → \(names[travel.toClusterID] ?? "")"
+            legLabels[index] = Self.pillCard(label, canvas: config.size)
         }
 
         let photoCount = clusters.reduce(0) { $0 + $1.assets.count }
         let placeNames = RoadTripTimeline.dedupedPlaceNames(clusters.map { $0.placeName ?? "" })
+        let meters = timeline.totalDrivenMeters
+        let overMap = !RoadTripMapStop.stops(of: clusters).isEmpty
         RoadTripCar3D.warm()
         return VisualAssets(
             opening: Self.openingCard(
                 albumTitle: config.albumTitle, photoCount: photoCount,
-                placeCount: placeNames.count, size: config.size
+                placeCount: clusters.count, meters: meters, overMap: overMap, size: config.size
             ),
             ending: Self.endingCard(
-                albumTitle: config.albumTitle, places: placeNames, size: config.size
+                albumTitle: config.albumTitle, photoCount: photoCount, placeCount: clusters.count,
+                meters: meters, places: placeNames, overMap: overMap, size: config.size
             ),
-            intertitles: intertitles
+            intertitles: intertitles,
+            legLabels: legLabels
         )
     }
 
-    /// Snapshots a single travel leg's map windows. Called lazily per leg (not
-    /// all at once) so the export's peak memory stays bounded to one leg's
-    /// snapshots instead of the whole trip's.
+    /// The whole trip, for the opening and the ending: one snapshot holding
+    /// every rect they show.
     @MainActor
-    private func snapshotLeg(
-        travel: RoadTripTimeline.Travel,
-        config: RoadTripRenderConfig
-    ) async -> [MapFrame] {
-        guard travel.route.count >= 2 else { return [] }
-        // Densify once per leg so the warped polylines stay smooth at the
-        // driving view's zoom level.
-        let cumulative = RoadTripTravelTiming.cumulativeLengths(travel.route)
-        let total = cumulative.last ?? 0
-        let fractions = cumulative.map { total > 0 ? $0 / total : 0 }
-        let dense = RoadTripDriveCamera.densified(route: travel.route, fractions: fractions, spacing: 40)
-        let windows = RoadTripDriveCamera.windows(travel: travel, canvas: config.size)
-        var frames: [MapFrame] = []
-        for window in windows {
-            do {
-                let snapshot = try await makeSnapshot(region: window.region, size: config.size)
-                guard let cg = snapshot.image.cgImage else { continue }
-                let affine = Self.affine(for: snapshot, region: window.region)
-                var points: [CGPoint] = []
-                var denseFracs: [Double] = []
-                for (i, point) in dense.points.enumerated() {
-                    guard dense.fractions[i] >= window.startFraction - 0.05 else { continue }
-                    let mp = MKMapPoint(point.coordinate)
-                    points.append(affine.point(CGPoint(x: mp.x, y: mp.y)))
-                    denseFracs.append(dense.fractions[i])
-                }
-                frames.append(MapFrame(
-                    base: cg, pointSize: snapshot.image.size, points: points, fractions: denseFracs,
-                    affine: affine, window: window
-                ))
-            } catch {
-                // Fallback: no map — drawTravel renders a dark frame.
-            }
-        }
-        return frames
+    private func snapshotOverview(timeline: RoadTripTimeline, stops: [RoadTripMapStop], canvas: CGSize) async -> [MapShot] {
+        let aspect = Double(canvas.width / canvas.height)
+        guard let overview = RoadTripAerialCamera.overview(timeline: timeline, stops: stops, aspect: aspect) else { return [] }
+        let rect = RoadTripAerialCamera.scaled(overview, by: RoadTripAerialCamera.openingPullFactor * 1.04)
+        guard let shot = await snapshot(rect, canvas: canvas, oversample: 1.5) else { return [] }
+        return [shot]
     }
 
+    /// A leg's snapshots: all the ground its camera shows, and sharper
+    /// close-ups of its start and its end (where the camera is closest).
     @MainActor
-    private func makeSnapshot(region: MKCoordinateRegion, size: CGSize) async throws -> MKMapSnapshotter.Snapshot {
+    private func snapshotLeg(travel: RoadTripTimeline.Travel, canvas: CGSize) async -> [MapShot] {
+        guard travel.route.count >= 2 else { return [] }
+        let aspect = Double(canvas.width / canvas.height)
+        let envelope = RoadTripAerialCamera.scaled(RoadTripAerialCamera.legEnvelope(travel: travel, aspect: aspect), by: 1.06)
+        let start = RoadTripAerialCamera.scaled(RoadTripAerialCamera.legRect(travel: travel, localTime: 0, aspect: aspect), by: 1.4)
+        let end = RoadTripAerialCamera.scaled(RoadTripAerialCamera.legRect(travel: travel, localTime: travel.duration, aspect: aspect), by: 1.4)
+        var shots: [MapShot] = []
+        for (rect, oversample) in [(envelope, 2.0), (start, 1.5), (end, 1.5)] {
+            if Task.isCancelled { break }
+            if let shot = await snapshot(rect, canvas: canvas, oversample: CGFloat(oversample)) {
+                shots.append(shot)
+            }
+        }
+        return shots
+    }
+
+    /// A satellite snapshot of `rect`, `oversample` × the canvas in pixels;
+    /// nil when MapKit fails (the frame then draws no map).
+    @MainActor
+    private func snapshot(_ rect: MKMapRect, canvas: CGSize, oversample: CGFloat) async -> MapShot? {
         let options = MKMapSnapshotter.Options()
-        options.size = size
-        // 2× so the street-level chase view (which magnifies the snapshot's
-        // lower half ~6×) stays crisp instead of soft. Peak memory stays
-        // bounded: windows are snapshotted lazily per leg.
-        options.scale = 2.0
-        options.mapType = .mutedStandard
-        options.pointOfInterestFilter = .excludingAll
-        // options.showsTraffic = false  // removed in iOS 26
-        options.region = region
+        options.mapRect = rect
+        options.size = CGSize(width: (canvas.width * oversample).rounded(), height: (canvas.height * oversample).rounded())
+        options.scale = 1
+        options.preferredConfiguration = MKImageryMapConfiguration(elevationStyle: .flat)
         let snapshotter = MKMapSnapshotter(options: options)
-        return try await withTaskCancellationHandler {
-            try await withCheckedThrowingContinuation { continuation in
-                snapshotter.start { snapshot, error in
-                    if let snapshot {
-                        continuation.resume(returning: snapshot)
-                    } else {
-                        continuation.resume(throwing: error ?? APIError.decoding("Map snapshot failed"))
+        do {
+            let snapshot: MKMapSnapshotter.Snapshot = try await withTaskCancellationHandler {
+                try await withCheckedThrowingContinuation { continuation in
+                    snapshotter.start { snapshot, error in
+                        if let snapshot {
+                            continuation.resume(returning: snapshot)
+                        } else {
+                            continuation.resume(throwing: error ?? APIError.decoding("Map snapshot failed"))
+                        }
                     }
                 }
+            } onCancel: {
+                snapshotter.cancel()
             }
-        } onCancel: {
-            snapshotter.cancel()
+            guard let image = snapshot.image.cgImage else { return nil }
+            return MapShot(image: image, rect: Self.coveredRect(of: snapshot, requested: rect))
+        } catch {
+            return nil
         }
     }
 
-    /// Exact map-point → snapshot-pixel affine, derived from the snapshot's own
-    /// `point(for:)` at the region center and a corner (no region rounding).
-    private static func affine(for snapshot: MKMapSnapshotter.Snapshot, region: MKCoordinateRegion) -> RoadTripAffine {
-        let center = region.center
-        let corner = CLLocationCoordinate2D(
-            latitude: center.latitude + region.span.latitudeDelta / 2,
-            longitude: center.longitude + region.span.longitudeDelta / 2
-        )
-        let p0 = snapshot.point(for: center)
-        let p1 = snapshot.point(for: corner)
-        let m0 = MKMapPoint(center)
-        let m1 = MKMapPoint(corner)
-        let scaleX = (p1.x - p0.x) / max(m1.x - m0.x, 1e-9)
-        let scaleY = (p1.y - p0.y) / max(m1.y - m0.y, 1e-9)
-        return RoadTripAffine(
-            scaleX: scaleX, scaleY: scaleY,
-            offsetX: p0.x - m0.x * scaleX, offsetY: p0.y - m0.y * scaleY
+    /// The map rect a snapshot really covers, from its own `point(for:)` at
+    /// two corners of the requested rect (MapKit may fit the rect to the size).
+    private static func coveredRect(of snapshot: MKMapSnapshotter.Snapshot, requested rect: MKMapRect) -> MKMapRect {
+        let a = MKMapPoint(x: rect.minX, y: rect.minY)
+        let b = MKMapPoint(x: rect.maxX, y: rect.maxY)
+        let pa = snapshot.point(for: a.coordinate)
+        let pb = snapshot.point(for: b.coordinate)
+        let scaleX = Double(pb.x - pa.x) / max(b.x - a.x, 1e-9)
+        let scaleY = Double(pb.y - pa.y) / max(b.y - a.y, 1e-9)
+        guard scaleX.isFinite, scaleY.isFinite, scaleX > 0, scaleY > 0 else { return rect }
+        let size = snapshot.image.size
+        return MKMapRect(
+            x: a.x - Double(pa.x) / scaleX, y: a.y - Double(pa.y) / scaleY,
+            width: Double(size.width) / scaleX, height: Double(size.height) / scaleY
         )
     }
 
@@ -318,56 +324,127 @@ final class RoadTripVideoRenderer: @unchecked Sendable {
 
     /// Stacks `items` (attributed string + measured height) vertically centered
     /// on `centerY`, horizontally centered in the card.
-    private static func drawCentered(_ items: [(NSAttributedString, CGFloat)], in size: CGSize, gap: CGFloat, centerY: CGFloat) {
+    private static func drawCentered(
+        _ items: [(NSAttributedString, CGFloat)], in size: CGSize, gap: CGFloat, centerY: CGFloat, shadow: Bool = false
+    ) {
         let inset: CGFloat = 64
         let width = size.width - inset * 2
         let totalHeight = items.reduce(0) { $0 + $1.1 } + gap * CGFloat(max(items.count - 1, 0))
         var y = centerY - totalHeight / 2
+        let ctx = UIGraphicsGetCurrentContext()
+        ctx?.saveGState()
+        if shadow {
+            ctx?.setShadow(offset: CGSize(width: 0, height: 3), blur: 10, color: UIColor.black.withAlphaComponent(0.6).cgColor)
+        }
         for (string, h) in items {
             string.draw(in: CGRect(x: inset, y: y, width: width, height: h))
             y += h + gap
         }
+        ctx?.restoreGState()
     }
 
-    private static func openingCard(albumTitle: String, photoCount: Int, placeCount: Int, size: CGSize) -> CGImage? {
-        render(size, opaque: true) { canvas in
-            UIColor.black.setFill()
-            UIRectFill(CGRect(origin: .zero, size: canvas))
-            let kicker = text("ROAD TRIP", font: .systemFont(ofSize: 28, weight: .semibold), color: .white.withAlphaComponent(0.7), kern: 6)
-            let title = text(albumTitle, font: .systemFont(ofSize: 72, weight: .bold), color: .white)
-            let sub = text(String(localized: "\(photoCount) photos · \(placeCount) places"), font: .systemFont(ofSize: 30, weight: .regular), color: .white.withAlphaComponent(0.85))
+    /// The opening's title: over the map (a scrim darkening its top), or on
+    /// black when nothing is located.
+    private static func openingCard(
+        albumTitle: String, photoCount: Int, placeCount: Int, meters: Double, overMap: Bool, size: CGSize
+    ) -> CGImage? {
+        render(size, opaque: !overMap) { canvas in
+            if overMap {
+                drawTitleScrim(canvas)
+            } else {
+                UIColor.black.setFill()
+                UIRectFill(CGRect(origin: .zero, size: canvas))
+            }
+            let kicker = text("ROAD TRIP", font: .systemFont(ofSize: 30, weight: .semibold), color: .white.withAlphaComponent(0.85), kern: 6)
+            let title = text(albumTitle, font: .systemFont(ofSize: 84, weight: .heavy), color: .white)
+            let sub = text(
+                statsLine(photoCount: photoCount, placeCount: placeCount, meters: meters),
+                font: .systemFont(ofSize: 36, weight: .semibold), color: .white.withAlphaComponent(0.92)
+            )
             let width = canvas.width - 128
             drawCentered(
                 [(kicker, height(kicker, width: width)), (title, height(title, width: width)), (sub, height(sub, width: width))],
-                in: canvas, gap: 48, centerY: canvas.height / 2
+                in: canvas, gap: 28, centerY: overMap ? canvas.height * 0.2 : canvas.height / 2, shadow: overMap
             )
         }
     }
 
-    private static func endingCard(albumTitle: String, places: [String], size: CGSize) -> CGImage? {
-        render(size, opaque: true) { canvas in
-            // Warm dusk gradient instead of pure black for the finale.
-            let colorSpace = CGColorSpaceCreateDeviceRGB()
-            let colors = [
-                UIColor(red: 0.11, green: 0.07, blue: 0.05, alpha: 1).cgColor,
-                UIColor(red: 0.04, green: 0.03, blue: 0.03, alpha: 1).cgColor
-            ] as CFArray
-            if let ctx = UIGraphicsGetCurrentContext(),
-               let gradient = CGGradient(colorsSpace: colorSpace, colors: colors, locations: [0, 1]) {
-                ctx.drawLinearGradient(gradient, start: CGPoint(x: 0, y: 0), end: CGPoint(x: 0, y: canvas.height), options: [])
+    /// The ending's title over the whole trip — or, with nothing located, the
+    /// list of places on a dusk gradient.
+    private static func endingCard(
+        albumTitle: String, photoCount: Int, placeCount: Int, meters: Double,
+        places: [String], overMap: Bool, size: CGSize
+    ) -> CGImage? {
+        render(size, opaque: !overMap) { canvas in
+            if overMap {
+                drawTitleScrim(canvas)
+            } else {
+                // Warm dusk gradient instead of pure black for the finale.
+                let colorSpace = CGColorSpaceCreateDeviceRGB()
+                let colors = [
+                    UIColor(red: 0.11, green: 0.07, blue: 0.05, alpha: 1).cgColor,
+                    UIColor(red: 0.04, green: 0.03, blue: 0.03, alpha: 1).cgColor
+                ] as CFArray
+                if let ctx = UIGraphicsGetCurrentContext(),
+                   let gradient = CGGradient(colorsSpace: colorSpace, colors: colors, locations: [0, 1]) {
+                    ctx.drawLinearGradient(gradient, start: CGPoint(x: 0, y: 0), end: CGPoint(x: 0, y: canvas.height), options: [])
+                }
             }
-            let kicker = text("ROAD TRIP", font: .systemFont(ofSize: 28, weight: .semibold), color: UIColor(red: 1, green: 0.82, blue: 0.62, alpha: 0.9), kern: 6)
-            let title = text(albumTitle, font: .systemFont(ofSize: 64, weight: .bold), color: .white)
+            let kicker = text("ROAD TRIP", font: .systemFont(ofSize: 30, weight: .semibold), color: UIColor(red: 1, green: 0.82, blue: 0.62, alpha: 1), kern: 6)
+            let title = text(albumTitle, font: .systemFont(ofSize: 72, weight: .heavy), color: .white)
+            let sub = text(
+                statsLine(photoCount: photoCount, placeCount: placeCount, meters: meters),
+                font: .systemFont(ofSize: 36, weight: .semibold), color: .white.withAlphaComponent(0.92)
+            )
             let width = canvas.width - 128
             var items: [(NSAttributedString, CGFloat)] = [
                 (kicker, height(kicker, width: width)),
-                (title, height(title, width: width))
+                (title, height(title, width: width)),
+                (sub, height(sub, width: width))
             ]
-            for place in places.filter({ !$0.isEmpty }) {
-                let line = text(place, font: .systemFont(ofSize: 30, weight: .regular), color: .white.withAlphaComponent(0.85))
-                items.append((line, height(line, width: width)))
+            if !overMap {
+                for place in places.filter({ !$0.isEmpty }) {
+                    let line = text(place, font: .systemFont(ofSize: 30, weight: .regular), color: .white.withAlphaComponent(0.85))
+                    items.append((line, height(line, width: width)))
+                }
             }
-            drawCentered(items, in: canvas, gap: 28, centerY: canvas.height / 2)
+            drawCentered(items, in: canvas, gap: 24, centerY: overMap ? canvas.height * 0.18 : canvas.height / 2, shadow: overMap)
+        }
+    }
+
+    /// "8 photos · 8 places · 142 km".
+    private static func statsLine(photoCount: Int, placeCount: Int, meters: Double) -> String {
+        let counts = String(localized: "\(photoCount) photos · \(placeCount) places")
+        guard meters > 0 else { return counts }
+        return counts + " · " + RoadTripTimeline.distanceText(meters: meters)
+    }
+
+    /// Darkens the top of the map under a title.
+    private static func drawTitleScrim(_ canvas: CGSize) {
+        guard let ctx = UIGraphicsGetCurrentContext() else { return }
+        let colors = [
+            UIColor.black.withAlphaComponent(0.75).cgColor,
+            UIColor.black.withAlphaComponent(0.35).cgColor,
+            UIColor.black.withAlphaComponent(0).cgColor
+        ] as CFArray
+        guard let gradient = CGGradient(colorsSpace: CGColorSpaceCreateDeviceRGB(), colors: colors, locations: [0, 0.5, 1]) else { return }
+        ctx.drawLinearGradient(gradient, start: .zero, end: CGPoint(x: 0, y: canvas.height * 0.5), options: [])
+    }
+
+    /// A leg's "Paris, France → Versailles, France" pill, sized to its text.
+    private static func pillCard(_ label: String, canvas: CGSize) -> CGImage? {
+        let string = text(label, font: .systemFont(ofSize: 36, weight: .semibold), color: .white)
+        let maxWidth = canvas.width - 160
+        let textSize = string.boundingRect(
+            with: CGSize(width: maxWidth, height: .greatestFiniteMagnitude),
+            options: [.usesLineFragmentOrigin, .usesFontLeading], context: nil
+        ).size
+        let size = CGSize(width: min(textSize.width, maxWidth).rounded(.up) + 64, height: textSize.height.rounded(.up) + 32)
+        return render(size, opaque: false) { pill in
+            let path = UIBezierPath(roundedRect: CGRect(origin: .zero, size: pill), cornerRadius: pill.height / 2)
+            UIColor.black.withAlphaComponent(0.55).setFill()
+            path.fill()
+            string.draw(in: CGRect(x: 32, y: 16, width: pill.width - 64, height: textSize.height.rounded(.up)))
         }
     }
 
@@ -438,9 +515,10 @@ final class RoadTripVideoRenderer: @unchecked Sendable {
         var clusterByID: [String: RoadTripCluster] = [:]
         for cluster in clusters { clusterByID[cluster.id] = cluster }
 
-        // Map windows are snapshotted lazily per leg and released when the
-        // player leaves it, bounding peak memory to one leg's snapshots.
-        var mapFrames: [Int: [MapFrame]] = [:]
+        // The map: the trip's roads and stops, the overview snapshot now, each
+        // leg's snapshots when the leg comes up (released after it, so peak
+        // memory holds one leg's).
+        var map = await prepareMap(clusters: clusters, timeline: timeline, images: images, canvas: config.size)
         var activeTravelIndex: Int?
 
         let totalFrames = max(1, Int((timeline.totalDuration * Double(config.fps)).rounded(.up)))
@@ -455,15 +533,15 @@ final class RoadTripVideoRenderer: @unchecked Sendable {
                 if case .travel(let travel) = timeline.segments[segmentIndex] {
                     if activeTravelIndex != segmentIndex {
                         if let previous = activeTravelIndex {
-                            mapFrames[previous] = nil
+                            map.legs[previous] = nil
                         }
                         activeTravelIndex = segmentIndex
                     }
-                    if mapFrames[segmentIndex] == nil {
-                        mapFrames[segmentIndex] = await snapshotLeg(travel: travel, config: config)
+                    if map.legs[segmentIndex] == nil {
+                        map.legs[segmentIndex] = await snapshotLeg(travel: travel, canvas: config.size)
                     }
                 } else if let previous = activeTravelIndex {
-                    mapFrames[previous] = nil
+                    map.legs[previous] = nil
                     activeTravelIndex = nil
                 }
 
@@ -478,7 +556,7 @@ final class RoadTripVideoRenderer: @unchecked Sendable {
                 drawFrame(
                     at: t, into: buffer,
                     clusters: clusters, clusterByID: clusterByID, timeline: timeline,
-                    config: config, images: images, visuals: visuals, mapFrames: mapFrames
+                    config: config, images: images, visuals: visuals, map: map
                 )
                 adaptor.append(buffer, withPresentationTime: frameTime)
                 frameTime = CMTimeAdd(frameTime, CMTime(value: 1, timescale: Int32(config.fps)))
@@ -504,6 +582,45 @@ final class RoadTripVideoRenderer: @unchecked Sendable {
         }
     }
 
+    /// The trip's roads, stops, the stops' hero photos and the overview
+    /// snapshot.
+    private func prepareMap(
+        clusters: [RoadTripCluster],
+        timeline: RoadTripTimeline,
+        images: [String: CGImage],
+        canvas: CGSize
+    ) async -> ExportMap {
+        var map = ExportMap()
+        map.stops = RoadTripMapStop.stops(of: clusters)
+        map.roads = Self.roads(of: timeline)
+        var clusterByID: [String: RoadTripCluster] = [:]
+        for cluster in clusters { clusterByID[cluster.id] = cluster }
+        for segment in timeline.segments {
+            guard case .slideshow(let slideshow) = segment,
+                  let cluster = clusterByID[slideshow.clusterID],
+                  let first = slideshow.assetIndices.first,
+                  cluster.assets.indices.contains(first),
+                  let image = images[cluster.assets[first].id] else { continue }
+            map.heroes[slideshow.clusterID] = image
+        }
+        if !map.stops.isEmpty {
+            map.overview = await snapshotOverview(timeline: timeline, stops: map.stops, canvas: canvas)
+        }
+        return map
+    }
+
+    /// Each leg's road as drawn (internal for the tests).
+    static func roads(of timeline: RoadTripTimeline) -> [Int: Road] {
+        var roads: [Int: Road] = [:]
+        for (index, segment) in timeline.segments.enumerated() {
+            guard case .travel(let travel) = segment else { continue }
+            let drawn = RoadTripRouteDrawing.drawnRoute(travel.route)
+            guard drawn.coordinates.count >= 2 else { continue }
+            roads[index] = Road(points: drawn.coordinates.map { MKMapPoint($0) }, fractions: drawn.fractions)
+        }
+        return roads
+    }
+
     // MARK: - Frame drawing
 
     /// Draws the frame at `time` into `pixelBuffer` (internal for the tests).
@@ -516,7 +633,7 @@ final class RoadTripVideoRenderer: @unchecked Sendable {
         config: RoadTripRenderConfig,
         images: [String: CGImage],
         visuals: VisualAssets,
-        mapFrames: [Int: [MapFrame]]
+        map: ExportMap
     ) {
         CVPixelBufferLockBaseAddress(pixelBuffer, [])
         defer { CVPixelBufferUnlockBaseAddress(pixelBuffer, []) }
@@ -536,6 +653,7 @@ final class RoadTripVideoRenderer: @unchecked Sendable {
         ctx.translateBy(x: 0, y: CGFloat(height))
         ctx.scaleBy(x: 1, y: -1)
         let canvas = CGSize(width: width, height: height)
+        let aspect = Double(canvas.width / max(canvas.height, 1))
 
         ctx.setFillColor(UIColor.black.cgColor)
         ctx.fill(CGRect(origin: .zero, size: canvas))
@@ -543,30 +661,40 @@ final class RoadTripVideoRenderer: @unchecked Sendable {
         let (segmentIndex, local) = timeline.localTime(at: time)
         switch timeline.segments[segmentIndex] {
         case .opening(let duration):
+            let progress = local / max(duration, 0.001)
+            if let rect = RoadTripAerialCamera.rect(for: .opening(progress: progress), timeline: timeline, stops: map.stops, aspect: aspect) {
+                drawMap(ctx, shots: map.overview, rect: rect, canvas: canvas)
+                drawRoads(ctx, map: map, rect: rect, canvas: canvas, alpha: CGFloat(RoadTripMapStyle.previewAlpha)) { _ in 1 }
+                drawStops(ctx, map: map, upTo: map.stops.count - 1, rect: rect, canvas: canvas)
+            }
             if let card = visuals.opening {
-                drawCard(ctx, card, progress: local / max(duration, 0.001), canvas: canvas, fadeIn: 0.6, fadeOut: 0.5)
+                drawCard(ctx, card, progress: progress, canvas: canvas, fadeIn: 0.15, fadeOut: 0)
             }
         case .slideshow(let slideshow):
             drawSlideshow(ctx, slideshow: slideshow, clusterByID: clusterByID, localTime: local, config: config, images: images, canvas: canvas)
             if let title = visuals.intertitles[slideshow.clusterID] {
                 drawOverlayFade(ctx, title, localTime: local, duration: 1.5, canvas: canvas)
             }
+            applyVignette(ctx, canvas: canvas)
         case .travel(let travel):
             drawTravel(
                 ctx, travel: travel, segmentIndex: segmentIndex, localTime: local,
-                mapFrames: mapFrames, canvas: canvas,
+                timeline: timeline, map: map, legLabel: visuals.legLabels[segmentIndex], canvas: canvas,
                 outgoingPhoto: neighborPhoto(at: segmentIndex - 1, edge: .last, timeline: timeline, clusterByID: clusterByID, images: images),
                 divePhoto: neighborPhoto(at: segmentIndex + 1, edge: .first, timeline: timeline, clusterByID: clusterByID, images: images)
             )
         case .ending(let duration):
+            let progress = local / max(duration, 0.001)
+            if let rect = RoadTripAerialCamera.rect(for: .ending(progress: progress), timeline: timeline, stops: map.stops, aspect: aspect) {
+                drawMap(ctx, shots: map.overview, rect: rect, canvas: canvas)
+                drawRoads(ctx, map: map, rect: rect, canvas: canvas, alpha: 1) { _ in 1 }
+                drawStops(ctx, map: map, upTo: map.stops.count - 1, rect: rect, canvas: canvas)
+                drawPhotoPins(ctx, map: map, progress: progress, rect: rect, canvas: canvas)
+            }
             if let card = visuals.ending {
-                drawCard(ctx, card, progress: local / max(duration, 0.001), canvas: canvas, fadeIn: 0.8, fadeOut: 0)
+                drawCard(ctx, card, progress: progress, canvas: canvas, fadeIn: 0.2, fadeOut: 0)
             }
         }
-
-        // The map legs keep their clean daylight look — no vignette.
-        if case .travel = timeline.segments[segmentIndex] { return }
-        applyVignette(ctx, canvas: canvas)
     }
 
     private func drawSlideshow(
@@ -660,107 +788,46 @@ final class RoadTripVideoRenderer: @unchecked Sendable {
         travel: RoadTripTimeline.Travel,
         segmentIndex: Int,
         localTime: TimeInterval,
-        mapFrames: [Int: [MapFrame]],
+        timeline: RoadTripTimeline,
+        map: ExportMap,
+        legLabel: CGImage?,
         canvas: CGSize,
         outgoingPhoto: CGImage?,
         divePhoto: CGImage?
     ) {
-        let timing = RoadTripTravelTiming.frame(travel: travel, localTime: localTime)
-        guard let windows = mapFrames[segmentIndex],
-              let active = activeWindow(fraction: timing.progress, windows: windows) else {
+        guard travel.route.count >= 2, let shots = map.legs[segmentIndex], !shots.isEmpty else {
             ctx.setFillColor(UIColor(white: 0.06, alpha: 1).cgColor)
             ctx.fill(CGRect(origin: .zero, size: canvas))
             return
         }
-
-        // Chase-camera homography: the look-ahead rect ahead of the car
-        // (rotated to the bearing, in map space) projected onto the canvas
-        // trapezoid. Same geometry the live player uses.
-        let drive = RoadTripDriveCamera.frame(travel: travel, localTime: localTime, canvas: canvas)
-        let pixelCorners = drive.sourceCorners.map { active.affine.point($0) }
-        let matrix = RoadTripMatrix3.homography(from: pixelCorners, to: drive.destinationCorners)
-        let cumulative = RoadTripTravelTiming.cumulativeLengths(travel.route)
-        let total = cumulative.last ?? 0
+        let aspect = Double(canvas.width / max(canvas.height, 1))
+        let rect = RoadTripAerialCamera.legRect(travel: travel, localTime: localTime, aspect: aspect)
+        let timing = RoadTripTravelTiming.frame(travel: travel, localTime: localTime)
+        let fraction = min(max(timing.routeDrawnFraction, 0), 1)
         let dive = RoadTripSegue.diveProgress(localTime: localTime, legDuration: travel.duration)
 
-        // Sky + dark base (the trapezoid leaves the top corners uncovered).
-        drawSky(ctx, canvas: canvas, lookAheadMeters: drive.lookAheadMeters)
-
-        // Warped map plane, crossfaded onto the following window near the end
-        // of this one so the snapshot switch never pops.
-        drawWarpedMap(ctx, frame: active, sourceQuad: pixelCorners, destination: drive.destinationCorners, canvas: canvas)
-        if let next = windows.first(where: { $0.window.startFraction > active.window.startFraction + 0.001 }) {
-            let fadeSpan = min(0.12, RoadTripDriveCamera.windowOverlapMeters / max(total, 1))
-            let fadeStart = active.window.endFraction - fadeSpan
-            if timing.progress > fadeStart {
-                let alpha = min(max((timing.progress - fadeStart) / fadeSpan, 0), 1)
-                let nextCorners = drive.sourceCorners.map { next.affine.point($0) }
-                ctx.saveGState()
-                ctx.setAlpha(CGFloat(alpha))
-                drawWarpedMap(ctx, frame: next, sourceQuad: nextCorners, destination: drive.destinationCorners, canvas: canvas)
-                ctx.restoreGState()
-            }
+        // The ground, the trip's line (every leg already driven, this one up
+        // to the car), the stops reached and the one ahead.
+        drawMap(ctx, shots: shots, rect: rect, canvas: canvas)
+        drawRoads(ctx, map: map, rect: rect, canvas: canvas, alpha: 1) { segment in
+            segment < segmentIndex ? 1 : (segment == segmentIndex ? fraction : 0)
         }
+        let destination = map.stops.firstIndex { $0.clusterID == travel.toClusterID } ?? (map.stops.count - 1)
+        drawStops(ctx, map: map, upTo: destination, rect: rect, canvas: canvas)
 
-        // Atmospheric haze just below the horizon: masks the far-field
-        // minification aliasing of the warp and adds depth.
-        drawHorizonHaze(ctx, canvas: canvas, lookAheadMeters: drive.lookAheadMeters)
+        // The car, nose along the road (north-up: heading = screen angle).
+        let car = RoadTripAerialCamera.project(MKMapPoint(timing.carCoordinate.coordinate), in: rect, canvas: canvas)
+        let heading = RoadTripAerialCamera.carHeading(travel: travel, localTime: localTime)
+        drawTopCar(ctx, at: car, heading: heading, size: canvas.width * CGFloat(RoadTripMapStyle.carSpriteSize))
 
-        // Route strokes in the warped space: history up to the car (bright),
-        // upcoming road (gray, lights up under the wheels as the car passes).
-        // Bounded to the visible fraction range so the path stays short.
-        let carFraction = timing.routeDrawnFraction
-        let backFloor = max(0, carFraction - 0.04)
-        let lookAheadFraction = min(1, carFraction + drive.lookAheadMeters / max(total, 1))
-        let carMP = MKMapPoint(timing.carCoordinate.coordinate)
-        let carPixel = active.affine.point(CGPoint(x: carMP.x, y: carMP.y))
-        let car = matrix.transformed(carPixel)
-
-        var history: [CGPoint] = []
-        var ahead: [CGPoint] = []
-        for (i, point) in active.points.enumerated() {
-            let fraction = active.fractions[i]
-            guard fraction >= backFloor else { continue }
-            let mapped = matrix.transformed(point)
-            if fraction <= carFraction + 1e-9 {
-                history.append(mapped)
-            } else if fraction <= lookAheadFraction + 1e-9 {
-                ahead.append(mapped)
-            }
-        }
-        if history.last != car { history.append(car) }
-        if !ahead.isEmpty { ahead.insert(car, at: 0) }
-
-        if history.count >= 2 { strokeRoute(ctx, points: history, style: .history) }
-        if ahead.count >= 2 {
-            ctx.saveGState()
-            ctx.setAlpha(0.8)
-            strokeRoute(ctx, points: ahead, style: .upcoming)
-            ctx.restoreGState()
-        }
-
-        // Pulsing departure dot at the route start.
-        if let first = history.first, within(first, canvas: canvas) {
-            let pulse = 0.5 + 0.5 * sin(2 * .pi * localTime * 1.2)
-            ctx.saveGState()
-            ctx.setFillColor(UIColor.white.withAlphaComponent(0.25 + 0.3 * pulse).cgColor)
-            ctx.fillEllipse(in: CGRect(x: first.x - 16 - pulse * 5, y: first.y - 16 - pulse * 5, width: 32 + pulse * 10, height: 32 + pulse * 10))
-            ctx.restoreGState()
-            drawDot(ctx, at: first, radius: 10, color: .white)
-        }
-
-        // The car's on-screen yaw comes from the SAME heading rail as the
-        // camera (sampled ahead of the car), so it noses into corners early
-        // without a second, differently-smoothed rail fighting the camera —
-        // the old dual-rail yaw swung tens of degrees through hairpins.
-        let roadAngle = RoadTripDriveCamera.carYaw(travel: travel, localTime: localTime, bearing: drive.bearing)
-        let carSize = canvas.width * 0.38 * RoadTripDriveCamera.carSpriteScale(lookAheadMeters: drive.lookAheadMeters)
-        drawChaseCar(ctx, at: car, roadAngle: roadAngle, size: carSize)
-
-        // Static destination ring during the leg; the animated pin + dive take
-        // over in the arrival window.
-        if dive == 0, let end = ahead.last, within(end, canvas: canvas) {
-            drawDot(ctx, at: end, radius: 12, color: .white)
+        // The road counter and the leg's pill.
+        drawCounter(ctx, meters: timeline.drivenMeters(at: timeline.segmentStartTimes[segmentIndex] + localTime), canvas: canvas)
+        if let legLabel {
+            let size = CGSize(width: legLabel.width, height: legLabel.height)
+            drawUpright(ctx, legLabel, in: CGRect(
+                x: (canvas.width - size.width) / 2, y: canvas.height * 0.86 - size.height / 2,
+                width: size.width, height: size.height
+            ))
         }
 
         // Arrival dive: the map dims out as the destination photo takes over.
@@ -774,25 +841,22 @@ final class RoadTripVideoRenderer: @unchecked Sendable {
                 ctx.restoreGState()
             }
             if let destination = travel.route.last?.coordinate {
-                let destMP = MKMapPoint(destination)
-                let dest = matrix.transformed(active.affine.point(CGPoint(x: destMP.x, y: destMP.y)))
-                let clamped = CGPoint(
-                    x: min(max(dest.x, canvas.width * 0.12), canvas.width * 0.88),
-                    y: min(max(dest.y, canvas.height * 0.15), canvas.height * 0.85)
+                let point = RoadTripSegue.clampedToMargins(
+                    RoadTripAerialCamera.project(MKMapPoint(destination), in: rect, canvas: canvas), canvas: canvas
                 )
                 let pop = RoadTripSegue.pinPop(dive)
-                drawDot(ctx, at: clamped, radius: 16 * pop, color: .white)
-                drawDot(ctx, at: clamped, radius: 10 * pop, color: UIColor(red: 0.95, green: 0.25, blue: 0.22, alpha: 1))
+                drawDot(ctx, at: point, radius: canvas.width * CGFloat(RoadTripMapStyle.pinRingDiameter) * 0.7 * CGFloat(pop), color: .white)
+                drawDot(ctx, at: point, radius: canvas.width * CGFloat(RoadTripMapStyle.pinDotDiameter) * 0.7 * CGFloat(pop), color: RoadTripMapStyle.pin)
                 if let divePhoto {
                     let pinSize = CGSize(width: canvas.width * RoadTripSegue.thumbSizeFraction,
                                          height: canvas.width * RoadTripSegue.thumbSizeFraction * 0.75)
-                    let rect = RoadTripSegue.thumbnailRect(pinCenter: clamped, pinSize: pinSize, canvas: canvas, dive: dive)
+                    let thumb = RoadTripSegue.thumbnailRect(pinCenter: point, pinSize: pinSize, canvas: canvas, dive: dive)
                     ctx.saveGState()
                     ctx.setAlpha(CGFloat(RoadTripSegue.thumbnailAlpha(dive)))
                     let radius: CGFloat = dive >= 0.99 ? 0 : 18 * (1 - dive)
-                    ctx.addPath(CGPath(roundedRect: rect, cornerWidth: radius, cornerHeight: radius, transform: nil))
+                    ctx.addPath(CGPath(roundedRect: thumb, cornerWidth: radius, cornerHeight: radius, transform: nil))
                     ctx.clip()
-                    drawFilled(ctx, divePhoto, in: rect)
+                    drawFilled(ctx, divePhoto, in: thumb)
                     ctx.restoreGState()
                 }
             }
@@ -810,186 +874,189 @@ final class RoadTripVideoRenderer: @unchecked Sendable {
         }
     }
 
-    /// Snapshot window whose fraction range contains `fraction` (nearest as
-    /// fallback, e.g. at the leg boundaries).
-    private func activeWindow(fraction: Double, windows: [MapFrame]) -> MapFrame? {
-        guard !windows.isEmpty else { return nil }
-        if let hit = windows.first(where: {
-            fraction >= $0.window.startFraction - 0.001 && fraction <= $0.window.endFraction + 0.001
-        }) {
-            return hit
+    // MARK: - Map drawing
+
+    /// The snapshot to crop for `rect`: the sharpest one holding all of it,
+    /// else the one showing most of it (internal for the tests).
+    static func bestShot(_ shots: [MapShot], for rect: MKMapRect) -> MapShot? {
+        if let sharpest = shots.filter({ $0.rect.contains(rect) }).min(by: { $0.rect.size.width < $1.rect.size.width }) {
+            return sharpest
         }
-        return windows.min { abs(fraction - $0.window.midFraction) < abs(fraction - $1.window.midFraction) }
+        func overlap(_ shot: MapShot) -> Double {
+            let common = shot.rect.intersection(rect)
+            return common.isNull ? 0 : common.size.width * common.size.height
+        }
+        return shots.max { overlap($0) < overlap($1) }
     }
 
-    /// Daylight sky: a soft blue → horizon-haze gradient above the horizon
-    /// line, over a matching full-canvas base (the ground/corners the
-    /// trapezoid doesn't cover) so the map keeps its clean daytime look. The
-    /// horizon follows the aerial blend — almost no sky at full zoom-out.
-    private func drawSky(_ ctx: CGContext, canvas: CGSize, lookAheadMeters: Double) {
-        let horizonY = CGFloat(RoadTripDriveCamera.horizonFractionY(lookAheadMeters: lookAheadMeters)) * canvas.height
-        let haze = UIColor(red: 0.78, green: 0.82, blue: 0.87, alpha: 1).cgColor
-        ctx.setFillColor(haze)
-        ctx.fill(CGRect(origin: .zero, size: canvas))
-        let colorSpace = CGColorSpaceCreateDeviceRGB()
-        let colors = [
-            UIColor(red: 0.52, green: 0.62, blue: 0.74, alpha: 1).cgColor,
-            haze
-        ] as CFArray
-        guard let gradient = CGGradient(colorsSpace: colorSpace, colors: colors, locations: [0, 1]) else { return }
-        ctx.drawLinearGradient(gradient, start: CGPoint(x: 0, y: 0), end: CGPoint(x: 0, y: horizonY), options: [])
-    }
-
-    /// Soft band of horizon haze fading out below the horizon line — hides the
-    /// warp's far-field aliasing (the map is minified ~7× there) and reads as
-    /// atmospheric depth.
-    private func drawHorizonHaze(_ ctx: CGContext, canvas: CGSize, lookAheadMeters: Double) {
-        let horizonY = CGFloat(RoadTripDriveCamera.horizonFractionY(lookAheadMeters: lookAheadMeters)) * canvas.height
-        let bandHeight = canvas.height * 0.18
-        let colorSpace = CGColorSpaceCreateDeviceRGB()
-        let haze = UIColor(red: 0.78, green: 0.82, blue: 0.87, alpha: 1)
-        let colors = [
-            haze.withAlphaComponent(0.85).cgColor,
-            haze.withAlphaComponent(0).cgColor
-        ] as CFArray
-        guard let gradient = CGGradient(colorsSpace: colorSpace, colors: colors, locations: [0, 1]) else { return }
+    /// The ground of `rect`: the crop of the best snapshot, scaled to the canvas.
+    private func drawMap(_ ctx: CGContext, shots: [MapShot], rect: MKMapRect, canvas: CGSize) {
+        guard let shot = Self.bestShot(shots, for: rect) else { return }
+        let visible = rect.intersection(shot.rect)
+        guard !visible.isNull, visible.size.width > 0, visible.size.height > 0 else { return }
+        let image = shot.image
+        let pixelsPerX = Double(image.width) / shot.rect.size.width
+        let pixelsPerY = Double(image.height) / shot.rect.size.height
+        let source = CGRect(
+            x: (visible.minX - shot.rect.minX) * pixelsPerX,
+            y: (visible.minY - shot.rect.minY) * pixelsPerY,
+            width: visible.size.width * pixelsPerX,
+            height: visible.size.height * pixelsPerY
+        ).integral.intersection(CGRect(x: 0, y: 0, width: image.width, height: image.height))
+        guard !source.isEmpty, let cropped = image.cropping(to: source) else { return }
+        // Where the cropped pixels lie on the ground, then on the canvas.
+        let topLeft = RoadTripAerialCamera.project(MKMapPoint(
+            x: shot.rect.minX + Double(source.minX) / pixelsPerX,
+            y: shot.rect.minY + Double(source.minY) / pixelsPerY
+        ), in: rect, canvas: canvas)
+        let bottomRight = RoadTripAerialCamera.project(MKMapPoint(
+            x: shot.rect.minX + Double(source.maxX) / pixelsPerX,
+            y: shot.rect.minY + Double(source.maxY) / pixelsPerY
+        ), in: rect, canvas: canvas)
         ctx.saveGState()
-        ctx.clip(to: CGRect(x: 0, y: horizonY - 1, width: canvas.width, height: bandHeight + 1))
-        ctx.drawLinearGradient(
-            gradient,
-            start: CGPoint(x: 0, y: horizonY),
-            end: CGPoint(x: 0, y: horizonY + bandHeight),
-            options: []
-        )
+        ctx.interpolationQuality = .high
+        drawUpright(ctx, cropped, in: CGRect(
+            x: topLeft.x, y: topLeft.y,
+            width: bottomRight.x - topLeft.x, height: bottomRight.y - topLeft.y
+        ))
         ctx.restoreGState()
     }
 
-    /// Projects the snapshot onto the canvas so that `sourceQuad` (the chase
-    /// rect, in snapshot POINTS) lands exactly on `destination` (the canvas
-    /// trapezoid): a perspective correction of the quad into a rectangle, then
-    /// a perspective transform of that rectangle onto the trapezoid — two
-    /// projective maps that compose into the one homography between the quads.
-    ///
-    /// Replaces a CALayer warp that could not land there: `render(in:)` does
-    /// not render 3D transforms (documented), the layer was sized in snapshot
-    /// pixels (2× the points the homography is computed in), and its content
-    /// was flipped although a layer's content is already y-down.
-    private func drawWarpedMap(_ ctx: CGContext, frame: MapFrame, sourceQuad: [CGPoint], destination: [CGPoint], canvas: CGSize) {
-        guard sourceQuad.count == 4, destination.count == 4 else { return }
-        let image = frame.base
-        let scaleX = CGFloat(image.width) / max(frame.pointSize.width, 1)
-        let scaleY = CGFloat(image.height) / max(frame.pointSize.height, 1)
-        let imageHeight = CGFloat(image.height)
-        // Snapshot points (y down) → Core Image pixels (y up).
-        func source(_ p: CGPoint) -> CGPoint { CGPoint(x: p.x * scaleX, y: imageHeight - p.y * scaleY) }
-        // Canvas points (y down) → Core Image (y up) over the canvas.
-        func target(_ p: CGPoint) -> CGPoint { CGPoint(x: p.x, y: canvas.height - p.y) }
-
-        let correction = CIFilter.perspectiveCorrection()
-        correction.inputImage = CIImage(cgImage: image)
-        correction.topLeft = source(sourceQuad[0])
-        correction.topRight = source(sourceQuad[1])
-        correction.bottomRight = source(sourceQuad[2])
-        correction.bottomLeft = source(sourceQuad[3])
-        correction.crop = true
-        guard let rectified = correction.outputImage else { return }
-
-        let projection = CIFilter.perspectiveTransform()
-        projection.inputImage = rectified
-        projection.topLeft = target(destination[0])
-        projection.topRight = target(destination[1])
-        projection.bottomRight = target(destination[2])
-        projection.bottomLeft = target(destination[3])
-        guard let warped = projection.outputImage else { return }
-
-        let bounds = CGRect(origin: .zero, size: canvas)
-        guard let rendered = ciContext.createCGImage(warped, from: bounds) else { return }
-        drawUpright(ctx, rendered, in: bounds)
-    }
-
-    private func drawChaseCar(_ ctx: CGContext, at point: CGPoint, roadAngle: Double, size: CGFloat) {
-        let contact = RoadTripCar3D.chaseContactFraction
-        // The sprite's own yaw carries the on-screen direction: the chase
-        // camera is pitched, so the yaw is the inverse-compressed road angle.
-        let yaw = RoadTripCar3D.chaseYaw(forScreenAngle: roadAngle)
-        let frameYaw = RoadTripCar3D.chaseNearestYaw(yaw)
-        let sprite = RoadTripCar3D.chaseSprite(forBearing: frameYaw)
-        ctx.saveGState()
-        ctx.translateBy(x: point.x, y: point.y)
-        // Soft ground shadow under the car (rotated with it).
-        ctx.setFillColor(UIColor.black.withAlphaComponent(0.25).cgColor)
-        ctx.fillEllipse(in: CGRect(x: -size * 0.40, y: -size * 0.05, width: size * 0.80, height: size * 0.14))
-        // Residual rotation around the ground contact keeps the turn
-        // continuous between the quantized sprite frames (≤ half a step).
-        ctx.rotate(by: CGFloat(yaw - frameYaw))
-        drawUpright(ctx, sprite, in: CGRect(x: -size / 2, y: -contact * size, width: size, height: size))
-        ctx.restoreGState()
-    }
-
-    /// Stroke style for the route: history is the bright traveled line, the
-    /// upcoming road stays gray and lights up as the car passes over it.
-    private enum RouteStrokeStyle {
-        case history
-        case upcoming
-    }
-
-    /// White-on-black route casing (history style), smoothed with quadratic
-    /// curves through segment midpoints.
-    private func strokeRoute(_ ctx: CGContext, points: [CGPoint], style: RouteStrokeStyle) {
-        guard points.count >= 2 else { return }
-        let path = CGMutablePath()
-        path.move(to: points[0])
-        if points.count == 2 {
-            path.addLine(to: points[1])
-        } else {
-            for i in 1..<(points.count - 1) {
-                let mid = CGPoint(
-                    x: (points[i].x + points[i + 1].x) / 2,
-                    y: (points[i].y + points[i + 1].y) / 2
-                )
-                path.addQuadCurve(to: mid, control: points[i])
+    /// The trip's line: each leg drawn up to `drawn(segmentIndex)` of its arc,
+    /// glow under white casing under color, at `alpha`.
+    private func drawRoads(
+        _ ctx: CGContext, map: ExportMap, rect: MKMapRect, canvas: CGSize, alpha: CGFloat,
+        drawn: (Int) -> Double
+    ) {
+        var paths: [CGPath] = []
+        for segment in map.roads.keys.sorted() {
+            guard let road = map.roads[segment] else { continue }
+            let end = drawn(segment)
+            guard end > 0 else { continue }
+            var points: [CGPoint] = []
+            for (i, point) in road.points.enumerated() {
+                let projected = RoadTripAerialCamera.project(point, in: rect, canvas: canvas)
+                let fraction = road.fractions[i]
+                if fraction <= end || i == 0 {
+                    points.append(projected)
+                    continue
+                }
+                // The partial segment up to the car.
+                let previousFraction = road.fractions[i - 1]
+                let t = (end - previousFraction) / max(fraction - previousFraction, 1e-9)
+                let previous = points[points.count - 1]
+                points.append(CGPoint(
+                    x: previous.x + (projected.x - previous.x) * CGFloat(t),
+                    y: previous.y + (projected.y - previous.y) * CGFloat(t)
+                ))
+                break
             }
-            path.addLine(to: points[points.count - 1])
+            guard points.count >= 2 else { continue }
+            let path = CGMutablePath()
+            path.addLines(between: points)
+            paths.append(path)
         }
-        let mainColor: UIColor
-        switch style {
-        case .history:
-            mainColor = UIColor(red: 0.10, green: 0.42, blue: 0.90, alpha: 1)
-        case .upcoming:
-            mainColor = UIColor(white: 0.62, alpha: 1)
-        }
+        guard !paths.isEmpty else { return }
         ctx.saveGState()
-        ctx.setStrokeColor(UIColor.black.withAlphaComponent(0.45).cgColor)
-        ctx.setLineWidth(20)
+        ctx.setAlpha(alpha)
+        ctx.beginTransparencyLayer(auxiliaryInfo: nil)
         ctx.setLineCap(.round)
         ctx.setLineJoin(.round)
-        ctx.addPath(path)
-        ctx.strokePath()
+        let strokes: [(UIColor, Double)] = [
+            (RoadTripMapStyle.routeGlow, RoadTripMapStyle.glowWidth),
+            (RoadTripMapStyle.casing, RoadTripMapStyle.casingWidth),
+            (RoadTripMapStyle.route, RoadTripMapStyle.lineWidth)
+        ]
+        for (color, width) in strokes {
+            ctx.setStrokeColor(color.cgColor)
+            ctx.setLineWidth(canvas.width * CGFloat(width))
+            for path in paths {
+                ctx.addPath(path)
+                ctx.strokePath()
+            }
+        }
+        ctx.endTransparencyLayer()
         ctx.restoreGState()
+    }
 
-        if case .history = style {
+    /// The pins of the stops up to `last` (film order).
+    private func drawStops(_ ctx: CGContext, map: ExportMap, upTo last: Int, rect: MKMapRect, canvas: CGSize) {
+        guard last >= 0 else { return }
+        for stop in map.stops.prefix(last + 1) {
+            let point = RoadTripAerialCamera.project(MKMapPoint(stop.coordinate.coordinate), in: rect, canvas: canvas)
+            drawDot(ctx, at: point, radius: canvas.width * CGFloat(RoadTripMapStyle.pinRingDiameter) / 2, color: .white)
+            drawDot(ctx, at: point, radius: canvas.width * CGFloat(RoadTripMapStyle.pinDotDiameter) / 2, color: RoadTripMapStyle.pin)
+        }
+    }
+
+    /// The ending's photo pins: each stop's hero photo popping in, one after
+    /// the other, in a white-rimmed circle above its pin.
+    private func drawPhotoPins(_ ctx: CGContext, map: ExportMap, progress: Double, rect: MKMapRect, canvas: CGSize) {
+        let diameter = canvas.width * CGFloat(RoadTripMapStyle.photoPinDiameter)
+        let border = canvas.width * CGFloat(RoadTripMapStyle.photoPinBorder)
+        for (index, stop) in map.stops.enumerated() {
+            let pop = CGFloat(RoadTripMapStyle.photoPinPop(index: index, count: map.stops.count, endingProgress: progress))
+            guard pop > 0.01, let image = map.heroes[stop.clusterID] else { continue }
+            let point = RoadTripAerialCamera.project(MKMapPoint(stop.coordinate.coordinate), in: rect, canvas: canvas)
+            let center = CGPoint(x: point.x, y: point.y - diameter * 0.62)
             ctx.saveGState()
-            ctx.setStrokeColor(UIColor(red: 0.10, green: 0.42, blue: 0.90, alpha: 0.28).cgColor)
-            ctx.setLineWidth(14)
-            ctx.setLineCap(.round)
-            ctx.setLineJoin(.round)
-            ctx.addPath(path)
-            ctx.strokePath()
+            ctx.translateBy(x: center.x, y: center.y)
+            ctx.scaleBy(x: pop, y: pop)
+            let circle = CGRect(x: -diameter / 2, y: -diameter / 2, width: diameter, height: diameter)
+            ctx.setShadow(offset: CGSize(width: 0, height: -diameter * 0.04), blur: diameter * 0.12,
+                          color: UIColor.black.withAlphaComponent(0.45).cgColor)
+            ctx.setFillColor(UIColor.white.cgColor)
+            ctx.fillEllipse(in: circle.insetBy(dx: -border, dy: -border))
+            ctx.setShadow(offset: .zero, blur: 0, color: nil)
+            ctx.addEllipse(in: circle)
+            ctx.clip()
+            drawFilled(ctx, image, in: circle)
             ctx.restoreGState()
         }
+    }
 
+    /// The 3D car seen from above, nose on `heading` (radians, clockwise from
+    /// screen-up), with its shadow.
+    private func drawTopCar(_ ctx: CGContext, at point: CGPoint, heading: Double, size: CGFloat) {
+        let step = 2 * Double.pi / Double(RoadTripCar3D.spriteCount)
+        let nearest = (heading / step).rounded() * step
+        let sprite = RoadTripCar3D.sprite(forBearing: nearest)
         ctx.saveGState()
-        ctx.setStrokeColor(mainColor.cgColor)
-        ctx.setLineWidth(9)
-        ctx.setLineCap(.round)
-        ctx.setLineJoin(.round)
-        ctx.addPath(path)
-        ctx.strokePath()
+        ctx.translateBy(x: point.x, y: point.y)
+        // Residual rotation keeps the turn continuous between sprite frames.
+        ctx.rotate(by: CGFloat(heading - nearest))
+        ctx.setShadow(offset: CGSize(width: 0, height: -size * 0.03), blur: size * 0.08,
+                      color: UIColor.black.withAlphaComponent(0.5).cgColor)
+        drawUpright(ctx, sprite, in: CGRect(x: -size / 2, y: -size / 2, width: size, height: size))
         ctx.restoreGState()
     }
 
-    private func within(_ point: CGPoint, canvas: CGSize) -> Bool {
-        point.x >= -40 && point.x <= canvas.width + 40 && point.y >= -40 && point.y <= canvas.height + 40
+    /// The road driven so far, big over the top of the map.
+    private func drawCounter(_ ctx: CGContext, meters: Double, canvas: CGSize) {
+        let fontSize = canvas.width * 0.085
+        let base = UIFont.monospacedDigitSystemFont(ofSize: fontSize, weight: .heavy)
+        let font = base.fontDescriptor.withDesign(.rounded).map { UIFont(descriptor: $0, size: fontSize) } ?? base
+        let string = NSAttributedString(string: RoadTripTimeline.distanceText(meters: meters), attributes: [
+            .font: font,
+            .foregroundColor: UIColor.white
+        ])
+        let textSize = string.size()
+        let iconHeight = fontSize * 0.62
+        let icon = UIImage(systemName: "car.fill")?.withTintColor(.white, renderingMode: .alwaysOriginal)
+        let iconWidth = icon.map { iconHeight * $0.size.width / max($0.size.height, 1) } ?? 0
+        let gap = icon == nil ? 0 : fontSize * 0.25
+        let total = iconWidth + gap + textSize.width
+        let originX = (canvas.width - total) / 2
+        let top = canvas.height * 0.09
+
+        UIGraphicsPushContext(ctx)
+        ctx.saveGState()
+        ctx.setShadow(offset: CGSize(width: 0, height: -fontSize * 0.05), blur: fontSize * 0.25,
+                      color: UIColor.black.withAlphaComponent(0.6).cgColor)
+        icon?.draw(in: CGRect(x: originX, y: top + (textSize.height - iconHeight) / 2, width: iconWidth, height: iconHeight))
+        string.draw(at: CGPoint(x: originX + iconWidth + gap, y: top))
+        ctx.restoreGState()
+        UIGraphicsPopContext()
     }
 
     private func drawDot(_ ctx: CGContext, at point: CGPoint, radius: CGFloat, color: UIColor) {
