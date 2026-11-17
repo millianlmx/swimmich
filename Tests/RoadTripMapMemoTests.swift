@@ -54,7 +54,9 @@ final class RoadTripMapMemoTests: XCTestCase {
 
         let rail = RoadTripSmoothPath.make(route: route, sigma: RoadTripDriveCamera.cameraSigma)
 
-        XCTAssertLessThanOrEqual(Double(rail.points.count), RoadTripSmoothPath.maxResampledPoints + 2)
+        // The spacing is set at the route's mid-latitude: the Mercator scale
+        // drifts along a 1 500 km north–south leg, hence the 5 % margin.
+        XCTAssertLessThanOrEqual(Double(rail.points.count), RoadTripSmoothPath.maxResampledPoints * 1.05)
         XCTAssertEqual(rail.total, RoadTripTravelTiming.cumulativeLengths(route).last ?? 0, accuracy: 1)
         XCTAssertEqual(rail.point(at: 1).latitude, route[1].latitude, accuracy: 1e-6)
     }

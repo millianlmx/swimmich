@@ -294,7 +294,7 @@ final class RoadTripMapMemo {
             if route.fractions[mid] <= carFraction { lo = mid } else { hi = mid - 1 }
         }
         let behind = lo
-        let quantum = max(1, n / traveledSteps)
+        let quantum = max(1, Int((Double(n) / Double(traveledSteps)).rounded(.up)))
         let bodyEnd = (behind / quantum) * quantum
         let body = bodyEnd >= 1 ? Array(route.coordinates[0...bodyEnd]) : []
         let tail = Array(route.coordinates[bodyEnd...behind]) + [car]
