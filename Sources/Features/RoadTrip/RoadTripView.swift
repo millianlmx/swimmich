@@ -107,6 +107,23 @@ struct RoadTripView: View {
         let segment = timeline.segments[segmentIndex]
 
         ZStack(alignment: .bottom) {
+            // The map of the leg being driven — or of the next one, under the
+            // opaque pictures that come before it. MapKit is up and its tiles
+            // are loaded when the leg starts: built on the leg's first frame,
+            // the map took long enough to appear that the stop's last photo sat
+            // over the road while the car was already driving under it.
+            if let leg = mapLeg(timeline: timeline, from: segmentIndex) {
+                let driving = leg.index == segmentIndex
+                RoadTripMapSegment(
+                    travel: leg.travel,
+                    localTime: driving ? local : 0,
+                    token: vm.token,
+                    divePhoto: driving ? neighborPhoto(timeline: timeline, segmentIndex: leg.index, edge: .next) : nil,
+                    outgoingPhoto: driving ? neighborPhoto(timeline: timeline, segmentIndex: leg.index, edge: .previous) : nil
+                )
+                .accessibilityHidden(!driving)
+            }
+
             switch segment {
             case .opening:
                 openingView
@@ -114,14 +131,9 @@ struct RoadTripView: View {
                 if let cluster = vm.cluster(by: slideshow.clusterID) {
                     slideshowView(slideshow: slideshow, cluster: cluster, localTime: local)
                 }
-            case .travel(let travel):
-                RoadTripMapSegment(
-                    travel: travel,
-                    localTime: local,
-                    token: vm.token,
-                    divePhoto: neighborPhoto(timeline: timeline, segmentIndex: segmentIndex, edge: .next),
-                    outgoingPhoto: neighborPhoto(timeline: timeline, segmentIndex: segmentIndex, edge: .previous)
-                )
+            case .travel:
+                // Drawn by the map layer above.
+                EmptyView()
             case .ending:
                 endingView
             }
@@ -134,6 +146,17 @@ struct RoadTripView: View {
                 )
             }
         }
+    }
+
+    /// The first travel leg at or after `index`, with its segment index.
+    private func mapLeg(timeline: RoadTripTimeline, from index: Int) -> (index: Int, travel: RoadTripTimeline.Travel)? {
+        guard timeline.segments.indices.contains(index) else { return nil }
+        for candidate in index..<timeline.segments.count {
+            if case .travel(let travel) = timeline.segments[candidate] {
+                return (candidate, travel)
+            }
+        }
+        return nil
     }
 
     @ViewBuilder

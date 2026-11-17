@@ -78,7 +78,8 @@ struct RoadTripMapSegment: View {
                         }
                     }
                     .mapStyle(.standard(elevation: .realistic, emphasis: .muted, pointsOfInterest: .excludingAll))
-                    .id(travel.fromClusterID + travel.toClusterID)
+                    // One map for the whole film (no identity per leg): the next
+                    // leg's camera is set while the photos still cover it.
 
                     overlayMarkers(proxy: proxy, canvas: geo.size)
                 }

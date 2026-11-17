@@ -42,7 +42,7 @@ struct RoadTripSmoothPath: Sendable {
         let key = "\(route.count)|\(hash)|\(sigma)|\(spacing)|\(minSigma ?? -1)" as NSString
         if let box = cache.object(forKey: key) { return box.path }
         let path = RoadTripSmoothPath(route: route, sigma: sigma, spacing: spacing, minSigma: minSigma, cacheKey: key as String)
-        cache.countLimit = 24
+        cache.countLimit = 64
         cache.setObject(Box(path), forKey: key)
         return path
     }
@@ -341,7 +341,7 @@ struct RoadTripHeadingRail: Sendable {
             lookAheadFraction: lookAheadFraction, lookAheadBlend: lookAheadBlend,
             blendThreshold: blendThreshold, blendRamp: blendRamp
         )
-        cache.countLimit = 24
+        cache.countLimit = 64
         cache.setObject(Box(built), forKey: key)
         return built
     }

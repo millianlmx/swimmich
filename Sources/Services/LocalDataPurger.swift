@@ -56,6 +56,8 @@ final class LocalDataPurger {
     /// index is already empty of the previous account's copies on return.
     func activateAccount(_ accountID: String?, otherAccountsRegistered: Bool) {
         offlineIndex.activate(accountID, otherAccountsRegistered: otherAccountsRegistered, store: offlineStore)
+        // The albums shown are the previous account's: none survives the change.
+        AlbumDetailCache.shared.removeAll()
     }
 
     func purgeAll() async {

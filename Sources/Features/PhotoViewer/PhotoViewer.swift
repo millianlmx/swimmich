@@ -324,7 +324,6 @@ struct PhotoViewer: View {
     @State private var favoriteIDs: Set<String>
     @State private var showChrome = true
     @State private var isZoomed = false
-    @State private var dragOffset: CGSize = .zero
     @State private var pendingDeleteIndex: Int?
     @State private var deleteIsPermanent = false
     @State private var presentEdit = false
@@ -378,11 +377,10 @@ struct PhotoViewer: View {
     @State private var heroFrame: CGRect
     @State private var heroCornerRadius: CGFloat
     @State private var heroOpacity: CGFloat
-    @State private var backdropOpacity: CGFloat
-    @State private var chromeOpacity: CGFloat
-    @State private var pagerOpacity: CGFloat
-    /// The pager's pose while a downward drag closes the viewer.
-    @State private var dragTransform = ViewerDragTransform.identity
+    /// Backdrop, pager and controls through the drags and the zoom open/close:
+    /// an observable read only by small modifiers (see `ViewerPose`), so a drag
+    /// never re-runs this body.
+    @State private var pose: ViewerPose
     /// Decided at the first 10 pt of a drag: is it a closing drag?
     @State private var closeDragLock: Bool?
     /// The image the opened page starts from — the flying image of the open.
@@ -478,15 +476,13 @@ struct PhotoViewer: View {
         _heroFrame = State(initialValue: flies ? (sourceFrame ?? .zero) : .zero)
         _heroCornerRadius = State(initialValue: flies ? PVRadius.xs : 0)
         _heroOpacity = State(initialValue: flies ? 1 : 0)
-        _backdropOpacity = State(initialValue: transitioning ? 0 : 1)
-        _chromeOpacity = State(initialValue: transitioning ? 0 : 1)
-        _pagerOpacity = State(initialValue: transitioning ? 0 : 1)
+        _pose = State(initialValue: ViewerPose(transitioning: transitioning))
     }
 
     var body: some View {
         GeometryReader { proxy in
             ZStack {
-                Color.black.ignoresSafeArea().opacity(backdropOpacity)
+                ViewerBackdrop(pose: pose)
 
                 if !localAssets.isEmpty {
                     pagerView
@@ -496,9 +492,7 @@ struct PhotoViewer: View {
                             // frame is not the pager's rest frame, the pivot of the close.
                             frameBook.reportPager(frame, frozen: closeDragLock == true)
                         }
-                        .opacity(pagerOpacity)
-                        .scaleEffect(dragTransform.scale)
-                        .offset(dragTransform.offset)
+                        .modifier(ViewerPagerPose(pose: pose))
                 }
 
                 if let heroImage, zoomSource != nil {
@@ -567,7 +561,7 @@ struct PhotoViewer: View {
             .safeAreaInset(edge: .top, spacing: PVSpacing.s8) {
                 if showChrome, let asset = currentAsset {
                     topBar(asset, availableWidth: proxy.size.width)
-                        .opacity(chromeOpacity)
+                        .modifier(ViewerChromeOpacity(pose: pose))
                 }
             }
             .safeAreaInset(edge: .bottom, spacing: PVSpacing.s16) {
@@ -576,20 +570,19 @@ struct PhotoViewer: View {
                         filmstrip
                         bottomBar(asset)
                     }
-                    .opacity(chromeOpacity)
+                    .modifier(ViewerChromeOpacity(pose: pose))
                 }
             }
             .statusBarHidden(true)
-            .simultaneousGesture(
-                dismissDrag(
+            .gesture(
+                verticalPan(
                     screenHeight: UIScreen.main.bounds.height,
                     safeAreaBottom: proxy.safeAreaInsets.bottom
                 )
             )
             // Without a zoom source the whole viewer follows the finger and fades;
             // with one, only the pager, the backdrop and the controls do.
-            .offset(y: zoomSource == nil ? dragOffset.height : 0)
-            .opacity(zoomSource == nil ? 1 - dismissProgress : 1)
+            .modifier(ViewerFollowsFinger(pose: pose, enabled: zoomSource == nil))
             .allowsHitTesting(zoomPhase == .open)
             .onReceive(NotificationCenter.default.publisher(for: .immichAssetsChanged)) { note in
                 if RealtimeBatch(notification: note).touchesEditedAssets { refreshCurrentAfterRegeneration() }
@@ -603,7 +596,7 @@ struct PhotoViewer: View {
                 // Paging away stops any Live Photo pair — back to stills.
                 livePlayingIDs.removeAll()
                 withAnimation(PVMotion.movement(PVMotion.snappy, reduceMotion: reduceMotion)) {
-                    dragOffset = .zero
+                    pose.dragOffset = .zero
                 }
                 // Info stays open while paging — refetch for the new photo.
                 if showInfo {
@@ -1789,47 +1782,48 @@ struct PhotoViewer: View {
 
     // MARK: - Swipe-down dismiss / swipe-up info
 
-    private func dismissDrag(
+    /// Vertical drags only: a horizontal swipe is the pager's (`ViewerVerticalPan`).
+    private func verticalPan(
         screenHeight: CGFloat,
         safeAreaBottom: CGFloat
-    ) -> some Gesture {
-        DragGesture()
-            .onChanged { value in
+    ) -> ViewerVerticalPan {
+        ViewerVerticalPan(
+            onChanged: { value in
                 if zoomSource != nil {
                     zoomDragChanged(value)
                     return
                 }
-                guard slideshowVM == nil else { dragOffset = .zero; return }
+                guard slideshowVM == nil else { pose.dragOffset = .zero; return }
                 let h = value.translation.height
                 let w = value.translation.width
                 let verticalDominant = abs(h) > abs(w) * 1.2
 
                 guard !isZoomed, verticalDominant else {
-                    dragOffset = .zero
+                    pose.dragOffset = .zero
                     return
                 }
 
                 // Only a downward drag slides the viewer; upward is a candidate
                 // for the info sheet and never moves the viewer.
                 guard h > 0 else {
-                    dragOffset = .zero
+                    pose.dragOffset = .zero
                     return
                 }
-                dragOffset = CGSize(width: 0, height: h)
-            }
-            .onEnded { value in
+                pose.dragOffset = CGSize(width: 0, height: h)
+            },
+            onEnded: { value in
                 if zoomSource != nil {
                     zoomDragEnded(value, screenHeight: screenHeight, safeAreaBottom: safeAreaBottom)
                     return
                 }
-                guard slideshowVM == nil else { dragOffset = .zero; return }
+                guard slideshowVM == nil else { pose.dragOffset = .zero; return }
                 let velocity = value.predictedEndTranslation.height - value.translation.height
                 let h = value.translation.height
                 let w = value.translation.width
                 let verticalDominant = abs(h) > abs(w) * 1.2
 
                 guard !isZoomed, verticalDominant else {
-                    dragOffset = .zero
+                    pose.dragOffset = .zero
                     return
                 }
 
@@ -1848,14 +1842,15 @@ struct PhotoViewer: View {
                         dismissAction()
                     } else {
                         withAnimation(PVMotion.movement(PVMotion.snappy, reduceMotion: reduceMotion)) {
-                            dragOffset = .zero
+                            pose.dragOffset = .zero
                         }
                     }
                     return
                 }
 
-                dragOffset = .zero
+                pose.dragOffset = .zero
             }
+        )
     }
 
     /// The asset backing the sheets/filmstrip; nil when the pager is empty or
@@ -1865,9 +1860,7 @@ struct PhotoViewer: View {
         return localAssets[selectedIndex]
     }
 
-    private var dismissProgress: CGFloat {
-        min(max(dragOffset.height / 300, 0), 1)
-    }
+    private var dismissProgress: CGFloat { pose.dismissProgress }
 
     /// Highest `startLocation.y` allowed for the swipe-up reveal. With the
     /// chrome shown the bottom `bottomChromeHeight` + home indicator are
@@ -2044,8 +2037,8 @@ extension PhotoViewer {
             await animate(PVMotion.standard) {
                 heroFrame = target
                 heroCornerRadius = 0
-                backdropOpacity = 1
-                chromeOpacity = 1
+                pose.backdropOpacity = 1
+                pose.chromeOpacity = 1
             }
         case .fade:
             let flies = heroImage != nil
@@ -2058,9 +2051,9 @@ extension PhotoViewer {
                 }
             }
             await animate(PVMotion.fade) {
-                if flies { heroOpacity = 1 } else { pagerOpacity = 1 }
-                backdropOpacity = 1
-                chromeOpacity = 1
+                if flies { heroOpacity = 1 } else { pose.pagerOpacity = 1 }
+                pose.backdropOpacity = 1
+                pose.chromeOpacity = 1
             }
             withoutAnimation { source.hiddenID = asset.id }
         }
@@ -2083,9 +2076,9 @@ extension PhotoViewer {
     @MainActor
     private func finishOpening() {
         withoutAnimation {
-            pagerOpacity = 1
-            backdropOpacity = 1
-            chromeOpacity = 1
+            pose.pagerOpacity = 1
+            pose.backdropOpacity = 1
+            pose.chromeOpacity = 1
             heroImage = nil
             heroOpacity = 0
             zoomPhase = .open
@@ -2119,7 +2112,7 @@ extension PhotoViewer {
         let start = asset.map { startFrame(for: $0, drag: drag) }
         if case .reveal(let revealID) = route {
             // The backdrop must hide the grid while it scrolls.
-            withAnimation(.linear(duration: 0.1)) { backdropOpacity = 1 }
+            withAnimation(.linear(duration: 0.1)) { pose.backdropOpacity = 1 }
             if let frame = await source.reveal(revealID) {
                 route = .reduce(to: frame)
             } else {
@@ -2135,14 +2128,14 @@ extension PhotoViewer {
                 heroFrame = start
                 heroCornerRadius = 0
                 heroOpacity = 1
-                pagerOpacity = 0
-                dragTransform = .identity
+                pose.pagerOpacity = 0
+                pose.dragTransform = .identity
             }
             await animate(PVMotion.standard) {
                 heroFrame = tile
                 heroCornerRadius = PVRadius.xs
-                backdropOpacity = 0
-                chromeOpacity = 0
+                pose.backdropOpacity = 0
+                pose.chromeOpacity = 0
             }
         } else {
             let flies = hero != nil && start != nil
@@ -2153,14 +2146,14 @@ extension PhotoViewer {
                     heroFrame = start
                     heroCornerRadius = 0
                     heroOpacity = 1
-                    pagerOpacity = 0
-                    dragTransform = .identity
+                    pose.pagerOpacity = 0
+                    pose.dragTransform = .identity
                 }
             }
             await animate(PVMotion.fade) {
-                if flies { heroOpacity = 0 } else { pagerOpacity = 0 }
-                backdropOpacity = 0
-                chromeOpacity = 0
+                if flies { heroOpacity = 0 } else { pose.pagerOpacity = 0 }
+                pose.backdropOpacity = 0
+                pose.chromeOpacity = 0
             }
         }
         withoutAnimation {
@@ -2202,7 +2195,7 @@ extension PhotoViewer {
     /// Locks at the first 10 pt: a downward, vertical-dominant drag on an
     /// unzoomed photo closes the viewer; any other drag never does. A closing
     /// drag moves and shrinks the photo, and fades the backdrop and controls.
-    private func zoomDragChanged(_ value: DragGesture.Value) {
+    private func zoomDragChanged(_ value: ViewerVerticalPan.Value) {
         guard slideshowVM == nil, zoomPhase == .open else { return }
         let h = value.translation.height
         let w = value.translation.width
@@ -2212,12 +2205,12 @@ extension PhotoViewer {
         }
         guard closeDragLock == true else { return }
         let transform = ViewerZoomPlan.dragTransform(translation: value.translation, reduceMotion: reduceMotion)
-        dragTransform = transform
-        backdropOpacity = transform.backdropOpacity
-        chromeOpacity = transform.backdropOpacity
+        pose.dragTransform = transform
+        pose.backdropOpacity = transform.backdropOpacity
+        pose.chromeOpacity = transform.backdropOpacity
     }
 
-    private func zoomDragEnded(_ value: DragGesture.Value, screenHeight: CGFloat, safeAreaBottom: CGFloat) {
+    private func zoomDragEnded(_ value: ViewerVerticalPan.Value, screenHeight: CGFloat, safeAreaBottom: CGFloat) {
         let wasClosing = closeDragLock == true
         closeDragLock = nil
         guard slideshowVM == nil, zoomPhase == .open else {
@@ -2248,9 +2241,9 @@ extension PhotoViewer {
     /// Back to rest: springs back, or jumps under Reduce Motion.
     private func resetDrag(animated: Bool) {
         let rest = {
-            dragTransform = .identity
-            backdropOpacity = 1
-            chromeOpacity = 1
+            pose.dragTransform = .identity
+            pose.backdropOpacity = 1
+            pose.chromeOpacity = 1
         }
         if animated && !reduceMotion {
             withAnimation(PVMotion.movement(PVMotion.snappy, reduceMotion: reduceMotion), rest)
