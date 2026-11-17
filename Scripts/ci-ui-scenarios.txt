@@ -115,6 +115,9 @@ immich_stub_locked_folder.py AppLockUITests/test_AC_21_searchKeyboardNotOverLock
 immich_stub_viewer_zoom.py ViewerZoomUITests/test_AC_27_1 --erase --release
 immich_stub_viewer_zoom.py ViewerZoomUITests/test_AC_27_3 --erase --release
 immich_stub_viewer_zoom.py ViewerZoomUITests/test_AC_27_5 --erase --release
+# ViewerZoomUITests/test_AC_27_9: no film. From the timeline, a swipe left turns the viewer to the next photo, a swipe
+# right comes back, a drag down closes it onto the grid (the pages' hittability tells which one is on screen).
+immich_stub_viewer_zoom.py ViewerZoomUITests/test_AC_27_9 --erase --release
 
 # Search redesign (AC-2 to AC-26): the Results screen's bar (Filters, Search options, sync, avatar),
 # its menu, the chips over "No results". Release: one line per test; the

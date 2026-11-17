@@ -189,6 +189,27 @@ final class RoadTripViewModel {
         // Only the photos of the film stay in memory.
         let shown = Set(Self.shownAssets(in: built, clusters: kept).map(\.id))
         slideImages = slideImages.filter { shown.contains($0.key) }
+
+        // The legs' smoothed rails, heading rails and speed profiles, computed
+        // now and off the main actor: built on a leg's first frame they held
+        // that frame back, in front of the moving car.
+        let travels: [RoadTripTimeline.Travel] = built.segments.compactMap { segment in
+            if case .travel(let travel) = segment { return travel }
+            return nil
+        }
+        await Task.detached(priority: .userInitiated) {
+            Self.warmLegGeometry(travels)
+        }.value
+    }
+
+    /// Fills the geometry caches every frame of `travels` reads.
+    nonisolated static func warmLegGeometry(_ travels: [RoadTripTimeline.Travel]) {
+        for travel in travels {
+            _ = RoadTripTravelTiming.frame(travel: travel, localTime: 0)
+            _ = RoadTripDriveCamera.cameraState(travel: travel, localTime: 0)
+            _ = RoadTripDriveCamera.carHeading(travel: travel, localTime: 0)
+            _ = RoadTripDriveCamera.carYaw(travel: travel, localTime: 0, bearing: 0)
+        }
     }
 
     func cluster(by id: String) -> RoadTripCluster? {

@@ -17,9 +17,11 @@ import UIKit
 ///   owns horizontal drags.
 /// - **Single tap** toggles the viewer chrome (parent callback).
 ///
-/// The pan gesture is attached with `.highPriorityGesture` only while zoomed
-/// so it wins over the pager; at 1x it degrades to `.simultaneousGesture` (a
-/// guarded no-op) so paging stays responsive. Reset-on-page-change is handled
+/// The pan gesture is attached with `.highPriorityGesture` and only takes part
+/// while zoomed, so it wins over the pager there; at 1x it is masked out
+/// entirely (`including: .subviews`): even a simultaneous drag recognizer on a
+/// page held the pager's own pan, and a horizontal swipe no longer turned the
+/// page. The pinch is simultaneous for the same reason. Reset-on-page-change is handled
 /// by the pager giving each page a stable `.id(asset.id)` — SwiftUI recreates
 /// the view (and its `@State`) when the asset changes.
 ///
@@ -161,7 +163,7 @@ struct ZoomableImageView: View {
             .frame(width: proxy.size.width, height: proxy.size.height)
             .scaleEffect(scale)
             .offset(offset)
-            .gesture(
+            .simultaneousGesture(
                 MagnifyGesture()
                     .onChanged { value in
                         isPinching = true
@@ -192,19 +194,15 @@ struct ZoomableImageView: View {
                     }
             )
 
-            Group {
-                if isZoomed {
-                    base
-                        .highPriorityGesture(panGesture(fitted: fitted.size, viewport: proxy.size))
-                        .onTapGesture(count: 2) { toggleZoom(maxScale: maxScale) }
-                        .onTapGesture(perform: onSingleTap)
-                } else {
-                    base
-                        .simultaneousGesture(panGesture(fitted: fitted.size, viewport: proxy.size))
-                        .onTapGesture(count: 2) { toggleZoom(maxScale: maxScale) }
-                        .onTapGesture(perform: onSingleTap)
-                }
-            }
+            // One view whatever the zoom: two branches recreated the image (and
+            // reloaded it) at every zoom in and out.
+            base
+                .highPriorityGesture(
+                    panGesture(fitted: fitted.size, viewport: proxy.size),
+                    including: isZoomed ? .all : .subviews
+                )
+                .onTapGesture(count: 2) { toggleZoom(maxScale: maxScale) }
+                .onTapGesture(perform: onSingleTap)
             .onChange(of: maxScale) {
                 settle(maxScale: maxScale, fitted: fitted.size, viewport: proxy.size)
             }

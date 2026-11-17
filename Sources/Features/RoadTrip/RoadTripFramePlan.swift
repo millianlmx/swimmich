@@ -530,7 +530,7 @@ enum RoadTripTravelTiming {
             total += RoadTripClusterer.haversine(route[i - 1].coordinate, route[i].coordinate)
             result.append(total)
         }
-        cumulativeCache.countLimit = 16
+        cumulativeCache.countLimit = 64
         cumulativeCache.setObject(CumulativeEntry(result), forKey: key)
         return result
     }
@@ -597,7 +597,7 @@ enum RoadTripTravelTiming {
         let deviation = total / straight - 1.0
         guard deviation > 1e-3 else { return 0 }
         let value = min(deviation / 0.5, 1)
-        twistinessCache.countLimit = 16
+        twistinessCache.countLimit = 64
         twistinessCache.setObject(NSNumber(value: value), forKey: key)
         return value
     }
@@ -668,7 +668,7 @@ enum RoadTripTravelTiming {
         let maxT = t
         var timeFrac = rawTime.map { maxT > 0 ? $0 / maxT : 0 }
         timeFrac[timeFrac.count - 1] = 1
-        speedProfileCache.countLimit = 16
+        speedProfileCache.countLimit = 64
         let profile = SpeedProfile(timeFrac, arcFrac)
         speedProfileCache.setObject(profile, forKey: key)
         return profile

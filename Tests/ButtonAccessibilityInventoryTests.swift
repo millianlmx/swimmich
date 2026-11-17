@@ -275,7 +275,7 @@ enum ButtonScanner {
             "SlideshowView.swift|body": Count(count: 1, reason: "Affiche ou masque les commandes du diaporama ; sous VoiceOver elles restent affichées et le toucher n'a aucun effet."),
             "KenBurnsImageView.swift|body": Count(count: 1, reason: "Même toucher que celui du diaporama : affiche ou masque les commandes, sans effet sous VoiceOver."),
             "VideoPlayerView.swift|body": Count(count: 1, reason: "Toucher sur le média : ferme le panneau d'infos (doublé par Close details), avance d'une photo (doublé par le balayage et le filmstrip) ou bascule l'habillage que le même toucher rend."),
-            "ZoomableImageView.swift|body": Count(count: 4, reason: "Deux sites par branche : le double toucher zoome, le toucher simple fait ce que fait VideoPlayerView."),
+            "ZoomableImageView.swift|body": Count(count: 2, reason: "Une seule branche (zoomée ou non) : le double toucher zoome, le toucher simple fait ce que fait VideoPlayerView."),
         ],
         labelledElsewhere: [
             "AssetThumbnailCell.swift|body": Elsewhere(count: 1, carrier: .identifierPrefix("assetTile_"), reason: "La couche image de la vignette porte le libellé et le trait bouton ; les badges restent des éléments distincts."),

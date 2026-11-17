@@ -71,10 +71,11 @@ struct AlbumDetailView: View {
 
     init(
         album: AlbumResponseDto,
-        client: any ImmichClient = DependencyContainer.shared.libraryClient
+        client: any ImmichClient = DependencyContainer.shared.libraryClient,
+        cache: AlbumDetailCache? = AlbumDetailCache.shared
     ) {
         self.initialAlbum = album
-        _vm = State(initialValue: AlbumDetailViewModel(client: client, albumId: album.id))
+        _vm = State(initialValue: AlbumDetailViewModel(client: client, albumId: album.id, cache: cache))
     }
 
     var body: some View {
@@ -325,10 +326,13 @@ struct AlbumDetailView: View {
                 }
             }
         }
+        // Once per screen: coming back from the viewer or a sheet keeps the grid
+        // as it is (a read here used to reload it, back to its first page).
         .task {
-            await vm.load()
+            await vm.appear()
             await vm.probeServerVersionIfEditor(currentUserId: auth.userId)
         }
+        .onDisappear { vm.saveSnapshot() }
         .sheet(isPresented: $presentingShare) {
             SharedLinkSheet(vm: vm)
         }

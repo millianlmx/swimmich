@@ -18,7 +18,7 @@ import XCTest
 /// Set `TEST_RUNNER_SWIMMICH_EVIDENCE_DIR` to keep each film next to the proofs
 /// (`.harness/evidence/<ac>/`); every film is also attached to the result.
 ///
-/// CI (Scripts/ci-ui-scenarios.txt): test_AC_27_1, test_AC_27_3 and test_AC_27_5 are listed, `--release`, and have never run there yet. CI does not start the recorder, so each is expected to fail ("enregistreur vidéo absent"; test_AC_27_5 first at "never reached the far photo", where `swipeLeft` does not page the viewer on the CI simulator); a "Run workflow" `suite: all` shows it.
+/// CI (Scripts/ci-ui-scenarios.txt): test_AC_27_9 (no film) is listed `--release`. test_AC_27_1, test_AC_27_3 and test_AC_27_5 are listed, `--release`, and have never run there yet. CI does not start the recorder, so each is expected to fail ("enregistreur vidéo absent"; test_AC_27_5 first at "never reached the far photo", where `swipeLeft` does not page the viewer on the CI simulator); a "Run workflow" `suite: all` shows it.
 ///
 /// Run one method at a time with the launcher, never by hand:
 ///
@@ -977,6 +977,40 @@ final class ViewerZoomUITests: XCTestCase {
     }
 
     /// AC-28: the controls are drawn as soon as the animation ends (the common volet).
+    /// AC-27.9: a horizontal swipe turns the page (left, then right back) and a
+    /// drag down closes the viewer. Read from which page's image is hittable —
+    /// no film, so it runs in CI, where `swipeLeft` used to leave the viewer on
+    /// its photo.
+    func test_AC_27_9() throws {
+        launchSignedIn()
+        openViewer(photo)
+        let first = element("viewerImage_\(photo)")
+        let next = element("viewerImage_\(partner)")
+        XCTAssertTrue(first.waitForExistence(timeout: 20), "the viewer does not show \(photo) — \(screenText())")
+        XCTAssertTrue(poll(10) { first.isHittable }, "the opened photo is not on screen — \(screenText())")
+
+        window.swipeLeft()
+        XCTAssertTrue(poll(10) { next.exists && next.isHittable && !first.isHittable },
+                      "a swipe left did not turn to the next photo — \(screenText())")
+        window.swipeRight()
+        XCTAssertTrue(poll(10) { first.isHittable && !next.isHittable },
+                      "a swipe right did not come back to the first photo — \(screenText())")
+
+        dragDown(400)
+        XCTAssertTrue(poll(20) { !element("viewerBackButton").exists }, "a drag down did not close the viewer")
+        XCTAssertTrue(tile(photo).waitForExistence(timeout: 20), "the grid did not come back")
+    }
+
+    /// True as soon as `condition` holds, polled every 0.2 s up to `timeout`.
+    private func poll(_ timeout: TimeInterval, until condition: () -> Bool) -> Bool {
+        let deadline = Date().addingTimeInterval(timeout)
+        repeat {
+            if condition() { return true }
+            RunLoop.current.run(until: Date().addingTimeInterval(0.2))
+        } while Date() < deadline
+        return condition()
+    }
+
     func test_AC_28() {
         launchSignedIn()
         assertControlsAtOpening(of: photo, hasFavorite: true, repetitions: 1)
