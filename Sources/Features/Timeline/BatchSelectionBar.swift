@@ -26,7 +26,7 @@ struct BatchSelectionBar<Model: BatchSelectionModel>: ViewModifier {
     @State private var presentAlbumPicker = false
     @State private var favoriteTick = 0
     @State private var deleteTick = 0
-    @State private var colorMosaicVM: ColorMosaicViewModel?
+    @State private var creation: SelectionCreation?
     @Environment(AuthViewModel.self) private var auth
 
     func body(content: Content) -> some View {
@@ -100,8 +100,8 @@ struct BatchSelectionBar<Model: BatchSelectionModel>: ViewModifier {
                     model.exitSelectionMode()
                 }
             }
-            .pvFullScreenCover(item: $colorMosaicVM) { colorMosaicVM in
-                ColorMosaicView(vm: colorMosaicVM)
+            .pvFullScreenCover(item: $creation) { creation in
+                creation.view
             }
     }
 
@@ -231,20 +231,12 @@ struct BatchSelectionBar<Model: BatchSelectionModel>: ViewModifier {
                 .disabled(empty)
                 .accessibilityIdentifier("downloadSelectionButton")
 
-                // Color mosaic of the selection. Photos still only on this
-                // device have no thumbhash, so no color, and are left out.
-                Button {
-                    colorMosaicVM = DependencyContainer.shared.makeColorMosaicViewModel(
-                        assets: model.selectedItems,
-                        baseURL: auth.baseURL ?? URL(string: "https://example.com")!,
-                        token: auth.accessToken
-                    )
-                } label: {
-                    Label("Color Mosaic", systemImage: "square.grid.3x3.fill")
-                        .labelStyle(.iconOnly)
+                // Color mosaic or photo dump of the selection. Photos still
+                // only on this device have nothing on the server to look at
+                // and are left out.
+                SelectionCreateMenu(isDisabled: empty) { make in
+                    creation = make(model.selectedItems, auth.baseURL, auth.accessToken)
                 }
-                .disabled(empty)
-                .accessibilityIdentifier("colorMosaicSelectionButton")
             }
         }
     }
