@@ -56,7 +56,10 @@ enum RoadTripClusterer {
         }
 
         var members: [[AssetReactItem]] = []
-        var anchors: [CLLocationCoordinate2D] = []   // parallel to located clusters only
+        // The anchor of each located cluster, by its index in `members`: an
+        // unlocated photo can open a cluster of its own (`attachByTime`), so
+        // the located ones are not the first `anchors.count` of `members`.
+        var anchors: [Int: CLLocationCoordinate2D] = [:]
         var grid: [GridKey: [Int]] = [:]             // cell -> located cluster indices (anchor-based)
 
         let latCell = radiusMeters / 110_000.0       // degrees of latitude per cell
@@ -79,7 +82,8 @@ enum RoadTripClusterer {
                 for dLon in -1...1 {
                     guard let indices = grid[GridKey(lat: key.lat + dLat, lon: key.lon + dLon)] else { continue }
                     for index in indices {
-                        let d = haversine(coord, anchors[index])
+                        guard let anchor = anchors[index] else { continue }
+                        let d = haversine(coord, anchor)
                         if d < bestDistance { bestDistance = d; best = index }
                     }
                 }
@@ -89,7 +93,7 @@ enum RoadTripClusterer {
             } else {
                 let newIndex = members.count
                 members.append([asset])
-                anchors.append(coord)
+                anchors[newIndex] = coord
                 grid[key, default: []].append(newIndex)
             }
         }
