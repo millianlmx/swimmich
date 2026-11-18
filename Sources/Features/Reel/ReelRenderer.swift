@@ -131,7 +131,38 @@ enum ReelRenderer {
         progress: @escaping @Sendable (Double) -> Void
     ) async throws -> URL {
         let size = videoSize
-        let url = FileManager.default.temporaryDirectory.appendingPathComponent("reel-\(UUID().uuidString).mp4")
+        let duration = ReelPlan.duration(photoCount: shots.count)
+        var decoded: (id: String, image: UIImage)?
+        return try await writeVideo(name: "reel", size: size, fps: fps, duration: duration, progress: progress) { time in
+            let (segment, local) = ReelPlan.segment(at: time, photoCount: shots.count)
+            let shot: ReelShot
+            switch segment {
+            case .title: shot = cover
+            case .photo(let index): shot = shots[index]
+            }
+            if decoded?.id != shot.id {
+                decoded = UIImage(data: shot.imageData).map { (shot.id, $0) }
+            }
+            drawFrame(
+                segment: segment, progress: local, image: decoded?.image, shot: shot,
+                title: title, subtitle: subtitle, credit: showsCredit && time >= duration - ReelPlan.endHold,
+                showsPlace: showsPlaces, zooms: true, in: size
+            )
+        }
+    }
+
+    /// Writes a silent HEVC video of `duration` seconds to a temporary file and
+    /// returns it: `drawFrame` draws the frame at each time, in UIKit
+    /// coordinates, in the current context. Shared by the reel and then & now.
+    static func writeVideo(
+        name: String,
+        size: CGSize,
+        fps: Int32,
+        duration: Double,
+        progress: @escaping @Sendable (Double) -> Void,
+        drawFrame: (Double) -> Void
+    ) async throws -> URL {
+        let url = FileManager.default.temporaryDirectory.appendingPathComponent("\(name)-\(UUID().uuidString).mp4")
         let writer = try AVAssetWriter(outputURL: url, fileType: .mp4)
         let settings: [String: Any] = [
             AVVideoCodecKey: AVVideoCodecType.hevc,
@@ -159,22 +190,10 @@ enum ReelRenderer {
         guard writer.startWriting() else { throw writer.error ?? APIError.decoding("Failed to start video writer") }
         writer.startSession(atSourceTime: .zero)
 
-        let duration = ReelPlan.duration(photoCount: shots.count)
         let total = max(1, Int((duration * Double(fps)).rounded(.up)))
-        var decoded: (id: String, image: UIImage)?
         do {
             for frameNumber in 0..<total {
                 try Task.checkCancellation()
-                let time = Double(frameNumber) / Double(fps)
-                let (segment, local) = ReelPlan.segment(at: time, photoCount: shots.count)
-                let shot: ReelShot
-                switch segment {
-                case .title: shot = cover
-                case .photo(let index): shot = shots[index]
-                }
-                if decoded?.id != shot.id {
-                    decoded = UIImage(data: shot.imageData).map { (shot.id, $0) }
-                }
                 while !input.isReadyForMoreMediaData {
                     try Task.checkCancellation()
                     try await Task.sleep(for: .milliseconds(5))
@@ -183,15 +202,7 @@ enum ReelRenderer {
                 var buffer: CVPixelBuffer?
                 CVPixelBufferPoolCreatePixelBuffer(nil, pool, &buffer)
                 guard let buffer else { throw APIError.decoding("No pixel buffer") }
-                let image = decoded?.image
-                let credit = showsCredit && time >= duration - ReelPlan.endHold
-                draw(into: buffer, size: size) {
-                    drawFrame(
-                        segment: segment, progress: local, image: image, shot: shot,
-                        title: title, subtitle: subtitle, credit: credit, showsPlace: showsPlaces,
-                        zooms: true, in: size
-                    )
-                }
+                draw(into: buffer, size: size) { drawFrame(Double(frameNumber) / Double(fps)) }
                 adaptor.append(buffer, withPresentationTime: CMTime(value: CMTimeValue(frameNumber), timescale: fps))
                 if frameNumber % 15 == 0 { progress(Double(frameNumber) / Double(total)) }
             }
