@@ -110,7 +110,7 @@ final class FloatingControlStyleTests: XCTestCase {
         let bar: Int
     }
 
-    /// The closed table of the style's call sites (37 + 26 + 23). The map's
+    /// The closed table of the style's call sites (39 + 27 + 26). The map's
     /// controls are not in it: they float over an interface surface and use the
     /// system's adaptive glass (`pvGlass`, see `test_mapControlsUseTheSystemGlass`).
     private static let expectedCounts: [String: RoleCounts] = [
@@ -128,6 +128,7 @@ final class FloatingControlStyleTests: XCTestCase {
         "Sources/Features/GrowingUp/GrowingUpView.swift": RoleCounts(circle: 2, pill: 1, bar: 4),
         "Sources/Features/Reel/ReelView.swift": RoleCounts(circle: 2, pill: 1, bar: 4),
         "Sources/Features/MapPoster/MapPosterView.swift": RoleCounts(circle: 2, pill: 1, bar: 2),
+        "Sources/Features/Wrapped/WrappedView.swift": RoleCounts(circle: 2, pill: 1, bar: 3),
         "Sources/Features/SharedLinks/SharedLinkViewerView.swift": RoleCounts(circle: 1, pill: 1, bar: 0),
         "Sources/Features/Timeline/TimelineView.swift": RoleCounts(circle: 2, pill: 1, bar: 0),
         "Sources/Features/Timeline/TimelineScrubber.swift": RoleCounts(circle: 0, pill: 2, bar: 0),
@@ -174,7 +175,7 @@ final class FloatingControlStyleTests: XCTestCase {
             let expected = Self.expectedCounts[path]?.circle ?? 0
             XCTAssertEqual(actual.circle, expected, "\(path): .pvFloating(.circle) count")
         }
-        XCTAssertEqual(total, 37, "37 round buttons float over media in the app")
+        XCTAssertEqual(total, 39, "39 round buttons float over media in the app")
     }
 
     func test_AC_30_2_pillsAndBarsUseTheirStyle() throws {
@@ -188,8 +189,8 @@ final class FloatingControlStyleTests: XCTestCase {
             XCTAssertEqual(actual.pill, expected.pill, "\(path): .pvFloating(.pill) count")
             XCTAssertEqual(actual.bar, expected.bar, "\(path): .pvFloating(.bar) count")
         }
-        XCTAssertEqual(pills, 26)
-        XCTAssertEqual(bars, 23)
+        XCTAssertEqual(pills, 27)
+        XCTAssertEqual(bars, 26)
 
         let roadTrip = try Self.normalizedLines("Sources/Features/RoadTrip/RoadTripView.swift")
         XCTAssertFalse(roadTrip.contains { $0.text.contains(".black.opacity(0.5)") },

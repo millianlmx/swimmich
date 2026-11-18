@@ -24,6 +24,8 @@ struct MemoriesView: View {
     @State private var addingPhotosToID: String?
     /// Then & now, pushed while set.
     @State private var thenAndNowVM: ThenAndNowViewModel?
+    /// Swimmich Wrapped, full-screen while set.
+    @State private var wrappedVM: WrappedViewModel?
     @State private var pendingDelete: MemoryResponseDto?
 
     var body: some View {
@@ -68,9 +70,25 @@ struct MemoriesView: View {
                     }
                     .accessibilityIdentifier("memoriesThenAndNowButton")
                 }
+                // The year in photos, as a story.
+                ToolbarItem(placement: .topBarLeading) {
+                    Button {
+                        wrappedVM = DependencyContainer.shared.makeWrappedViewModel(
+                            baseURL: auth.baseURL ?? URL(string: "https://example.com")!,
+                            token: auth.accessToken
+                        )
+                    } label: {
+                        Label("Wrapped", systemImage: "gift")
+                            .labelStyle(.iconOnly)
+                    }
+                    .accessibilityIdentifier("memoriesWrappedButton")
+                }
                 ProfileAvatarToolbarItem { openProfile() }
             }
             .task { await vm.load() }
+            .pvFullScreenCover(item: $wrappedVM) { wrappedVM in
+                WrappedView(vm: wrappedVM)
+            }
             .navigationDestination(isPresented: Binding(
                 get: { thenAndNowVM != nil },
                 set: { if !$0 { thenAndNowVM = nil } }
