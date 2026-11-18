@@ -454,6 +454,7 @@
 		8589CDFBD9C8472915191C9F /* RoadTripCameraTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9C897C83B34BE9893378A750 /* RoadTripCameraTests.swift */; };
 		85B8E53B879C465DA05FEA0A /* RecentAssetsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4BCF25657A8560B1071F21DF /* RecentAssetsView.swift */; };
 		862A11D53CD87486D727AF07 /* CreateStackSheet.swift in Sources */ = {isa = PBXBuildFile; fileRef = 842F2EECEF261D29C4944347 /* CreateStackSheet.swift */; };
+		8652EBABDF1457DD842EA934 /* immich_stub_readme_screenshots.cpython-314.pyc in Resources */ = {isa = PBXBuildFile; fileRef = 4D2C8DE926D982642B5E05BA /* immich_stub_readme_screenshots.cpython-314.pyc */; };
 		86658A5A059FD7F9D9C7EBC3 /* AppTheme.swift in Sources */ = {isa = PBXBuildFile; fileRef = 557C399C6EF9BEB0C99FA3C5 /* AppTheme.swift */; };
 		866D89BD9CF085F2C74DA1E7 /* AppLogEntry.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0E9AEEEBEDC9BE359C150261 /* AppLogEntry.swift */; };
 		868F0AB18E97FD3429CCEEED /* MockVideoPlaybackEngine.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8986002366C2702829706FC4 /* MockVideoPlaybackEngine.swift */; };
@@ -684,6 +685,7 @@
 		CB052BD9B1DDC494CC38A76B /* UserFacingError.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9D6AD4E951F2E995E43EC795 /* UserFacingError.swift */; };
 		CB1E733399D294A182DC27C3 /* TagsViewModelTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 20DFD1A6783E4924764987C7 /* TagsViewModelTests.swift */; };
 		CBEA6A7587B56A3ED8629612 /* PrivacyInfo.xcprivacy in Resources */ = {isa = PBXBuildFile; fileRef = 5A4F5AD7BBB938036239BB12 /* PrivacyInfo.xcprivacy */; };
+		CC4F263E9957670A2AA0AE40 /* immich_stub_base.cpython-314.pyc in Resources */ = {isa = PBXBuildFile; fileRef = 75525810539E150F56E81AC1 /* immich_stub_base.cpython-314.pyc */; };
 		CD656BF65A9113FFF6792EC6 /* SystemIdleTimerTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = B149BBBB045E3107F97F5586 /* SystemIdleTimerTests.swift */; };
 		CE0FFD1580A3FF6DDC7017DC /* BackupEditStackTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 512AF25CDD5F25D9E853EAD7 /* BackupEditStackTests.swift */; };
 		CE71C0A895C7FB9E8A075254 /* CustomHeadersRegistryTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 12978F4B68AD9D707B2EF5C7 /* CustomHeadersRegistryTests.swift */; };
@@ -740,6 +742,7 @@
 		DF56AF55F4C25922114C4396 /* LockedFolderUITests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 86533554A77DF5D2D61EA1FF /* LockedFolderUITests.swift */; };
 		DF7A0FB005A9A1230D45DAC0 /* FavoritesFilterUITests.swift in Sources */ = {isa = PBXBuildFile; fileRef = B03C5CFAF754218B24E97A04 /* FavoritesFilterUITests.swift */; };
 		DF85BB6FEAF0388DE9FC067F /* SystemNetworkPathMonitor.swift in Sources */ = {isa = PBXBuildFile; fileRef = CFEBCBC9B1D165A56D9D62FC /* SystemNetworkPathMonitor.swift */; };
+		DFC44CB9B14B8A7F9828D428 /* ShowcaseScreenshotsUITests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0178EAB22F37FB02E0D3A9C6 /* ShowcaseScreenshotsUITests.swift */; };
 		DFCEBAC7326BC13FED2CE5DD /* GrowingUpPlanTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5B150782C78DD4753B19DE1B /* GrowingUpPlanTests.swift */; };
 		DFFA30063578322A1AB52D3A /* ImmichColors.swift in Sources */ = {isa = PBXBuildFile; fileRef = AF2FE20DC73A4EF7C653097A /* ImmichColors.swift */; };
 		E00CB72F2D79A32EC663A9F0 /* AppLockViewModelTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4AB868B52ADB57744F84B7EB /* AppLockViewModelTests.swift */; };
@@ -819,6 +822,7 @@
 		F67A67B0F2D84C1E37A0D55C /* MapSettingsStoreTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0ACCFA90EEFC41A346AE3CCB /* MapSettingsStoreTests.swift */; };
 		F6BEED49716E3A8B85D53AAE /* CustomHeadersUITests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8630739F9380007C5B50E871 /* CustomHeadersUITests.swift */; };
 		F6F0D7269C6DBB42E4E4F59F /* ImmichMemoriesWidget.swift in Sources */ = {isa = PBXBuildFile; fileRef = CF1DCD8C28A6D479BA961E92 /* ImmichMemoriesWidget.swift */; };
+		F788C073A38B23706685D798 /* immich_stub_login.cpython-314.pyc in Resources */ = {isa = PBXBuildFile; fileRef = ADE881AD2EA753C432942BCC /* immich_stub_login.cpython-314.pyc */; };
 		F8500FAF0128849E57C00797 /* LoginOptionsTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = FD3DDB5816AF13959EA93C43 /* LoginOptionsTests.swift */; };
 		F8726D566A4F21C603B06FC7 /* NetworkPathMonitoring.swift in Sources */ = {isa = PBXBuildFile; fileRef = AEAEF7B26C7EA596C5C02849 /* NetworkPathMonitoring.swift */; };
 		F8E262235E5ACF18F3D260AF /* ListStatesUITests.swift in Sources */ = {isa = PBXBuildFile; fileRef = D7B3B81B86353CE5D13B1E80 /* ListStatesUITests.swift */; };
@@ -933,6 +937,7 @@
 		0128D3D9634947DC16771803 /* ColorMosaicViewModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ColorMosaicViewModel.swift; sourceTree = "<group>"; };
 		0155F5972CD6CFDDAFBA90DA /* PersonBirthday.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PersonBirthday.swift; sourceTree = "<group>"; };
 		016B785B91FB8F6FB3B705C7 /* PhotoLibraryEditResourceTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PhotoLibraryEditResourceTests.swift; sourceTree = "<group>"; };
+		0178EAB22F37FB02E0D3A9C6 /* ShowcaseScreenshotsUITests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ShowcaseScreenshotsUITests.swift; sourceTree = "<group>"; };
 		017A6AC30B47A83D632B43F5 /* RecentAssetsViewModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RecentAssetsViewModel.swift; sourceTree = "<group>"; };
 		019585479AB0338BC1767294 /* APIKeyPermission.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = APIKeyPermission.swift; sourceTree = "<group>"; };
 		01F7E86D3210A227E2ABBFEE /* PluralsUITests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PluralsUITests.swift; sourceTree = "<group>"; };
@@ -1162,6 +1167,7 @@
 		4BB0A7C3A9319D1DFD6389C6 /* MockRealtimeTransport.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MockRealtimeTransport.swift; sourceTree = "<group>"; };
 		4BCF25657A8560B1071F21DF /* RecentAssetsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RecentAssetsView.swift; sourceTree = "<group>"; };
 		4D1D0D3443CFFD1BCEE6F042 /* AlbumDetailViewModelTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AlbumDetailViewModelTests.swift; sourceTree = "<group>"; };
+		4D2C8DE926D982642B5E05BA /* immich_stub_readme_screenshots.cpython-314.pyc */ = {isa = PBXFileReference; path = "immich_stub_readme_screenshots.cpython-314.pyc"; sourceTree = "<group>"; };
 		4D71B965EF3472B5079FBC90 /* DynamicTypeTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DynamicTypeTests.swift; sourceTree = "<group>"; };
 		4DC194337127AE3FEB2DB244 /* immich_stub_client_cert.py */ = {isa = PBXFileReference; lastKnownFileType = text.script.python; path = immich_stub_client_cert.py; sourceTree = "<group>"; };
 		4E1B99C5637E46369E96F96E /* BirthdayEditorSheet.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BirthdayEditorSheet.swift; sourceTree = "<group>"; };
@@ -1299,6 +1305,7 @@
 		74DAA39FA702B8FA8100EAE4 /* ListStateViews.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ListStateViews.swift; sourceTree = "<group>"; };
 		74FC2CEA7163ACEC2AD3E0BF /* AdminView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AdminView.swift; sourceTree = "<group>"; };
 		74FD57371A6AE8F8F6FBF3EB /* MapPosterViewModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MapPosterViewModel.swift; sourceTree = "<group>"; };
+		75525810539E150F56E81AC1 /* immich_stub_base.cpython-314.pyc */ = {isa = PBXFileReference; path = "immich_stub_base.cpython-314.pyc"; sourceTree = "<group>"; };
 		75F68D10AB60FFB32FB4C4D1 /* LocalLibraryViewModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LocalLibraryViewModel.swift; sourceTree = "<group>"; };
 		760A50399F97A2D325FEB14D /* AlbumDetailViewModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AlbumDetailViewModel.swift; sourceTree = "<group>"; };
 		76177BCE767BAFFFBB50E9BB /* RoadTripLiveMap.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RoadTripLiveMap.swift; sourceTree = "<group>"; };
@@ -1480,6 +1487,7 @@
 		ACA8FE0FABA574203F62A5C1 /* KeychainStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = KeychainStore.swift; sourceTree = "<group>"; };
 		AD19A65145D0FE42E2F794A7 /* MultipartBody.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MultipartBody.swift; sourceTree = "<group>"; };
 		AD9DDFB7AE1FBDCA37BFC333 /* AppSettingsStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppSettingsStore.swift; sourceTree = "<group>"; };
+		ADE881AD2EA753C432942BCC /* immich_stub_login.cpython-314.pyc */ = {isa = PBXFileReference; path = "immich_stub_login.cpython-314.pyc"; sourceTree = "<group>"; };
 		AE06C2D2166430F5321E3C07 /* ShareItem.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ShareItem.swift; sourceTree = "<group>"; };
 		AE4516E395F72BD46773B531 /* MemoryMomentView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MemoryMomentView.swift; sourceTree = "<group>"; };
 		AE9A40CA604F717FBDFCDFAA /* SavedAccount.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SavedAccount.swift; sourceTree = "<group>"; };
@@ -1934,6 +1942,16 @@
 				75F68D10AB60FFB32FB4C4D1 /* LocalLibraryViewModel.swift */,
 			);
 			path = LocalLibrary;
+			sourceTree = "<group>";
+		};
+		2A05D98F0C418D04D22715BE /* __pycache__ */ = {
+			isa = PBXGroup;
+			children = (
+				75525810539E150F56E81AC1 /* immich_stub_base.cpython-314.pyc */,
+				ADE881AD2EA753C432942BCC /* immich_stub_login.cpython-314.pyc */,
+				4D2C8DE926D982642B5E05BA /* immich_stub_readme_screenshots.cpython-314.pyc */,
+			);
+			path = __pycache__;
 			sourceTree = "<group>";
 		};
 		2EFA59C0E9A45AE611BE5AFD /* ThenAndNow */ = {
@@ -2790,6 +2808,7 @@
 				A2691E6AA6086DB1418C79A8 /* immich_stub_widgets.py */,
 				3F2B5387F2B1A73E1EACAB47 /* immich_stub_zoom_limit.py */,
 				264760C3CC65109056B7EDEB /* route_payloads.json */,
+				2A05D98F0C418D04D22715BE /* __pycache__ */,
 			);
 			path = stubs;
 			sourceTree = "<group>";
@@ -2952,6 +2971,7 @@
 				0BA5E103870DD33B587F50BB /* ShareAndCachesUITests.swift */,
 				625ADE71126C88DAABDA54D8 /* SharedLinkMaskedMetadataUITests.swift */,
 				FC236D6643511063A426F562 /* ShareExtensionUITests.swift */,
+				0178EAB22F37FB02E0D3A9C6 /* ShowcaseScreenshotsUITests.swift */,
 				896D2CDA762F05C29C101BB9 /* StarRatingsUITests.swift */,
 				04C420139FECFF13B115B840 /* SyncBadgeUITests.swift */,
 				DE8261F0A40285AF09ABE63A /* SyncStatusUITests.swift */,
@@ -3378,6 +3398,7 @@
 				EF937EDA299E4EC2A272D51B /* immich_stub_archive.py in Resources */,
 				B352C9A742FFD48E34132F79 /* immich_stub_asset_edits.py in Resources */,
 				DB72A44570C64FA67C02A8F5 /* immich_stub_backup_remainder.py in Resources */,
+				CC4F263E9957670A2AA0AE40 /* immich_stub_base.cpython-314.pyc in Resources */,
 				BDCE810E91B275B20F82A24B /* immich_stub_base.py in Resources */,
 				34F5B8121C30F152F86C8862 /* immich_stub_change_password.py in Resources */,
 				823CF6A455262E03E834DBC2 /* immich_stub_chromecast.py in Resources */,
@@ -3396,6 +3417,7 @@
 				B2284D202C3B66C502473696 /* immich_stub_list_states.py in Resources */,
 				79D68068E03737251E7BBB4B /* immich_stub_local_library.py in Resources */,
 				555B79A8AFFA156A3DE49FF8 /* immich_stub_locked_folder.py in Resources */,
+				F788C073A38B23706685D798 /* immich_stub_login.cpython-314.pyc in Resources */,
 				D91413A12EA334AB472AE365 /* immich_stub_login.py in Resources */,
 				8C0E8E68CED4E6CC313819C6 /* immich_stub_map_settings.py in Resources */,
 				BAB66B7B11651448F6CC4648 /* immich_stub_memories.py in Resources */,
@@ -3409,6 +3431,7 @@
 				1187E9FCD768EF8A04CCAABE /* immich_stub_profile_picture.py in Resources */,
 				9D82D02CC66CDAAD6FD1B581 /* immich_stub_proxy_headers.py in Resources */,
 				D51CD30CCCE3A039EB7B52F1 /* immich_stub_read_only_mode.py in Resources */,
+				8652EBABDF1457DD842EA934 /* immich_stub_readme_screenshots.cpython-314.pyc in Resources */,
 				9C8DADC85D54CB689A0AD407 /* immich_stub_readme_screenshots.py in Resources */,
 				5DD2BA9714C4ECF473B4525A /* immich_stub_recent.py in Resources */,
 				D74C410C5102413B9AB675C0 /* immich_stub_reduce_motion.py in Resources */,
@@ -3790,6 +3813,7 @@
 				2B59FE0E719BB30DB8CBB854 /* ShareAndCachesUITests.swift in Sources */,
 				809833EB50A0E03E4AF2130D /* ShareExtensionUITests.swift in Sources */,
 				2A505CDE1BCB1E8F6B9C01AD /* SharedLinkMaskedMetadataUITests.swift in Sources */,
+				DFC44CB9B14B8A7F9828D428 /* ShowcaseScreenshotsUITests.swift in Sources */,
 				7EB5402F9FD5E168420DE2E6 /* StarRatingsUITests.swift in Sources */,
 				73964B31BCBF336B7EB3CFF6 /* SyncBadgeUITests.swift in Sources */,
 				0DC968B54B8170E5446F9EE0 /* SyncStatusUITests.swift in Sources */,

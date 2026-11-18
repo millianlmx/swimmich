@@ -24,8 +24,13 @@ sys.path.insert(0, str(ROOT / "UITests" / "stubs"))
 import immich_stub_readme_screenshots as shots  # noqa: E402
 from immich_stub_base import Request  # noqa: E402
 
+# The showcase (what the app does, for everyone) and the technical documentation
+# (how it is built, tested and released), each in English and French.
 READMES = ("README.md", "README.fr.md")
-FEATURES_TITLE = {"README.md": "Features", "README.fr.md": "Fonctionnalités"}
+TECHNICAL = ("docs/TECHNICAL.md", "docs/TECHNICAL.fr.md")
+DOCS = READMES + TECHNICAL
+FEATURES_TITLE = {"docs/TECHNICAL.md": "Features", "docs/TECHNICAL.fr.md": "Fonctionnalités"}
+SHOWCASE_SCENARIO = "UITests/Scenarios/ShowcaseScreenshotsUITests.swift"
 SCREENSHOTS = ["timeline", "viewer", "albums", "search", "backup"]
 FIXTURES = ROOT / "UITests" / "stubs" / "fixtures" / "readme"
 PATH_EXTENSIONS = (".swift", ".sh", ".py", ".yml", ".md", ".json", ".plist", ".xcstrings", ".xcodeproj",
@@ -109,7 +114,7 @@ def png_size(path):
 class TestReadmeContent(unittest.TestCase):
     def test_AC_1_features_table_lists_every_feature_folder(self):
         folders = sorted(p.name for p in (ROOT / "Sources" / "Features").iterdir() if p.is_dir())
-        for name in READMES:
+        for name in TECHNICAL:
             rows = "\n".join(l for l in section(name, FEATURES_TITLE[name]).splitlines() if l.startswith("|"))
             for folder in folders:
                 with self.subTest(name=name, folder=folder):
@@ -128,38 +133,44 @@ class TestReadmeContent(unittest.TestCase):
                 self.assertIn("**Swimmich**", intro)
 
     def test_AC_3_every_relative_link_exists(self):
-        for name in READMES:
+        for name in DOCS:
             text = read(name)
             slugs = {re.sub(r"[^\w\- ]", "", h[1].lower()).replace(" ", "-") for h in headings(text)}
-            for target in re.findall(r"\]\(([^)\s]+)\)", prose(text)):
+            targets = re.findall(r"\]\(([^)\s]+)\)", prose(text)) + re.findall(r'(?:src|href)="([^"]+)"', prose(text))
+            for target in targets:
                 if target.startswith(("http://", "https://", "mailto:")):
                     continue
                 path, _, anchor = target.partition("#")
                 with self.subTest(name=name, target=target):
                     if path:
-                        self.assertTrue((ROOT / path).exists(), f"{path} is missing")
+                        # Relative to the document, as GitHub resolves it.
+                        self.assertTrue(((ROOT / name).parent / path).exists(), f"{path} is missing")
                     else:
                         self.assertIn(anchor, slugs)
 
     def test_AC_4_no_dated_test_count_and_no_french_in_the_english_readme(self):
-        for name in READMES:
+        for name in DOCS:
             with self.subTest(name=name):
                 body = prose(read(name))
                 self.assertIsNone(re.search(r"\b\d[\d ,.]* (unit )?tests\b", body), "a frozen test count")
                 self.assertIsNone(re.search(r"\b20\d\d-\d\d-\d\d\b", body), "a dated figure")
-        english = prose(read("README.md"))
-        self.assertIsNone(re.search(r"[àâçéèêëîïôûùüÿœ]", english))
-        self.assertIsNone(re.search(r"\b(les|des|une|pour|avec|dans|sont|est|nous|vous)\b", english, re.I))
+        for name in ("README.md", "docs/TECHNICAL.md"):
+            english = prose(read(name))
+            with self.subTest(name=name):
+                self.assertIsNone(re.search(r"[àâçéèêëîïôûùüÿœ]", english))
+                self.assertIsNone(re.search(r"\b(les|des|une|pour|avec|dans|sont|est|nous|vous)\b", english, re.I))
 
     def test_AC_5_readmes_have_the_same_sections_and_images(self):
-        en, fr = read("README.md"), read("README.fr.md")
-        self.assertEqual([h[0] for h in headings(en)], [h[0] for h in headings(fr)])
-        images = lambda t: re.findall(r"!\[[^\]]+\]\(([^)]+)\)", t)
-        self.assertEqual(images(en), images(fr))
-        self.assertEqual(len(re.findall(r"^- \[", en, re.M)), len(re.findall(r"^- \[", fr, re.M)))
-        for name in READMES:
+        images = lambda t: re.findall(r"!\[[^\]]+\]\(([^)]+)\)", t) + re.findall(r'<img src="([^"]+)"', t)
+        for english, french in ((READMES[0], READMES[1]), (TECHNICAL[0], TECHNICAL[1])):
+            en, fr = read(english), read(french)
+            with self.subTest(document=english):
+                self.assertEqual([h[0] for h in headings(en)], [h[0] for h in headings(fr)])
+                self.assertEqual(images(en), images(fr))
+                self.assertEqual(len(re.findall(r"^- \[", en, re.M)), len(re.findall(r"^- \[", fr, re.M)))
+                self.assertEqual(len(re.findall(r"^```", en, re.M)), len(re.findall(r"^```", fr, re.M)))
+        for name in DOCS:
             self.assertTrue(read(name).count("```") % 2 == 0, f"{name}: an unclosed code fence")
-        self.assertEqual(len(re.findall(r"^```", en, re.M)), len(re.findall(r"^```", fr, re.M)))
 
     def test_AC_20_backticked_paths_and_types_exist(self):
         files = tracked_files()
@@ -167,7 +178,7 @@ class TestReadmeContent(unittest.TestCase):
         components = {part for f in files for part in f.split("/")}
         declared = swift_declarations() | EXTERNAL_NAMES | components
         declared |= set(re.findall(r"^  (\w+):\s*$", read("project.yml"), re.M))
-        for name in READMES:
+        for name in DOCS:
             for item in sorted(set(re.findall(r"`([^`\n]+)`", prose(read(name))))):
                 found = citation(item, roots)
                 if found is None:
@@ -183,7 +194,7 @@ class TestReadmeContent(unittest.TestCase):
 
     def test_AC_21_documented_commands_point_at_existing_scripts_and_targets(self):
         project = read("project.yml")
-        for name in READMES:
+        for name in DOCS:
             for line in fences(read(name)):
                 for command in line.split("&&"):
                     tokens = shlex.split(command.strip(), comments=True)
@@ -207,7 +218,9 @@ class TestReadmeContent(unittest.TestCase):
                             for only in (t for t in tokens if t.startswith("-only-testing:")):
                                 self.assertRegex(project, rf"(?m)^  {re.escape(only.split(':')[1])}:")
                         else:
-                            self.assertIn(head, {"xcodegen", "open", "git", "svc.sh"})
+                            self.assertIn(head, {"xcodegen", "open", "git", "svc.sh", "cd", "npm"})
+                            if head == "cd":
+                                self.assertTrue(((ROOT / tokens[1]).is_dir()), f"{tokens[1]} is not a folder")
         for script in sorted((ROOT / "Scripts").glob("*.sh")):
             done = subprocess.run(["bash", "-n", str(script)], capture_output=True, text=True)
             self.assertEqual(done.returncode, 0, f"{script.name}: {done.stderr}")
@@ -235,8 +248,8 @@ class TestReadmeContent(unittest.TestCase):
 
 class TestScreenshots(unittest.TestCase):
     def test_AC_6_readmes_embed_the_five_screenshots_with_alt_text(self):
-        for name in READMES:
-            embedded = re.findall(r"!\[([^\]]*)\]\((docs/screenshots/[^)]+)\)", read(name))
+        for name in TECHNICAL:
+            embedded = re.findall(r"!\[([^\]]*)\]\((screenshots/[^)]+)\)", read(name))
             self.assertEqual(sorted(Path(p).stem for _, p in embedded), sorted(SCREENSHOTS), name)
             for alt, _ in embedded:
                 self.assertGreater(len(alt.strip()), 10, f"{name}: alternative text too short")
@@ -293,7 +306,7 @@ class TestScreenshots(unittest.TestCase):
         scenario = read("UITests/Scenarios/ReadmeScreenshotsUITests.swift")
         self.assertEqual(re.findall(r'try capture\("(\w+)"\)', scenario), SCREENSHOTS)
         self.assertIn("immich_stub_readme_screenshots.py", script)
-        for name in READMES:
+        for name in TECHNICAL:
             self.assertIn("Scripts/screenshots.sh", fences(read(name)))
 
     def test_AC_7_scenario_and_stub_are_in_the_xcode_project(self):
@@ -322,11 +335,45 @@ class TestScreenshots(unittest.TestCase):
     def test_AC_8_stub_and_readmes_name_no_real_host_or_account(self):
         stub = read("UITests/stubs/immich_stub_readme_screenshots.py")
         self.assertIsNone(re.search(r"https?://(?!127\.0\.0\.1)", stub))
-        for name in READMES:
+        # The showcase walk takes its server and account from the environment only.
+        self.assertIsNone(re.search(r"https?://", read(SHOWCASE_SCENARIO)))
+        self.assertIsNone(re.search(r"https?://|@", read("Scripts/showcase.sh").split("set -euo pipefail")[1]))
+        for name in DOCS:
             self.assertIsNone(re.search(r"\b(?!127\.0\.0\.1\b)\d{1,3}(\.\d{1,3}){3}\b", prose(read(name))), name)
             for url in re.findall(r"https?://[^\s)>\"'`]+", read(name)):
                 host = re.match(r"https?://([^/:?#]+)", url).group(1)
                 self.assertTrue(host in DOC_HOSTS or host == "127.0.0.1", f"{name}: {url} is not a documentation link")
+
+
+class TestShowcase(unittest.TestCase):
+    """The showcase READMEs: their pictures come from the walk, the video from Remotion."""
+
+    def test_every_showcase_picture_is_taken_by_the_walk_and_versioned(self):
+        scenario = read(SHOWCASE_SCENARIO)
+        captured = set(re.findall(r'capture\("([\w-]+)"', scenario)) | set(re.findall(r'"(wrapped-\w+)"', scenario))
+        for name in READMES:
+            shown = re.findall(r"docs/showcase/([\w-]+)\.png", read(name))
+            self.assertGreater(len(shown), 10, name)
+            for shot in shown:
+                path = ROOT / "docs" / "showcase" / f"{shot}.png"
+                with self.subTest(name=name, shot=shot):
+                    self.assertIn(shot, captured, "no step of the walk takes it")
+                    self.assertTrue(path.is_file(), f"{path.relative_to(ROOT)} is missing: run Scripts/showcase.sh")
+                    width, height = png_size(path)
+                    self.assertGreater(height, width)
+
+    def test_the_video_and_its_preview_are_versioned_and_linked(self):
+        for media in ("docs/media/swimmich.mp4", "docs/media/swimmich-preview.gif"):
+            with self.subTest(media=media):
+                self.assertTrue((ROOT / media).is_file(), f"{media} is missing: render docs/video")
+                self.assertLess((ROOT / media).stat().st_size, 25_000_000, f"{media} is too heavy for a README")
+        for name in READMES:
+            self.assertIn('href="docs/media/swimmich.mp4"', read(name))
+            self.assertIn('src="docs/media/swimmich-preview.gif"', read(name))
+
+    def test_readmes_link_their_technical_documentation(self):
+        for name, technical in zip(READMES, TECHNICAL):
+            self.assertIn(technical, read(name))
 
 
 class TestDocumentedCommands(unittest.TestCase):
@@ -343,7 +390,7 @@ class TestDocumentedCommands(unittest.TestCase):
         runtimes = [r for r in simctl("runtimes")["runtimes"]
                     if r.get("isAvailable") and r["name"].startswith("iOS ") and int(r["version"].split(".")[0]) >= 26]
         self.assertTrue(runtimes, "no iOS 26+ simulator runtime is installed")
-        for name in READMES:
+        for name in TECHNICAL:
             destination = re.search(r"-destination 'platform=iOS Simulator,name=([^']+)'", section(name, "Tests"))
             with self.subTest(name=name):
                 self.assertIsNotNone(destination, "no simulator destination in the Tests section")
