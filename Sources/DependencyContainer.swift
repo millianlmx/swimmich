@@ -612,6 +612,21 @@ final class DependencyContainer {
         )
     }
 
+    func makeColorMosaicViewModel(
+        assets: [AssetReactItem],
+        baseURL: URL,
+        token: String?
+    ) -> ColorMosaicViewModel {
+        ColorMosaicViewModel(
+            assets: assets,
+            // The address in use when asked, not the one at creation (L-26).
+            baseURL: { ServerAddressBook.shared.activeURL ?? baseURL },
+            token: token,
+            photos: photos,
+            session: { [serverSessions] in serverSessions.images }
+        )
+    }
+
     func makeDuplicatesViewModel() -> DuplicatesViewModel {
         DuplicatesViewModel(client: libraryClient)
     }
