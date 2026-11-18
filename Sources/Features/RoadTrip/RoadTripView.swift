@@ -17,6 +17,7 @@ struct RoadTripView: View {
     @State private var clock = RoadTripFilmClock()
     /// The opening's map is drawn (`RoadTripLiveMap.onReady`): the film plays.
     @State private var filmReady = false
+    @State private var showingSettings = false
 
     var body: some View {
         ZStack {
@@ -45,14 +46,15 @@ struct RoadTripView: View {
                     timeline: timeline,
                     clock: clock,
                     stops: vm.mapStops,
-                    photo: { index, first in
-                        neighborPhoto(timeline: timeline, segmentIndex: index, edge: first ? .first : .last)
+                    photo: { index, position in
+                        slidePhoto(timeline: timeline, segmentIndex: index, position: position)
                     },
                     stopPhoto: { clusterID in vm.heroImage(forClusterID: clusterID) },
                     legLabel: { travel in
                         "\(vm.placeName(forClusterID: travel.fromClusterID)) → \(vm.placeName(forClusterID: travel.toClusterID))"
                     },
                     reduceMotion: reduceMotion,
+                    carColor: vm.settings.carColor,
                     onReady: {
                         // The clock starts on a drawn map: started with the
                         // view, the opening played over grey tiles.
@@ -84,6 +86,27 @@ struct RoadTripView: View {
             vm.cancelExport()
             vm.discardExportedVideo()
         }
+        .sheet(isPresented: $showingSettings) {
+            RoadTripSettingsSheet(
+                settings: vm.settings,
+                stops: vm.editableStops,
+                placeName: { stop in
+                    if let name = stop.placeName, !name.isEmpty { return name }
+                    let index = vm.editableStops.firstIndex { $0.id == stop.id } ?? 0
+                    return String(localized: "Stop \(index + 1)")
+                },
+                inFilm: vm.shownAssetIDs,
+                thumbnailURL: { asset in vm.thumbnailURL(for: asset) },
+                token: vm.token,
+                onApply: { settings in
+                    guard settings != vm.settings else { return }
+                    // The rebuilt film starts over, on its newly drawn map.
+                    clock.start = nil
+                    filmReady = false
+                    Task { await vm.apply(settings) }
+                }
+            )
+        }
         .alert("Export failed", isPresented: failedAlertBinding) {
             Button("OK", role: .cancel) { vm.dismissExportResult() }
         } message: {
@@ -105,16 +128,17 @@ struct RoadTripView: View {
 
     // MARK: - Segment content
 
-    /// The decoded photo the map's transitions show: the FIRST photo of the
-    /// slideshow segment at `segmentIndex` (the arrival dive into it) or its
-    /// LAST one (fading out over the next leg).
-    private func neighborPhoto(timeline: RoadTripTimeline, segmentIndex: Int, edge: Edge) -> UIImage? {
+    /// The decoded photo the map's transitions show: the one at `position`
+    /// in the slideshow segment at `segmentIndex` (its first frame's photos
+    /// for the arrival dive into it, its last frame's fading out over the next
+    /// leg — `RoadTripSlideTiming.edgeTiles`).
+    private func slidePhoto(timeline: RoadTripTimeline, segmentIndex: Int, position: Int) -> UIImage? {
         guard timeline.segments.indices.contains(segmentIndex),
               case .slideshow(let slideshow) = timeline.segments[segmentIndex],
               let cluster = vm.cluster(by: slideshow.clusterID),
-              let position = edge == .first ? slideshow.assetIndices.first : slideshow.assetIndices.last,
-              cluster.assets.indices.contains(position) else { return nil }
-        return vm.slideImage(for: cluster.assets[position])
+              slideshow.assetIndices.indices.contains(position),
+              cluster.assets.indices.contains(slideshow.assetIndices[position]) else { return nil }
+        return vm.slideImage(for: cluster.assets[slideshow.assetIndices[position]])
     }
 
     /// The decoded preview of `asset` (loaded by the preparation) and, should
@@ -126,11 +150,6 @@ struct RoadTripView: View {
                 assetId: asset.id, thumbhash: asset.thumbhash ?? "", baseURL: vm.baseURL, size: .preview
             )
         )
-    }
-
-    private enum Edge {
-        case first
-        case last
     }
 
     @ViewBuilder
@@ -177,12 +196,62 @@ struct RoadTripView: View {
         ZStack {
             // Edge to edge: the live map lies underneath.
             Color.black.ignoresSafeArea()
-            slideImage(position: frame.currentIndex, transform: frame.currentTransform, slideshow: slideshow, cluster: cluster)
+            slide(frame.currentIndex, transform: frame.currentTransform, slideshow: slideshow, cluster: cluster, localTime: localTime)
             if frame.crossfade > 0, let next = frame.nextIndex {
-                slideImage(position: next, transform: frame.nextTransform ?? .identity, slideshow: slideshow, cluster: cluster)
+                slide(next, transform: frame.nextTransform ?? .identity, slideshow: slideshow, cluster: cluster, localTime: localTime)
                     .opacity(frame.crossfade)
             }
         }
+    }
+
+    /// Slide `slide` of the slideshow: its photo, or the stop's collage.
+    @ViewBuilder
+    private func slide(
+        _ slide: Int,
+        transform: KenBurnsTransform,
+        slideshow: RoadTripTimeline.Slideshow,
+        cluster: RoadTripCluster,
+        localTime: TimeInterval
+    ) -> some View {
+        if slideshow.isCollage(slide: slide) {
+            collageView(slideshow: slideshow, cluster: cluster, localTime: localTime)
+        } else {
+            slideImage(position: slideshow.positions(ofSlide: slide).lowerBound, transform: transform, slideshow: slideshow, cluster: cluster)
+        }
+    }
+
+    /// The stop's photos on one screen, each pushing in slowly — the export
+    /// draws the same tiles (`RoadTripCollage.drawnTiles`).
+    private func collageView(slideshow: RoadTripTimeline.Slideshow, cluster: RoadTripCluster, localTime: TimeInterval) -> some View {
+        GeometryReader { proxy in
+            let tiles = RoadTripCollage.drawnTiles(
+                slideshow: slideshow, localTime: localTime, canvas: proxy.size, reduceMotion: reduceMotion
+            )
+            let border = proxy.size.width * RoadTripCollage.frameBorder
+            ZStack(alignment: .topLeading) {
+                ForEach(tiles, id: \.position) { tile in
+                    if slideshow.assetIndices.indices.contains(tile.position),
+                       cluster.assets.indices.contains(slideshow.assetIndices[tile.position]) {
+                        let asset = cluster.assets[slideshow.assetIndices[tile.position]]
+                        RoadTripPhoto(source: photoSource(asset), token: vm.token)
+                            .frame(width: tile.rect.width, height: tile.rect.height)
+                            .scaleEffect(tile.zoom)
+                            .clipped()
+                            .padding(tile.framed ? border : 0)
+                            .background(tile.framed ? Color.white : Color.clear)
+                            .rotationEffect(.radians(tile.rotation))
+                            .position(x: tile.rect.midX, y: tile.rect.midY)
+                            .opacity(tile.alpha)
+                            // Each photo of the collage reads as a slide of its own.
+                            .accessibilityElement(children: .ignore)
+                            .accessibilityIdentifier("roadTripSlide_\(asset.id)")
+                    }
+                }
+            }
+            .frame(width: proxy.size.width, height: proxy.size.height, alignment: .topLeading)
+        }
+        .ignoresSafeArea()
+        .accessibilityElement(children: .contain)
     }
 
     @ViewBuilder
@@ -242,7 +311,7 @@ struct RoadTripView: View {
 
     /// "8 photos · 8 places · 142 km".
     private var openingSubtitle: String {
-        let photoCount = vm.clusters.reduce(0) { $0 + $1.assets.count }
+        let photoCount = vm.timeline?.photoCount ?? 0
         let placeCount = vm.clusters.count
         let counts = String(localized: "\(photoCount) photos · \(placeCount) places")
         guard let meters = vm.timeline?.totalDrivenMeters, meters > 0 else { return counts }
@@ -418,6 +487,21 @@ struct RoadTripView: View {
                 .pvFloating(.pill)
 
             Spacer()
+
+            Button {
+                showingSettings = true
+            } label: {
+                Image(systemName: "slider.horizontal.3")
+                    .font(.pvHeadline)
+                    .foregroundStyle(.white)
+                    .frame(width: 44, height: 44)
+                    .contentShape(Rectangle())
+                    .pvFloating(.circle)
+            }
+            .buttonStyle(.plain)
+            .disabled(vm.isExporting || vm.isPreparing || vm.editableStops.isEmpty)
+            .accessibilityLabel("Road trip settings")
+            .accessibilityIdentifier("roadTripSettingsButton")
 
             Button {
                 vm.startExport(reduceMotion: reduceMotion)

@@ -268,11 +268,69 @@ enum RoadTripMapStyle {
     /// Stop pin: white ring, colored dot.
     static let pinRingDiameter = 0.060
     static let pinDotDiameter = 0.036
-    /// The car sprite (the car itself fills about 60 % of it).
-    static let carSpriteSize = 0.17
+    /// The car sprite (the car itself fills about 70 % of it): ~15 % of the
+    /// frame's width, big enough to read as a Tesla over the imagery.
+    static let carSpriteSize = 0.21
     /// The ending's photo pins.
     static let photoPinDiameter = 0.17
     static let photoPinBorder = 0.008
+
+    /// The stem joining a photo pin pushed off its stop back to the stop.
+    static let photoPinStemWidth = 0.006
+
+    /// Where the ending's photo pins sit (screen points, y down): each one
+    /// above its stop pin, then pushed apart until no two overlap and kept
+    /// inside the canvas — stops a few kilometers apart (Sóller, Fornalutx,
+    /// Escorca) no longer pile their photos on each other. Deterministic, so
+    /// the preview and the export lay them out alike.
+    static func photoPinCenters(pins: [CGPoint], diameter: CGFloat, canvas: CGSize) -> [CGPoint] {
+        guard !pins.isEmpty, diameter > 0 else { return [] }
+        let homes = pins.map { CGPoint(x: $0.x, y: $0.y - diameter * 0.62) }
+        var centers = homes
+        let spacing = diameter * 1.06
+        let margin = diameter * 0.5 + canvas.width * 0.02
+        for _ in 0..<60 {
+            var moved = false
+            for i in centers.indices {
+                for j in centers.indices where j > i {
+                    var dx = centers[j].x - centers[i].x
+                    var dy = centers[j].y - centers[i].y
+                    var distance = (dx * dx + dy * dy).squareRoot()
+                    guard distance < spacing else { continue }
+                    if distance < 0.001 {
+                        // Same spot: split them sideways, in film order.
+                        dx = 1; dy = 0; distance = 1
+                    }
+                    let push = (spacing - distance) / 2
+                    let ux = dx / distance, uy = dy / distance
+                    centers[i].x -= ux * push; centers[i].y -= uy * push
+                    centers[j].x += ux * push; centers[j].y += uy * push
+                    moved = true
+                }
+            }
+            for i in centers.indices {
+                // A weak pull home keeps every photo near its stop.
+                centers[i].x += (homes[i].x - centers[i].x) * 0.02
+                centers[i].y += (homes[i].y - centers[i].y) * 0.02
+                if canvas.width > 2 * margin {
+                    centers[i].x = min(max(centers[i].x, margin), canvas.width - margin)
+                }
+                if canvas.height > 2 * margin {
+                    centers[i].y = min(max(centers[i].y, margin), canvas.height - margin)
+                }
+            }
+            if !moved { break }
+        }
+        return centers
+    }
+
+    /// Whether the photo pin at `center` left its place above `pin` far
+    /// enough to need a stem back to it.
+    static func photoPinNeedsStem(center: CGPoint, pin: CGPoint, diameter: CGFloat) -> Bool {
+        let home = CGPoint(x: pin.x, y: pin.y - diameter * 0.62)
+        let dx = center.x - home.x, dy = center.y - home.y
+        return (dx * dx + dy * dy).squareRoot() > diameter * 0.12
+    }
 
     /// Scale of the photo pin of stop `index` (of `count`): the pins pop in one
     /// after the other over the ending's first half, 0 → a little over 1 → 1.

@@ -607,7 +607,8 @@ final class DependencyContainer {
             baseURL: { ServerAddressBook.shared.activeURL ?? baseURL },
             token: token,
             photos: photos,
-            session: { [serverSessions] in serverSessions.roadTrip }
+            session: { [serverSessions] in serverSessions.roadTrip },
+            appLog: appLog
         )
     }
 

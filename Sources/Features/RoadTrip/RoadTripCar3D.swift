@@ -23,19 +23,35 @@ enum RoadTripCar3D {
     /// Flip to true if the car drives backwards in the sprites.
     static var noseFlipped = true
 
-    private static let sprites: [CGImage] = generateSprites()
     private static let chaseSprites: [CGImage] = generateChaseSprites()
+
+    /// The top-down sheets rendered so far, one per paint (a few seconds of
+    /// SceneKit each, so each is made once).
+    private final class SheetCache: @unchecked Sendable {
+        private let lock = NSLock()
+        private var sheets: [RoadTripSettings.CarColor: [CGImage]] = [:]
+
+        func sheet(_ color: RoadTripSettings.CarColor) -> [CGImage] {
+            lock.lock()
+            defer { lock.unlock() }
+            if let sheet = sheets[color] { return sheet }
+            let sheet = generateSprites(color: color)
+            sheets[color] = sheet
+            return sheet
+        }
+    }
+    private static let sheets = SheetCache()
 
     /// Warms the top-down sprite cache (the film's aerial map) synchronously.
     /// Call off the main thread during prepare (or from the renderer, where
     /// it's already warm) so the map leg never blocks on its first appearance.
-    static func warm() {
-        _ = sprites
+    static func warm(color: RoadTripSettings.CarColor = .white) {
+        _ = sheets.sheet(color)
     }
 
     /// Sprite for a compass bearing (radians, north = 0, clockwise).
-    static func sprite(forBearing bearing: Double) -> CGImage {
-        let frames = sprites
+    static func sprite(forBearing bearing: Double, color: RoadTripSettings.CarColor = .white) -> CGImage {
+        let frames = sheets.sheet(color)
         guard !frames.isEmpty else { return RoadTripCar.render() }
         var normalized = bearing.truncatingRemainder(dividingBy: 2 * .pi)
         if normalized < 0 { normalized += 2 * .pi }
@@ -91,14 +107,14 @@ enum RoadTripCar3D {
     /// Loads the model, recolors it, and returns a scene whose root holds a
     /// single car node: centered at the origin, bottom at y = 0, scaled to
     /// unit length, nose on +Z. Lights included.
-    private static func makeCarScene() -> (SCNScene, SCNNode)? {
+    private static func makeCarScene(color: RoadTripSettings.CarColor = .white) -> (SCNScene, SCNNode)? {
         guard let url = Bundle.main.url(forResource: "TeslaCar", withExtension: "usdz"),
               let scene = loadScene(url: url) else {
             print("[RoadTripCar3D] model not found or failed to load")
             return nil
         }
 
-        recolor(scene.rootNode)
+        recolor(scene.rootNode, paint: color.paint)
 
         // Move all root children under a single car node we can transform.
         let carNode = SCNNode()
@@ -169,20 +185,21 @@ enum RoadTripCar3D {
         return frames
     }
 
-    private static func generateSprites() -> [CGImage] {
-        guard let (scene, carNode) = makeCarScene() else { return [] }
+    private static func generateSprites(color: RoadTripSettings.CarColor) -> [CGImage] {
+        guard let (scene, carNode) = makeCarScene(color: color) else { return [] }
 
-        // Top-down camera with a slight tilt (Uber-style).
+        // Top-down camera tilted ~18° (Uber-style): enough to show the roof's
+        // curve and the grille-less nose, the car filling ~70 % of the frame.
         let camera = SCNCamera()
         camera.usesOrthographicProjection = true
-        camera.orthographicScale = 0.8
+        camera.orthographicScale = 0.7
         camera.zNear = 0.1
         camera.zFar = 100
 
         return validate(
             renderFrames(
                 scene: scene, carNode: carNode, camera: camera,
-                cameraPosition: SCNVector3(0, 8, -1.2),
+                cameraPosition: SCNVector3(0, 7.6, -2.5),
                 lookAt: SCNVector3(0, 0, 0), up: SCNVector3(0, 0, 1),
                 size: CGSize(width: 512, height: 512), count: spriteCount
             ),
@@ -269,20 +286,32 @@ enum RoadTripCar3D {
         try? SCNScene(url: url, options: [.checkConsistency: false])
     }
 
-    /// Recolors the body paint (materials named `primary*`, the factory green)
-    /// to a metallic silver-gray. Glass, wheels, chrome, lights stay untouched.
-    private static func recolor(_ node: SCNNode) {
+    /// Dresses the model as the Tesla it is, seen from above over a
+    /// satellite map: the chosen paint — Pearl White by default — on the
+    /// body (materials named `primary*`, the factory green) and opaque black
+    /// glass (`glass*`): the all-glass black roof is what reads "Tesla" from
+    /// the sky. See-through glass showed the seats, and a dark metallic grey
+    /// melted into the imagery. Wheels, chrome and lights stay untouched.
+    private static func recolor(_ node: SCNNode, paint: UIColor) {
         if let geometry = node.geometry {
             for material in geometry.materials {
                 let name = material.name ?? ""
                 if name.hasPrefix("primary") {
-                    material.diffuse.contents = UIColor(white: 0.24, alpha: 1)
-                    material.metalness.contents = NSNumber(value: 1.0)
-                    material.roughness.contents = NSNumber(value: 0.35)
+                    material.diffuse.contents = paint
+                    material.metalness.contents = NSNumber(value: 0.15)
+                    material.roughness.contents = NSNumber(value: 0.3)
+                } else if name.hasPrefix("glass") {
+                    material.diffuse.contents = UIColor(white: 0.04, alpha: 1)
+                    material.transparent.contents = UIColor.white
+                    material.transparency = 1
+                    material.transparencyMode = .aOne
+                    material.blendMode = .replace
+                    material.metalness.contents = NSNumber(value: 0.3)
+                    material.roughness.contents = NSNumber(value: 0.1)
                 }
             }
         }
-        for child in node.childNodes { recolor(child) }
+        for child in node.childNodes { recolor(child, paint: paint) }
     }
 
     /// Centers the car on the origin (bottom at y=0), scales the long

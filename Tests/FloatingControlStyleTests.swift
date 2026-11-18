@@ -110,7 +110,7 @@ final class FloatingControlStyleTests: XCTestCase {
         let bar: Int
     }
 
-    /// The closed table of the style's call sites (26 + 21 + 8). The map's
+    /// The closed table of the style's call sites (27 + 21 + 8). The map's
     /// controls are not in it: they float over an interface surface and use the
     /// system's adaptive glass (`pvGlass`, see `test_mapControlsUseTheSystemGlass`).
     private static let expectedCounts: [String: RoleCounts] = [
@@ -122,7 +122,7 @@ final class FloatingControlStyleTests: XCTestCase {
         "Sources/Features/Memories/MemoryMomentView.swift": RoleCounts(circle: 3, pill: 3, bar: 0),
         "Sources/Features/Memories/MemoryEpilogueView.swift": RoleCounts(circle: 1, pill: 0, bar: 0),
         "Sources/Features/Memories/MemoriesView.swift": RoleCounts(circle: 1, pill: 1, bar: 0),
-        "Sources/Features/RoadTrip/RoadTripView.swift": RoleCounts(circle: 2, pill: 3, bar: 3),
+        "Sources/Features/RoadTrip/RoadTripView.swift": RoleCounts(circle: 3, pill: 3, bar: 3),
         "Sources/Features/SharedLinks/SharedLinkViewerView.swift": RoleCounts(circle: 1, pill: 1, bar: 0),
         "Sources/Features/Timeline/TimelineView.swift": RoleCounts(circle: 2, pill: 1, bar: 0),
         "Sources/Features/Timeline/TimelineScrubber.swift": RoleCounts(circle: 0, pill: 2, bar: 0),
@@ -169,7 +169,7 @@ final class FloatingControlStyleTests: XCTestCase {
             let expected = Self.expectedCounts[path]?.circle ?? 0
             XCTAssertEqual(actual.circle, expected, "\(path): .pvFloating(.circle) count")
         }
-        XCTAssertEqual(total, 26, "26 round buttons float over media in the app")
+        XCTAssertEqual(total, 27, "27 round buttons float over media in the app")
     }
 
     func test_AC_30_2_pillsAndBarsUseTheirStyle() throws {
