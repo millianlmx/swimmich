@@ -627,6 +627,21 @@ final class DependencyContainer {
         )
     }
 
+    func makePhotoDumpViewModel(
+        assets: [AssetReactItem],
+        baseURL: URL,
+        token: String?
+    ) -> PhotoDumpViewModel {
+        PhotoDumpViewModel(
+            assets: assets,
+            // The address in use when asked, not the one at creation (L-26).
+            baseURL: { ServerAddressBook.shared.activeURL ?? baseURL },
+            token: token,
+            photos: photos,
+            session: { [serverSessions] in serverSessions.images }
+        )
+    }
+
     func makeDuplicatesViewModel() -> DuplicatesViewModel {
         DuplicatesViewModel(client: libraryClient)
     }

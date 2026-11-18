@@ -36,7 +36,8 @@ struct AlbumDetailView: View {
     @State private var activityFeedItem: ActivityFeedSheetItem?
     @State private var roadTripVM: RoadTripViewModel?
     @State private var presentingRoadTrip = false
-    @State private var colorMosaicVM: ColorMosaicViewModel?
+    /// The color mosaic or photo dump on screen (album menu or Create menu).
+    @State private var creation: SelectionCreation?
     @State private var lastRemoveTick = 0
     @State private var lastDeleteTick = 0
     @State private var lastFavoriteTick = 0
@@ -163,13 +164,9 @@ struct AlbumDetailView: View {
                     }
                     .disabled(vm.selectedIds.isEmpty)
 
-                    Button {
-                        presentColorMosaic(assets: vm.assets.filter { vm.selectedIds.contains($0.id) })
-                    } label: {
-                        Label("Color Mosaic", systemImage: "square.grid.3x3.fill")
-                            .labelStyle(.iconOnly)
+                    SelectionCreateMenu(isDisabled: vm.selectedIds.isEmpty) { make in
+                        creation = make(vm.assets.filter { vm.selectedIds.contains($0.id) }, auth.baseURL, auth.accessToken)
                     }
-                    .disabled(vm.selectedIds.isEmpty)
                 }
                 // Native trailing ellipsis menu — Photos-parity bulk actions.
                 // Not rendered when the user has nothing to do in it.
@@ -274,9 +271,16 @@ struct AlbumDetailView: View {
                         }
                         .tint(Color.primary)
                         Button {
-                            presentColorMosaic(assets: vm.assets)
+                            creation = .colorMosaic(assets: vm.assets, baseURL: auth.baseURL, token: auth.accessToken)
                         } label: {
                             Label("Color Mosaic", systemImage: "square.grid.3x3.fill")
+                                .foregroundStyle(Color.primary)
+                        }
+                        .tint(Color.primary)
+                        Button {
+                            creation = .photoDump(assets: vm.assets, baseURL: auth.baseURL, token: auth.accessToken)
+                        } label: {
+                            Label("Photo Dump", systemImage: "photo.stack")
                                 .foregroundStyle(Color.primary)
                         }
                         .tint(Color.primary)
@@ -445,19 +449,9 @@ struct AlbumDetailView: View {
                 RoadTripView(vm: roadTripVM)
             }
         }
-        .pvFullScreenCover(item: $colorMosaicVM) { colorMosaicVM in
-            ColorMosaicView(vm: colorMosaicVM)
+        .pvFullScreenCover(item: $creation) { creation in
+            creation.view
         }
-    }
-
-    /// Builds the color-mosaic VM for the given assets and presents it full-screen.
-    private func presentColorMosaic(assets: [AssetReactItem]) {
-        guard !assets.isEmpty else { return }
-        colorMosaicVM = DependencyContainer.shared.makeColorMosaicViewModel(
-            assets: assets,
-            baseURL: auth.baseURL ?? URL(string: "https://example.com")!,
-            token: auth.accessToken
-        )
     }
 
     /// Builds the road-trip VM for the given assets and presents it full-screen.
