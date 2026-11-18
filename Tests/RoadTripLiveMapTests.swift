@@ -131,6 +131,28 @@ final class RoadTripLiveMapTests: XCTestCase {
         XCTAssertTrue(map.accessibilityElementsHidden)
     }
 
+    /// Pulled back after a close-up, the road already driven shows whole — not
+    /// just the bit that was on screen close up (MapKit overlay tiles were
+    /// not redrawn while the camera kept moving).
+    func test_lineDrivenShowsWholeAfterThePullBack() throws {
+        let start = Date()
+        let map = makeMap(startedAt: start)
+
+        map.render(at: start.addingTimeInterval(8.95))
+        map.render(at: start.addingTimeInterval(11.5))
+
+        let rect = try XCTUnwrap(map.shotRect)
+        let canvas = map.bounds.size
+        let from = RoadTripAerialCamera.project(MKMapPoint(paris.coordinate), in: rect, canvas: canvas)
+        let to = RoadTripAerialCamera.project(MKMapPoint(versailles.coordinate), in: rect, canvas: canvas)
+        let line = map.drawnLineBounds
+        XCTAssertFalse(line.isNull, "the line is drawn")
+        XCTAssertEqual(line.minX, min(from.x, to.x), accuracy: 6, "the line reaches Versailles: \(line)")
+        XCTAssertEqual(line.maxX, max(from.x, to.x), accuracy: 6, "the line reaches Paris: \(line)")
+        XCTAssertEqual(line.minY, min(from.y, to.y), accuracy: 6)
+        XCTAssertEqual(line.maxY, max(from.y, to.y), accuracy: 6)
+    }
+
     func test_beforeTheFilmStartsTheMapHoldsTheOpening() {
         let clock = RoadTripFilmClock()
         XCTAssertEqual(clock.elapsed(at: Date()), 0)

@@ -1,3 +1,4 @@
+import AVFoundation
 import CoreVideo
 import MapKit
 import UIKit
@@ -202,6 +203,127 @@ final class RoadTripExportFrameTests: XCTestCase {
         XCTAssertTrue(driven.r > 220 && driven.g > 170 && driven.b < 120, "the driven road is the trip's yellow: \(driven)")
         let ahead = pixel(atFraction: 0.8)
         XCTAssertFalse(ahead.r > 220 && ahead.g > 170 && ahead.b < 120, "the road ahead is not drawn yet: \(ahead)")
+    }
+
+    // MARK: - Map ↔ photo cuts
+
+    /// slideshow a (one photo) → leg a→b → slideshow b (one photo), Ken Burns
+    /// on: the photos open and close on a zoom or a pan, not on the plain
+    /// frame.
+    private func cutsFixture(canvas: CGSize) -> (RoadTripTimeline, [RoadTripCluster], [String: CGImage], RoadTripVideoRenderer.ExportMap) {
+        let route = [RoutePoint(latitude: 48.80, longitude: 2.30), RoutePoint(latitude: 48.83, longitude: 2.30)]
+        let travel = RoadTripTimeline.Travel(
+            fromClusterID: "a", toClusterID: "b",
+            distanceMeters: RoadTripClusterer.haversine(route[0].coordinate, route[1].coordinate),
+            route: route, duration: 3
+        )
+        // recipeOffset 2 → the first slideshow closes on a pan (offset),
+        // 1 → the second opens on a zoom-out (×1.1).
+        let timeline = RoadTripTimeline(segments: [
+            .slideshow(RoadTripTimeline.Slideshow(clusterID: "a", assetIndices: [0], photoDurations: [2], recipeOffset: 2, energy: 0.8)),
+            .travel(travel),
+            .slideshow(RoadTripTimeline.Slideshow(clusterID: "b", assetIndices: [0], photoDurations: [2], recipeOffset: 1, energy: 0.8))
+        ])
+        let clusters = [
+            RoadTripCluster(id: "a", assets: [makeAsset("pa")], latitude: 48.80, longitude: 2.30, placeName: nil, startDate: nil, endDate: nil),
+            RoadTripCluster(id: "b", assets: [makeAsset("pb")], latitude: 48.83, longitude: 2.30, placeName: nil, startDate: nil, endDate: nil)
+        ]
+        let photo = positionCodedSnapshot(pointSize: canvas, scale: 1)
+        var map = RoadTripVideoRenderer.ExportMap()
+        let camera = RoadTripAerialCamera.legEnvelope(travel: travel, aspect: Double(canvas.width / canvas.height))
+        map.legs = [1: [RoadTripVideoRenderer.MapShot(
+            image: positionCodedSnapshot(pointSize: canvas, scale: 1), rect: RoadTripAerialCamera.scaled(camera, by: 2)
+        )]]
+        return (timeline, clusters, ["pa": photo, "pb": photo], map)
+    }
+
+    private func drawCutFrame(at time: TimeInterval, canvas: CGSize) throws -> CVPixelBuffer {
+        let (timeline, clusters, images, map) = cutsFixture(canvas: canvas)
+        let buffer = try makePixelBuffer(canvas)
+        let config = RoadTripRenderConfig(
+            size: canvas, fps: 30, baseURL: URL(string: "https://photos.example.org")!,
+            token: nil, albumTitle: "Trip", reduceMotion: false
+        )
+        RoadTripVideoRenderer(session: { .shared }).drawFrame(
+            at: time, into: buffer, clusters: clusters,
+            clusterByID: Dictionary(uniqueKeysWithValues: clusters.map { ($0.id, $0) }),
+            timeline: timeline, config: config, images: images, visuals: noCards, map: map
+        )
+        return buffer
+    }
+
+    /// The same photo pixels on both sides of a cut (centre band, clear of the
+    /// slideshow's vignette).
+    private func assertSamePicture(_ a: CVPixelBuffer, _ b: CVPixelBuffer, canvas: CGSize, _ what: String) {
+        for u in [0.3, 0.5, 0.7] {
+            for v in [0.35, 0.5, 0.65] {
+                let x = Int(canvas.width * u), y = Int(canvas.height * v)
+                let pa = rgb(a, x: x, y: y), pb = rgb(b, x: x, y: y)
+                XCTAssertEqual(pa.r, pb.r, accuracy: 8, "\(what): red at (\(u), \(v)) \(pa) vs \(pb)")
+                XCTAssertEqual(pa.g, pb.g, accuracy: 8, "\(what): green at (\(u), \(v)) \(pa) vs \(pb)")
+            }
+        }
+    }
+
+    /// The arrival dive lands on the framing the next slideshow opens on: the
+    /// photo does not jump when the leg hands over to it.
+    func test_exportDiveLandsOnTheSlideshowsFirstFrame() throws {
+        let canvas = CGSize(width: 180, height: 320)
+        let lastOfLeg = try drawCutFrame(at: 5 - 0.0001, canvas: canvas)
+        let firstOfSlideshow = try drawCutFrame(at: 5, canvas: canvas)
+        assertSamePicture(lastOfLeg, firstOfSlideshow, canvas: canvas, "dive → slideshow")
+    }
+
+    /// The outgoing photo leaves from the framing the slideshow closed on.
+    func test_exportOutgoingPhotoLeavesFromTheSlideshowsLastFrame() throws {
+        let canvas = CGSize(width: 180, height: 320)
+        let lastOfSlideshow = try drawCutFrame(at: 2 - 0.0001, canvas: canvas)
+        let firstOfLeg = try drawCutFrame(at: 2, canvas: canvas)
+        assertSamePicture(lastOfSlideshow, firstOfLeg, canvas: canvas, "slideshow → leg")
+    }
+
+    /// The writer settings AVFoundation accepts: refused ones raise inside
+    /// `AVAssetWriterInput.init` and abort the app on Save.
+    func test_videoSettingsAreAcceptedByTheWriter() throws {
+        let url = FileManager.default.temporaryDirectory.appendingPathComponent("settings-\(UUID().uuidString).mp4")
+        defer { try? FileManager.default.removeItem(at: url) }
+        let writer = try AVAssetWriter(outputURL: url, fileType: .mp4)
+        let settings = RoadTripVideoRenderer.videoSettings(makeConfig(CGSize(width: 1080, height: 1920)))
+        XCTAssertTrue(writer.canApply(outputSettings: settings, forMediaType: .video))
+        XCTAssertNil(settings[AVVideoAverageBitRateKey], "the bitrate belongs under AVVideoCompressionPropertiesKey")
+    }
+
+    /// The whole export, end to end: a playable file holding every frame of
+    /// the film (the map snapshots may fail offline; the frames still come).
+    func test_exportWritesTheWholeFilm() async throws {
+        let canvas = CGSize(width: 270, height: 480)
+        let (timeline, clusters, images, _) = cutsFixture(canvas: canvas)
+        let config = RoadTripRenderConfig(
+            size: canvas, fps: 30, baseURL: URL(string: "https://photos.example.org")!,
+            token: nil, albumTitle: "Trip", reduceMotion: false
+        )
+        let url = try await RoadTripVideoRenderer(session: { .shared }).render(
+            clusters: clusters, timeline: timeline, config: config, preloaded: images
+        ) { _ in }
+        defer { try? FileManager.default.removeItem(at: url) }
+
+        let asset = AVURLAsset(url: url)
+        let duration = try await asset.load(.duration).seconds
+        XCTAssertEqual(duration, timeline.totalDuration, accuracy: 0.05)
+        let tracks = try await asset.loadTracks(withMediaType: .video)
+        let track = try XCTUnwrap(tracks.first)
+        let size = try await track.load(.naturalSize)
+        XCTAssertEqual(size, canvas)
+        let reader = try AVAssetReader(asset: asset)
+        // Decoded: the raw HEVC stream also carries samples that are not frames.
+        let output = AVAssetReaderTrackOutput(
+            track: track, outputSettings: [kCVPixelBufferPixelFormatTypeKey as String: kCVPixelFormatType_32BGRA]
+        )
+        reader.add(output)
+        XCTAssertTrue(reader.startReading())
+        var frames = 0
+        while output.copyNextSampleBuffer() != nil { frames += 1 }
+        XCTAssertEqual(frames, Int((timeline.totalDuration * 30).rounded(.up)))
     }
 
     func test_bestShotIsTheSharpestHoldingTheCamera() {

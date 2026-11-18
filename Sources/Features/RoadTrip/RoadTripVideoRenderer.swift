@@ -486,17 +486,13 @@ final class RoadTripVideoRenderer: @unchecked Sendable {
             .appendingPathComponent("roadtrip-\(UUID().uuidString).mp4")
 
         let writer = try AVAssetWriter(outputURL: outputURL, fileType: .mp4)
-        let input = AVAssetWriterInput(
-            mediaType: .video,
-            outputSettings: [
-                AVVideoCodecKey: AVVideoCodecType.hevc,
-                AVVideoWidthKey: Int(config.size.width),
-                AVVideoHeightKey: Int(config.size.height),
-                // Explicit bitrate — encoder defaults smear motion on the
-                // warped map planes.
-                AVVideoAverageBitRateKey: 14_000_000
-            ]
-        )
+        // `AVAssetWriterInput` raises an Objective-C exception — an abort
+        // Swift cannot catch — on any settings it refuses: checked first.
+        let settings = Self.videoSettings(config)
+        guard writer.canApply(outputSettings: settings, forMediaType: .video) else {
+            throw APIError.decoding("Unsupported video settings")
+        }
+        let input = AVAssetWriterInput(mediaType: .video, outputSettings: settings)
         input.expectsMediaDataInRealTime = false
         let adaptor = AVAssetWriterInputPixelBufferAdaptor(
             assetWriterInput: input,
@@ -580,6 +576,24 @@ final class RoadTripVideoRenderer: @unchecked Sendable {
             try? FileManager.default.removeItem(at: outputURL)
             throw error
         }
+    }
+
+    /// HEVC at the canvas size (internal for the tests). The encoder's tuning
+    /// lives under `AVVideoCompressionPropertiesKey`: a bitrate at the top
+    /// level makes `AVAssetWriterInput` raise and the app abort on Save.
+    static func videoSettings(_ config: RoadTripRenderConfig) -> [String: Any] {
+        [
+            AVVideoCodecKey: AVVideoCodecType.hevc,
+            AVVideoWidthKey: Int(config.size.width),
+            AVVideoHeightKey: Int(config.size.height),
+            AVVideoCompressionPropertiesKey: [
+                // Explicit bitrate — encoder defaults smear the map's motion.
+                AVVideoAverageBitRateKey: 14_000_000,
+                AVVideoExpectedSourceFrameRateKey: config.fps,
+                // A key frame every second: scrubbing and the cuts stay clean.
+                AVVideoMaxKeyFrameIntervalKey: config.fps
+            ] as [String: Any]
+        ]
     }
 
     /// The trip's roads, stops, the stops' hero photos and the overview
@@ -680,6 +694,7 @@ final class RoadTripVideoRenderer: @unchecked Sendable {
             drawTravel(
                 ctx, travel: travel, segmentIndex: segmentIndex, localTime: local,
                 timeline: timeline, map: map, legLabel: visuals.legLabels[segmentIndex], canvas: canvas,
+                reduceMotion: config.reduceMotion,
                 outgoingPhoto: neighborPhoto(at: segmentIndex - 1, edge: .last, timeline: timeline, clusterByID: clusterByID, images: images),
                 divePhoto: neighborPhoto(at: segmentIndex + 1, edge: .first, timeline: timeline, clusterByID: clusterByID, images: images)
             )
@@ -792,6 +807,7 @@ final class RoadTripVideoRenderer: @unchecked Sendable {
         map: ExportMap,
         legLabel: CGImage?,
         canvas: CGSize,
+        reduceMotion: Bool,
         outgoingPhoto: CGImage?,
         divePhoto: CGImage?
     ) {
@@ -820,14 +836,20 @@ final class RoadTripVideoRenderer: @unchecked Sendable {
         let heading = RoadTripAerialCamera.carHeading(travel: travel, localTime: localTime)
         drawTopCar(ctx, at: car, heading: heading, size: canvas.width * CGFloat(RoadTripMapStyle.carSpriteSize))
 
-        // The road counter and the leg's pill.
-        drawCounter(ctx, meters: timeline.drivenMeters(at: timeline.segmentStartTimes[segmentIndex] + localTime), canvas: canvas)
-        if let legLabel {
-            let size = CGSize(width: legLabel.width, height: legLabel.height)
-            drawUpright(ctx, legLabel, in: CGRect(
-                x: (canvas.width - size.width) / 2, y: canvas.height * 0.86 - size.height / 2,
-                width: size.width, height: size.height
-            ))
+        // The road counter and the leg's pill, faded out by the dive.
+        let overlayAlpha = RoadTripSegue.overlayAlpha(dive)
+        if overlayAlpha > 0 {
+            ctx.saveGState()
+            ctx.setAlpha(CGFloat(overlayAlpha))
+            drawCounter(ctx, meters: timeline.drivenMeters(at: timeline.segmentStartTimes[segmentIndex] + localTime), canvas: canvas)
+            if let legLabel {
+                let size = CGSize(width: legLabel.width, height: legLabel.height)
+                drawUpright(ctx, legLabel, in: CGRect(
+                    x: (canvas.width - size.width) / 2, y: canvas.height * 0.86 - size.height / 2,
+                    width: size.width, height: size.height
+                ))
+            }
+            ctx.restoreGState()
         }
 
         // Arrival dive: the map dims out as the destination photo takes over.
@@ -850,7 +872,10 @@ final class RoadTripVideoRenderer: @unchecked Sendable {
                 if let divePhoto {
                     let pinSize = CGSize(width: canvas.width * RoadTripSegue.thumbSizeFraction,
                                          height: canvas.width * RoadTripSegue.thumbSizeFraction * 0.75)
-                    let thumb = RoadTripSegue.thumbnailRect(pinCenter: point, pinSize: pinSize, canvas: canvas, dive: dive)
+                    let landing = RoadTripSlideTiming.edgeTransform(
+                        segmentIndex: segmentIndex + 1, in: timeline, first: true, reduceMotion: reduceMotion
+                    ).rect(in: canvas)
+                    let thumb = RoadTripSegue.thumbnailRect(pinCenter: point, pinSize: pinSize, canvas: canvas, dive: dive, landing: landing)
                     ctx.saveGState()
                     ctx.setAlpha(CGFloat(RoadTripSegue.thumbnailAlpha(dive)))
                     let radius: CGFloat = dive >= 0.99 ? 0 : 18 * (1 - dive)
@@ -862,13 +887,17 @@ final class RoadTripVideoRenderer: @unchecked Sendable {
             }
         }
 
-        // Slideshow→travel: the outgoing photo fades out over the map.
+        // Slideshow→travel: the outgoing photo fades out over the map, framed
+        // as the slideshow's last frame left it.
         if let outgoingPhoto {
             let alpha = RoadTripSegue.outgoingPhotoAlpha(localTime: localTime)
             if alpha > 0 {
+                let transform = RoadTripSlideTiming.edgeTransform(
+                    segmentIndex: segmentIndex - 1, in: timeline, first: false, reduceMotion: reduceMotion
+                )
                 ctx.saveGState()
                 ctx.setAlpha(CGFloat(alpha))
-                drawFilled(ctx, outgoingPhoto, in: CGRect(origin: .zero, size: canvas))
+                drawSlideImage(ctx, outgoingPhoto, transform: transform, canvas: canvas)
                 ctx.restoreGState()
             }
         }

@@ -39,15 +39,26 @@ struct RoadTripLiveMap: UIViewRepresentable {
     let stopPhoto: (_ clusterID: String) -> UIImage?
     /// "Paris, France → Versailles, France": what VoiceOver reads for a leg.
     let legLabel: (RoadTripTimeline.Travel) -> String
+    /// The photos' Ken Burns framing is off: the transitions land on and
+    /// leave from the plain photo.
+    var reduceMotion = false
+    /// Called once the opening's map is drawn with its imagery (or after a
+    /// timeout): the film starts on a finished map, not on grey tiles.
+    var onReady: () -> Void = {}
 
     func makeUIView(context: Context) -> RoadTripLiveMapView {
-        RoadTripLiveMapView(
+        let view = RoadTripLiveMapView(
             timeline: timeline, clock: clock, stops: stops,
             photo: photo, stopPhoto: stopPhoto, legLabel: legLabel
         )
+        view.reduceMotion = reduceMotion
+        view.onReady = onReady
+        return view
     }
 
     func updateUIView(_ view: RoadTripLiveMapView, context: Context) {
+        view.reduceMotion = reduceMotion
+        view.onReady = onReady
         view.update(timeline: timeline, stops: stops, photo: photo, stopPhoto: stopPhoto, legLabel: legLabel)
     }
 }
@@ -75,19 +86,27 @@ final class RoadTripLiveMapView: UIView, MKMapViewDelegate {
 
     private var displayLink: CADisplayLink?
 
-    /// The three strokes of a leg's line (glow, white casing, color), drawn
-    /// up to `strokeEnd`.
+    var reduceMotion = false
+    /// See `RoadTripLiveMap.onReady`; fired once.
+    var onReady: () -> Void = {}
+    private var readyFired = false
+    /// How long the opening waits for MapKit's imagery before playing anyway.
+    static let readyTimeout: TimeInterval = 3
+
+    /// A leg's road as drawn: map points and their arc fractions.
     private struct LegLine {
         let segmentIndex: Int
-        let polylines: [MKPolyline]
-    }
-    private enum Stroke: Int {
-        case glow, casing, line
+        let points: [MKMapPoint]
+        let fractions: [Double]
     }
     private var legLines: [LegLine] = []
-    /// Polyline → (segment index, stroke).
-    private var strokeOf: [ObjectIdentifier: (segmentIndex: Int, stroke: Stroke)] = [:]
-    private var renderers: [ObjectIdentifier: MKPolylineRenderer] = [:]
+    /// The trip's line — glow under white casing under color — drawn over the
+    /// map at every refresh, like the car and the pins. Not MapKit overlays:
+    /// their tiles are only redrawn once the camera rests, and this camera
+    /// never rests, so pulling back showed only the bit of an old leg that had
+    /// been on screen while zoomed in.
+    private let lineLayers: [CAShapeLayer] = (0..<3).map { _ in CAShapeLayer() }
+    private let lineHost = UIView()
     /// What each leg's line shows now: how much of it, how opaque.
     private var lineState: [Int: (end: CGFloat, alpha: CGFloat)] = [:]
     private var carImages: [Int: UIImage] = [:]
@@ -128,6 +147,21 @@ final class RoadTripLiveMapView: UIView, MKMapViewDelegate {
         mapView.showsScale = false
         mapView.delegate = self
         addSubview(mapView)
+
+        lineHost.isUserInteractionEnabled = false
+        let strokes: [(UIColor, Double)] = [
+            (RoadTripMapStyle.routeGlow, RoadTripMapStyle.glowWidth),
+            (RoadTripMapStyle.casing, RoadTripMapStyle.casingWidth),
+            (RoadTripMapStyle.route, RoadTripMapStyle.lineWidth)
+        ]
+        for (layer, stroke) in zip(lineLayers, strokes) {
+            layer.fillColor = nil
+            layer.strokeColor = stroke.0.cgColor
+            layer.lineCap = .round
+            layer.lineJoin = .round
+            lineHost.layer.addSublayer(layer)
+        }
+        addSubview(lineHost)
 
         carView.contentMode = .scaleAspectFit
         dimView.backgroundColor = .black
@@ -173,8 +207,13 @@ final class RoadTripLiveMapView: UIView, MKMapViewDelegate {
     override func layoutSubviews() {
         super.layoutSubviews()
         mapView.frame = bounds
+        lineHost.frame = bounds
         dimView.frame = bounds
-        outgoingImageView.frame = bounds
+        let width = max(bounds.width, 320)
+        for (layer, style) in zip(lineLayers, [RoadTripMapStyle.glowWidth, RoadTripMapStyle.casingWidth, RoadTripMapStyle.lineWidth]) {
+            layer.frame = lineHost.bounds
+            layer.lineWidth = width * CGFloat(style)
+        }
     }
 
     // MARK: - Content
@@ -201,8 +240,8 @@ final class RoadTripLiveMapView: UIView, MKMapViewDelegate {
         for view in stopPins + photoPins {
             view.isUserInteractionEnabled = false
             view.isHidden = true
-            if mapView.superview === self {
-                insertSubview(view, aboveSubview: mapView)
+            if lineHost.superview === self {
+                insertSubview(view, aboveSubview: lineHost)
             } else {
                 addSubview(view)
             }
@@ -215,27 +254,14 @@ final class RoadTripLiveMapView: UIView, MKMapViewDelegate {
     }
 
     private func buildLines() {
-        mapView.removeOverlays(mapView.overlays)
         legLines = []
-        strokeOf = [:]
-        renderers = [:]
         lineState = [:]
         for (index, segment) in timeline.segments.enumerated() {
             guard case .travel(let travel) = segment else { continue }
-            let coordinates = RoadTripRouteDrawing.drawnRoute(travel.route).coordinates
-            guard coordinates.count >= 2 else { continue }
-            let polylines = [Stroke.glow, .casing, .line].map { stroke -> MKPolyline in
-                let polyline = MKPolyline(coordinates: coordinates, count: coordinates.count)
-                strokeOf[ObjectIdentifier(polyline)] = (index, stroke)
-                return polyline
-            }
-            legLines.append(LegLine(segmentIndex: index, polylines: polylines))
+            let drawn = RoadTripRouteDrawing.drawnRoute(travel.route)
+            guard drawn.coordinates.count >= 2 else { continue }
+            legLines.append(LegLine(segmentIndex: index, points: drawn.coordinates.map { MKMapPoint($0) }, fractions: drawn.fractions))
             lineState[index] = (0, 1)
-        }
-        // Every glow under every casing under every line: a leg crossing an
-        // earlier one stays readable.
-        for stroke in [Stroke.glow, .casing, .line] {
-            mapView.addOverlays(legLines.map { $0.polylines[stroke.rawValue] }, level: .aboveRoads)
         }
     }
 
@@ -250,6 +276,9 @@ final class RoadTripLiveMapView: UIView, MKMapViewDelegate {
             link.add(to: .main, forMode: .common)
             displayLink = link
             render(at: Date())
+            DispatchQueue.main.asyncAfter(deadline: .now() + Self.readyTimeout) { [weak self] in
+                self?.fireReady()
+            }
         } else {
             displayLink?.invalidate()
             displayLink = nil
@@ -267,6 +296,7 @@ final class RoadTripLiveMapView: UIView, MKMapViewDelegate {
             // Nothing located: the pictures play over black.
             isHidden = true
             setReadable(false)
+            fireReady()
             return
         }
         isHidden = false
@@ -378,7 +408,12 @@ final class RoadTripLiveMapView: UIView, MKMapViewDelegate {
                 width: canvas.width * RoadTripSegue.thumbSizeFraction,
                 height: canvas.width * RoadTripSegue.thumbSizeFraction * 0.75
             )
-            diveImageView.frame = RoadTripSegue.thumbnailRect(pinCenter: point, pinSize: thumb, canvas: canvas, dive: dive)
+            let landing = RoadTripSlideTiming.edgeTransform(
+                segmentIndex: (legIndex ?? 0) + 1, in: timeline, first: true, reduceMotion: reduceMotion
+            ).rect(in: canvas)
+            diveImageView.frame = RoadTripSegue.thumbnailRect(
+                pinCenter: point, pinSize: thumb, canvas: canvas, dive: dive, landing: landing
+            )
             diveImageView.layer.cornerRadius = dive >= 0.99 ? 0 : 18 * (1 - dive)
             diveImageView.alpha = RoadTripSegue.thumbnailAlpha(dive)
             for view in [dimView, pinRing, pinDot] { view.isHidden = false }
@@ -388,6 +423,12 @@ final class RoadTripLiveMapView: UIView, MKMapViewDelegate {
         }
 
         let outgoing = driving ? RoadTripSegue.outgoingPhotoAlpha(localTime: localTime) : 0
+        if outgoing > 0 {
+            // Framed as the slideshow's last frame left it.
+            outgoingImageView.frame = RoadTripSlideTiming.edgeTransform(
+                segmentIndex: (legIndex ?? 0) - 1, in: timeline, first: false, reduceMotion: reduceMotion
+            ).rect(in: canvas)
+        }
         outgoingImageView.alpha = outgoing
         outgoingImageView.isHidden = outgoing <= 0 || outgoingImageView.image == nil
     }
@@ -436,26 +477,56 @@ final class RoadTripLiveMapView: UIView, MKMapViewDelegate {
 
     // MARK: - Lines
 
-    /// Sets how much of each leg's line shows, and how opaque, redrawing only
-    /// the strokes that changed (every 0.2 % of a leg).
+    /// Sets how much of each leg's line shows, and how opaque, and redraws the
+    /// line where the camera is now. Every glow under every casing under every
+    /// line: a leg crossing an earlier one stays readable.
     private func setLines(_ state: (Int) -> (end: CGFloat, alpha: CGFloat)) {
         for leg in legLines {
-            let target = state(leg.segmentIndex)
-            let current = lineState[leg.segmentIndex] ?? (-1, -1)
-            let moved = abs(target.end - current.end) >= 0.002 || (target.end >= 1 && current.end < 1) || (target.end <= 0 && current.end > 0)
-            guard moved || target.alpha != current.alpha else { continue }
-            lineState[leg.segmentIndex] = target
-            for polyline in leg.polylines {
-                guard let renderer = renderers[ObjectIdentifier(polyline)] else { continue }
-                apply(target, to: renderer)
+            lineState[leg.segmentIndex] = state(leg.segmentIndex)
+        }
+        // Map points → screen: a north-up flat map is a scale and a shift,
+        // read off MapKit itself so the line sits exactly under the car and
+        // the pins (placed with `convert` too).
+        guard let rect = shotRect, rect.size.width > 0, rect.size.height > 0,
+              let a = projected(MKMapPoint(x: rect.minX, y: rect.minY).coordinate),
+              let b = projected(MKMapPoint(x: rect.maxX, y: rect.maxY).coordinate) else { return }
+        let scaleX = (b.x - a.x) / CGFloat(rect.size.width)
+        let scaleY = (b.y - a.y) / CGFloat(rect.size.height)
+        func screen(_ point: MKMapPoint) -> CGPoint {
+            CGPoint(x: a.x + CGFloat(point.x - rect.minX) * scaleX, y: a.y + CGFloat(point.y - rect.minY) * scaleY)
+        }
+
+        let path = CGMutablePath()
+        var alpha: CGFloat = 0
+        for leg in legLines {
+            guard let state = lineState[leg.segmentIndex], state.end > 0 else { continue }
+            alpha = max(alpha, state.alpha)
+            let end = Double(state.end)
+            var last = screen(leg.points[0])
+            path.move(to: last)
+            for i in 1..<leg.points.count {
+                var point = screen(leg.points[i])
+                let fraction = leg.fractions[i]
+                if fraction > end {
+                    // The partial segment up to the car.
+                    let previous = leg.fractions[i - 1]
+                    let t = CGFloat((end - previous) / max(fraction - previous, 1e-9))
+                    let from = screen(leg.points[i - 1])
+                    point = CGPoint(x: from.x + (point.x - from.x) * t, y: from.y + (point.y - from.y) * t)
+                    path.addLine(to: point)
+                    break
+                }
+                // Points closer than a pixel add nothing but work.
+                guard abs(point.x - last.x) + abs(point.y - last.y) >= 1 || i == leg.points.count - 1 else { continue }
+                path.addLine(to: point)
+                last = point
             }
         }
-    }
-
-    private func apply(_ state: (end: CGFloat, alpha: CGFloat), to renderer: MKPolylineRenderer) {
-        renderer.strokeEnd = state.end
-        renderer.alpha = state.end > 0 ? state.alpha : 0
-        renderer.setNeedsDisplay()
+        CATransaction.begin()
+        CATransaction.setDisableActions(true)
+        for layer in lineLayers { layer.path = path }
+        lineHost.alpha = alpha
+        CATransaction.commit()
     }
 
     // MARK: - Geometry
@@ -483,30 +554,18 @@ final class RoadTripLiveMapView: UIView, MKMapViewDelegate {
             && a.size.width == b.size.width && a.size.height == b.size.height
     }
 
+    private func fireReady() {
+        guard !readyFired else { return }
+        readyFired = true
+        // Out of the current layout/render pass: the callback updates SwiftUI
+        // state.
+        DispatchQueue.main.async { [weak self] in self?.onReady() }
+    }
+
     // MARK: - MKMapViewDelegate
 
-    func mapView(_ mapView: MKMapView, rendererFor overlay: MKOverlay) -> MKOverlayRenderer {
-        guard let line = overlay as? MKPolyline, let role = strokeOf[ObjectIdentifier(line)] else {
-            return MKOverlayRenderer(overlay: overlay)
-        }
-        let renderer = MKPolylineRenderer(polyline: line)
-        renderer.lineCap = .round
-        renderer.lineJoin = .round
-        let width = max(bounds.width, 320)
-        switch role.stroke {
-        case .glow:
-            renderer.strokeColor = RoadTripMapStyle.routeGlow
-            renderer.lineWidth = width * CGFloat(RoadTripMapStyle.glowWidth)
-        case .casing:
-            renderer.strokeColor = RoadTripMapStyle.casing
-            renderer.lineWidth = width * CGFloat(RoadTripMapStyle.casingWidth)
-        case .line:
-            renderer.strokeColor = RoadTripMapStyle.route
-            renderer.lineWidth = width * CGFloat(RoadTripMapStyle.lineWidth)
-        }
-        apply(lineState[role.segmentIndex] ?? (0, 1), to: renderer)
-        renderers[ObjectIdentifier(line)] = renderer
-        return renderer
+    func mapViewDidFinishRenderingMap(_ mapView: MKMapView, fullyRendered: Bool) {
+        if fullyRendered { fireReady() }
     }
 
     // MARK: - Test seams
@@ -520,6 +579,8 @@ final class RoadTripLiveMapView: UIView, MKMapViewDelegate {
     func line(ofLeg segmentIndex: Int) -> (end: CGFloat, alpha: CGFloat)? {
         lineState[segmentIndex]
     }
+    /// Where the trip's line lies on screen now.
+    var drawnLineBounds: CGRect { lineLayers[2].path?.boundingBoxOfPath ?? .null }
     /// Whether the car is on screen.
     var showsCar: Bool { !carView.isHidden }
     /// How many stop pins show.
