@@ -40,7 +40,7 @@ final class AuthViewModel: AuthSessionDelegate {
 
     /// Must match the `CFBundleURLTypes` scheme *and* the value whitelisted at
     /// the OIDC provider — this is the exact URI the Immich docs publish.
-    static let oauthRedirectURI = "app.immich:///oauth-callback"
+    nonisolated static let oauthRedirectURI = "app.immich:///oauth-callback"
 
     /// Injectable browser-session hook. Production default runs an
     /// `ASWebAuthenticationSession`; tests inject a mock closure.
@@ -669,7 +669,7 @@ final class AuthViewModel: AuthSessionDelegate {
                 return // User cancelled — keep the current state.
             }
             let response = try await client.exchangeOAuthCode(
-                url: callbackURL.absoluteString,
+                url: Self.serverCallbackURL(from: callbackURL),
                 state: pkce.state,
                 codeVerifier: pkce.codeVerifier
             )
@@ -685,6 +685,21 @@ final class AuthViewModel: AuthSessionDelegate {
         } catch let e {
             errorMessage = e.userFacingMessage
         }
+    }
+
+    /// The URL the server finishes the sign-in with: the provider's answer (its
+    /// query: `code`, `state`) on the very redirect URI the authorization was
+    /// asked with. The server sends the part before `?` back to the provider as
+    /// `redirect_uri`, and the provider refuses a token for any other address
+    /// (Authentik: `invalid_client`). Authentik rewrites
+    /// `app.immich:///oauth-callback` as `app.immich:/oauth-callback` when it
+    /// adds the code (Python drops the empty host), so its own answer did not
+    /// match the address it was asked for: the sign-in worked in a browser
+    /// (an `https` address) and failed in the app.
+    nonisolated static func serverCallbackURL(from callback: URL) -> String {
+        guard let query = URLComponents(url: callback, resolvingAgainstBaseURL: false)?.percentEncodedQuery,
+              !query.isEmpty else { return callback.absoluteString }
+        return "\(oauthRedirectURI)?\(query)"
     }
 
     /// From v3.2.0 the public config no longer carries the external domain
