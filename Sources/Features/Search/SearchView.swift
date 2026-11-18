@@ -31,6 +31,8 @@ struct SearchView: View {
 
     @State private var viewerItem: PhotoViewerItem? // Full-screen photo viewer
     @State private var showSaveSearch = false
+    /// The reel of the results, titled by the words searched for.
+    @State private var reelVM: ReelViewModel?
     @State private var saveSearchName = ""
     @State private var showFilters = false
     /// The search field is active (focused, or Cancel not yet tapped): the
@@ -135,6 +137,9 @@ struct SearchView: View {
                 }
                 // L-23b: the same selection bar as the Photos tab, written once.
                 .batchSelectionBar(vm, userId: auth.userId, downloads: downloads, alertsSuspended: viewerItem != nil)
+                .pvFullScreenCover(item: $reelVM) { reelVM in
+                    ReelView(vm: reelVM)
+                }
                 .appSensoryFeedback(.selection, trigger: lastSelectionTick)
                 // Full-screen photo viewer (tap any result photo → browse/zoom).
                 // Favorite/delete run self-sufficient; re-run the search so the
@@ -375,6 +380,23 @@ struct SearchView: View {
                 }
                 .disabled(vm.query.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
                 .accessibilityIdentifier("searchSaveButton")
+                // A reel of the results, best matches first: "sunset" becomes
+                // every sunset, cut on the beat.
+                Button {
+                    reelVM = DependencyContainer.shared.makeReelViewModel(
+                        assets: vm.results,
+                        title: vm.query,
+                        ranked: vm.searchMode == .smart,
+                        baseURL: auth.baseURL ?? URL(string: "https://example.com")!,
+                        token: auth.accessToken
+                    )
+                } label: {
+                    Label("Make a Reel", systemImage: "film.stack")
+                        .labelStyle(.iconOnly)
+                        .frame(minWidth: 44, minHeight: 44)
+                }
+                .disabled(vm.results.count < ReelPlan.minPhotos)
+                .accessibilityIdentifier("searchReelButton")
                 Button {
                     vm.enterSelectionMode()
                 } label: {

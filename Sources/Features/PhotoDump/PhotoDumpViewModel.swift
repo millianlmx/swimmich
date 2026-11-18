@@ -21,10 +21,6 @@ final class PhotoDumpViewModel: Identifiable {
     /// Photos looked at, at most: an even spread over the set, plus every
     /// favorite. Scoring a thumbnail takes Vision a few tens of milliseconds.
     static let scoringSampleSize = 240
-    /// Feature-print distance under which two photos show the same moment.
-    static let duplicateDistance = 0.4
-    /// Photos taken this close together are a burst: the same moment.
-    static let burstInterval: TimeInterval = 3
     /// Width of the exported photos, the width Instagram shows.
     static let exportWidth: CGFloat = 1080
 
@@ -122,70 +118,20 @@ final class PhotoDumpViewModel: Identifiable {
         return chronological.filter { spread.contains($0.id) || $0.isFavorite }
     }
 
-    /// Downloads the thumbnails of `sample` in batches of 8 (the address read
-    /// per batch — L-26) and looks at each off the main actor. A photo whose
-    /// thumbnail does not load is left out.
+    /// Looks at `sample` (`PhotoLooker`), keeping each photo's feature print.
     private func look(at sample: [AssetReactItem]) async {
-        let session = self.session
-        let tok = token
-        let chunkSize = 8
-        var offset = 0
-        while offset < sample.count {
-            if Task.isCancelled { return }
-            let base = baseURL
-            let chunk = Array(sample[offset..<min(offset + chunkSize, sample.count)])
-            let results = await withTaskGroup(of: (DumpCandidate, FeaturePrintObservation?)?.self) { group in
-                for asset in chunk {
-                    group.addTask {
-                        let url = ImmichAssetURL.thumbnail(
-                            assetId: asset.id, thumbhash: asset.thumbhash ?? "", baseURL: base, size: .thumbnail
-                        )
-                        guard let (data, _) = try? await AssetFileTransfer.fetchData(from: url, token: tok, session: session()),
-                              let image = UIImage(data: data), let pixels = image.cgImage,
-                              image.size.height > 0 else { return nil }
-                        return await Self.look(at: pixels, asset: asset, aspect: image.size.width / image.size.height)
-                    }
-                }
-                var out: [(DumpCandidate, FeaturePrintObservation?)] = []
-                for await result in group {
-                    if let result { out.append(result) }
-                }
-                return out
-            }
-            for (candidate, print) in results {
-                candidates.append(candidate)
-                featurePrints[candidate.id] = print
-            }
-            offset += chunkSize
-            preparationProgress = Double(min(offset, sample.count)) / Double(sample.count)
+        let found = await PhotoLooker.look(
+            at: sample, baseURL: { baseURL }, token: token, session: session,
+            progress: { preparationProgress = $0 }
+        )
+        for (candidate, print) in found {
+            candidates.append(candidate)
+            featurePrints[candidate.id] = print
         }
     }
 
-    private nonisolated static func look(
-        at image: CGImage, asset: AssetReactItem, aspect: Double
-    ) async -> (DumpCandidate, FeaturePrintObservation?) {
-        let score = await RoadTripPhotoScore.score(image)
-        let print = try? await GenerateImageFeaturePrintRequest().perform(on: image)
-        var focus = CGPoint(x: 0.5, y: 0.5)
-        if let saliency = try? await GenerateAttentionBasedSaliencyImageRequest().perform(on: image),
-           let first = saliency.salientObjects.first {
-            // Vision's rectangles have their origin at the bottom-left.
-            let union = saliency.salientObjects.dropFirst().reduce(first.boundingBox.cgRect) { $0.union($1.boundingBox.cgRect) }
-            focus = CGPoint(x: union.midX, y: 1 - union.midY)
-        }
-        let candidate = DumpCandidate(asset: asset, score: score, focus: focus, aspect: aspect)
-        return (candidate, print)
-    }
-
-    /// Two photos of the same moment: taken within a burst, or alike to Vision.
     private func isDuplicate(_ a: DumpCandidate, _ b: DumpCandidate) -> Bool {
-        guard a.id != b.id else { return true }
-        if let ta = takenAt[a.id], let tb = takenAt[b.id], abs(ta.timeIntervalSince(tb)) < Self.burstInterval {
-            return true
-        }
-        guard let pa = featurePrints[a.id], let pb = featurePrints[b.id],
-              let distance = try? pa.distance(to: pb) else { return false }
-        return distance < Self.duplicateDistance
+        PhotoLooker.isDuplicate(a, b, prints: featurePrints, dates: takenAt)
     }
 
     // MARK: - Editing

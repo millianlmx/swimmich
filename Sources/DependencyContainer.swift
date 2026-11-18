@@ -658,6 +658,28 @@ final class DependencyContainer {
         )
     }
 
+    /// `title`: the words searched for (`ranked`: the assets are in the order
+    /// they matched) or an album's name.
+    func makeReelViewModel(
+        assets: [AssetReactItem],
+        title: String?,
+        ranked: Bool,
+        baseURL: URL,
+        token: String?
+    ) -> ReelViewModel {
+        ReelViewModel(
+            assets: assets,
+            title: title,
+            ranked: ranked,
+            client: libraryClient,
+            // The address in use when asked, not the one at creation (L-26).
+            baseURL: { ServerAddressBook.shared.activeURL ?? baseURL },
+            token: token,
+            photos: photos,
+            session: { [serverSessions] in serverSessions.images }
+        )
+    }
+
     func makeDuplicatesViewModel() -> DuplicatesViewModel {
         DuplicatesViewModel(client: libraryClient)
     }
