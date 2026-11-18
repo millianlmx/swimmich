@@ -659,6 +659,47 @@ final class AuthViewModelTests: XCTestCase {
         XCTAssertEqual(auth.userId, "u-oauth")
     }
 
+    /// Authentik answers on `app.immich:/oauth-callback` (one slash) when asked
+    /// for `app.immich:///oauth-callback`: the server must still finish with the
+    /// address the authorization used, or the provider refuses the token
+    /// (`invalid_client`, the sign-in failed in the app and worked in a browser).
+    @MainActor
+    func test_oauth_finishesOnTheRedirectURIItAskedFor() async {
+        let (defaults, suite) = makeIsolatedDefaults()
+        defer { defaults.removePersistentDomain(forName: suite) }
+        let mock = MockImmichClient()
+        let auth = AuthViewModel(client: mock, keychain: MockKeychainStore(), defaults: defaults)
+        auth.serverURLString = "https://photos.example.com"
+        _ = auth.baseURL
+        auth.serverConfig = makeOAuthConfig()
+        auth.oauthSessionHandler = { _ in URL(string: "app.immich:/oauth-callback?code=abc&state=x%2By") }
+
+        await auth.startOAuthFlow()
+
+        XCTAssertEqual(mock.lastOAuthCallbackURL, "app.immich:///oauth-callback?code=abc&state=x%2By")
+        XCTAssertEqual(
+            mock.lastOAuthCallbackURL?.split(separator: "?").first.map(String.init),
+            mock.lastOAuthRedirectURI,
+            "the redirect URI of the token request is the one of the authorization"
+        )
+    }
+
+    func test_serverCallbackURL_keepsTheProviderAnswerOnTheAskedAddress() {
+        XCTAssertEqual(
+            AuthViewModel.serverCallbackURL(from: URL(string: "app.immich:///oauth-callback?code=abc")!),
+            "app.immich:///oauth-callback?code=abc"
+        )
+        XCTAssertEqual(
+            AuthViewModel.serverCallbackURL(from: URL(string: "app.immich:/oauth-callback?code=abc&state=s")!),
+            "app.immich:///oauth-callback?code=abc&state=s"
+        )
+        // No answer to carry: what came back, untouched.
+        XCTAssertEqual(
+            AuthViewModel.serverCallbackURL(from: URL(string: "app.immich:/oauth-callback")!),
+            "app.immich:/oauth-callback"
+        )
+    }
+
     @MainActor
     func test_oauth_cancelLeavesStateUntouched() async {
         let (defaults, suite) = makeIsolatedDefaults()
