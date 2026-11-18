@@ -6,6 +6,7 @@ import SwiftUI
 struct ColorMosaicView: View {
     @Bindable var vm: ColorMosaicViewModel
     @Environment(\.dismiss) private var dismiss
+    @PVReduceMotion private var reduceMotion
 
     var body: some View {
         ZStack {
@@ -80,7 +81,7 @@ struct ColorMosaicView: View {
             }
         }
         .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
-        .animation(.easeInOut(duration: 0.35), value: layout)
+        .animation(PVMotion.movement(PVMotion.standard, reduceMotion: reduceMotion), value: layout)
         .accessibilityElement()
         .accessibilityLabel(Text("Color mosaic of \(layout.cells.count) photos"))
         .accessibilityIdentifier("colorMosaicPreview")
@@ -97,7 +98,7 @@ struct ColorMosaicView: View {
                 }
             }
             .clipped()
-            .animation(.easeIn(duration: 0.25), value: vm.image(for: tile) != nil)
+            .animation(PVMotion.movement(PVMotion.gentle, reduceMotion: reduceMotion), value: vm.image(for: tile) != nil)
     }
 
     // MARK: - Chrome
