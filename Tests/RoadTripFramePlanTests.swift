@@ -420,4 +420,149 @@ final class RoadTripFramePlanTests: XCTestCase {
         let straight = makeStraightRoute()
         XCTAssertEqual(RoadTripTravelTiming.arcFraction(atTimeFraction: 0.5, route: straight), 0.5, accuracy: 0.001)
     }
+
+    // MARK: - Collage
+
+    /// A stop of `count` photos taken a minute apart (no burst).
+    private func spacedCluster(id: String, count: Int) -> RoadTripCluster {
+        let assets = (0..<count).map { makeAsset(id: "\(id)-\($0)", time: String(format: "2024-07-01T10:%02d:00.000Z", $0)) }
+        return RoadTripCluster(id: id, assets: assets, latitude: 48.85, longitude: 2.29, placeName: nil, startDate: nil, endDate: nil)
+    }
+
+    private func slideshows(_ timeline: RoadTripTimeline?) -> [RoadTripTimeline.Slideshow] {
+        (timeline?.segments ?? []).compactMap {
+            if case .slideshow(let slideshow) = $0 { return slideshow }
+            return nil
+        }
+    }
+
+    func test_collage_opensAStopOnItsGoodPhotos() {
+        let cluster = spacedCluster(id: "c", count: 4)
+        // The bar is relative: 80 % of the stop's best (0.9) — 0.75 is in.
+        let scores = ["c-0": 0.2, "c-1": 0.9, "c-2": 0.8, "c-3": 0.75]
+        let aspects = ["c-0": 1.5, "c-1": 1.5, "c-2": 1.5, "c-3": 1.5]
+        let slideshow = try? XCTUnwrap(slideshows(RoadTripTimelineBuilder.build(clusters: [cluster], legs: [], scores: scores, aspects: aspects)).first)
+
+        XCTAssertEqual(slideshow?.collageCount, 3, "the three good photos, not the weak one")
+        XCTAssertEqual(Set(slideshow.map { Array($0.assetIndices.prefix(3)) } ?? []), [1, 2, 3])
+        XCTAssertEqual(slideshow?.photoDurations.first, RoadTripCollage.duration(tiles: 3))
+        XCTAssertEqual(RoadTripCollage.duration(tiles: 3), 2.5)
+        for duration in slideshow?.photoDurations ?? [] {
+            XCTAssertEqual((duration / RoadTripTimelineBuilder.beat).rounded(), duration / RoadTripTimelineBuilder.beat, accuracy: 1e-9)
+        }
+        XCTAssertEqual(slideshow?.photoDurations.count, (slideshow?.assetIndices.count ?? 0) - 2, "one duration per slide")
+    }
+
+    func test_collage_needsAGoodBestPhotoAndSkipsBursts() {
+        let weak = spacedCluster(id: "w", count: 3)
+        let weakScores = ["w-0": 0.3, "w-1": 0.3, "w-2": 0.2]
+        XCTAssertEqual(slideshows(RoadTripTimelineBuilder.build(clusters: [weak], legs: [], scores: weakScores)).first?.collageCount, 1)
+
+        // Three shots of one burst (seconds apart) and one later photo.
+        let times = ["2024-07-01T10:00:00.000Z", "2024-07-01T10:00:03.000Z", "2024-07-01T10:00:06.000Z", "2024-07-01T10:30:00.000Z"]
+        let assets = times.enumerated().map { makeAsset(id: "b-\($0.offset)", time: $0.element) }
+        let burst = RoadTripCluster(id: "b", assets: assets, latitude: nil, longitude: nil, placeName: nil, startDate: nil, endDate: nil)
+        let scores = ["b-0": 0.9, "b-1": 0.85, "b-2": 0.8, "b-3": 0.75]
+        let candidates = RoadTripTimelineBuilder.collageCandidates(
+            in: burst, rank: RoadTripTimelineBuilder.rank(for: burst, scores: scores), scores: scores
+        )
+        XCTAssertEqual(candidates, [0, 3], "one photo of the burst, then the later one")
+    }
+
+    func test_collageModesAndPhotosPerStop() {
+        let cluster = spacedCluster(id: "c", count: 4)
+        let scores = ["c-0": 0.9, "c-1": 0.5, "c-2": 0.4, "c-3": 0.3]
+        func first(_ options: RoadTripTimelineBuilder.Options) -> RoadTripTimeline.Slideshow? {
+            slideshows(RoadTripTimelineBuilder.build(clusters: [cluster], legs: [], scores: scores, options: options)).first
+        }
+        XCTAssertEqual(first(.init(collages: .auto))?.collageCount, 1, "0.5 is far below the stop's 0.9")
+        XCTAssertEqual(first(.init(collages: .max))?.collageCount, 4, "every usable photo joins")
+        XCTAssertEqual(first(.init(collages: .off))?.collage, [])
+        XCTAssertEqual(first(.init(collages: .max, maxPhotosPerStop: 2))?.assetIndices.count, 2)
+        XCTAssertEqual(first(.init(collages: .off, maxPhotosPerStop: 1))?.assetIndices, [0])
+        let longer = RoadTripTimelineBuilder.build(clusters: [cluster], legs: [], options: .init(targetDuration: 60))
+        XCTAssertNotNil(longer)
+    }
+
+    func test_pinnedPhotosAreShownFirst() {
+        let cluster = spacedCluster(id: "c", count: 5)
+        let scores = ["c-0": 0.9, "c-1": 0.8, "c-2": 0.1, "c-3": 0.7, "c-4": 0.05]
+        let options = RoadTripTimelineBuilder.Options(maxPhotosPerStop: 2, pinned: ["c-2", "c-4"])
+        let slideshow = slideshows(RoadTripTimelineBuilder.build(clusters: [cluster], legs: [], scores: scores, options: options)).first
+        XCTAssertEqual(Set(slideshow?.assetIndices ?? []), [2, 4], "the pinned photos, however weak")
+        XCTAssertEqual(slideshow?.collageCount, 2, "pinned together, they open the stop")
+    }
+
+    func test_collage_noScoresNoCollage() {
+        let timeline = RoadTripTimelineBuilder.build(clusters: [spacedCluster(id: "c", count: 4)], legs: [])
+        XCTAssertTrue(slideshows(timeline).allSatisfy { $0.collage.isEmpty })
+    }
+
+    func test_collageLayouts_fitTheirPhotos() {
+        func tileAspect(_ tile: RoadTripCollage.Tile) -> Double {
+            Double(tile.rect.width / tile.rect.height) * RoadTripCollage.canvasAspect
+        }
+        // Two landscapes: stacked, each wide.
+        let two = RoadTripCollage.layout(aspects: [1.5, 1.33])
+        XCTAssertEqual(two.tiles.count, 2)
+        XCTAssertTrue(two.tiles.allSatisfy { tileAspect($0) > 1 })
+        // Two portraits: one full screen, one framed print over it.
+        let prints = RoadTripCollage.layout(aspects: [0.75, 0.75])
+        XCTAssertEqual(prints.tiles[0].rect, CGRect(x: 0, y: 0, width: 1, height: 1))
+        XCTAssertTrue(prints.tiles[1].framed)
+        XCTAssertNotEqual(prints.tiles[1].rotation, 0)
+        // A landscape first, a portrait second: the portrait takes the top.
+        let mixed = RoadTripCollage.layout(aspects: [1.5, 0.75])
+        XCTAssertEqual(mixed.order, [1, 0])
+        XCTAssertLessThan(tileAspect(mixed.tiles[0]), tileAspect(mixed.tiles[1]))
+        // Three landscapes: three wide bands.
+        let bands = RoadTripCollage.layout(aspects: [1.5, 1.5, 1.5])
+        XCTAssertTrue(bands.tiles.allSatisfy { tileAspect($0) > 1.5 })
+        // Two portraits and a landscape: the landscape across the top.
+        let three = RoadTripCollage.layout(aspects: [0.75, 0.75, 1.5])
+        XCTAssertEqual(three.order.first, 2)
+        XCTAssertGreaterThan(tileAspect(three.tiles[0]), 1)
+        XCTAssertTrue(three.tiles.dropFirst().allSatisfy { tileAspect($0) < 1 })
+        // Four portraits: a 2 × 2 grid.
+        let grid = RoadTripCollage.layout(aspects: [0.75, 0.75, 0.75, 0.75])
+        XCTAssertEqual(grid.tiles.count, 4)
+        XCTAssertTrue(grid.tiles.allSatisfy { tileAspect($0) < 1 })
+        // Every layout stays on the canvas, every photo used once.
+        for layout in [two, prints, mixed, bands, three, grid] {
+            XCTAssertEqual(layout.order.sorted(), Array(0..<layout.tiles.count))
+            for tile in layout.tiles {
+                XCTAssertTrue(CGRect(x: 0, y: 0, width: 1, height: 1).insetBy(dx: -1e-9, dy: -1e-9).contains(tile.rect))
+            }
+        }
+    }
+
+    func test_collageTiles_allTogetherPushingIn() {
+        let layout = RoadTripCollage.layout(aspects: [1.5, 1.5, 1.5])
+        let slideshow = RoadTripTimeline.Slideshow(
+            clusterID: "c", assetIndices: [0, 1, 2, 3], photoDurations: [RoadTripCollage.duration(tiles: 3), 1],
+            recipeOffset: 0, energy: 0.5, collage: layout.tiles
+        )
+        let canvas = CGSize(width: 90, height: 160)
+        let opening = RoadTripCollage.drawnTiles(slideshow: slideshow, localTime: 0, canvas: canvas, reduceMotion: false)
+        XCTAssertEqual(opening.map(\.position), [0, 1, 2], "every tile from the first frame")
+        XCTAssertTrue(opening.allSatisfy { $0.alpha == 1 && $0.zoom == 1 })
+        XCTAssertEqual(opening[1].rect.minY, layout.tiles[1].rect.minY * 160, accuracy: 1e-6)
+        let closing = RoadTripCollage.drawnTiles(slideshow: slideshow, localTime: 2.5, canvas: canvas, reduceMotion: false)
+        XCTAssertEqual(closing[0].zoom, 1 + RoadTripCollage.pushIn, accuracy: 1e-9, "each photo pushes in")
+        XCTAssertEqual(closing[0].rect, opening[0].rect, "the tiles themselves stay put")
+        let still = RoadTripCollage.drawnTiles(slideshow: slideshow, localTime: 2.5, canvas: canvas, reduceMotion: true)
+        XCTAssertTrue(still.allSatisfy { $0.zoom == 1 })
+
+        // Slides: the collage, then the stop's fourth photo.
+        XCTAssertEqual(slideshow.positions(ofSlide: 0), 0..<3)
+        XCTAssertEqual(slideshow.positions(ofSlide: 1), 3..<4)
+        XCTAssertEqual(RoadTripSlideTiming.frame(slideshow: slideshow, localTime: 2.6, reduceMotion: false).currentIndex, 1)
+
+        // The dive lands on the collage; the slideshow ends on its photo.
+        let first = RoadTripSlideTiming.edgeTiles(slideshow: slideshow, first: true, reduceMotion: false, canvas: canvas)
+        XCTAssertEqual(first.map(\.position), [0, 1, 2])
+        XCTAssertEqual(first[0].rect.height, layout.tiles[0].rect.height * 160, accuracy: 1e-6)
+        let last = RoadTripSlideTiming.edgeTiles(slideshow: slideshow, first: false, reduceMotion: false, canvas: canvas)
+        XCTAssertEqual(last.map(\.position), [3])
+    }
 }

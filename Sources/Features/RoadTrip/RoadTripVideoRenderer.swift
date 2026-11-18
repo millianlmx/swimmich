@@ -12,6 +12,8 @@ struct RoadTripRenderConfig: Sendable {
     let token: String?
     let albumTitle: String
     let reduceMotion: Bool
+    /// The car's paint (`RoadTripSettings`).
+    var carColor: RoadTripSettings.CarColor = .white
 }
 
 /// Renders the deterministic road-trip timeline into an HEVC `.mp4`: a
@@ -27,9 +29,15 @@ struct RoadTripRenderConfig: Sendable {
 ///    live player's camera) and draws the trip's line, the stops, the car and
 ///    the road counter over it.
 /// 3. Title cards and leg labels pre-rendered once.
-/// 4. Frame loop draws straight into `CVPixelBuffer`s from a reuse pool with
-///    Core Graphics (no per-frame SwiftUI layout), streamed to `AVAssetWriter`.
-///    The context is y-down: every bitmap goes through `drawUpright`.
+/// 4. Frame loop draws each frame whole on the GPU (`RoadTripMetalCanvas`,
+///    Core Graphics where Metal is missing) straight into the `CVPixelBuffer`s
+///    of the writer's pool (IOSurface: shared with the GPU, no copy),
+///    streamed to `AVAssetWriter`.
+///    Frames are drawn a batch at a time on every core (`drawFrame` reads
+///    only immutable inputs), appended in order; each leg's snapshots are
+///    taken ahead, while the frames before it are drawn.
+///    Canvas coordinates are y-down (`RoadTripFrameCanvas`), as the live
+///    player's and the map snapshots'.
 final class RoadTripVideoRenderer: @unchecked Sendable {
 
     /// The process-wide road-trip session (`ServerSessions.roadTrip`): trust
@@ -94,6 +102,7 @@ final class RoadTripVideoRenderer: @unchecked Sendable {
         try Task.checkCancellation()
         let visuals = await prepareCards(clusters: clusters, timeline: timeline, config: config)
         try Task.checkCancellation()
+        defer { RoadTripMetalEngine.shared?.purge() }
         return try await writeVideo(
             clusters: clusters, timeline: timeline, config: config,
             images: images, visuals: visuals, progress: progress
@@ -196,11 +205,11 @@ final class RoadTripVideoRenderer: @unchecked Sendable {
             legLabels[index] = Self.pillCard(label, canvas: config.size)
         }
 
-        let photoCount = clusters.reduce(0) { $0 + $1.assets.count }
+        let photoCount = timeline.photoCount
         let placeNames = RoadTripTimeline.dedupedPlaceNames(clusters.map { $0.placeName ?? "" })
         let meters = timeline.totalDrivenMeters
         let overMap = !RoadTripMapStop.stops(of: clusters).isEmpty
-        RoadTripCar3D.warm()
+        RoadTripCar3D.warm(color: config.carColor)
         return VisualAssets(
             opening: Self.openingCard(
                 albumTitle: config.albumTitle, photoCount: photoCount,
@@ -235,14 +244,11 @@ final class RoadTripVideoRenderer: @unchecked Sendable {
         let envelope = RoadTripAerialCamera.scaled(RoadTripAerialCamera.legEnvelope(travel: travel, aspect: aspect), by: 1.06)
         let start = RoadTripAerialCamera.scaled(RoadTripAerialCamera.legRect(travel: travel, localTime: 0, aspect: aspect), by: 1.4)
         let end = RoadTripAerialCamera.scaled(RoadTripAerialCamera.legRect(travel: travel, localTime: travel.duration, aspect: aspect), by: 1.4)
-        var shots: [MapShot] = []
-        for (rect, oversample) in [(envelope, 2.0), (start, 1.5), (end, 1.5)] {
-            if Task.isCancelled { break }
-            if let shot = await snapshot(rect, canvas: canvas, oversample: CGFloat(oversample)) {
-                shots.append(shot)
-            }
-        }
-        return shots
+        // The three at once: MapKit renders them in parallel.
+        async let whole = snapshot(envelope, canvas: canvas, oversample: 2)
+        async let first = snapshot(start, canvas: canvas, oversample: 1.5)
+        async let last = snapshot(end, canvas: canvas, oversample: 1.5)
+        return [await whole, await first, await last].compactMap { $0 }
     }
 
     /// A satellite snapshot of `rect`, `oversample` × the canvas in pixels;
@@ -499,7 +505,11 @@ final class RoadTripVideoRenderer: @unchecked Sendable {
             sourcePixelBufferAttributes: [
                 kCVPixelBufferPixelFormatTypeKey as String: kCVPixelFormatType_32BGRA,
                 kCVPixelBufferWidthKey as String: Int(config.size.width),
-                kCVPixelBufferHeightKey as String: Int(config.size.height)
+                kCVPixelBufferHeightKey as String: Int(config.size.height),
+                // Shared with the GPU: Core Image draws the ground straight
+                // into the buffer instead of into a texture copied back.
+                kCVPixelBufferIOSurfacePropertiesKey as String: [String: Any](),
+                kCVPixelBufferMetalCompatibilityKey as String: true
             ]
         )
         writer.add(input)
@@ -511,53 +521,106 @@ final class RoadTripVideoRenderer: @unchecked Sendable {
         var clusterByID: [String: RoadTripCluster] = [:]
         for cluster in clusters { clusterByID[cluster.id] = cluster }
 
-        // The map: the trip's roads and stops, the overview snapshot now, each
-        // leg's snapshots when the leg comes up (released after it, so peak
-        // memory holds one leg's).
+        // The map: the trip's roads and stops, the overview snapshot now, and
+        // each leg's snapshots taken ahead — the next leg's while the frames
+        // before it are drawn — and released after it (peak memory holds two
+        // legs').
+        let travelIndices = timeline.segments.indices.filter {
+            if case .travel = timeline.segments[$0] { return true }
+            return false
+        }
+        var legShots: [Int: Task<[MapShot], Never>] = [:]
+        func legShotsTask(_ index: Int) -> Task<[MapShot], Never> {
+            if let task = legShots[index] { return task }
+            guard case .travel(let travel) = timeline.segments[index] else { return Task { [] } }
+            let task = Task { await self.snapshotLeg(travel: travel, canvas: config.size) }
+            legShots[index] = task
+            return task
+        }
+        if let first = travelIndices.first { _ = legShotsTask(first) }
         var map = await prepareMap(clusters: clusters, timeline: timeline, images: images, canvas: config.size)
-        var activeTravelIndex: Int?
 
         let totalFrames = max(1, Int((timeline.totalDuration * Double(config.fps)).rounded(.up)))
+        let batchSize = max(2, ProcessInfo.processInfo.activeProcessorCount)
         var frameTime = CMTime.zero
 
         do {
-            for frameIndex in 0..<totalFrames {
+            // A batch is drawn while the one before it goes to the encoder:
+            // the GPU and the encoder never wait for each other.
+            var batchStart = 0
+            var drawing: (task: Task<Void, Never>, frames: [Int], buffers: [CVPixelBuffer])?
+            defer { drawing?.task.cancel() }
+            while batchStart < totalFrames || drawing != nil {
                 try Task.checkCancellation()
-                let t = Double(frameIndex) / Double(config.fps)
+                var next: (task: Task<Void, Never>, frames: [Int], buffers: [CVPixelBuffer])?
+                if batchStart < totalFrames {
+                    let batch = Array(batchStart..<min(batchStart + batchSize, totalFrames))
+                    let times = batch.map { Double($0) / Double(config.fps) }
 
-                let (segmentIndex, _) = timeline.localTime(at: t)
-                if case .travel(let travel) = timeline.segments[segmentIndex] {
-                    if activeTravelIndex != segmentIndex {
-                        if let previous = activeTravelIndex {
-                            map.legs[previous] = nil
+                    // The legs this batch draws: their snapshots in, the next
+                    // leg's started, the legs behind released (the batch
+                    // being encoded holds its own copy of the map).
+                    let segments = Set(times.map { timeline.localTime(at: $0).segmentIndex })
+                    let legsHere = travelIndices.filter { segments.contains($0) }
+                    for index in legsHere where map.legs[index] == nil {
+                        map.legs[index] = await legShotsTask(index).value
+                    }
+                    if let last = segments.max(), let following = travelIndices.first(where: { $0 > last }) {
+                        _ = legShotsTask(following)
+                    }
+                    let firstSegment = segments.min() ?? 0
+                    for index in Array(map.legs.keys) where index < firstSegment {
+                        map.legs[index] = nil
+                    }
+                    for index in Array(legShots.keys) where index < firstSegment {
+                        legShots[index] = nil
+                    }
+
+                    guard let pool = adaptor.pixelBufferPool else { throw APIError.decoding("No pixel buffer pool") }
+                    var buffers: [CVPixelBuffer] = []
+                    for _ in batch {
+                        var pixelBuffer: CVPixelBuffer?
+                        CVPixelBufferPoolCreatePixelBuffer(nil, pool, &pixelBuffer)
+                        guard let buffer = pixelBuffer else { throw APIError.decoding("No pixel buffer") }
+                        buffers.append(buffer)
+                    }
+
+                    // Every frame of the batch at once.
+                    let inputs = FrameInputs(
+                        clusters: clusters, clusterByID: clusterByID, timeline: timeline, config: config,
+                        images: images, visuals: visuals, map: map, buffers: buffers
+                    )
+                    let task = Task {
+                        await withTaskGroup(of: Void.self) { group in
+                            for (k, t) in times.enumerated() {
+                                group.addTask {
+                                    self.drawFrame(
+                                        at: t, into: inputs.buffers[k],
+                                        clusters: inputs.clusters, clusterByID: inputs.clusterByID, timeline: inputs.timeline,
+                                        config: inputs.config, images: inputs.images, visuals: inputs.visuals, map: inputs.map
+                                    )
+                                }
+                            }
                         }
-                        activeTravelIndex = segmentIndex
                     }
-                    if map.legs[segmentIndex] == nil {
-                        map.legs[segmentIndex] = await snapshotLeg(travel: travel, canvas: config.size)
-                    }
-                } else if let previous = activeTravelIndex {
-                    map.legs[previous] = nil
-                    activeTravelIndex = nil
+                    next = (task, batch, buffers)
+                    batchStart += batch.count
                 }
 
-                while !input.isReadyForMoreMediaData {
-                    try await Task.sleep(for: .milliseconds(5))
+                if let done = drawing {
+                    await done.task.value
+                    for (k, buffer) in done.buffers.enumerated() {
+                        while !input.isReadyForMoreMediaData {
+                            try await Task.sleep(for: .milliseconds(2))
+                        }
+                        adaptor.append(buffer, withPresentationTime: frameTime)
+                        frameTime = CMTimeAdd(frameTime, CMTime(value: 1, timescale: Int32(config.fps)))
+                        progress(Double(done.frames[k]) / Double(totalFrames))
+                    }
                 }
-                guard let pool = adaptor.pixelBufferPool else { throw APIError.decoding("No pixel buffer pool") }
-                var pixelBuffer: CVPixelBuffer?
-                CVPixelBufferPoolCreatePixelBuffer(nil, pool, &pixelBuffer)
-                guard let buffer = pixelBuffer else { continue }
-
-                drawFrame(
-                    at: t, into: buffer,
-                    clusters: clusters, clusterByID: clusterByID, timeline: timeline,
-                    config: config, images: images, visuals: visuals, map: map
-                )
-                adaptor.append(buffer, withPresentationTime: frameTime)
-                frameTime = CMTimeAdd(frameTime, CMTime(value: 1, timescale: Int32(config.fps)))
-                progress(Double(frameIndex) / Double(totalFrames))
+                drawing = next
             }
+            for task in legShots.values { task.cancel() }
             input.markAsFinished()
             await withTaskCancellationHandler {
                 await withCheckedContinuation { (continuation: CheckedContinuation<Void, Never>) in
@@ -576,6 +639,19 @@ final class RoadTripVideoRenderer: @unchecked Sendable {
             try? FileManager.default.removeItem(at: outputURL)
             throw error
         }
+    }
+
+    /// What every frame of a batch reads, handed to the drawing tasks: never
+    /// mutated while they run (each frame writes only its own buffer).
+    private struct FrameInputs: @unchecked Sendable {
+        let clusters: [RoadTripCluster]
+        let clusterByID: [String: RoadTripCluster]
+        let timeline: RoadTripTimeline
+        let config: RoadTripRenderConfig
+        let images: [String: CGImage]
+        let visuals: VisualAssets
+        let map: ExportMap
+        let buffers: [CVPixelBuffer]
     }
 
     /// HEVC at the canvas size (internal for the tests). The encoder's tuning
@@ -637,7 +713,18 @@ final class RoadTripVideoRenderer: @unchecked Sendable {
 
     // MARK: - Frame drawing
 
-    /// Draws the frame at `time` into `pixelBuffer` (internal for the tests).
+    /// What draws the frames.
+    enum Backend {
+        /// The GPU, every pixel (`RoadTripMetalCanvas`).
+        case metal
+        /// Core Graphics (`RoadTripCGCanvas`): where Metal is missing, and the
+        /// tests' reference.
+        case coreGraphics
+    }
+
+    /// Draws the frame at `time` into `pixelBuffer` (internal for the tests):
+    /// the scene below, on the GPU unless `backend` says otherwise or Metal
+    /// is missing.
     func drawFrame(
         at time: TimeInterval,
         into pixelBuffer: CVPixelBuffer,
@@ -647,176 +734,198 @@ final class RoadTripVideoRenderer: @unchecked Sendable {
         config: RoadTripRenderConfig,
         images: [String: CGImage],
         visuals: VisualAssets,
+        map: ExportMap,
+        backend: Backend = .metal
+    ) {
+        let metal: RoadTripFrameCanvas? = backend == .metal
+            ? RoadTripMetalEngine.shared.flatMap { RoadTripMetalCanvas(pixelBuffer: pixelBuffer, engine: $0) }
+            : nil
+        guard let canvas = metal ?? RoadTripCGCanvas(pixelBuffer: pixelBuffer) else { return }
+        drawScene(
+            on: canvas, at: time, clusterByID: clusterByID, timeline: timeline,
+            config: config, images: images, visuals: visuals, map: map
+        )
+        canvas.finish()
+    }
+
+    /// The film at `time`, whatever draws it.
+    private func drawScene(
+        on canvas: RoadTripFrameCanvas,
+        at time: TimeInterval,
+        clusterByID: [String: RoadTripCluster],
+        timeline: RoadTripTimeline,
+        config: RoadTripRenderConfig,
+        images: [String: CGImage],
+        visuals: VisualAssets,
         map: ExportMap
     ) {
-        CVPixelBufferLockBaseAddress(pixelBuffer, [])
-        defer { CVPixelBufferUnlockBaseAddress(pixelBuffer, []) }
-
-        let width = CVPixelBufferGetWidth(pixelBuffer)
-        let height = CVPixelBufferGetHeight(pixelBuffer)
-        guard let data = CVPixelBufferGetBaseAddress(pixelBuffer),
-              let ctx = CGContext(
-                data: data, width: width, height: height, bitsPerComponent: 8,
-                bytesPerRow: CVPixelBufferGetBytesPerRow(pixelBuffer),
-                space: CGColorSpaceCreateDeviceRGB(),
-                bitmapInfo: CGImageAlphaInfo.premultipliedFirst.rawValue | CGBitmapInfo.byteOrder32Little.rawValue
-              ) else { return }
-
-        // Flip to top-left coordinates so screen-space math matches the map
-        // snapshots and the live player.
-        ctx.translateBy(x: 0, y: CGFloat(height))
-        ctx.scaleBy(x: 1, y: -1)
-        let canvas = CGSize(width: width, height: height)
-        let aspect = Double(canvas.width / max(canvas.height, 1))
-
-        ctx.setFillColor(UIColor.black.cgColor)
-        ctx.fill(CGRect(origin: .zero, size: canvas))
+        let size = canvas.size
+        let aspect = Double(size.width / max(size.height, 1))
+        canvas.fill(.black)
 
         let (segmentIndex, local) = timeline.localTime(at: time)
         switch timeline.segments[segmentIndex] {
         case .opening(let duration):
             let progress = local / max(duration, 0.001)
             if let rect = RoadTripAerialCamera.rect(for: .opening(progress: progress), timeline: timeline, stops: map.stops, aspect: aspect) {
-                drawMap(ctx, shots: map.overview, rect: rect, canvas: canvas)
-                drawRoads(ctx, map: map, rect: rect, canvas: canvas, alpha: CGFloat(RoadTripMapStyle.previewAlpha)) { _ in 1 }
-                drawStops(ctx, map: map, upTo: map.stops.count - 1, rect: rect, canvas: canvas)
+                drawMap(on: canvas, shots: map.overview, rect: rect)
+                drawRoads(on: canvas, map: map, rect: rect, alpha: RoadTripMapStyle.previewAlpha) { _ in 1 }
+                drawStops(on: canvas, map: map, upTo: map.stops.count - 1, rect: rect)
             }
             if let card = visuals.opening {
-                drawCard(ctx, card, progress: progress, canvas: canvas, fadeIn: 0.15, fadeOut: 0)
+                drawCard(on: canvas, card, progress: progress, fadeIn: 0.15, fadeOut: 0)
             }
         case .slideshow(let slideshow):
-            drawSlideshow(ctx, slideshow: slideshow, clusterByID: clusterByID, localTime: local, config: config, images: images, canvas: canvas)
+            drawSlideshow(on: canvas, slideshow: slideshow, clusterByID: clusterByID, localTime: local, config: config, images: images)
+            canvas.vignette()
             if let title = visuals.intertitles[slideshow.clusterID] {
-                drawOverlayFade(ctx, title, localTime: local, duration: 1.5, canvas: canvas)
+                drawOverlayFade(on: canvas, title, localTime: local, duration: 1.5)
             }
-            applyVignette(ctx, canvas: canvas)
         case .travel(let travel):
             drawTravel(
-                ctx, travel: travel, segmentIndex: segmentIndex, localTime: local,
-                timeline: timeline, map: map, legLabel: visuals.legLabels[segmentIndex], canvas: canvas,
-                reduceMotion: config.reduceMotion,
-                outgoingPhoto: neighborPhoto(at: segmentIndex - 1, edge: .last, timeline: timeline, clusterByID: clusterByID, images: images),
-                divePhoto: neighborPhoto(at: segmentIndex + 1, edge: .first, timeline: timeline, clusterByID: clusterByID, images: images)
+                on: canvas, travel: travel, segmentIndex: segmentIndex, localTime: local,
+                timeline: timeline, map: map, legLabel: visuals.legLabels[segmentIndex],
+                carColor: config.carColor,
+                outgoing: edgePhotos(
+                    at: segmentIndex - 1, first: false, timeline: timeline, clusterByID: clusterByID,
+                    images: images, reduceMotion: config.reduceMotion, canvas: size
+                ),
+                arriving: edgePhotos(
+                    at: segmentIndex + 1, first: true, timeline: timeline, clusterByID: clusterByID,
+                    images: images, reduceMotion: config.reduceMotion, canvas: size
+                )
             )
         case .ending(let duration):
             let progress = local / max(duration, 0.001)
             if let rect = RoadTripAerialCamera.rect(for: .ending(progress: progress), timeline: timeline, stops: map.stops, aspect: aspect) {
-                drawMap(ctx, shots: map.overview, rect: rect, canvas: canvas)
-                drawRoads(ctx, map: map, rect: rect, canvas: canvas, alpha: 1) { _ in 1 }
-                drawStops(ctx, map: map, upTo: map.stops.count - 1, rect: rect, canvas: canvas)
-                drawPhotoPins(ctx, map: map, progress: progress, rect: rect, canvas: canvas)
+                drawMap(on: canvas, shots: map.overview, rect: rect)
+                drawRoads(on: canvas, map: map, rect: rect, alpha: 1) { _ in 1 }
+                drawStops(on: canvas, map: map, upTo: map.stops.count - 1, rect: rect)
+                drawPhotoPins(on: canvas, map: map, progress: progress, rect: rect)
             }
             if let card = visuals.ending {
-                drawCard(ctx, card, progress: progress, canvas: canvas, fadeIn: 0.2, fadeOut: 0)
+                drawCard(on: canvas, card, progress: progress, fadeIn: 0.2, fadeOut: 0)
             }
         }
     }
 
     private func drawSlideshow(
-        _ ctx: CGContext,
+        on canvas: RoadTripFrameCanvas,
         slideshow: RoadTripTimeline.Slideshow,
         clusterByID: [String: RoadTripCluster],
         localTime: TimeInterval,
         config: RoadTripRenderConfig,
-        images: [String: CGImage],
-        canvas: CGSize
+        images: [String: CGImage]
     ) {
         let frame = RoadTripSlideTiming.frame(slideshow: slideshow, localTime: localTime, reduceMotion: config.reduceMotion)
         guard let cluster = clusterByID[slideshow.clusterID] else { return }
 
-        if slideshow.assetIndices.indices.contains(frame.currentIndex) {
-            let assetIndex = slideshow.assetIndices[frame.currentIndex]
-            if cluster.assets.indices.contains(assetIndex) {
-                drawSlideImage(ctx, images[cluster.assets[assetIndex].id], transform: frame.currentTransform, canvas: canvas)
+        if slideshow.isCollage(slide: frame.currentIndex) {
+            // The stop's photos on one screen — the player draws the same tiles.
+            let tiles = RoadTripCollage.drawnTiles(
+                slideshow: slideshow, localTime: localTime, canvas: canvas.size, reduceMotion: config.reduceMotion
+            )
+            for tile in tiles {
+                if let image = image(at: tile.position, of: slideshow, cluster: cluster, images: images) {
+                    drawTile(on: canvas, image, tile: tile, alpha: tile.alpha)
+                }
+            }
+        } else {
+            let position = slideshow.positions(ofSlide: frame.currentIndex).lowerBound
+            if slideshow.assetIndices.indices.contains(position) {
+                drawSlideImage(on: canvas, image(at: position, of: slideshow, cluster: cluster, images: images),
+                               transform: frame.currentTransform, alpha: 1)
             }
         }
-        if frame.crossfade > 0, let next = frame.nextIndex, slideshow.assetIndices.indices.contains(next) {
-            let assetIndex = slideshow.assetIndices[next]
-            if cluster.assets.indices.contains(assetIndex) {
-                ctx.saveGState()
-                ctx.setAlpha(CGFloat(frame.crossfade))
-                drawSlideImage(ctx, images[cluster.assets[assetIndex].id], transform: frame.nextTransform ?? .identity, canvas: canvas)
-                ctx.restoreGState()
+        if frame.crossfade > 0, let next = frame.nextIndex {
+            let position = slideshow.positions(ofSlide: next).lowerBound
+            if slideshow.assetIndices.indices.contains(position) {
+                drawSlideImage(on: canvas, image(at: position, of: slideshow, cluster: cluster, images: images),
+                               transform: frame.nextTransform ?? .identity, alpha: frame.crossfade)
             }
         }
     }
 
-    private func drawSlideImage(_ ctx: CGContext, _ image: CGImage?, transform: KenBurnsTransform, canvas: CGSize) {
-        guard let image else {
-            ctx.setFillColor(UIColor(white: 0.1, alpha: 1).cgColor)
-            ctx.fill(CGRect(origin: .zero, size: canvas))
-            return
-        }
-        let fill = aspectFillRect(image: image, canvas: canvas)
-        let rect = transformed(fill, canvas: canvas, transform: transform)
-        drawUpright(ctx, image, in: rect)
-    }
-
-    /// Draws `image` upright into `rect` of this renderer's y-down context.
-    /// `CGContext.draw` lays an image out for a y-up space: called as is in
-    /// the flipped context it renders every photo, card and sprite upside down.
-    private func drawUpright(_ ctx: CGContext, _ image: CGImage, in rect: CGRect) {
-        ctx.saveGState()
-        ctx.translateBy(x: 0, y: rect.minY + rect.maxY)
-        ctx.scaleBy(x: 1, y: -1)
-        ctx.draw(image, in: rect)
-        ctx.restoreGState()
-    }
-
-    /// `image` aspect-filled into `rect` (centered, overflow clipped) and
-    /// drawn upright — the photo framing of the live player.
-    private func drawFilled(_ ctx: CGContext, _ image: CGImage, in rect: CGRect) {
-        let fill = aspectFillRect(image: image, canvas: rect.size).offsetBy(dx: rect.minX, dy: rect.minY)
-        ctx.saveGState()
-        ctx.clip(to: rect)
-        drawUpright(ctx, image, in: fill)
-        ctx.restoreGState()
-    }
-
-    /// Which photo of the neighbor slideshow the transitions use.
-    private enum PhotoEdge {
-        case first
-        case last
-    }
-
-    /// Photo shown by the slideshow segment at `index` — first or last asset —
-    /// used for the map↔media transitions (dive photo on the arrival side,
-    /// fading photo on the departure side). Travel legs are always sandwiched
-    /// between slideshows, so the neighbors are the slideshow segments.
-    private func neighborPhoto(
-        at index: Int,
-        edge: PhotoEdge,
-        timeline: RoadTripTimeline,
-        clusterByID: [String: RoadTripCluster],
+    /// The decoded photo at `position` of the slideshow's `assetIndices`.
+    private func image(
+        at position: Int,
+        of slideshow: RoadTripTimeline.Slideshow,
+        cluster: RoadTripCluster,
         images: [String: CGImage]
     ) -> CGImage? {
+        guard slideshow.assetIndices.indices.contains(position),
+              cluster.assets.indices.contains(slideshow.assetIndices[position]) else { return nil }
+        return images[cluster.assets[slideshow.assetIndices[position]].id]
+    }
+
+    /// One photo of a collage (or a frame's photo, as an edge tile): filling
+    /// its rect, pushed in by its zoom, tilted about its center, inside its
+    /// white rim when framed.
+    private func drawTile(on canvas: RoadTripFrameCanvas, _ image: CGImage, tile: RoadTripCollage.DrawnTile, alpha: Double) {
+        if tile.framed {
+            let rim = canvas.size.width * CGFloat(RoadTripCollage.frameBorder)
+            canvas.fill(tile.rect.insetBy(dx: -rim, dy: -rim), color: RoadTripRGBA.white.withAlpha(alpha), rotation: tile.rotation)
+        }
+        canvas.drawFilled(image, in: tile.rect, zoom: tile.zoom, alpha: alpha, rotation: tile.rotation)
+    }
+
+    /// A slideshow photo in its Ken Burns framing (grey where it is missing).
+    private func drawSlideImage(on canvas: RoadTripFrameCanvas, _ image: CGImage?, transform: KenBurnsTransform, alpha: Double) {
+        let size = canvas.size
+        guard let image else {
+            canvas.fill(CGRect(origin: .zero, size: size), color: RoadTripRGBA(red: 0.1, green: 0.1, blue: 0.1, alpha: alpha))
+            return
+        }
+        canvas.draw(image, in: transformed(aspectFillRect(image: image, canvas: size), canvas: size, transform: transform), alpha: alpha)
+    }
+
+    /// A photo of a slideshow's first or last frame and where it sits.
+    private struct EdgePhoto {
+        let tile: RoadTripCollage.DrawnTile
+        let image: CGImage
+    }
+
+    /// The photos on the first (`first`) or last frame of the slideshow
+    /// segment at `index` — one photo, or a collage's tiles — used for the
+    /// map↔media transitions (the dive on the arrival side, the fading photos
+    /// on the departure side). Travel legs are always sandwiched between
+    /// slideshows, so the neighbors are the slideshow segments.
+    private func edgePhotos(
+        at index: Int,
+        first: Bool,
+        timeline: RoadTripTimeline,
+        clusterByID: [String: RoadTripCluster],
+        images: [String: CGImage],
+        reduceMotion: Bool,
+        canvas: CGSize
+    ) -> [EdgePhoto] {
         guard timeline.segments.indices.contains(index),
               case .slideshow(let slideshow) = timeline.segments[index],
-              let cluster = clusterByID[slideshow.clusterID],
-              let position = edge == .first ? slideshow.assetIndices.first : slideshow.assetIndices.last,
-              cluster.assets.indices.contains(position) else { return nil }
-        return images[cluster.assets[position].id]
+              let cluster = clusterByID[slideshow.clusterID] else { return [] }
+        return RoadTripSlideTiming.edgeTiles(slideshow: slideshow, first: first, reduceMotion: reduceMotion, canvas: canvas)
+            .compactMap { tile in
+                image(at: tile.position, of: slideshow, cluster: cluster, images: images).map { EdgePhoto(tile: tile, image: $0) }
+            }
     }
 
     private func drawTravel(
-        _ ctx: CGContext,
+        on canvas: RoadTripFrameCanvas,
         travel: RoadTripTimeline.Travel,
         segmentIndex: Int,
         localTime: TimeInterval,
         timeline: RoadTripTimeline,
         map: ExportMap,
         legLabel: CGImage?,
-        canvas: CGSize,
-        reduceMotion: Bool,
-        outgoingPhoto: CGImage?,
-        divePhoto: CGImage?
+        carColor: RoadTripSettings.CarColor,
+        outgoing: [EdgePhoto],
+        arriving: [EdgePhoto]
     ) {
+        let size = canvas.size
         guard travel.route.count >= 2, let shots = map.legs[segmentIndex], !shots.isEmpty else {
-            ctx.setFillColor(UIColor(white: 0.06, alpha: 1).cgColor)
-            ctx.fill(CGRect(origin: .zero, size: canvas))
+            canvas.fill(RoadTripRGBA(red: 0.06, green: 0.06, blue: 0.06, alpha: 1))
             return
         }
-        let aspect = Double(canvas.width / max(canvas.height, 1))
+        let aspect = Double(size.width / max(size.height, 1))
         let rect = RoadTripAerialCamera.legRect(travel: travel, localTime: localTime, aspect: aspect)
         let timing = RoadTripTravelTiming.frame(travel: travel, localTime: localTime)
         let fraction = min(max(timing.routeDrawnFraction, 0), 1)
@@ -824,81 +933,75 @@ final class RoadTripVideoRenderer: @unchecked Sendable {
 
         // The ground, the trip's line (every leg already driven, this one up
         // to the car), the stops reached and the one ahead.
-        drawMap(ctx, shots: shots, rect: rect, canvas: canvas)
-        drawRoads(ctx, map: map, rect: rect, canvas: canvas, alpha: 1) { segment in
+        drawMap(on: canvas, shots: shots, rect: rect)
+        drawRoads(on: canvas, map: map, rect: rect, alpha: 1) { segment in
             segment < segmentIndex ? 1 : (segment == segmentIndex ? fraction : 0)
         }
         let destination = map.stops.firstIndex { $0.clusterID == travel.toClusterID } ?? (map.stops.count - 1)
-        drawStops(ctx, map: map, upTo: destination, rect: rect, canvas: canvas)
+        drawStops(on: canvas, map: map, upTo: destination, rect: rect)
 
         // The car, nose along the road (north-up: heading = screen angle).
-        let car = RoadTripAerialCamera.project(MKMapPoint(timing.carCoordinate.coordinate), in: rect, canvas: canvas)
+        let car = RoadTripAerialCamera.project(MKMapPoint(timing.carCoordinate.coordinate), in: rect, canvas: size)
         let heading = RoadTripAerialCamera.carHeading(travel: travel, localTime: localTime)
-        drawTopCar(ctx, at: car, heading: heading, size: canvas.width * CGFloat(RoadTripMapStyle.carSpriteSize))
+        drawTopCar(on: canvas, at: car, heading: heading, size: size.width * CGFloat(RoadTripMapStyle.carSpriteSize), color: carColor)
 
         // The road counter and the leg's pill, faded out by the dive.
         let overlayAlpha = RoadTripSegue.overlayAlpha(dive)
         if overlayAlpha > 0 {
-            ctx.saveGState()
-            ctx.setAlpha(CGFloat(overlayAlpha))
-            drawCounter(ctx, meters: timeline.drivenMeters(at: timeline.segmentStartTimes[segmentIndex] + localTime), canvas: canvas)
-            if let legLabel {
-                let size = CGSize(width: legLabel.width, height: legLabel.height)
-                drawUpright(ctx, legLabel, in: CGRect(
-                    x: (canvas.width - size.width) / 2, y: canvas.height * 0.86 - size.height / 2,
-                    width: size.width, height: size.height
-                ))
+            if let strip = Self.counterStrip(meters: timeline.drivenMeters(at: timeline.segmentStartTimes[segmentIndex] + localTime), canvas: size) {
+                canvas.draw(strip.image, in: strip.rect, alpha: overlayAlpha)
             }
-            ctx.restoreGState()
+            if let legLabel {
+                let label = CGSize(width: legLabel.width, height: legLabel.height)
+                canvas.draw(legLabel, in: CGRect(
+                    x: (size.width - label.width) / 2, y: size.height * 0.86 - label.height / 2,
+                    width: label.width, height: label.height
+                ), alpha: overlayAlpha)
+            }
         }
 
         // Arrival dive: the map dims out as the destination photo takes over.
         if dive > 0 {
-            let fade = RoadTripSegue.mapFade(dive)
+            let fade = RoadTripSegue.mapDim(dive)
             if fade > 0 {
-                ctx.saveGState()
-                ctx.setAlpha(CGFloat(fade * 0.92))
-                ctx.setFillColor(UIColor.black.cgColor)
-                ctx.fill(CGRect(origin: .zero, size: canvas))
-                ctx.restoreGState()
+                canvas.fill(RoadTripRGBA.black.withAlpha(fade))
             }
             if let destination = travel.route.last?.coordinate {
                 let point = RoadTripSegue.clampedToMargins(
-                    RoadTripAerialCamera.project(MKMapPoint(destination), in: rect, canvas: canvas), canvas: canvas
+                    RoadTripAerialCamera.project(MKMapPoint(destination), in: rect, canvas: size), canvas: size
                 )
-                let pop = RoadTripSegue.pinPop(dive)
-                drawDot(ctx, at: point, radius: canvas.width * CGFloat(RoadTripMapStyle.pinRingDiameter) * 0.7 * CGFloat(pop), color: .white)
-                drawDot(ctx, at: point, radius: canvas.width * CGFloat(RoadTripMapStyle.pinDotDiameter) * 0.7 * CGFloat(pop), color: RoadTripMapStyle.pin)
-                if let divePhoto {
-                    let pinSize = CGSize(width: canvas.width * RoadTripSegue.thumbSizeFraction,
-                                         height: canvas.width * RoadTripSegue.thumbSizeFraction * 0.75)
-                    let landing = RoadTripSlideTiming.edgeTransform(
-                        segmentIndex: segmentIndex + 1, in: timeline, first: true, reduceMotion: reduceMotion
-                    ).rect(in: canvas)
-                    let thumb = RoadTripSegue.thumbnailRect(pinCenter: point, pinSize: pinSize, canvas: canvas, dive: dive, landing: landing)
-                    ctx.saveGState()
-                    ctx.setAlpha(CGFloat(RoadTripSegue.thumbnailAlpha(dive)))
+                let pop = CGFloat(RoadTripSegue.pinPop(dive))
+                let pinAlpha = RoadTripSegue.pinAlpha(dive)
+                canvas.circle(center: point, radius: size.width * CGFloat(RoadTripMapStyle.pinRingDiameter) * 0.7 * pop,
+                              color: RoadTripRGBA.white.withAlpha(pinAlpha))
+                canvas.circle(center: point, radius: size.width * CGFloat(RoadTripMapStyle.pinDotDiameter) * 0.7 * pop,
+                              color: RoadTripRGBA(RoadTripMapStyle.pin).withAlpha(pinAlpha))
+                if let divePhoto = arriving.first {
+                    let pinSize = CGSize(width: size.width * RoadTripSegue.thumbSizeFraction,
+                                         height: size.width * RoadTripSegue.thumbSizeFraction * 0.75)
+                    // The next stop's first frame: its photo, or its collage's first tile.
+                    let thumb = RoadTripSegue.thumbnailRect(pinCenter: point, pinSize: pinSize, canvas: size, dive: dive, landing: divePhoto.tile.rect)
                     let radius: CGFloat = dive >= 0.99 ? 0 : 18 * (1 - dive)
-                    ctx.addPath(CGPath(roundedRect: thumb, cornerWidth: radius, cornerHeight: radius, transform: nil))
-                    ctx.clip()
-                    drawFilled(ctx, divePhoto, in: thumb)
-                    ctx.restoreGState()
+                    canvas.drawFilled(divePhoto.image, in: thumb, alpha: RoadTripSegue.thumbnailAlpha(dive), mask: .roundedRect(radius: radius))
+                }
+                // A collage's other photos fade in with the dim, in place:
+                // the dive's last frame is the collage's first.
+                for photo in arriving.dropFirst() {
+                    drawTile(on: canvas, photo.image, tile: photo.tile, alpha: RoadTripSegue.mapDim(dive))
                 }
             }
         }
 
-        // Slideshow→travel: the outgoing photo fades out over the map, framed
-        // as the slideshow's last frame left it.
-        if let outgoingPhoto {
-            let alpha = RoadTripSegue.outgoingPhotoAlpha(localTime: localTime)
-            if alpha > 0 {
-                let transform = RoadTripSlideTiming.edgeTransform(
-                    segmentIndex: segmentIndex - 1, in: timeline, first: false, reduceMotion: reduceMotion
-                )
-                ctx.saveGState()
-                ctx.setAlpha(CGFloat(alpha))
-                drawSlideImage(ctx, outgoingPhoto, transform: transform, canvas: canvas)
-                ctx.restoreGState()
+        // Slideshow→travel: the outgoing photos fade out over the map, framed
+        // as the slideshow's last frame left them.
+        let alpha = RoadTripSegue.outgoingPhotoAlpha(localTime: localTime)
+        if alpha > 0 {
+            if outgoing.count > 1 {
+                // A collage's black between its tiles fades out with them.
+                canvas.fill(RoadTripRGBA.black.withAlpha(alpha))
+            }
+            for photo in outgoing {
+                drawTile(on: canvas, photo.image, tile: photo.tile, alpha: alpha * photo.tile.alpha)
             }
         }
     }
@@ -919,7 +1022,7 @@ final class RoadTripVideoRenderer: @unchecked Sendable {
     }
 
     /// The ground of `rect`: the crop of the best snapshot, scaled to the canvas.
-    private func drawMap(_ ctx: CGContext, shots: [MapShot], rect: MKMapRect, canvas: CGSize) {
+    private func drawMap(on canvas: RoadTripFrameCanvas, shots: [MapShot], rect: MKMapRect) {
         guard let shot = Self.bestShot(shots, for: rect) else { return }
         let visible = rect.intersection(shot.rect)
         guard !visible.isNull, visible.size.width > 0, visible.size.height > 0 else { return }
@@ -932,39 +1035,40 @@ final class RoadTripVideoRenderer: @unchecked Sendable {
             width: visible.size.width * pixelsPerX,
             height: visible.size.height * pixelsPerY
         ).integral.intersection(CGRect(x: 0, y: 0, width: image.width, height: image.height))
-        guard !source.isEmpty, let cropped = image.cropping(to: source) else { return }
-        // Where the cropped pixels lie on the ground, then on the canvas.
+        guard !source.isEmpty else { return }
+        // Where those pixels lie on the ground, then on the canvas.
         let topLeft = RoadTripAerialCamera.project(MKMapPoint(
             x: shot.rect.minX + Double(source.minX) / pixelsPerX,
             y: shot.rect.minY + Double(source.minY) / pixelsPerY
-        ), in: rect, canvas: canvas)
+        ), in: rect, canvas: canvas.size)
         let bottomRight = RoadTripAerialCamera.project(MKMapPoint(
             x: shot.rect.minX + Double(source.maxX) / pixelsPerX,
             y: shot.rect.minY + Double(source.maxY) / pixelsPerY
-        ), in: rect, canvas: canvas)
-        ctx.saveGState()
-        ctx.interpolationQuality = .high
-        drawUpright(ctx, cropped, in: CGRect(
-            x: topLeft.x, y: topLeft.y,
-            width: bottomRight.x - topLeft.x, height: bottomRight.y - topLeft.y
-        ))
-        ctx.restoreGState()
+        ), in: rect, canvas: canvas.size)
+        let width = CGFloat(image.width), height = CGFloat(image.height)
+        canvas.draw(
+            image,
+            in: CGRect(x: topLeft.x, y: topLeft.y, width: bottomRight.x - topLeft.x, height: bottomRight.y - topLeft.y),
+            source: CGRect(x: source.minX / width, y: source.minY / height, width: source.width / width, height: source.height / height),
+            alpha: 1, rotation: 0, mask: .none
+        )
     }
 
     /// The trip's line: each leg drawn up to `drawn(segmentIndex)` of its arc,
     /// glow under white casing under color, at `alpha`.
     private func drawRoads(
-        _ ctx: CGContext, map: ExportMap, rect: MKMapRect, canvas: CGSize, alpha: CGFloat,
+        on canvas: RoadTripFrameCanvas, map: ExportMap, rect: MKMapRect, alpha: Double,
         drawn: (Int) -> Double
     ) {
-        var paths: [CGPath] = []
+        let size = canvas.size
+        var lines: [[CGPoint]] = []
         for segment in map.roads.keys.sorted() {
             guard let road = map.roads[segment] else { continue }
             let end = drawn(segment)
             guard end > 0 else { continue }
             var points: [CGPoint] = []
             for (i, point) in road.points.enumerated() {
-                let projected = RoadTripAerialCamera.project(point, in: rect, canvas: canvas)
+                let projected = RoadTripAerialCamera.project(point, in: rect, canvas: size)
                 let fraction = road.fractions[i]
                 if fraction <= end || i == 0 {
                     points.append(projected)
@@ -980,92 +1084,135 @@ final class RoadTripVideoRenderer: @unchecked Sendable {
                 ))
                 break
             }
-            guard points.count >= 2 else { continue }
-            let path = CGMutablePath()
-            path.addLines(between: points)
-            paths.append(path)
+            if points.count >= 2 { lines.append(points) }
         }
-        guard !paths.isEmpty else { return }
-        ctx.saveGState()
-        ctx.setAlpha(alpha)
-        ctx.beginTransparencyLayer(auxiliaryInfo: nil)
-        ctx.setLineCap(.round)
-        ctx.setLineJoin(.round)
-        let strokes: [(UIColor, Double)] = [
-            (RoadTripMapStyle.routeGlow, RoadTripMapStyle.glowWidth),
-            (RoadTripMapStyle.casing, RoadTripMapStyle.casingWidth),
-            (RoadTripMapStyle.route, RoadTripMapStyle.lineWidth)
-        ]
-        for (color, width) in strokes {
-            ctx.setStrokeColor(color.cgColor)
-            ctx.setLineWidth(canvas.width * CGFloat(width))
-            for path in paths {
-                ctx.addPath(path)
-                ctx.strokePath()
-            }
-        }
-        ctx.endTransparencyLayer()
-        ctx.restoreGState()
+        guard !lines.isEmpty else { return }
+        canvas.stroke(lines, styles: [
+            (RoadTripRGBA(RoadTripMapStyle.routeGlow), size.width * CGFloat(RoadTripMapStyle.glowWidth)),
+            (RoadTripRGBA(RoadTripMapStyle.casing), size.width * CGFloat(RoadTripMapStyle.casingWidth)),
+            (RoadTripRGBA(RoadTripMapStyle.route), size.width * CGFloat(RoadTripMapStyle.lineWidth))
+        ], alpha: alpha)
     }
 
     /// The pins of the stops up to `last` (film order).
-    private func drawStops(_ ctx: CGContext, map: ExportMap, upTo last: Int, rect: MKMapRect, canvas: CGSize) {
+    private func drawStops(on canvas: RoadTripFrameCanvas, map: ExportMap, upTo last: Int, rect: MKMapRect) {
         guard last >= 0 else { return }
+        let size = canvas.size
         for stop in map.stops.prefix(last + 1) {
-            let point = RoadTripAerialCamera.project(MKMapPoint(stop.coordinate.coordinate), in: rect, canvas: canvas)
-            drawDot(ctx, at: point, radius: canvas.width * CGFloat(RoadTripMapStyle.pinRingDiameter) / 2, color: .white)
-            drawDot(ctx, at: point, radius: canvas.width * CGFloat(RoadTripMapStyle.pinDotDiameter) / 2, color: RoadTripMapStyle.pin)
+            let point = RoadTripAerialCamera.project(MKMapPoint(stop.coordinate.coordinate), in: rect, canvas: size)
+            canvas.circle(center: point, radius: size.width * CGFloat(RoadTripMapStyle.pinRingDiameter) / 2, color: .white)
+            canvas.circle(center: point, radius: size.width * CGFloat(RoadTripMapStyle.pinDotDiameter) / 2, color: RoadTripRGBA(RoadTripMapStyle.pin))
         }
     }
 
     /// The ending's photo pins: each stop's hero photo popping in, one after
     /// the other, in a white-rimmed circle above its pin.
-    private func drawPhotoPins(_ ctx: CGContext, map: ExportMap, progress: Double, rect: MKMapRect, canvas: CGSize) {
-        let diameter = canvas.width * CGFloat(RoadTripMapStyle.photoPinDiameter)
-        let border = canvas.width * CGFloat(RoadTripMapStyle.photoPinBorder)
-        for (index, stop) in map.stops.enumerated() {
+    private func drawPhotoPins(on canvas: RoadTripFrameCanvas, map: ExportMap, progress: Double, rect: MKMapRect) {
+        let size = canvas.size
+        let diameter = size.width * CGFloat(RoadTripMapStyle.photoPinDiameter)
+        let border = size.width * CGFloat(RoadTripMapStyle.photoPinBorder)
+        // Laid out together (every stop with a photo, popped or not) so a
+        // photo never jumps when the next one pops.
+        let shown = map.stops.enumerated().filter { map.heroes[$0.element.clusterID] != nil }
+        let pins = shown.map { RoadTripAerialCamera.project(MKMapPoint($0.element.coordinate.coordinate), in: rect, canvas: size) }
+        let centers = RoadTripMapStyle.photoPinCenters(pins: pins, diameter: diameter, canvas: size)
+        for ((index, stop), (point, center)) in zip(shown, zip(pins, centers)) {
             let pop = CGFloat(RoadTripMapStyle.photoPinPop(index: index, count: map.stops.count, endingProgress: progress))
             guard pop > 0.01, let image = map.heroes[stop.clusterID] else { continue }
-            let point = RoadTripAerialCamera.project(MKMapPoint(stop.coordinate.coordinate), in: rect, canvas: canvas)
-            let center = CGPoint(x: point.x, y: point.y - diameter * 0.62)
-            ctx.saveGState()
-            ctx.translateBy(x: center.x, y: center.y)
-            ctx.scaleBy(x: pop, y: pop)
-            let circle = CGRect(x: -diameter / 2, y: -diameter / 2, width: diameter, height: diameter)
-            ctx.setShadow(offset: CGSize(width: 0, height: -diameter * 0.04), blur: diameter * 0.12,
-                          color: UIColor.black.withAlphaComponent(0.45).cgColor)
-            ctx.setFillColor(UIColor.white.cgColor)
-            ctx.fillEllipse(in: circle.insetBy(dx: -border, dy: -border))
-            ctx.setShadow(offset: .zero, blur: 0, color: nil)
-            ctx.addEllipse(in: circle)
-            ctx.clip()
-            drawFilled(ctx, image, in: circle)
-            ctx.restoreGState()
+            if pop > 0.5, RoadTripMapStyle.photoPinNeedsStem(center: center, pin: point, diameter: diameter) {
+                canvas.stroke([[point, center]], styles: [(.white, size.width * CGFloat(RoadTripMapStyle.photoPinStemWidth))], alpha: 1)
+            }
+            let circle = CGRect(x: center.x - diameter * pop / 2, y: center.y - diameter * pop / 2, width: diameter * pop, height: diameter * pop)
+            let rim = circle.insetBy(dx: -border * pop, dy: -border * pop)
+            canvas.circleShadow(in: rim.offsetBy(dx: 0, dy: diameter * 0.04), blur: diameter * 0.12, color: RoadTripRGBA.black.withAlpha(0.45))
+            canvas.circle(center: center, radius: rim.width / 2, color: .white)
+            canvas.drawFilled(image, in: circle, mask: .ellipse)
         }
     }
 
     /// The 3D car seen from above, nose on `heading` (radians, clockwise from
     /// screen-up), with its shadow.
-    private func drawTopCar(_ ctx: CGContext, at point: CGPoint, heading: Double, size: CGFloat) {
+    private func drawTopCar(on canvas: RoadTripFrameCanvas, at point: CGPoint, heading: Double, size: CGFloat, color: RoadTripSettings.CarColor) {
         let step = 2 * Double.pi / Double(RoadTripCar3D.spriteCount)
         let nearest = (heading / step).rounded() * step
-        let sprite = RoadTripCar3D.sprite(forBearing: nearest)
-        ctx.saveGState()
-        ctx.translateBy(x: point.x, y: point.y)
+        let sprite = Self.shadowedSprite(RoadTripCar3D.sprite(forBearing: nearest, color: color), size: size)
         // Residual rotation keeps the turn continuous between sprite frames.
-        ctx.rotate(by: CGFloat(heading - nearest))
-        ctx.setShadow(offset: CGSize(width: 0, height: -size * 0.03), blur: size * 0.08,
-                      color: UIColor.black.withAlphaComponent(0.5).cgColor)
-        drawUpright(ctx, sprite, in: CGRect(x: -size / 2, y: -size / 2, width: size, height: size))
-        ctx.restoreGState()
+        canvas.draw(sprite.image, in: CGRect(
+            x: point.x - sprite.side / 2, y: point.y - sprite.side / 2, width: sprite.side, height: sprite.side
+        ), source: CGRect(x: 0, y: 0, width: 1, height: 1), alpha: 1, rotation: heading - nearest, mask: .none)
     }
 
-    /// The road driven so far, big over the top of the map.
-    private func drawCounter(_ ctx: CGContext, meters: Double, canvas: CGSize) {
+    private final class ShadowedSprite: @unchecked Sendable {
+        let image: CGImage
+        let side: CGFloat
+        init(image: CGImage, side: CGFloat) {
+            self.image = image
+            self.side = side
+        }
+    }
+
+    private static let shadowedSprites: NSCache<NSString, ShadowedSprite> = {
+        let cache = NSCache<NSString, ShadowedSprite>()
+        cache.countLimit = 2 * RoadTripCar3D.spriteCount
+        return cache
+    }()
+
+    /// The car `sprite` drawn `size` wide with its shadow, on a margin wide
+    /// enough for the shadow's blur — made once per sprite and size (a blurred
+    /// shadow costs more than the rest of a map frame).
+    private static func shadowedSprite(_ sprite: CGImage, size: CGFloat) -> ShadowedSprite {
+        let key = "\(ObjectIdentifier(sprite).hashValue)-\(Int(size.rounded()))" as NSString
+        if let cached = shadowedSprites.object(forKey: key) { return cached }
+        let margin = (size * 0.2).rounded(.up)
+        let side = size + 2 * margin
+        let format = UIGraphicsImageRendererFormat()
+        format.scale = 1
+        format.opaque = false
+        let image = UIGraphicsImageRenderer(size: CGSize(width: side, height: side), format: format).image { context in
+            // Shadow offsets are in the base space (y up): below the car.
+            context.cgContext.setShadow(offset: CGSize(width: 0, height: -size * 0.03), blur: size * 0.08,
+                                        color: UIColor.black.withAlphaComponent(0.5).cgColor)
+            UIImage(cgImage: sprite).draw(in: CGRect(x: margin, y: margin, width: size, height: size))
+        }.cgImage
+        let made = ShadowedSprite(image: image ?? sprite, side: image == nil ? size : side)
+        shadowedSprites.setObject(made, forKey: key)
+        return made
+    }
+
+    /// The road driven so far, big over the top of the map: a strip drawn
+    /// once per distinct text (the text and its blurred shadow cost several
+    /// milliseconds) and stamped on every frame that shows it.
+    private static func counterStrip(meters: Double, canvas: CGSize) -> CounterStrip? {
+        let text = RoadTripTimeline.distanceText(meters: meters)
+        let key = "\(Int(canvas.width))x\(Int(canvas.height))|\(text)" as NSString
+        if let cached = counterStrips.object(forKey: key) { return cached }
+        guard let made = counterStrip(text, canvas: canvas) else { return nil }
+        counterStrips.setObject(made, forKey: key)
+        return made
+    }
+
+    private final class CounterStrip: @unchecked Sendable {
+        let image: CGImage
+        let rect: CGRect
+        init(image: CGImage, rect: CGRect) {
+            self.image = image
+            self.rect = rect
+        }
+    }
+
+    private static let counterStrips: NSCache<NSString, CounterStrip> = {
+        let cache = NSCache<NSString, CounterStrip>()
+        cache.countLimit = 64
+        return cache
+    }()
+
+    /// The counter `text` over a transparent strip the canvas' width, and
+    /// where the strip sits on the canvas.
+    private static func counterStrip(_ text: String, canvas: CGSize) -> CounterStrip? {
         let fontSize = canvas.width * 0.085
         let base = UIFont.monospacedDigitSystemFont(ofSize: fontSize, weight: .heavy)
         let font = base.fontDescriptor.withDesign(.rounded).map { UIFont(descriptor: $0, size: fontSize) } ?? base
-        let string = NSAttributedString(string: RoadTripTimeline.distanceText(meters: meters), attributes: [
+        let string = NSAttributedString(string: text, attributes: [
             .font: font,
             .foregroundColor: UIColor.white
         ])
@@ -1077,56 +1224,42 @@ final class RoadTripVideoRenderer: @unchecked Sendable {
         let total = iconWidth + gap + textSize.width
         let originX = (canvas.width - total) / 2
         let top = canvas.height * 0.09
+        // Room for the shadow's blur above and below the text.
+        let margin = (fontSize * 0.6).rounded(.up)
+        let rect = CGRect(x: 0, y: top - margin, width: canvas.width, height: (textSize.height + 2 * margin).rounded(.up))
 
-        UIGraphicsPushContext(ctx)
-        ctx.saveGState()
-        ctx.setShadow(offset: CGSize(width: 0, height: -fontSize * 0.05), blur: fontSize * 0.25,
-                      color: UIColor.black.withAlphaComponent(0.6).cgColor)
-        icon?.draw(in: CGRect(x: originX, y: top + (textSize.height - iconHeight) / 2, width: iconWidth, height: iconHeight))
-        string.draw(at: CGPoint(x: originX + iconWidth + gap, y: top))
-        ctx.restoreGState()
-        UIGraphicsPopContext()
+        let format = UIGraphicsImageRendererFormat()
+        format.scale = 1
+        format.opaque = false
+        let image = UIGraphicsImageRenderer(size: rect.size, format: format).image { context in
+            let ctx = context.cgContext
+            // Shadow offsets are in the context's base space (y up), as the
+            // frame's: the same offset as before, below the text.
+            ctx.setShadow(offset: CGSize(width: 0, height: -fontSize * 0.05), blur: fontSize * 0.25,
+                          color: UIColor.black.withAlphaComponent(0.6).cgColor)
+            icon?.draw(in: CGRect(x: originX, y: margin + (textSize.height - iconHeight) / 2, width: iconWidth, height: iconHeight))
+            string.draw(at: CGPoint(x: originX + iconWidth + gap, y: margin))
+        }.cgImage
+        return image.map { CounterStrip(image: $0, rect: rect) }
     }
 
-    private func drawDot(_ ctx: CGContext, at point: CGPoint, radius: CGFloat, color: UIColor) {
-        ctx.setFillColor(color.cgColor)
-        ctx.fillEllipse(in: CGRect(x: point.x - radius, y: point.y - radius, width: radius * 2, height: radius * 2))
-    }
-
-    private func drawCard(_ ctx: CGContext, _ image: CGImage, progress: Double, canvas: CGSize, fadeIn: Double, fadeOut: Double) {
+    private func drawCard(on canvas: RoadTripFrameCanvas, _ image: CGImage, progress: Double, fadeIn: Double, fadeOut: Double) {
+        let size = canvas.size
         let p = min(max(progress, 0), 1)
         var alpha = 1.0
         if fadeIn > 0 { alpha = min(p / fadeIn, 1) }
         if fadeOut > 0 { alpha = min(alpha, max((1 - p) / fadeOut, 0)) }
         let scale = 0.94 + 0.06 * KenBurnsRecipe.smoothstep(min(p / max(fadeIn, 0.001), 1))
-        ctx.saveGState()
-        ctx.setAlpha(CGFloat(alpha))
-        let w = canvas.width * CGFloat(scale), h = canvas.height * CGFloat(scale)
-        drawUpright(ctx, image, in: CGRect(x: (canvas.width - w) / 2, y: (canvas.height - h) / 2, width: w, height: h))
-        ctx.restoreGState()
+        let w = size.width * CGFloat(scale), h = size.height * CGFloat(scale)
+        canvas.draw(image, in: CGRect(x: (size.width - w) / 2, y: (size.height - h) / 2, width: w, height: h), alpha: alpha)
     }
 
-    private func drawOverlayFade(_ ctx: CGContext, _ image: CGImage, localTime: Double, duration: Double, canvas: CGSize) {
+    private func drawOverlayFade(on canvas: RoadTripFrameCanvas, _ image: CGImage, localTime: Double, duration: Double) {
         guard localTime < duration, duration > 0 else { return }
         let p = localTime / duration
         let alpha: Double = p < 0.25 ? p / 0.25 : (p > 0.75 ? max((1 - p) / 0.25, 0) : 1)
         let rise = (1 - KenBurnsRecipe.smoothstep(p < 0.25 ? p / 0.25 : 1)) * 24
-        ctx.saveGState()
-        ctx.setAlpha(CGFloat(alpha))
-        drawUpright(ctx, image, in: CGRect(x: 0, y: -CGFloat(rise), width: canvas.width, height: canvas.height))
-        ctx.restoreGState()
-    }
-
-    private func applyVignette(_ ctx: CGContext, canvas: CGSize) {
-        let colorSpace = CGColorSpaceCreateDeviceRGB()
-        let colors = [
-            UIColor.black.withAlphaComponent(0).cgColor,
-            UIColor.black.withAlphaComponent(0.45).cgColor
-        ] as CFArray
-        guard let gradient = CGGradient(colorsSpace: colorSpace, colors: colors, locations: [0.55, 1.0]) else { return }
-        let center = CGPoint(x: canvas.width / 2, y: canvas.height / 2)
-        let radius = max(canvas.width, canvas.height) * 0.72
-        ctx.drawRadialGradient(gradient, startCenter: center, startRadius: 0, endCenter: center, endRadius: radius, options: [])
+        canvas.draw(image, in: CGRect(x: 0, y: -CGFloat(rise), width: canvas.size.width, height: canvas.size.height), alpha: alpha)
     }
 
     // MARK: - Geometry helpers

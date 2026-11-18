@@ -117,4 +117,27 @@ final class RoadTripAerialCameraTests: XCTestCase {
         let overshoot = (1...11).map { RoadTripMapStyle.photoPinPop(index: 0, count: 1, endingProgress: Double($0) * 0.01) }.max() ?? 0
         XCTAssertGreaterThan(overshoot, 1, "a pin pops a little past its size before settling")
     }
+
+    func test_photoPinsNeverOverlapAndStayOnScreen() {
+        let canvas = CGSize(width: 360, height: 640)
+        let diameter: CGFloat = 60
+        // Three stops a few pixels apart (Sóller, Fornalutx, Escorca) and one alone.
+        let pins = [CGPoint(x: 100, y: 300), CGPoint(x: 110, y: 290), CGPoint(x: 112, y: 305), CGPoint(x: 300, y: 500)]
+        let centers = RoadTripMapStyle.photoPinCenters(pins: pins, diameter: diameter, canvas: canvas)
+
+        XCTAssertEqual(centers.count, pins.count)
+        for i in centers.indices {
+            for j in centers.indices where j > i {
+                let d = hypot(centers[i].x - centers[j].x, centers[i].y - centers[j].y)
+                XCTAssertGreaterThanOrEqual(d, diameter * 0.98, "photos \(i) and \(j) overlap")
+            }
+            XCTAssertGreaterThanOrEqual(centers[i].x, diameter / 2)
+            XCTAssertLessThanOrEqual(centers[i].x, canvas.width - diameter / 2)
+        }
+        // The lone stop keeps its photo right above it, without a stem.
+        XCTAssertEqual(centers[3].x, 300, accuracy: 0.5)
+        XCTAssertEqual(centers[3].y, 500 - diameter * 0.62, accuracy: 0.5)
+        XCTAssertFalse(RoadTripMapStyle.photoPinNeedsStem(center: centers[3], pin: pins[3], diameter: diameter))
+        XCTAssertEqual(centers, RoadTripMapStyle.photoPinCenters(pins: pins, diameter: diameter, canvas: canvas))
+    }
 }

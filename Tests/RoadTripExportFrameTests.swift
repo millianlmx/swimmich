@@ -210,7 +210,10 @@ final class RoadTripExportFrameTests: XCTestCase {
     /// slideshow a (one photo) → leg a→b → slideshow b (one photo), Ken Burns
     /// on: the photos open and close on a zoom or a pan, not on the plain
     /// frame.
-    private func cutsFixture(canvas: CGSize) -> (RoadTripTimeline, [RoadTripCluster], [String: CGImage], RoadTripVideoRenderer.ExportMap) {
+    /// With `collage`, each stop opens on a two-photo collage instead (a 2 s
+    /// slide, like the single photo), so the dive lands on its first tile and
+    /// the outgoing photos are both its tiles.
+    private func cutsFixture(canvas: CGSize, collage: Bool = false) -> (RoadTripTimeline, [RoadTripCluster], [String: CGImage], RoadTripVideoRenderer.ExportMap) {
         let route = [RoutePoint(latitude: 48.80, longitude: 2.30), RoutePoint(latitude: 48.83, longitude: 2.30)]
         let travel = RoadTripTimeline.Travel(
             fromClusterID: "a", toClusterID: "b",
@@ -219,14 +222,17 @@ final class RoadTripExportFrameTests: XCTestCase {
         )
         // recipeOffset 2 → the first slideshow closes on a pan (offset),
         // 1 → the second opens on a zoom-out (×1.1).
+        let tiles = collage ? RoadTripCollage.layout(aspects: [1.5, 1.5]).tiles : []
+        let indices = collage ? [0, 1] : [0]
+        XCTAssertEqual(RoadTripCollage.duration(tiles: 2), 2)
         let timeline = RoadTripTimeline(segments: [
-            .slideshow(RoadTripTimeline.Slideshow(clusterID: "a", assetIndices: [0], photoDurations: [2], recipeOffset: 2, energy: 0.8)),
+            .slideshow(RoadTripTimeline.Slideshow(clusterID: "a", assetIndices: indices, photoDurations: [2], recipeOffset: 2, energy: 0.8, collage: tiles)),
             .travel(travel),
-            .slideshow(RoadTripTimeline.Slideshow(clusterID: "b", assetIndices: [0], photoDurations: [2], recipeOffset: 1, energy: 0.8))
+            .slideshow(RoadTripTimeline.Slideshow(clusterID: "b", assetIndices: indices, photoDurations: [2], recipeOffset: 1, energy: 0.8, collage: tiles))
         ])
         let clusters = [
-            RoadTripCluster(id: "a", assets: [makeAsset("pa")], latitude: 48.80, longitude: 2.30, placeName: nil, startDate: nil, endDate: nil),
-            RoadTripCluster(id: "b", assets: [makeAsset("pb")], latitude: 48.83, longitude: 2.30, placeName: nil, startDate: nil, endDate: nil)
+            RoadTripCluster(id: "a", assets: [makeAsset("pa"), makeAsset("pa2")], latitude: 48.80, longitude: 2.30, placeName: nil, startDate: nil, endDate: nil),
+            RoadTripCluster(id: "b", assets: [makeAsset("pb"), makeAsset("pb2")], latitude: 48.83, longitude: 2.30, placeName: nil, startDate: nil, endDate: nil)
         ]
         let photo = positionCodedSnapshot(pointSize: canvas, scale: 1)
         var map = RoadTripVideoRenderer.ExportMap()
@@ -234,11 +240,12 @@ final class RoadTripExportFrameTests: XCTestCase {
         map.legs = [1: [RoadTripVideoRenderer.MapShot(
             image: positionCodedSnapshot(pointSize: canvas, scale: 1), rect: RoadTripAerialCamera.scaled(camera, by: 2)
         )]]
-        return (timeline, clusters, ["pa": photo, "pb": photo], map)
+        let second = twoTonePhoto(width: Int(canvas.width), height: Int(canvas.height))
+        return (timeline, clusters, ["pa": photo, "pb": photo, "pa2": second, "pb2": second], map)
     }
 
-    private func drawCutFrame(at time: TimeInterval, canvas: CGSize) throws -> CVPixelBuffer {
-        let (timeline, clusters, images, map) = cutsFixture(canvas: canvas)
+    private func drawCutFrame(at time: TimeInterval, canvas: CGSize, collage: Bool = false) throws -> CVPixelBuffer {
+        let (timeline, clusters, images, map) = cutsFixture(canvas: canvas, collage: collage)
         let buffer = try makePixelBuffer(canvas)
         let config = RoadTripRenderConfig(
             size: canvas, fps: 30, baseURL: URL(string: "https://photos.example.org")!,
@@ -280,6 +287,29 @@ final class RoadTripExportFrameTests: XCTestCase {
         let lastOfSlideshow = try drawCutFrame(at: 2 - 0.0001, canvas: canvas)
         let firstOfLeg = try drawCutFrame(at: 2, canvas: canvas)
         assertSamePicture(lastOfSlideshow, firstOfLeg, canvas: canvas, "slideshow → leg")
+    }
+
+    /// A stop opening on a collage: the dive grows its first photo and fades
+    /// the others in, landing on the whole collage.
+    func test_exportDiveLandsOnTheWholeCollage() throws {
+        let canvas = CGSize(width: 180, height: 320)
+        let lastOfLeg = try drawCutFrame(at: 5 - 0.0001, canvas: canvas, collage: true)
+        let firstOfSlideshow = try drawCutFrame(at: 5, canvas: canvas, collage: true)
+        assertSamePicture(lastOfLeg, firstOfSlideshow, canvas: canvas, "dive → collage")
+        for buffer in [lastOfLeg, firstOfSlideshow] {
+            let below = rgb(buffer, x: 90, y: 280)
+            XCTAssertGreaterThan(below.b, 150, "the second tile (the two-tone photo's blue half) is there: \(below)")
+        }
+    }
+
+    /// A stop closing on its collage: every tile fades out from where it was.
+    func test_exportOutgoingCollageLeavesFromItsLastFrame() throws {
+        let canvas = CGSize(width: 180, height: 320)
+        let lastOfSlideshow = try drawCutFrame(at: 2 - 0.0001, canvas: canvas, collage: true)
+        let firstOfLeg = try drawCutFrame(at: 2, canvas: canvas, collage: true)
+        assertSamePicture(lastOfSlideshow, firstOfLeg, canvas: canvas, "collage → leg")
+        let lower = rgb(firstOfLeg, x: 90, y: 280)
+        XCTAssertGreaterThan(lower.b, 150, "the second tile (the two-tone photo's blue half) leaves too: \(lower)")
     }
 
     /// The writer settings AVFoundation accepts: refused ones raise inside
@@ -334,5 +364,93 @@ final class RoadTripExportFrameTests: XCTestCase {
 
         XCTAssertEqual(RoadTripVideoRenderer.bestShot(shots, for: MKMapRect(x: 150, y: 150, width: 100, height: 100))?.rect.size.width, 300)
         XCTAssertEqual(RoadTripVideoRenderer.bestShot(shots, for: MKMapRect(x: 300, y: 300, width: 400, height: 400))?.rect.size.width, 1000)
+    }
+
+    /// The whole pipeline, frames drawn a batch at a time on every core and
+    /// the legs' snapshots taken ahead: every frame lands in the file, in
+    /// order, and the cut from the leg to the collage still matches.
+    func test_exportWritesEveryFrameInOrder() async throws {
+        let canvas = CGSize(width: 180, height: 320)
+        let (timeline, clusters, images, _) = cutsFixture(canvas: canvas, collage: true)
+        let config = RoadTripRenderConfig(
+            size: canvas, fps: 10, baseURL: URL(string: "https://photos.example.org")!,
+            token: nil, albumTitle: "Trip", reduceMotion: false
+        )
+        let url = try await RoadTripVideoRenderer(session: { .shared }).render(
+            clusters: clusters, timeline: timeline, config: config, preloaded: images
+        ) { _ in }
+        defer { try? FileManager.default.removeItem(at: url) }
+
+        let asset = AVURLAsset(url: url)
+        let tracks = try await asset.loadTracks(withMediaType: .video)
+        let track = try XCTUnwrap(tracks.first)
+        let reader = try AVAssetReader(asset: asset)
+        let output = AVAssetReaderTrackOutput(track: track, outputSettings: nil)
+        reader.add(output)
+        XCTAssertTrue(reader.startReading())
+        var times: [Double] = []
+        while let sample = output.copyNextSampleBuffer() {
+            if CMSampleBufferGetNumSamples(sample) > 0 {
+                times.append(CMSampleBufferGetPresentationTimeStamp(sample).seconds)
+            }
+        }
+        let expected = Int((timeline.totalDuration * 10).rounded(.up))
+        XCTAssertEqual(times.count, expected, "every frame is written")
+        XCTAssertEqual(times.sorted(), (0..<expected).map { Double($0) / 10 }, "at its own time")
+    }
+
+    func test_routeCacheReadsBackWhatItStored() throws {
+        let from = RoutePoint(latitude: 39.76351, longitude: 3.15203)
+        let to = RoutePoint(latitude: 39.64250, longitude: 3.01050)
+        let route = [from, RoutePoint(latitude: 39.7, longitude: 3.08), to]
+        if let url = RoadTripRouteCache.fileURL(from: from, to: to) { try? FileManager.default.removeItem(at: url) }
+        defer { if let url = RoadTripRouteCache.fileURL(from: from, to: to) { try? FileManager.default.removeItem(at: url) } }
+
+        XCTAssertNil(RoadTripRouteCache.route(from: from, to: to))
+        RoadTripRouteCache.store(route, from: from, to: to)
+        XCTAssertEqual(RoadTripRouteCache.route(from: from, to: to), route)
+        XCTAssertNil(RoadTripRouteCache.route(from: to, to: from), "a road one way is not the road back")
+    }
+
+    /// The GPU draws every frame as Core Graphics does: photos, collages,
+    /// the map, the road, pins, the car, the dive and the outgoing photos —
+    /// the same picture to a few levels of a channel (antialiased edges
+    /// aside).
+    func test_metalFramesMatchCoreGraphics() throws {
+        let canvas = CGSize(width: 180, height: 320)
+        let config = RoadTripRenderConfig(
+            size: canvas, fps: 30, baseURL: URL(string: "https://photos.example.org")!,
+            token: nil, albumTitle: "Trip", reduceMotion: false
+        )
+        XCTAssertNotNil(RoadTripMetalEngine.shared, "Metal and the app's shaders load")
+        XCTAssertEqual(MemoryLayout<RoadTripMetalCanvas.Quad>.stride, 96, "the shader's Quad, byte for byte")
+        XCTAssertEqual(MemoryLayout<RoadTripMetalCanvas.Segment>.stride, 32, "the shader's Segment, byte for byte")
+        let renderer = RoadTripVideoRenderer(session: { .shared })
+        for collage in [false, true] {
+            let (timeline, clusters, images, map) = cutsFixture(canvas: canvas, collage: collage)
+            let byID = Dictionary(uniqueKeysWithValues: clusters.map { ($0.id, $0) })
+            // The opening photo, the outgoing fade, mid-leg, the dive, the arrival.
+            for time in [0.5, 2.1, 3.2, 4.85, 5.4] {
+                let viaMetal = try makePixelBuffer(canvas)
+                let viaCG = try makePixelBuffer(canvas)
+                renderer.drawFrame(at: time, into: viaMetal, clusters: clusters, clusterByID: byID, timeline: timeline,
+                                   config: config, images: images, visuals: noCards, map: map, backend: .metal)
+                renderer.drawFrame(at: time, into: viaCG, clusters: clusters, clusterByID: byID, timeline: timeline,
+                                   config: config, images: images, visuals: noCards, map: map, backend: .coreGraphics)
+                var off: [String] = []
+                var samples = 0
+                for u in stride(from: 0.05, through: 0.95, by: 0.1) {
+                    for v in stride(from: 0.05, through: 0.95, by: 0.1) {
+                        let x = Int(canvas.width * u), y = Int(canvas.height * v)
+                        let a = rgb(viaMetal, x: x, y: y), b = rgb(viaCG, x: x, y: y)
+                        samples += 1
+                        if abs(a.r - b.r) > 14 || abs(a.g - b.g) > 14 || abs(a.b - b.b) > 14 {
+                            off.append("(\(x),\(y)) \(a) vs \(b)")
+                        }
+                    }
+                }
+                XCTAssertLessThanOrEqual(off.count, samples / 20, "collage \(collage), t=\(time): \(off.prefix(6))")
+            }
+        }
     }
 }

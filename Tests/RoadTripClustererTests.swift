@@ -98,15 +98,17 @@ final class RoadTripClustererTests: XCTestCase {
         XCTAssertNil(trailing?.latitude)
     }
 
-    // MARK: - Centroid + determinism
+    // MARK: - Medoid + determinism
 
-    func test_cluster_centroidIsMean() {
+    func test_cluster_sitsOnThePhotoNearestTheMean() {
         let clusters = RoadTripClusterer.cluster([
             makeAsset(id: "a", time: "2024-07-01T10:00:00.000Z", lat: 48.8580, lon: 2.2940),
-            makeAsset(id: "b", time: "2024-07-01T10:05:00.000Z", lat: 48.8584, lon: 2.2946)
+            makeAsset(id: "b", time: "2024-07-01T10:05:00.000Z", lat: 48.8583, lon: 2.2944),
+            makeAsset(id: "c", time: "2024-07-01T10:10:00.000Z", lat: 48.8590, lon: 2.2950)
         ])
-        XCTAssertEqual(clusters[0].latitude!, 48.8582, accuracy: 0.0001)
-        XCTAssertEqual(clusters[0].longitude!, 2.2943, accuracy: 0.0001)
+        // The mean (48.8584, 2.2945) is nobody's spot; "b" is the nearest photo.
+        XCTAssertEqual(clusters[0].latitude!, 48.8583, accuracy: 0.000001)
+        XCTAssertEqual(clusters[0].longitude!, 2.2944, accuracy: 0.000001)
     }
 
     func test_cluster_idDeterministic() {

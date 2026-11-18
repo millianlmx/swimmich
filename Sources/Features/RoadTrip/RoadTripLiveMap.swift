@@ -32,9 +32,10 @@ struct RoadTripLiveMap: UIViewRepresentable {
     let clock: RoadTripFilmClock
     /// The trip's located stops, in film order.
     let stops: [RoadTripMapStop]
-    /// The photo of the slideshow segment at an index: its first (`true`) or
-    /// last (`false`) one — the arrival dive and the outgoing fade.
-    let photo: (_ segmentIndex: Int, _ first: Bool) -> UIImage?
+    /// The photo at a position of the slideshow segment at an index — those
+    /// of its first and last frames (`RoadTripSlideTiming.edgeTiles`) play
+    /// the arrival dive and the outgoing fade.
+    let photo: (_ segmentIndex: Int, _ position: Int) -> UIImage?
     /// The photo a stop shows on the ending's map.
     let stopPhoto: (_ clusterID: String) -> UIImage?
     /// "Paris, France → Versailles, France": what VoiceOver reads for a leg.
@@ -42,6 +43,8 @@ struct RoadTripLiveMap: UIViewRepresentable {
     /// The photos' Ken Burns framing is off: the transitions land on and
     /// leave from the plain photo.
     var reduceMotion = false
+    /// The car's paint (`RoadTripSettings`).
+    var carColor: RoadTripSettings.CarColor = .white
     /// Called once the opening's map is drawn with its imagery (or after a
     /// timeout): the film starts on a finished map, not on grey tiles.
     var onReady: () -> Void = {}
@@ -52,12 +55,14 @@ struct RoadTripLiveMap: UIViewRepresentable {
             photo: photo, stopPhoto: stopPhoto, legLabel: legLabel
         )
         view.reduceMotion = reduceMotion
+        view.carColor = carColor
         view.onReady = onReady
         return view
     }
 
     func updateUIView(_ view: RoadTripLiveMapView, context: Context) {
         view.reduceMotion = reduceMotion
+        view.carColor = carColor
         view.onReady = onReady
         view.update(timeline: timeline, stops: stops, photo: photo, stopPhoto: stopPhoto, legLabel: legLabel)
     }
@@ -75,18 +80,31 @@ final class RoadTripLiveMapView: UIView, MKMapViewDelegate {
     private let pinRing = UIView()
     private let pinDot = UIView()
     private let diveImageView = UIImageView()
-    private let outgoingImageView = UIImageView()
+    /// The outgoing slideshow's last frame: one photo, or a collage's tiles
+    /// over its black.
+    private let outgoingBackdrop = UIView()
+    private let outgoingTiles: [RoadTripTileView] = (0..<RoadTripTimelineBuilder.maxCollageTiles).map { _ in RoadTripTileView() }
+    /// A collage's other photos, fading in around the dive's growing one.
+    private let arrivingTiles: [RoadTripTileView] = (1..<RoadTripTimelineBuilder.maxCollageTiles).map { _ in RoadTripTileView() }
+    /// Every view of the map↔photo transitions, bottom to top.
+    private var transitionViews: [UIView] {
+        [dimView, pinRing, pinDot, diveImageView] + arrivingTiles + [outgoingBackdrop] + outgoingTiles
+    }
 
     private var timeline: RoadTripTimeline
     private let clock: RoadTripFilmClock
     private var stops: [RoadTripMapStop]
-    private var photo: (Int, Bool) -> UIImage?
+    private var photo: (Int, Int) -> UIImage?
     private var stopPhoto: (String) -> UIImage?
     private var legLabel: (RoadTripTimeline.Travel) -> String
 
     private var displayLink: CADisplayLink?
 
     var reduceMotion = false
+    /// The car's paint: its sprites are cached per heading for this paint.
+    var carColor: RoadTripSettings.CarColor = .white {
+        didSet { if carColor != oldValue { carImages = [:] } }
+    }
     /// See `RoadTripLiveMap.onReady`; fired once.
     var onReady: () -> Void = {}
     private var readyFired = false
@@ -107,6 +125,9 @@ final class RoadTripLiveMapView: UIView, MKMapViewDelegate {
     /// been on screen while zoomed in.
     private let lineLayers: [CAShapeLayer] = (0..<3).map { _ in CAShapeLayer() }
     private let lineHost = UIView()
+    /// The stems of the ending's photo pins pushed off their stops (over the
+    /// line, under the pins).
+    private let stemLayer = CAShapeLayer()
     /// What each leg's line shows now: how much of it, how opaque.
     private var lineState: [Int: (end: CGFloat, alpha: CGFloat)] = [:]
     private var carImages: [Int: UIImage] = [:]
@@ -127,7 +148,7 @@ final class RoadTripLiveMapView: UIView, MKMapViewDelegate {
         timeline: RoadTripTimeline,
         clock: RoadTripFilmClock,
         stops: [RoadTripMapStop],
-        photo: @escaping (Int, Bool) -> UIImage?,
+        photo: @escaping (Int, Int) -> UIImage?,
         stopPhoto: @escaping (String) -> UIImage?,
         legLabel: @escaping (RoadTripTimeline.Travel) -> String
     ) {
@@ -161,18 +182,22 @@ final class RoadTripLiveMapView: UIView, MKMapViewDelegate {
             layer.lineJoin = .round
             lineHost.layer.addSublayer(layer)
         }
+        stemLayer.strokeColor = UIColor.white.cgColor
+        stemLayer.fillColor = nil
+        stemLayer.lineCap = .round
+        stemLayer.isHidden = true
+        lineHost.layer.addSublayer(stemLayer)
         addSubview(lineHost)
 
         carView.contentMode = .scaleAspectFit
         dimView.backgroundColor = .black
+        outgoingBackdrop.backgroundColor = .black
         pinRing.backgroundColor = .white
         pinDot.backgroundColor = RoadTripMapStyle.pin
-        for imageView in [diveImageView, outgoingImageView] {
-            imageView.contentMode = .scaleAspectFill
-            imageView.clipsToBounds = true
-        }
+        diveImageView.contentMode = .scaleAspectFill
+        diveImageView.clipsToBounds = true
         buildStops()
-        for overlay in [carView, dimView, pinRing, pinDot, diveImageView, outgoingImageView] {
+        for overlay in [carView] + transitionViews {
             overlay.isUserInteractionEnabled = false
             overlay.isHidden = true
             addSubview(overlay)
@@ -187,7 +212,7 @@ final class RoadTripLiveMapView: UIView, MKMapViewDelegate {
     func update(
         timeline: RoadTripTimeline,
         stops: [RoadTripMapStop],
-        photo: @escaping (Int, Bool) -> UIImage?,
+        photo: @escaping (Int, Int) -> UIImage?,
         stopPhoto: @escaping (String) -> UIImage?,
         legLabel: @escaping (RoadTripTimeline.Travel) -> String
     ) {
@@ -214,6 +239,7 @@ final class RoadTripLiveMapView: UIView, MKMapViewDelegate {
             layer.frame = lineHost.bounds
             layer.lineWidth = width * CGFloat(style)
         }
+        stemLayer.frame = lineHost.bounds
     }
 
     // MARK: - Content
@@ -248,7 +274,7 @@ final class RoadTripLiveMapView: UIView, MKMapViewDelegate {
         }
         // The photo pins above every stop pin.
         for view in photoPins { bringSubviewToFront(view) }
-        for view in [carView, dimView, pinRing, pinDot, diveImageView, outgoingImageView] where view.superview === self {
+        for view in [carView] + transitionViews where view.superview === self {
             bringSubviewToFront(view)
         }
     }
@@ -335,8 +361,19 @@ final class RoadTripLiveMapView: UIView, MKMapViewDelegate {
     private func show(leg index: Int, travel: RoadTripTimeline.Travel) {
         legIndex = index
         announcedPercent = -1
-        diveImageView.image = photo(index + 1, true)
-        outgoingImageView.image = photo(index - 1, false)
+        let arriving = RoadTripSlideTiming.edgeTiles(
+            segmentIndex: index + 1, in: timeline, first: true, reduceMotion: reduceMotion, canvas: bounds.size
+        )
+        diveImageView.image = arriving.first.flatMap { photo(index + 1, $0.position) }
+        for (k, view) in arrivingTiles.enumerated() {
+            view.image = arriving.indices.contains(k + 1) ? photo(index + 1, arriving[k + 1].position) : nil
+        }
+        let leaving = RoadTripSlideTiming.edgeTiles(
+            segmentIndex: index - 1, in: timeline, first: false, reduceMotion: reduceMotion, canvas: bounds.size
+        )
+        for (k, view) in outgoingTiles.enumerated() {
+            view.image = leaving.indices.contains(k) ? photo(index - 1, leaving[k].position) : nil
+        }
         accessibilityLabel = legLabel(travel)
     }
 
@@ -386,7 +423,7 @@ final class RoadTripLiveMapView: UIView, MKMapViewDelegate {
         let count = RoadTripCar3D.spriteCount
         let key = ((Int((nearestHeading / step).rounded()) % count) + count) % count
         if let cached = carImages[key] { return cached }
-        let image = UIImage(cgImage: RoadTripCar3D.sprite(forBearing: nearestHeading))
+        let image = UIImage(cgImage: RoadTripCar3D.sprite(forBearing: nearestHeading, color: carColor))
         carImages[key] = image
         return image
     }
@@ -401,40 +438,62 @@ final class RoadTripLiveMapView: UIView, MKMapViewDelegate {
         if dive > 0, let destination = travel.route.last, let projectedPoint = projected(destination.coordinate) {
             let point = RoadTripSegue.clampedToMargins(projectedPoint, canvas: canvas)
             let pop = RoadTripSegue.pinPop(dive)
-            dimView.alpha = RoadTripSegue.mapFade(dive) * 0.92
+            dimView.alpha = RoadTripSegue.mapDim(dive)
             place(pinRing, at: point, diameter: canvas.width * CGFloat(RoadTripMapStyle.pinRingDiameter) * 1.4 * pop)
             place(pinDot, at: point, diameter: canvas.width * CGFloat(RoadTripMapStyle.pinDotDiameter) * 1.4 * pop)
+            pinRing.alpha = RoadTripSegue.pinAlpha(dive)
+            pinDot.alpha = RoadTripSegue.pinAlpha(dive)
             let thumb = CGSize(
                 width: canvas.width * RoadTripSegue.thumbSizeFraction,
                 height: canvas.width * RoadTripSegue.thumbSizeFraction * 0.75
             )
-            let landing = RoadTripSlideTiming.edgeTransform(
-                segmentIndex: (legIndex ?? 0) + 1, in: timeline, first: true, reduceMotion: reduceMotion
-            ).rect(in: canvas)
+            // The next stop's first frame: its photo, or its collage's tiles —
+            // the first grows from the pin, the others fade in in place.
+            let arriving = RoadTripSlideTiming.edgeTiles(
+                segmentIndex: (legIndex ?? 0) + 1, in: timeline, first: true, reduceMotion: reduceMotion, canvas: canvas
+            )
             diveImageView.frame = RoadTripSegue.thumbnailRect(
-                pinCenter: point, pinSize: thumb, canvas: canvas, dive: dive, landing: landing
+                pinCenter: point, pinSize: thumb, canvas: canvas, dive: dive, landing: arriving.first?.rect
             )
             diveImageView.layer.cornerRadius = dive >= 0.99 ? 0 : 18 * (1 - dive)
             diveImageView.alpha = RoadTripSegue.thumbnailAlpha(dive)
             for view in [dimView, pinRing, pinDot] { view.isHidden = false }
             diveImageView.isHidden = diveImageView.image == nil
+            let rim = canvas.width * CGFloat(RoadTripCollage.frameBorder)
+            for (k, view) in arrivingTiles.enumerated() {
+                guard arriving.indices.contains(k + 1), view.image != nil else {
+                    view.isHidden = true
+                    continue
+                }
+                view.place(arriving[k + 1], rim: rim, alpha: RoadTripSegue.mapDim(dive))
+            }
         } else {
-            for view in [dimView, pinRing, pinDot, diveImageView] { view.isHidden = true }
+            for view in [dimView, pinRing, pinDot, diveImageView] + arrivingTiles { view.isHidden = true }
         }
 
         let outgoing = driving ? RoadTripSegue.outgoingPhotoAlpha(localTime: localTime) : 0
-        if outgoing > 0 {
-            // Framed as the slideshow's last frame left it.
-            outgoingImageView.frame = RoadTripSlideTiming.edgeTransform(
-                segmentIndex: (legIndex ?? 0) - 1, in: timeline, first: false, reduceMotion: reduceMotion
-            ).rect(in: canvas)
+        // Framed as the slideshow's last frame left them.
+        let tiles = outgoing > 0
+            ? RoadTripSlideTiming.edgeTiles(
+                segmentIndex: (legIndex ?? 0) - 1, in: timeline, first: false, reduceMotion: reduceMotion, canvas: canvas
+            )
+            : []
+        let rim = canvas.width * CGFloat(RoadTripCollage.frameBorder)
+        // A collage's black between its tiles fades out with them.
+        outgoingBackdrop.frame = bounds
+        outgoingBackdrop.alpha = outgoing
+        outgoingBackdrop.isHidden = tiles.count < 2
+        for (k, view) in outgoingTiles.enumerated() {
+            guard tiles.indices.contains(k), view.image != nil else {
+                view.isHidden = true
+                continue
+            }
+            view.place(tiles[k], rim: rim, alpha: outgoing * tiles[k].alpha)
         }
-        outgoingImageView.alpha = outgoing
-        outgoingImageView.isHidden = outgoing <= 0 || outgoingImageView.image == nil
     }
 
     private func hideTransitions() {
-        for view in [dimView, pinRing, pinDot, diveImageView, outgoingImageView] { view.isHidden = true }
+        for view in transitionViews { view.isHidden = true }
     }
 
     // MARK: - Stops
@@ -457,22 +516,44 @@ final class RoadTripLiveMapView: UIView, MKMapViewDelegate {
 
     private func showPhotoPins(endingProgress: Double) {
         let diameter = bounds.width * CGFloat(RoadTripMapStyle.photoPinDiameter)
+        // Laid out together (every stop with a photo, popped or not) so a
+        // photo never jumps when the next one pops — as the export does.
+        var laidOut: [(index: Int, point: CGPoint)] = []
+        for (index, pin) in photoPins.enumerated() where pin.image != nil {
+            if let point = projected(stops[index].coordinate.coordinate) {
+                laidOut.append((index, point))
+            }
+        }
+        let centers = RoadTripMapStyle.photoPinCenters(pins: laidOut.map(\.point), diameter: diameter, canvas: bounds.size)
+        var placement: [Int: (point: CGPoint, center: CGPoint)] = [:]
+        for (entry, center) in zip(laidOut, centers) {
+            placement[entry.index] = (entry.point, center)
+        }
+        let stems = UIBezierPath()
         for (index, pin) in photoPins.enumerated() {
             let pop = RoadTripMapStyle.photoPinPop(index: index, count: photoPins.count, endingProgress: endingProgress)
-            guard pop > 0.01, pin.image != nil, let point = projected(stops[index].coordinate.coordinate) else {
+            guard pop > 0.01, let placed = placement[index] else {
                 pin.isHidden = true
                 continue
             }
+            if pop > 0.5, RoadTripMapStyle.photoPinNeedsStem(center: placed.center, pin: placed.point, diameter: diameter) {
+                stems.move(to: placed.point)
+                stems.addLine(to: placed.center)
+            }
             pin.transform = .identity
-            place(pin, at: CGPoint(x: point.x, y: point.y - diameter * 0.62), diameter: diameter)
+            place(pin, at: placed.center, diameter: diameter)
             pin.layer.borderWidth = bounds.width * CGFloat(RoadTripMapStyle.photoPinBorder)
             pin.transform = CGAffineTransform(scaleX: CGFloat(pop), y: CGFloat(pop))
             pin.isHidden = false
         }
+        stemLayer.lineWidth = bounds.width * CGFloat(RoadTripMapStyle.photoPinStemWidth)
+        stemLayer.path = stems.cgPath
+        stemLayer.isHidden = false
     }
 
     private func hidePhotoPins() {
         for pin in photoPins { pin.isHidden = true }
+        stemLayer.isHidden = true
     }
 
     // MARK: - Lines
@@ -604,3 +685,45 @@ private final class RoadTripDisplayLinkTarget: NSObject {
         view.render(at: Date())
     }
 }
+
+/// A photo of the map↔photo transitions placed as the export draws it
+/// (`RoadTripCollage.DrawnTile`): tilted about its center, the photo filled
+/// into its tile and pushed in by the tile's zoom, inside a white rim when
+/// framed.
+private final class RoadTripTileView: UIView {
+    private let clip = UIView()
+    private let imageView = UIImageView()
+
+    var image: UIImage? {
+        get { imageView.image }
+        set { imageView.image = newValue }
+    }
+
+    init() {
+        super.init(frame: .zero)
+        isUserInteractionEnabled = false
+        clip.clipsToBounds = true
+        imageView.contentMode = .scaleAspectFill
+        clip.addSubview(imageView)
+        addSubview(clip)
+    }
+
+    @available(*, unavailable)
+    required init?(coder: NSCoder) { fatalError("init(coder:) is not supported") }
+
+    /// `rim`: the white border of a framed tile, outside its photo.
+    func place(_ tile: RoadTripCollage.DrawnTile, rim: CGFloat, alpha: Double) {
+        let border = tile.framed ? rim : 0
+        transform = .identity
+        bounds = CGRect(origin: .zero, size: tile.rect.insetBy(dx: -border, dy: -border).size)
+        center = CGPoint(x: tile.rect.midX, y: tile.rect.midY)
+        transform = CGAffineTransform(rotationAngle: CGFloat(tile.rotation))
+        backgroundColor = tile.framed ? .white : .clear
+        clip.frame = CGRect(x: border, y: border, width: tile.rect.width, height: tile.rect.height)
+        let zoom = CGFloat(tile.zoom)
+        imageView.frame = clip.bounds.insetBy(dx: -clip.bounds.width * (zoom - 1) / 2, dy: -clip.bounds.height * (zoom - 1) / 2)
+        self.alpha = CGFloat(alpha)
+        isHidden = false
+    }
+}
+
