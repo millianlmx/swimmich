@@ -15,16 +15,15 @@ struct RoadTripView: View {
     /// preparation as film time). A reference shared with the live map, which
     /// reads it at every display refresh.
     @State private var clock = RoadTripFilmClock()
+    /// The opening's map is drawn (`RoadTripLiveMap.onReady`): the film plays.
+    @State private var filmReady = false
 
     var body: some View {
         ZStack {
             Color.black.ignoresSafeArea()
 
             if vm.isPreparing {
-                ProgressView("Preparing road trip…")
-                    .tint(.white)
-                    .foregroundStyle(.white)
-                    .accessibilityIdentifier("roadTripPreparing")
+                preparingView
             } else if let error = vm.errorMessage, vm.timeline == nil {
                 VStack(spacing: 16) {
                     Image(systemName: "car.fill")
@@ -52,18 +51,29 @@ struct RoadTripView: View {
                     stopPhoto: { clusterID in vm.heroImage(forClusterID: clusterID) },
                     legLabel: { travel in
                         "\(vm.placeName(forClusterID: travel.fromClusterID)) → \(vm.placeName(forClusterID: travel.toClusterID))"
+                    },
+                    reduceMotion: reduceMotion,
+                    onReady: {
+                        // The clock starts on a drawn map: started with the
+                        // view, the opening played over grey tiles.
+                        guard clock.start == nil else { return }
+                        clock.start = Date()
+                        filmReady = true
                     }
                 )
                 .ignoresSafeArea()
 
-                SwiftUI.TimelineView(.animation(minimumInterval: 1.0 / 30.0)) { context in
-                    content(timeline: timeline, elapsed: clock.elapsed(at: context.date))
+                if filmReady {
+                    // At the display's pace, like the map under it: at 30 Hz
+                    // the photos and the counter stepped against the map.
+                    SwiftUI.TimelineView(.animation(minimumInterval: 1.0 / 60.0)) { context in
+                        content(timeline: timeline, elapsed: clock.elapsed(at: context.date))
+                    }
+                    .accessibilityElement(children: .contain)
+                    .accessibilityIdentifier("roadTripPlayer")
+                } else {
+                    preparingView
                 }
-                .onAppear {
-                    if clock.start == nil { clock.start = Date() }
-                }
-                .accessibilityElement(children: .contain)
-                .accessibilityIdentifier("roadTripPlayer")
             }
 
             chrome
@@ -80,6 +90,16 @@ struct RoadTripView: View {
             if case .failed(let message) = vm.exportState {
                 Text(message)
             }
+        }
+    }
+
+    private var preparingView: some View {
+        ZStack {
+            Color.black.ignoresSafeArea()
+            ProgressView("Preparing road trip…")
+                .tint(.white)
+                .foregroundStyle(.white)
+                .accessibilityIdentifier("roadTripPreparing")
         }
     }
 
@@ -128,10 +148,11 @@ struct RoadTripView: View {
                 if let cluster = vm.cluster(by: slideshow.clusterID) {
                     slideshowView(slideshow: slideshow, cluster: cluster, localTime: local)
                 }
-            case .travel:
+            case .travel(let travel):
                 // The live map underneath shows through, the road counter
-                // ticking over it.
+                // ticking over it until the arrival dive.
                 distanceCounter(meters: timeline.drivenMeters(at: clamped))
+                    .opacity(overlayAlpha(travel: travel, localTime: local))
             case .ending(let duration):
                 endingView(progress: local / max(duration, 0.001))
             }
@@ -140,7 +161,11 @@ struct RoadTripView: View {
                 bottomProgress(
                     segment: segment,
                     fraction: clamped / timeline.totalDuration,
-                    finished: elapsed >= timeline.totalDuration
+                    finished: elapsed >= timeline.totalDuration,
+                    labelOpacity: {
+                        if case .travel(let travel) = segment { return overlayAlpha(travel: travel, localTime: local) }
+                        return 1
+                    }()
                 )
             }
         }
@@ -302,7 +327,13 @@ struct RoadTripView: View {
         .frame(maxWidth: .infinity)
     }
 
-    private func bottomProgress(segment: RoadTripTimeline.Segment, fraction: Double, finished: Bool) -> some View {
+    /// The counter and the leg's pill fade out as the arrival dive's photo
+    /// grows (as in the export): it is drawn on the map, under them.
+    private func overlayAlpha(travel: RoadTripTimeline.Travel, localTime: TimeInterval) -> Double {
+        RoadTripSegue.overlayAlpha(RoadTripSegue.diveProgress(localTime: localTime, legDuration: travel.duration))
+    }
+
+    private func bottomProgress(segment: RoadTripTimeline.Segment, fraction: Double, finished: Bool, labelOpacity: Double) -> some View {
         VStack(spacing: 12) {
             if finished {
                 Button {
@@ -324,6 +355,7 @@ struct RoadTripView: View {
                     .padding(.horizontal, 14)
                     .padding(.vertical, 8)
                     .pvFloating(.pill)
+                    .opacity(labelOpacity)
             }
             GeometryReader { geo in
                 ZStack(alignment: .leading) {

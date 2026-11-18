@@ -354,6 +354,19 @@ struct KenBurnsTransform: Equatable, Sendable {
     var offsetY: Double = 0
 
     static let identity = KenBurnsTransform()
+
+    /// Where a photo aspect-filled into `canvas` lies once transformed: scaled
+    /// about the canvas centre, then offset — what the player's
+    /// `scaleEffect` + `offset` and the export's `transformed` both draw.
+    func rect(in canvas: CGSize) -> CGRect {
+        let width = canvas.width * CGFloat(scale)
+        let height = canvas.height * CGFloat(scale)
+        return CGRect(
+            x: (canvas.width - width) / 2 + CGFloat(offsetX) * canvas.width,
+            y: (canvas.height - height) / 2 + CGFloat(offsetY) * canvas.height,
+            width: width, height: height
+        )
+    }
 }
 
 enum KenBurnsMotion: String, CaseIterable, Sendable {
@@ -457,6 +470,23 @@ enum RoadTripSlideTiming {
             crossfade: crossfade
         )
     }
+
+    /// The Ken Burns framing of the slideshow's first photo on its first frame
+    /// (`first`) or of its last photo on its last frame: where the arrival
+    /// dive lands and where the outgoing photo leaves from, so the cut
+    /// between the map and the photos does not jump.
+    static func edgeTransform(slideshow: RoadTripTimeline.Slideshow, first: Bool, reduceMotion: Bool) -> KenBurnsTransform {
+        let time = first ? 0 : slideshow.photoDurations.reduce(0, +)
+        return frame(slideshow: slideshow, localTime: time, reduceMotion: reduceMotion).currentTransform
+    }
+
+    /// `edgeTransform` of the slideshow segment at `segmentIndex`; identity
+    /// when that segment is not a slideshow.
+    static func edgeTransform(segmentIndex: Int, in timeline: RoadTripTimeline, first: Bool, reduceMotion: Bool) -> KenBurnsTransform {
+        guard timeline.segments.indices.contains(segmentIndex),
+              case .slideshow(let slideshow) = timeline.segments[segmentIndex] else { return .identity }
+        return edgeTransform(slideshow: slideshow, first: first, reduceMotion: reduceMotion)
+    }
 }
 
 // MARK: - Segment transitions
@@ -500,13 +530,15 @@ enum RoadTripSegue {
         1 + 0.35 * (1 - KenBurnsRecipe.smoothstep(min(max(dive * 2.5, 0), 1)))
     }
 
-    /// Thumbnail rect from the destination pin to full canvas (linear lerp of
-    /// the dive — the Ken Burns motion stays on the slideshow side).
-    static func thumbnailRect(pinCenter: CGPoint, pinSize: CGSize, canvas: CGSize, dive: Double) -> CGRect {
-        let t = min(max(dive, 0), 1)
+    /// Thumbnail rect from the destination pin to `landing` — the framing the
+    /// next slideshow opens on (`RoadTripSlideTiming.edgeTransform`), the full
+    /// canvas by default — eased so it settles on the slideshow's first frame
+    /// instead of snapping to it.
+    static func thumbnailRect(pinCenter: CGPoint, pinSize: CGSize, canvas: CGSize, dive: Double, landing: CGRect? = nil) -> CGRect {
+        let t = KenBurnsRecipe.smoothstep(min(max(dive, 0), 1))
         let from = CGRect(x: pinCenter.x - pinSize.width / 2, y: pinCenter.y - pinSize.height / 2,
                           width: pinSize.width, height: pinSize.height)
-        let to = CGRect(origin: .zero, size: canvas)
+        let to = landing ?? CGRect(origin: .zero, size: canvas)
         return CGRect(
             x: from.minX + (to.minX - from.minX) * t,
             y: from.minY + (to.minY - from.minY) * t,
@@ -522,6 +554,13 @@ enum RoadTripSegue {
             x: min(max(point.x, canvas.width * 0.12), canvas.width * 0.88),
             y: min(max(point.y, canvas.height * 0.15), canvas.height * 0.85)
         )
+    }
+
+    /// Opacity of what sits over the map during a leg — the road counter and
+    /// the leg's pill: gone by the time the dive's photo grows, which would
+    /// otherwise slide under them.
+    static func overlayAlpha(_ dive: Double) -> Double {
+        1 - KenBurnsRecipe.smoothstep(min(max(dive / thumbRevealFraction, 0), 1))
     }
 
     /// Outgoing-photo fade-out alpha over the incoming map (1 → 0).
