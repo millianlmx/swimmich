@@ -298,15 +298,16 @@ final class PhotoDumpViewModel: Identifiable {
 
     // MARK: - Dates
 
-    private static let fractionalParser: ISO8601DateFormatter = {
+    private nonisolated static let fractionalParser: ISO8601DateFormatter = {
         let parser = ISO8601DateFormatter()
         parser.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
         return parser
     }()
 
-    private static let plainParser = ISO8601DateFormatter()
+    private nonisolated static let plainParser = ISO8601DateFormatter()
 
-    static func date(_ wire: String) -> Date? {
+    /// An Immich timestamp, with or without milliseconds. Pure: callable from anywhere.
+    nonisolated static func date(_ wire: String) -> Date? {
         fractionalParser.date(from: wire) ?? plainParser.date(from: wire)
     }
 }

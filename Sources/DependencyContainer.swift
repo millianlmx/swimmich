@@ -695,6 +695,17 @@ final class DependencyContainer {
         )
     }
 
+    func makeWrappedViewModel(baseURL: URL, token: String?) -> WrappedViewModel {
+        WrappedViewModel(
+            client: libraryClient,
+            // The address in use when asked, not the one at creation (L-26).
+            baseURL: { ServerAddressBook.shared.activeURL ?? baseURL },
+            token: token,
+            photos: photos,
+            session: { [serverSessions] in serverSessions.images }
+        )
+    }
+
     func makeDuplicatesViewModel() -> DuplicatesViewModel {
         DuplicatesViewModel(client: libraryClient)
     }

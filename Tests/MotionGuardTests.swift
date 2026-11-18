@@ -446,7 +446,7 @@ final class MotionGuardTests: XCTestCase {
     func test_AC_171_knownCoversUseTheGate() throws {
         // AlbumDetailView presents two: the road trip, and the color mosaic or photo dump.
         let owners = [
-            "PhotoViewer.swift": 1, "AlbumDetailView.swift": 2, "MemoriesView.swift": 1,
+            "PhotoViewer.swift": 1, "AlbumDetailView.swift": 2, "MemoriesView.swift": 2,
             "OfflineAssetsView.swift": 1, "SharedLinkViewerView.swift": 1, "BatchSelectionBar.swift": 1,
             "PeopleView.swift": 1, "SearchView.swift": 1, "MapView.swift": 1,
         ]
