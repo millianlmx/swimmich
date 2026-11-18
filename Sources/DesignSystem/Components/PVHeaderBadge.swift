@@ -8,10 +8,9 @@ import SwiftUI
 // badge exposes itself as a VoiceOver header via `.accessibilityAddTraits`.
 //
 // Two flavours, one wash: an SF Symbol for the step screens (`icon:`), or any
-// view where the screen carries the app's own identity (`ImmichMark` on the
-// welcome screen). Keeping the wash, the 72-pt tile and the header trait in
-// one place is what stops the brand badge from drifting away from the symbol
-// ones.
+// view SF Symbols has no equivalent for. Keeping the wash, the 72-pt tile and
+// the header trait in one place is what keeps the badges alike. (The welcome
+// screen shows the app's icon instead, `SwimmichLogo`.)
 
 /// Icon-in-wash hero badge for onboarding/auth screen headers.
 struct PVHeaderBadge<Icon: View>: View {

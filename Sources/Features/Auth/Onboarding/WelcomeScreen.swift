@@ -33,13 +33,20 @@ struct WelcomeScreen: View {
 
     private var header: some View {
         VStack(spacing: PVSpacing.s8) {
-            PVHeaderBadge {
-                ImmichMark()
-                    .frame(width: 40, height: 40)
-            }
+            // The app's own icon, at the shape of a Home Screen icon.
+            Image("SwimmichLogo")
+                .resizable()
+                .scaledToFit()
+                .frame(width: 112, height: 112)
+                .clipShape(RoundedRectangle(cornerRadius: 112 * 0.225, style: .continuous))
+                .shadow(color: .black.opacity(0.12), radius: 12, y: 6)
+                .padding(.bottom, PVSpacing.s8)
+                .accessibilityHidden(true)
+                .accessibilityIdentifier("welcomeLogo")
             Text("Welcome to Swimmich")
                 .font(.pvH2)
                 .multilineTextAlignment(.center)
+                .accessibilityAddTraits(.isHeader)
                 .accessibilityIdentifier("welcomeTitle")
             Text("Set up your server and sign in.")
                 .font(.pvSubhead)

@@ -157,13 +157,16 @@ extension View {
     /// role, not a full-width strip). `.safeAreaInset` keeps the CTA reachable
     /// above the keyboard on iOS 17.
     func onboardingBottomBar<Content: View>(@ViewBuilder content: () -> Content) -> some View {
+        // The button alone over the screen's own background: the floating bar
+        // around it (made for controls over photos) read as a grey frame on
+        // the light onboarding screens.
         safeAreaInset(edge: .bottom) {
             content()
-                .padding(PVSpacing.s16)
                 .frame(maxWidth: .infinity)
-                .pvFloating(.bar)
-                .padding(.horizontal, PVSpacing.s16)
+                .padding(.horizontal, PVSpacing.s24)
+                .padding(.top, PVSpacing.s8)
                 .padding(.bottom, PVSpacing.s8)
+                .background(Color.bgPrimary.ignoresSafeArea(edges: .bottom))
         }
     }
 
