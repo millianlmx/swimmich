@@ -684,6 +684,17 @@ final class DependencyContainer {
         MapPosterViewModel(client: libraryClient, photos: photos)
     }
 
+    func makeThenAndNowViewModel(baseURL: URL, token: String?) -> ThenAndNowViewModel {
+        ThenAndNowViewModel(
+            client: libraryClient,
+            // The address in use when asked, not the one at creation (L-26).
+            baseURL: { ServerAddressBook.shared.activeURL ?? baseURL },
+            token: token,
+            photos: photos,
+            session: { [serverSessions] in serverSessions.images }
+        )
+    }
+
     func makeDuplicatesViewModel() -> DuplicatesViewModel {
         DuplicatesViewModel(client: libraryClient)
     }

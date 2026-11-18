@@ -22,6 +22,8 @@ struct MemoriesView: View {
     /// shown stale, and a delete moves on to the next memory.
     @State private var playback: MemoryPlaybackViewModel?
     @State private var addingPhotosToID: String?
+    /// Then & now, pushed while set.
+    @State private var thenAndNowVM: ThenAndNowViewModel?
     @State private var pendingDelete: MemoryResponseDto?
 
     var body: some View {
@@ -53,9 +55,28 @@ struct MemoriesView: View {
                     }
                     .accessibilityIdentifier("memoriesCreateButton")
                 }
+                // The places photographed years apart.
+                ToolbarItem(placement: .topBarLeading) {
+                    Button {
+                        thenAndNowVM = DependencyContainer.shared.makeThenAndNowViewModel(
+                            baseURL: auth.baseURL ?? URL(string: "https://example.com")!,
+                            token: auth.accessToken
+                        )
+                    } label: {
+                        Label("Then & Now", systemImage: "clock.arrow.2.circlepath")
+                            .labelStyle(.iconOnly)
+                    }
+                    .accessibilityIdentifier("memoriesThenAndNowButton")
+                }
                 ProfileAvatarToolbarItem { openProfile() }
             }
             .task { await vm.load() }
+            .navigationDestination(isPresented: Binding(
+                get: { thenAndNowVM != nil },
+                set: { if !$0 { thenAndNowVM = nil } }
+            )) {
+                if let thenAndNowVM { ThenAndNowListView(vm: thenAndNowVM) }
+            }
             .sheet(isPresented: $vm.showCreate) {
                 CreateMemorySheet(vm: vm)
             }
