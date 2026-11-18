@@ -52,6 +52,23 @@ public final class ThumbHashDecoder: @unchecked Sendable {
         cache.removeAllObjects()
     }
 
+    /// The average color a ThumbHash encodes (its DC term), RGB in `0...1`. Read
+    /// from the header alone — no image is decoded — so a whole album is colored
+    /// before a single thumbnail is downloaded (the color mosaic sorts on it).
+    public static func averageColor(thumbhash: String) -> (red: Double, green: Double, blue: Double)? {
+        guard let hash = data(fromBase64: thumbhash), hash.count >= 5 else { return nil }
+        let header24 = UInt32(hash[0]) | (UInt32(hash[1]) << 8) | (UInt32(hash[2]) << 16)
+        let l = Double(header24 & 63) / 63.0
+        let p = Double((header24 >> 6) & 63) / 31.5 - 1.0
+        let q = Double((header24 >> 12) & 63) / 31.5 - 1.0
+        // LPQ → RGB, as `decode(data:)` does per pixel.
+        let b = l - 2.0 / 3.0 * p
+        let r = (3.0 * l - b + q) / 2.0
+        let g = r - q
+        func clamp(_ v: Double) -> Double { min(max(v, 0), 1) }
+        return (clamp(r), clamp(g), clamp(b))
+    }
+
     // MARK: - ThumbHash Decoding Algorithm
 
     /// Decodes a base64 or URL-safe base64 ThumbHash string into a `UIImage`.

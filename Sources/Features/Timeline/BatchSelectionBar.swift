@@ -1,7 +1,7 @@
 import SwiftUI
 
 /// The selection bar of the photo grids, written once (L-23b): Cancel on the
-/// leading side, the seven batch actions of the timeline on the trailing side,
+/// leading side, the batch actions of the timeline on the trailing side,
 /// and everything those actions raise — the delete confirmation, the
 /// "edited version or original" question of a download, the refusal and
 /// partner-notice alerts, the album sheet and the haptics. The timeline and the
@@ -26,6 +26,8 @@ struct BatchSelectionBar<Model: BatchSelectionModel>: ViewModifier {
     @State private var presentAlbumPicker = false
     @State private var favoriteTick = 0
     @State private var deleteTick = 0
+    @State private var colorMosaicVM: ColorMosaicViewModel?
+    @Environment(AuthViewModel.self) private var auth
 
     func body(content: Content) -> some View {
         content
@@ -97,6 +99,9 @@ struct BatchSelectionBar<Model: BatchSelectionModel>: ViewModifier {
                 AddToAlbumPickerSheet(selectedAssetIds: model.selectedIds) {
                     model.exitSelectionMode()
                 }
+            }
+            .pvFullScreenCover(item: $colorMosaicVM) { colorMosaicVM in
+                ColorMosaicView(vm: colorMosaicVM)
             }
     }
 
@@ -225,6 +230,21 @@ struct BatchSelectionBar<Model: BatchSelectionModel>: ViewModifier {
                 }
                 .disabled(empty)
                 .accessibilityIdentifier("downloadSelectionButton")
+
+                // Color mosaic of the selection. Photos still only on this
+                // device have no thumbhash, so no color, and are left out.
+                Button {
+                    colorMosaicVM = DependencyContainer.shared.makeColorMosaicViewModel(
+                        assets: model.selectedItems,
+                        baseURL: auth.baseURL ?? URL(string: "https://example.com")!,
+                        token: auth.accessToken
+                    )
+                } label: {
+                    Label("Color Mosaic", systemImage: "square.grid.3x3.fill")
+                        .labelStyle(.iconOnly)
+                }
+                .disabled(empty)
+                .accessibilityIdentifier("colorMosaicSelectionButton")
             }
         }
     }

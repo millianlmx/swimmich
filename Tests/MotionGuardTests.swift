@@ -443,10 +443,11 @@ final class MotionGuardTests: XCTestCase {
         }
     }
 
-    func test_AC_171_fiveCoversUseTheGate() throws {
+    func test_AC_171_knownCoversUseTheGate() throws {
+        // AlbumDetailView presents two: the road trip and the color mosaic.
         let owners = [
-            "PhotoViewer.swift", "AlbumDetailView.swift", "MemoriesView.swift",
-            "OfflineAssetsView.swift", "SharedLinkViewerView.swift",
+            "PhotoViewer.swift": 1, "AlbumDetailView.swift": 2, "MemoriesView.swift": 1,
+            "OfflineAssetsView.swift": 1, "SharedLinkViewerView.swift": 1, "BatchSelectionBar.swift": 1,
         ]
         var counts: [String: Int] = [:]
         // The gate's own file is outside `scopedFiles()`: only presenters are counted here.
@@ -455,10 +456,10 @@ final class MotionGuardTests: XCTestCase {
             let count = text.components(separatedBy: ".pvFullScreenCover(").count - 1
             if count > 0 { counts[(file.name as NSString).lastPathComponent] = count }
         }
-        for owner in owners {
-            XCTAssertEqual(counts[owner], 1, "\(owner) must present through .pvFullScreenCover exactly once")
+        for (owner, expected) in owners {
+            XCTAssertEqual(counts[owner], expected, "\(owner) must present through .pvFullScreenCover \(expected) time(s)")
         }
-        let others = counts.keys.filter { !owners.contains($0) }.sorted()
-        XCTAssertTrue(others.isEmpty, "full-screen covers outside the five known presenters: \(others)")
+        let others = counts.keys.filter { owners[$0] == nil }.sorted()
+        XCTAssertTrue(others.isEmpty, "full-screen covers outside the known presenters: \(others)")
     }
 }

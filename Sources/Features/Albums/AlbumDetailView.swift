@@ -36,6 +36,7 @@ struct AlbumDetailView: View {
     @State private var activityFeedItem: ActivityFeedSheetItem?
     @State private var roadTripVM: RoadTripViewModel?
     @State private var presentingRoadTrip = false
+    @State private var colorMosaicVM: ColorMosaicViewModel?
     @State private var lastRemoveTick = 0
     @State private var lastDeleteTick = 0
     @State private var lastFavoriteTick = 0
@@ -161,6 +162,14 @@ struct AlbumDetailView: View {
                             .labelStyle(.iconOnly)
                     }
                     .disabled(vm.selectedIds.isEmpty)
+
+                    Button {
+                        presentColorMosaic(assets: vm.assets.filter { vm.selectedIds.contains($0.id) })
+                    } label: {
+                        Label("Color Mosaic", systemImage: "square.grid.3x3.fill")
+                            .labelStyle(.iconOnly)
+                    }
+                    .disabled(vm.selectedIds.isEmpty)
                 }
                 // Native trailing ellipsis menu — Photos-parity bulk actions.
                 // Not rendered when the user has nothing to do in it.
@@ -261,6 +270,13 @@ struct AlbumDetailView: View {
                             presentRoadTrip(assets: vm.assets)
                         } label: {
                             Label("Road Trip", systemImage: "car.fill")
+                                .foregroundStyle(Color.primary)
+                        }
+                        .tint(Color.primary)
+                        Button {
+                            presentColorMosaic(assets: vm.assets)
+                        } label: {
+                            Label("Color Mosaic", systemImage: "square.grid.3x3.fill")
                                 .foregroundStyle(Color.primary)
                         }
                         .tint(Color.primary)
@@ -429,6 +445,19 @@ struct AlbumDetailView: View {
                 RoadTripView(vm: roadTripVM)
             }
         }
+        .pvFullScreenCover(item: $colorMosaicVM) { colorMosaicVM in
+            ColorMosaicView(vm: colorMosaicVM)
+        }
+    }
+
+    /// Builds the color-mosaic VM for the given assets and presents it full-screen.
+    private func presentColorMosaic(assets: [AssetReactItem]) {
+        guard !assets.isEmpty else { return }
+        colorMosaicVM = DependencyContainer.shared.makeColorMosaicViewModel(
+            assets: assets,
+            baseURL: auth.baseURL ?? URL(string: "https://example.com")!,
+            token: auth.accessToken
+        )
     }
 
     /// Builds the road-trip VM for the given assets and presents it full-screen.
