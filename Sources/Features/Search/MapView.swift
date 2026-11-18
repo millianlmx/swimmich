@@ -29,6 +29,8 @@ struct MapSegmentView: View {
     @State private var isRenderingMarkers = false
     /// Map settings sheet (gap G14b).
     @State private var presentSettings = false
+    /// "Everywhere I've been": the poster of every place in the library.
+    @State private var posterVM: MapPosterViewModel?
     /// The photo sheet is presented by `RootView` on the same host controller,
     /// so it has to come down before the settings sheet can go up; this
     /// remembers to put it back when settings closes.
@@ -95,6 +97,9 @@ struct MapSegmentView: View {
                     vm.isPhotoSheetPresented = true
                 }
             }
+        }
+        .pvFullScreenCover(item: $posterVM) { posterVM in
+            MapPosterView(vm: posterVM)
         }
         // Map settings (gap G14b). A sheet, not a push — no NavigationStack.
         .sheet(isPresented: $presentSettings) {
@@ -220,6 +225,7 @@ struct MapSegmentView: View {
                 if !vm.filter.isEmpty { activeFilterBadge }
                 myLocationButton
                 settingsButton
+                posterButton
             }
             .frame(maxWidth: .infinity, alignment: .trailing)
             .padding(.horizontal, PVSpacing.s16)
@@ -277,6 +283,20 @@ struct MapSegmentView: View {
         .pvGlass(.circle)
         .accessibilityLabel("Map settings")
         .accessibilityIdentifier("mapSettingsButton")
+    }
+
+    private var posterButton: some View {
+        Button {
+            posterVM = DependencyContainer.shared.makeMapPosterViewModel()
+        } label: {
+            Image(systemName: "photo.artframe")
+                .font(.pvBody.weight(.semibold))
+                .padding(PVSpacing.s12)
+        }
+        .buttonStyle(.plain)
+        .pvGlass(.circle)
+        .accessibilityLabel("Map Poster")
+        .accessibilityIdentifier("mapPosterButton")
     }
 
     private var myLocationButton: some View {
