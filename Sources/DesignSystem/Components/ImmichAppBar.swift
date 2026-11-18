@@ -4,10 +4,9 @@ import SwiftUI
 //
 // The title of a pushed screen or a sheet, placed in
 // `ToolbarItem(placement: .principal)`: the title alone, in the bar's own
-// type, like a native inline title. It used to sit beside a mark of the app
-// (`ImmichMark`, the petal lens), which is no longer the app's logo since the
-// icon changed — a logo in the middle of a settings screen or a filter sheet
-// had nothing to say there anyway.
+// type, like a native inline title. It used to sit beside the app's former
+// mark (a petal lens, since removed) — a logo in the middle of a settings
+// screen or a filter sheet had nothing to say there anyway.
 //
 // Native compromise: SwiftUI toolbar background, scrolling behaviour, and
 // safe-area insets remain iOS-native (no Material elevation), per the

@@ -58,31 +58,11 @@ final class DesignSystemTokensTests: XCTestCase {
         }
     }
 
-    /// The mark is drawn in the app's accent, not in Immich's official colours,
-    /// and the identifiers that are not visible stay what they were: a renamed
+    /// The identifiers that are not visible stay what they were: a renamed
     /// bundle ID, widget kind or URL scheme would orphan installs, widgets and
-    /// the scheduled backup task.
-    func test_AC_29_3_markUsesTheAccentAndIdentifiersStay() throws {
-        let primaryLight = components(Color.immichPrimary, .light)
-        let primaryDark = components(Color.immichPrimary, .dark)
-        assertSame(components(Color.immichLogoDeep), primaryLight, "immichLogoDeep is immichPrimary in light appearance")
-        assertSame(components(Color.immichLogoLight), primaryDark, "immichLogoLight is immichPrimary in dark appearance")
-
-        let official: [(String, [Double])] = [
-            ("#FA2921", [250.0 / 255, 41.0 / 255, 33.0 / 255]),
-            ("#ED79B5", [237.0 / 255, 121.0 / 255, 181.0 / 255]),
-            ("#FFB400", [255.0 / 255, 180.0 / 255, 0.0 / 255]),
-            ("#1E83F7", [30.0 / 255, 131.0 / 255, 247.0 / 255]),
-            ("#18C249", [24.0 / 255, 194.0 / 255, 73.0 / 255])
-        ]
-        for (name, rgb) in official {
-            for color in [Color.immichLogoLight, Color.immichLogoDeep] {
-                let c = components(color)
-                let isOfficial = zip(c, rgb).allSatisfy { abs($0 - $1) <= 1.0 / 255 }
-                XCTAssertFalse(isOfficial, "the mark must not use the official Immich colour \(name)")
-            }
-        }
-
+    /// the scheduled backup task. (The former mark's colour checks went with
+    /// the mark: the app's logo is now its icon, `SwimmichLogo`.)
+    func test_AC_29_3_identifiersStay() throws {
         XCTAssertNotNil(AppAccent(rawValue: "immich"), "a stored accent `immich` must stay valid")
 
         var root = URL(fileURLWithPath: #filePath)

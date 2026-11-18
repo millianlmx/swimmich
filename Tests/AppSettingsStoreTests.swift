@@ -203,24 +203,6 @@ final class AppSettingsStoreTests: XCTestCase {
         }
     }
 
-    /// AC-8: the mark's two ends are `immichPrimary` frozen at one appearance
-    /// each (pale = its dark value, deep = its light value), and they stay
-    /// frozen: the mark must not follow the system appearance.
-    func test_logoPalette_isTheBrandPairInEveryAppearance() {
-        for style in [UIUserInterfaceStyle.light, .dark] {
-            XCTAssertEqual(
-                components(of: .immichLogoLight, style: style),
-                components(of: .immichPrimary, style: .dark),
-                "\(style) pale end drifted from immichPrimary dark"
-            )
-            XCTAssertEqual(
-                components(of: .immichLogoDeep, style: style),
-                components(of: .immichPrimary, style: .light),
-                "\(style) deep end drifted from immichPrimary light"
-            )
-        }
-    }
-
     /// AC-4: the visible name changed to "Swimmich", the stored identity did not —
     /// a user who picked the default accent before the rename keeps `"immich"`
     /// under `themePrimaryColor`, and it still reads back as `.immich`.
