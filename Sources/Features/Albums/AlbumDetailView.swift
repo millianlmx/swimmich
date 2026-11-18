@@ -284,6 +284,16 @@ struct AlbumDetailView: View {
                                 .foregroundStyle(Color.primary)
                         }
                         .tint(Color.primary)
+                        Button {
+                            creation = .reel(
+                                assets: vm.assets, title: vm.album?.albumName ?? initialAlbum.albumName,
+                                baseURL: auth.baseURL, token: auth.accessToken
+                            )
+                        } label: {
+                            Label("Reel", systemImage: "film.stack")
+                                .foregroundStyle(Color.primary)
+                        }
+                        .tint(Color.primary)
                         if !albumActions.isEmpty {
                             Divider()
                         }
