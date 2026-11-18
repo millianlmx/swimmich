@@ -123,28 +123,29 @@ enum OnboardingAppVersion {
 }
 
 /// The onboarding's trailing toolbar: the app version, then the "App Logs"
-/// entry (L-28, B-42). One item, so the version stays next to the entry.
+/// entry (L-28, B-42). One group, so the version stays next to the entry —
+/// not one item holding both: iOS 26 draws such an item as a single glass
+/// capsule, and the button inside it got no tap and no accessibility element
+/// (the entry opened nothing).
 struct OnboardingLogsToolbar: ToolbarContent {
     let openLogs: () -> Void
     let logsIdentifier: String
     let versionIdentifier: String
 
     var body: some ToolbarContent {
-        ToolbarItem(placement: .topBarTrailing) {
-            HStack(spacing: PVSpacing.s8) {
-                if let version = OnboardingAppVersion.label(from: Bundle.main.infoDictionary) {
-                    Text(verbatim: version)
-                        .font(.pvCaption)
-                        .foregroundStyle(Color.textSecondaryPV)
-                        .fixedSize()
-                        .accessibilityIdentifier(versionIdentifier)
-                }
-                Button(action: openLogs) {
-                    Label("App Logs", systemImage: "doc.text.magnifyingglass")
-                        .labelStyle(.iconOnly)
-                }
-                .accessibilityIdentifier(logsIdentifier)
+        ToolbarItemGroup(placement: .topBarTrailing) {
+            if let version = OnboardingAppVersion.label(from: Bundle.main.infoDictionary) {
+                Text(verbatim: version)
+                    .font(.pvCaption)
+                    .foregroundStyle(Color.textSecondaryPV)
+                    .fixedSize()
+                    .accessibilityIdentifier(versionIdentifier)
             }
+            Button(action: openLogs) {
+                Label("App Logs", systemImage: "doc.text.magnifyingglass")
+                    .labelStyle(.iconOnly)
+            }
+            .accessibilityIdentifier(logsIdentifier)
         }
     }
 }
