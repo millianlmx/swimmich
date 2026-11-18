@@ -448,7 +448,7 @@ final class MotionGuardTests: XCTestCase {
         let owners = [
             "PhotoViewer.swift": 1, "AlbumDetailView.swift": 2, "MemoriesView.swift": 1,
             "OfflineAssetsView.swift": 1, "SharedLinkViewerView.swift": 1, "BatchSelectionBar.swift": 1,
-            "PeopleView.swift": 1, "SearchView.swift": 1,
+            "PeopleView.swift": 1, "SearchView.swift": 1, "MapView.swift": 1,
         ]
         var counts: [String: Int] = [:]
         // The gate's own file is outside `scopedFiles()`: only presenters are counted here.

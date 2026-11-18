@@ -680,6 +680,10 @@ final class DependencyContainer {
         )
     }
 
+    func makeMapPosterViewModel() -> MapPosterViewModel {
+        MapPosterViewModel(client: libraryClient, photos: photos)
+    }
+
     func makeDuplicatesViewModel() -> DuplicatesViewModel {
         DuplicatesViewModel(client: libraryClient)
     }

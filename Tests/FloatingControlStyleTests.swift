@@ -110,7 +110,7 @@ final class FloatingControlStyleTests: XCTestCase {
         let bar: Int
     }
 
-    /// The closed table of the style's call sites (35 + 25 + 21). The map's
+    /// The closed table of the style's call sites (37 + 26 + 23). The map's
     /// controls are not in it: they float over an interface surface and use the
     /// system's adaptive glass (`pvGlass`, see `test_mapControlsUseTheSystemGlass`).
     private static let expectedCounts: [String: RoleCounts] = [
@@ -127,6 +127,7 @@ final class FloatingControlStyleTests: XCTestCase {
         "Sources/Features/PhotoDump/PhotoDumpView.swift": RoleCounts(circle: 2, pill: 1, bar: 2),
         "Sources/Features/GrowingUp/GrowingUpView.swift": RoleCounts(circle: 2, pill: 1, bar: 4),
         "Sources/Features/Reel/ReelView.swift": RoleCounts(circle: 2, pill: 1, bar: 4),
+        "Sources/Features/MapPoster/MapPosterView.swift": RoleCounts(circle: 2, pill: 1, bar: 2),
         "Sources/Features/SharedLinks/SharedLinkViewerView.swift": RoleCounts(circle: 1, pill: 1, bar: 0),
         "Sources/Features/Timeline/TimelineView.swift": RoleCounts(circle: 2, pill: 1, bar: 0),
         "Sources/Features/Timeline/TimelineScrubber.swift": RoleCounts(circle: 0, pill: 2, bar: 0),
@@ -173,7 +174,7 @@ final class FloatingControlStyleTests: XCTestCase {
             let expected = Self.expectedCounts[path]?.circle ?? 0
             XCTAssertEqual(actual.circle, expected, "\(path): .pvFloating(.circle) count")
         }
-        XCTAssertEqual(total, 35, "35 round buttons float over media in the app")
+        XCTAssertEqual(total, 37, "37 round buttons float over media in the app")
     }
 
     func test_AC_30_2_pillsAndBarsUseTheirStyle() throws {
@@ -187,8 +188,8 @@ final class FloatingControlStyleTests: XCTestCase {
             XCTAssertEqual(actual.pill, expected.pill, "\(path): .pvFloating(.pill) count")
             XCTAssertEqual(actual.bar, expected.bar, "\(path): .pvFloating(.bar) count")
         }
-        XCTAssertEqual(pills, 25)
-        XCTAssertEqual(bars, 21)
+        XCTAssertEqual(pills, 26)
+        XCTAssertEqual(bars, 23)
 
         let roadTrip = try Self.normalizedLines("Sources/Features/RoadTrip/RoadTripView.swift")
         XCTAssertFalse(roadTrip.contains { $0.text.contains(".black.opacity(0.5)") },
@@ -206,7 +207,7 @@ final class FloatingControlStyleTests: XCTestCase {
         let path = "Sources/Features/Search/MapView.swift"
         let text = try Self.normalizedLines(path).map(\.text).joined(separator: "\n")
         XCTAssertEqual(Self.matchCount(#"\.pvFloating\("#, in: text), 0, "\(path): no over-media glass on the map")
-        XCTAssertEqual(Self.matchCount(#"\.pvGlass\(\.circle\)"#, in: text), 2, "\(path): My Location and settings")
+        XCTAssertEqual(Self.matchCount(#"\.pvGlass\(\.circle\)"#, in: text), 3, "\(path): My Location, settings and the poster")
         XCTAssertEqual(Self.matchCount(#"\.pvGlass\(\.pill\)"#, in: text), 3, "\(path): loading capsule, filter badge, Explore preview label")
         XCTAssertEqual(Self.matchCount(#"\.pvGlass\(\.bar\)"#, in: text), 1, "\(path): empty-filter card")
     }
