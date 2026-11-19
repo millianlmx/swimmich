@@ -17,6 +17,43 @@ final class MapViewModelTests: XCTestCase {
         return (MapMarkerCache(accountID: "test-account", directory: dir), dir)
     }
 
+    // MARK: - Explore preview sample
+
+    private func photo(_ id: String, _ lat: Double, _ lon: Double) -> MapPhoto {
+        MapPhoto(from: makeMarker(id: id, lat: lat, lon: lon))
+    }
+
+    func test_previewSample_keepsASmallSetWhole() {
+        let photos = (0..<10).map { photo("p\($0)", Double($0), Double($0)) }
+        XCTAssertEqual(MapViewModel.previewSample(photos, limit: 80), photos)
+    }
+
+    /// A large library is cut down to the limit, and the sample still covers
+    /// every distant place: Paris' thousands of photos do not crowd out Tokyo.
+    func test_previewSample_capsAndSpreads() {
+        var photos: [MapPhoto] = []
+        for i in 0..<2_000 { photos.append(photo("paris\(i)", 48.85 + Double(i % 40) * 0.001, 2.35 + Double(i / 40) * 0.001)) }
+        photos.append(photo("tokyo", 35.68, 139.69))
+        photos.append(photo("nyc", 40.71, -74.0))
+        let sample = MapViewModel.previewSample(photos, limit: 80)
+        XCTAssertLessThanOrEqual(sample.count, 80)
+        XCTAssertGreaterThan(sample.count, 2)
+        XCTAssertTrue(sample.contains { $0.id == "tokyo" }, "a distant place must survive the sample")
+        XCTAssertTrue(sample.contains { $0.id == "nyc" }, "a distant place must survive the sample")
+        XCTAssertEqual(MapViewModel.previewSample(photos, limit: 80), sample, "the sample is deterministic")
+    }
+
+    func test_previewPins_followTheMarkers() async {
+        let mock = MockImmichClient()
+        mock.mapMarkersResponse = [makeMarker(id: "paris", lat: 48.8566, lon: 2.3522)]
+        let (cache, dir) = makeIsolatedCache()
+        defer { try? FileManager.default.removeItem(at: dir) }
+        let vm = MapViewModel(client: mock, cache: cache)
+        XCTAssertTrue(vm.previewPins.isEmpty)
+        await vm.loadMarkers()
+        XCTAssertEqual(vm.previewPins.map(\.id), ["paris"])
+    }
+
     // MARK: - Load (AC-710)
 
     func test_loadMarkers_success() async {

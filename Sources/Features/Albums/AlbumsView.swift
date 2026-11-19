@@ -16,7 +16,6 @@ struct AlbumsView: View {
     let library: LibraryDestinations
     @Environment(AuthViewModel.self) private var auth
     @Environment(\.openProfile) private var openProfile
-    @Environment(\.openSyncStatus) private var openSyncStatus
     @Environment(\.colorScheme) private var colorScheme
     @PVReduceMotion private var reduceMotion
     @State private var presentingCreate = false
@@ -43,10 +42,16 @@ struct AlbumsView: View {
             .navigationTitle("Albums")
             .navigationBarTitleDisplayMode(.large)
             .toolbar {
-                ToolbarItemGroup(placement: .topBarTrailing) {
-                    SyncStatusButton { openSyncStatus() }
-                    ProfileAvatarButton { openProfile() }
+                ToolbarItem(placement: .topBarLeading) {
+                    Button {
+                        presentingCreate = true
+                    } label: {
+                        Label("New Album", systemImage: "plus")
+                            .labelStyle(.iconOnly)
+                    }
+                    .accessibilityIdentifier("albumsToolbarCreateButton")
                 }
+                ProfileAvatarToolbarItem { openProfile() }
             }
             .task { await vm.load() }
             .refreshable { await vm.refresh() }

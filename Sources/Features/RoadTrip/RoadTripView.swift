@@ -1,24 +1,30 @@
 import SwiftUI
 
 /// Full-screen road-trip player + export surface. Plays the deterministic
-/// timeline (opening → slideshow → map leg → … → ending) driven by a single
-/// `TimelineView` clock; the same timeline seeds the video export.
+/// timeline (opening → slideshow → map leg → … → ending) on one clock
+/// (`RoadTripFilmClock`): the pictures through a `TimelineView`, the map legs
+/// through the live map's own display link. The same timeline seeds the video
+/// export.
 struct RoadTripView: View {
     @Bindable var vm: RoadTripViewModel
     @Environment(\.dismiss) private var dismiss
     @PVReduceMotion private var reduceMotion
 
-    @State private var startDate = Date()
+    /// When the film started playing: set when the player appears, i.e. once
+    /// the preparation is over (a clock started with the view counted the
+    /// preparation as film time). A reference shared with the live map, which
+    /// reads it at every display refresh.
+    @State private var clock = RoadTripFilmClock()
+    /// The opening's map is drawn (`RoadTripLiveMap.onReady`): the film plays.
+    @State private var filmReady = false
+    @State private var showingSettings = false
 
     var body: some View {
         ZStack {
             Color.black.ignoresSafeArea()
 
             if vm.isPreparing {
-                ProgressView("Preparing road trip…")
-                    .tint(.white)
-                    .foregroundStyle(.white)
-                    .accessibilityIdentifier("roadTripPreparing")
+                preparingView
             } else if let error = vm.errorMessage, vm.timeline == nil {
                 VStack(spacing: 16) {
                     Image(systemName: "car.fill")
@@ -33,23 +39,73 @@ struct RoadTripView: View {
                 .accessibilityElement(children: .combine)
                 .accessibilityIdentifier("roadTripError")
             } else if let timeline = vm.timeline {
-                SwiftUI.TimelineView(.animation(minimumInterval: 1.0 / 30.0)) { context in
-                    let elapsed = context.date.timeIntervalSince(startDate)
-                    content(timeline: timeline, elapsed: elapsed)
+                // The film's map, under the pictures: it drives itself from
+                // the clock (`RoadTripLiveMap`) and shows through during the
+                // opening, the legs and the ending — the photos are opaque.
+                RoadTripLiveMap(
+                    timeline: timeline,
+                    clock: clock,
+                    stops: vm.mapStops,
+                    photo: { index, position in
+                        slidePhoto(timeline: timeline, segmentIndex: index, position: position)
+                    },
+                    stopPhoto: { clusterID in vm.heroImage(forClusterID: clusterID) },
+                    legLabel: { travel in
+                        "\(vm.placeName(forClusterID: travel.fromClusterID)) → \(vm.placeName(forClusterID: travel.toClusterID))"
+                    },
+                    reduceMotion: reduceMotion,
+                    carColor: vm.settings.carColor,
+                    onReady: {
+                        // The clock starts on a drawn map: started with the
+                        // view, the opening played over grey tiles.
+                        guard clock.start == nil else { return }
+                        clock.start = Date()
+                        filmReady = true
+                    }
+                )
+                .ignoresSafeArea()
+
+                if filmReady {
+                    // At the display's pace, like the map under it: at 30 Hz
+                    // the photos and the counter stepped against the map.
+                    SwiftUI.TimelineView(.animation(minimumInterval: 1.0 / 60.0)) { context in
+                        content(timeline: timeline, elapsed: clock.elapsed(at: context.date))
+                    }
+                    .accessibilityElement(children: .contain)
+                    .accessibilityIdentifier("roadTripPlayer")
+                } else {
+                    preparingView
                 }
-                .accessibilityElement(children: .contain)
-                .accessibilityIdentifier("roadTripPlayer")
             }
 
             chrome
         }
         .statusBarHidden(true)
         .task { await vm.prepare() }
-        .onDisappear { vm.cancelExport() }
-        .alert("Video saved", isPresented: doneAlertBinding) {
-            Button("OK", role: .cancel) { vm.dismissExportResult() }
-        } message: {
-            Text("The road trip was added to your photo library.")
+        .onDisappear {
+            vm.cancelExport()
+            vm.discardExportedVideo()
+        }
+        .sheet(isPresented: $showingSettings) {
+            RoadTripSettingsSheet(
+                settings: vm.settings,
+                stops: vm.editableStops,
+                placeName: { stop in
+                    if let name = stop.placeName, !name.isEmpty { return name }
+                    let index = vm.editableStops.firstIndex { $0.id == stop.id } ?? 0
+                    return String(localized: "Stop \(index + 1)")
+                },
+                inFilm: vm.shownAssetIDs,
+                thumbnailURL: { asset in vm.thumbnailURL(for: asset) },
+                token: vm.token,
+                onApply: { settings in
+                    guard settings != vm.settings else { return }
+                    // The rebuilt film starts over, on its newly drawn map.
+                    clock.start = nil
+                    filmReady = false
+                    Task { await vm.apply(settings) }
+                }
+            )
         }
         .alert("Export failed", isPresented: failedAlertBinding) {
             Button("OK", role: .cancel) { vm.dismissExportResult() }
@@ -60,27 +116,40 @@ struct RoadTripView: View {
         }
     }
 
-    // MARK: - Segment content
-
-    /// Photo used by the travel transitions: `.next` = the FIRST photo of the
-    /// destination stop's slideshow (arrival dive), `.previous` = the LAST
-    /// photo of the outgoing stop's slideshow (fade-out over the map).
-    private func neighborPhotoURL(timeline: RoadTripTimeline, segmentIndex: Int, edge: Edge) -> URL? {
-        let neighbor = edge == .next ? segmentIndex + 1 : segmentIndex - 1
-        guard timeline.segments.indices.contains(neighbor),
-              case .slideshow(let slideshow) = timeline.segments[neighbor],
-              let cluster = vm.cluster(by: slideshow.clusterID),
-              let position = edge == .next ? slideshow.assetIndices.first : slideshow.assetIndices.last,
-              cluster.assets.indices.contains(position) else { return nil }
-        let asset = cluster.assets[position]
-        return ImmichAssetURL.thumbnail(
-            assetId: asset.id, thumbhash: asset.thumbhash ?? "", baseURL: vm.baseURL, size: .preview
-        )
+    private var preparingView: some View {
+        ZStack {
+            Color.black.ignoresSafeArea()
+            ProgressView("Preparing road trip…")
+                .tint(.white)
+                .foregroundStyle(.white)
+                .accessibilityIdentifier("roadTripPreparing")
+        }
     }
 
-    private enum Edge {
-        case next
-        case previous
+    // MARK: - Segment content
+
+    /// The decoded photo the map's transitions show: the one at `position`
+    /// in the slideshow segment at `segmentIndex` (its first frame's photos
+    /// for the arrival dive into it, its last frame's fading out over the next
+    /// leg — `RoadTripSlideTiming.edgeTiles`).
+    private func slidePhoto(timeline: RoadTripTimeline, segmentIndex: Int, position: Int) -> UIImage? {
+        guard timeline.segments.indices.contains(segmentIndex),
+              case .slideshow(let slideshow) = timeline.segments[segmentIndex],
+              let cluster = vm.cluster(by: slideshow.clusterID),
+              slideshow.assetIndices.indices.contains(position),
+              cluster.assets.indices.contains(slideshow.assetIndices[position]) else { return nil }
+        return vm.slideImage(for: cluster.assets[slideshow.assetIndices[position]])
+    }
+
+    /// The decoded preview of `asset` (loaded by the preparation) and, should
+    /// it be missing, the URL to load it from.
+    private func photoSource(_ asset: AssetReactItem) -> RoadTripPhotoSource {
+        RoadTripPhotoSource(
+            image: vm.slideImage(for: asset),
+            url: ImmichAssetURL.thumbnail(
+                assetId: asset.id, thumbhash: asset.thumbhash ?? "", baseURL: vm.baseURL, size: .preview
+            )
+        )
     }
 
     @ViewBuilder
@@ -92,26 +161,31 @@ struct RoadTripView: View {
 
         ZStack(alignment: .bottom) {
             switch segment {
-            case .opening:
-                openingView
+            case .opening(let duration):
+                openingView(progress: local / max(duration, 0.001))
             case .slideshow(let slideshow):
                 if let cluster = vm.cluster(by: slideshow.clusterID) {
                     slideshowView(slideshow: slideshow, cluster: cluster, localTime: local)
                 }
             case .travel(let travel):
-                RoadTripMapSegment(
-                    travel: travel,
-                    localTime: local,
-                    token: vm.token,
-                    divePhotoURL: neighborPhotoURL(timeline: timeline, segmentIndex: segmentIndex, edge: .next),
-                    outgoingPhotoURL: neighborPhotoURL(timeline: timeline, segmentIndex: segmentIndex, edge: .previous)
-                )
-            case .ending:
-                endingView
+                // The live map underneath shows through, the road counter
+                // ticking over it until the arrival dive.
+                distanceCounter(meters: timeline.drivenMeters(at: clamped))
+                    .opacity(overlayAlpha(travel: travel, localTime: local))
+            case .ending(let duration):
+                endingView(progress: local / max(duration, 0.001))
             }
 
             if timeline.totalDuration > 0 {
-                bottomProgress(segment: segment, fraction: clamped / timeline.totalDuration)
+                bottomProgress(
+                    segment: segment,
+                    fraction: clamped / timeline.totalDuration,
+                    finished: elapsed >= timeline.totalDuration,
+                    labelOpacity: {
+                        if case .travel(let travel) = segment { return overlayAlpha(travel: travel, localTime: local) }
+                        return 1
+                    }()
+                )
             }
         }
     }
@@ -120,13 +194,64 @@ struct RoadTripView: View {
     private func slideshowView(slideshow: RoadTripTimeline.Slideshow, cluster: RoadTripCluster, localTime: TimeInterval) -> some View {
         let frame = RoadTripSlideTiming.frame(slideshow: slideshow, localTime: localTime, reduceMotion: reduceMotion)
         ZStack {
-            Color.black
-            slideImage(position: frame.currentIndex, transform: frame.currentTransform, slideshow: slideshow, cluster: cluster)
+            // Edge to edge: the live map lies underneath.
+            Color.black.ignoresSafeArea()
+            slide(frame.currentIndex, transform: frame.currentTransform, slideshow: slideshow, cluster: cluster, localTime: localTime)
             if frame.crossfade > 0, let next = frame.nextIndex {
-                slideImage(position: next, transform: frame.nextTransform ?? .identity, slideshow: slideshow, cluster: cluster)
+                slide(next, transform: frame.nextTransform ?? .identity, slideshow: slideshow, cluster: cluster, localTime: localTime)
                     .opacity(frame.crossfade)
             }
         }
+    }
+
+    /// Slide `slide` of the slideshow: its photo, or the stop's collage.
+    @ViewBuilder
+    private func slide(
+        _ slide: Int,
+        transform: KenBurnsTransform,
+        slideshow: RoadTripTimeline.Slideshow,
+        cluster: RoadTripCluster,
+        localTime: TimeInterval
+    ) -> some View {
+        if slideshow.isCollage(slide: slide) {
+            collageView(slideshow: slideshow, cluster: cluster, localTime: localTime)
+        } else {
+            slideImage(position: slideshow.positions(ofSlide: slide).lowerBound, transform: transform, slideshow: slideshow, cluster: cluster)
+        }
+    }
+
+    /// The stop's photos on one screen, each pushing in slowly — the export
+    /// draws the same tiles (`RoadTripCollage.drawnTiles`).
+    private func collageView(slideshow: RoadTripTimeline.Slideshow, cluster: RoadTripCluster, localTime: TimeInterval) -> some View {
+        GeometryReader { proxy in
+            let tiles = RoadTripCollage.drawnTiles(
+                slideshow: slideshow, localTime: localTime, canvas: proxy.size, reduceMotion: reduceMotion
+            )
+            let border = proxy.size.width * RoadTripCollage.frameBorder
+            ZStack(alignment: .topLeading) {
+                ForEach(tiles, id: \.position) { tile in
+                    if slideshow.assetIndices.indices.contains(tile.position),
+                       cluster.assets.indices.contains(slideshow.assetIndices[tile.position]) {
+                        let asset = cluster.assets[slideshow.assetIndices[tile.position]]
+                        RoadTripPhoto(source: photoSource(asset), token: vm.token)
+                            .frame(width: tile.rect.width, height: tile.rect.height)
+                            .scaleEffect(tile.zoom)
+                            .clipped()
+                            .padding(tile.framed ? border : 0)
+                            .background(tile.framed ? Color.white : Color.clear)
+                            .rotationEffect(.radians(tile.rotation))
+                            .position(x: tile.rect.midX, y: tile.rect.midY)
+                            .opacity(tile.alpha)
+                            // Each photo of the collage reads as a slide of its own.
+                            .accessibilityElement(children: .ignore)
+                            .accessibilityIdentifier("roadTripSlide_\(asset.id)")
+                    }
+                }
+            }
+            .frame(width: proxy.size.width, height: proxy.size.height, alignment: .topLeading)
+        }
+        .ignoresSafeArea()
+        .accessibilityElement(children: .contain)
     }
 
     @ViewBuilder
@@ -135,16 +260,15 @@ struct RoadTripView: View {
            cluster.assets.indices.contains(slideshow.assetIndices[position]) {
             let asset = cluster.assets[slideshow.assetIndices[position]]
             GeometryReader { proxy in
-                AuthenticatedAsyncImage(
-                    url: ImmichAssetURL.thumbnail(assetId: asset.id, thumbhash: asset.thumbhash ?? "", baseURL: vm.baseURL, size: .preview),
-                    token: vm.token,
-                    contentMode: .fill
-                )
-                .frame(width: proxy.size.width, height: proxy.size.height)
-                .scaleEffect(transform.scale)
-                .offset(x: transform.offsetX * proxy.size.width, y: transform.offsetY * proxy.size.height)
-                .clipped()
+                RoadTripPhoto(source: photoSource(asset), token: vm.token)
+                    .frame(width: proxy.size.width, height: proxy.size.height)
+                    .scaleEffect(transform.scale)
+                    .offset(x: transform.offsetX * proxy.size.width, y: transform.offsetY * proxy.size.height)
+                    .clipped()
             }
+            // Edge to edge, like the exported video: no band of map or black
+            // above the photo.
+            .ignoresSafeArea()
             .accessibilityElement(children: .ignore)
             .accessibilityIdentifier("roadTripSlide_\(asset.id)")
         } else {
@@ -152,74 +276,155 @@ struct RoadTripView: View {
         }
     }
 
-    private var openingView: some View {
-        ZStack {
-            Color.black
-            VStack(spacing: 24) {
-                Spacer()
+    /// The hook: the album's title over the whole trip on the map (pushing
+    /// in underneath), or over black when nothing is located.
+    private func openingView(progress: Double) -> some View {
+        let appear = RoadTripAerialCamera.easeOut(min(progress / 0.25, 1))
+        return ZStack(alignment: .top) {
+            if vm.mapStops.isEmpty {
+                Color.black.ignoresSafeArea()
+            } else {
+                titleScrim
+            }
+            VStack(spacing: 12) {
                 Text("Road Trip")
                     .font(.pvCaption.weight(.semibold))
                     .tracking(3)
-                    .foregroundStyle(.white.opacity(0.7))
+                    .foregroundStyle(.white.opacity(0.8))
                 Text(vm.albumTitle)
                     .font(.pvH2)
                     .foregroundStyle(.white)
                     .multilineTextAlignment(.center)
                 Text(openingSubtitle)
-                    .font(.pvSubhead)
-                    .foregroundStyle(.white.opacity(0.85))
-                Spacer()
+                    .font(.pvSubhead.weight(.semibold))
+                    .foregroundStyle(.white.opacity(0.9))
+                    .multilineTextAlignment(.center)
             }
-            .padding(48)
+            .shadow(color: .black.opacity(0.55), radius: 6, y: 2)
+            .padding(.horizontal, 32)
+            .padding(.top, 96)
+            .scaleEffect(0.9 + 0.1 * appear)
+            .opacity(appear)
+            .accessibilityElement(children: .combine)
         }
     }
 
+    /// "8 photos · 8 places · 142 km".
     private var openingSubtitle: String {
-        let photoCount = vm.clusters.reduce(0) { $0 + $1.assets.count }
+        let photoCount = vm.timeline?.photoCount ?? 0
         let placeCount = vm.clusters.count
-        return String(localized: "\(photoCount) photos · \(placeCount) places")
+        let counts = String(localized: "\(photoCount) photos · \(placeCount) places")
+        guard let meters = vm.timeline?.totalDrivenMeters, meters > 0 else { return counts }
+        return counts + " · " + RoadTripTimeline.distanceText(meters: meters)
     }
 
-    private var endingView: some View {
+    /// The finale: the whole route drawn on the map, a photo popping on every
+    /// stop, the title and the trip's numbers over it.
+    private func endingView(progress: Double) -> some View {
         let places = RoadTripTimeline.dedupedPlaceNames(vm.clusters.indices.map { vm.placeName(forClusterIndex: $0) })
-        return ZStack {
-            LinearGradient(
-                colors: [Color(red: 0.11, green: 0.07, blue: 0.05), Color.black],
-                startPoint: .top,
-                endPoint: .bottom
-            )
-            VStack(spacing: 16) {
-                Spacer()
+        let appear = RoadTripAerialCamera.easeOut(min(progress / 0.2, 1))
+        return ZStack(alignment: .top) {
+            if vm.mapStops.isEmpty {
+                LinearGradient(
+                    colors: [Color(red: 0.11, green: 0.07, blue: 0.05), Color.black],
+                    startPoint: .top,
+                    endPoint: .bottom
+                )
+                .ignoresSafeArea()
+            } else {
+                titleScrim
+            }
+            VStack(spacing: 10) {
                 Text("Road Trip")
                     .font(.pvCaption.weight(.semibold))
                     .tracking(3)
-                    .foregroundStyle(Color(red: 1, green: 0.82, blue: 0.62).opacity(0.9))
+                    .foregroundStyle(Color(red: 1, green: 0.82, blue: 0.62))
                 Text(vm.albumTitle)
                     .font(.pvH3)
                     .foregroundStyle(.white)
                     .multilineTextAlignment(.center)
-                VStack(spacing: 10) {
-                    ForEach(Array(places.enumerated()), id: \.offset) { index, place in
-                        Text(place)
-                            .font(.pvSubhead)
-                            .foregroundStyle(.white.opacity(0.85))
+                Text(openingSubtitle)
+                    .font(.pvSubhead.weight(.semibold))
+                    .foregroundStyle(.white.opacity(0.9))
+                    .multilineTextAlignment(.center)
+                if vm.mapStops.isEmpty {
+                    VStack(spacing: 10) {
+                        ForEach(Array(places.enumerated()), id: \.offset) { _, place in
+                            Text(place)
+                                .font(.pvSubhead)
+                                .foregroundStyle(.white.opacity(0.85))
+                        }
                     }
+                    .padding(.top, 8)
                 }
-                Spacer()
             }
-            .padding(48)
+            .shadow(color: .black.opacity(0.55), radius: 6, y: 2)
+            .padding(.horizontal, 32)
+            .padding(.top, 84)
+            .opacity(appear)
+            .accessibilityElement(children: .combine)
         }
     }
 
-    private func bottomProgress(segment: RoadTripTimeline.Segment, fraction: Double) -> some View {
+    /// Darkens the top of the map under a title.
+    private var titleScrim: some View {
+        LinearGradient(
+            colors: [Color.black.opacity(0.75), Color.black.opacity(0.35), Color.black.opacity(0)],
+            startPoint: .top,
+            endPoint: .center
+        )
+        .ignoresSafeArea()
+        .allowsHitTesting(false)
+    }
+
+    /// The road driven so far, ticking up over the map while the car drives.
+    private func distanceCounter(meters: Double) -> some View {
+        VStack {
+            HStack(spacing: 8) {
+                Image(systemName: "car.fill")
+                    .font(.system(size: 22, weight: .bold))
+                Text(verbatim: RoadTripTimeline.distanceText(meters: meters))
+                    .font(.system(size: 34, weight: .heavy, design: .rounded))
+                    .monospacedDigit()
+            }
+            .foregroundStyle(.white)
+            .shadow(color: .black.opacity(0.6), radius: 6, y: 2)
+            .padding(.top, 72)
+            .accessibilityHidden(true)
+            Spacer()
+        }
+        .frame(maxWidth: .infinity)
+    }
+
+    /// The counter and the leg's pill fade out as the arrival dive's photo
+    /// grows (as in the export): it is drawn on the map, under them.
+    private func overlayAlpha(travel: RoadTripTimeline.Travel, localTime: TimeInterval) -> Double {
+        RoadTripSegue.overlayAlpha(RoadTripSegue.diveProgress(localTime: localTime, legDuration: travel.duration))
+    }
+
+    private func bottomProgress(segment: RoadTripTimeline.Segment, fraction: Double, finished: Bool, labelOpacity: Double) -> some View {
         VStack(spacing: 12) {
-            if let label = placeLabel(segment) {
+            if finished {
+                Button {
+                    clock.start = Date()
+                } label: {
+                    Label("Replay", systemImage: "arrow.counterclockwise")
+                        .font(.pvCaption.weight(.semibold))
+                        .foregroundStyle(.white)
+                        .padding(.horizontal, 16)
+                        .padding(.vertical, 10)
+                        .pvFloating(.pill)
+                }
+                .buttonStyle(.plain)
+                .accessibilityIdentifier("roadTripReplayButton")
+            } else if let label = placeLabel(segment) {
                 Text(label)
                     .font(.pvCaption.weight(.semibold))
                     .foregroundStyle(.white)
                     .padding(.horizontal, 14)
                     .padding(.vertical, 8)
                     .pvFloating(.pill)
+                    .opacity(labelOpacity)
             }
             GeometryReader { geo in
                 ZStack(alignment: .leading) {
@@ -251,6 +456,7 @@ struct RoadTripView: View {
             topBar
             Spacer()
             if vm.isExporting { exportOverlay }
+            if vm.exportState == .done { savedOverlay }
         }
     }
 
@@ -281,6 +487,21 @@ struct RoadTripView: View {
                 .pvFloating(.pill)
 
             Spacer()
+
+            Button {
+                showingSettings = true
+            } label: {
+                Image(systemName: "slider.horizontal.3")
+                    .font(.pvHeadline)
+                    .foregroundStyle(.white)
+                    .frame(width: 44, height: 44)
+                    .contentShape(Rectangle())
+                    .pvFloating(.circle)
+            }
+            .buttonStyle(.plain)
+            .disabled(vm.isExporting || vm.isPreparing || vm.editableStops.isEmpty)
+            .accessibilityLabel("Road trip settings")
+            .accessibilityIdentifier("roadTripSettingsButton")
 
             Button {
                 vm.startExport(reduceMotion: reduceMotion)
@@ -328,14 +549,74 @@ struct RoadTripView: View {
         }
     }
 
-    // MARK: - Alerts
-
-    private var doneAlertBinding: Binding<Bool> {
-        Binding(get: { vm.exportState == .done }, set: { if !$0 { vm.dismissExportResult() } })
+    /// The film is in the photo library: share it straight away (Instagram,
+    /// TikTok, Messages…).
+    private var savedOverlay: some View {
+        VStack(spacing: 14) {
+            Label("Video saved", systemImage: "checkmark.circle.fill")
+                .font(.pvHeadline)
+                .foregroundStyle(.white)
+            Text("The road trip was added to your photo library.")
+                .font(.pvCaption)
+                .foregroundStyle(PVFloating.secondaryContent)
+                .multilineTextAlignment(.center)
+            HStack(spacing: 12) {
+                if let url = vm.exportedVideoURL {
+                    ShareLink(item: url) {
+                        Label("Share", systemImage: "square.and.arrow.up")
+                            .font(.pvSubhead.weight(.semibold))
+                            .foregroundStyle(.black)
+                            .padding(.horizontal, 18)
+                            .padding(.vertical, 10)
+                            .background(Capsule().fill(Color.white))
+                    }
+                    .accessibilityIdentifier("roadTripShareButton")
+                }
+                Button("OK") { vm.dismissExportResult() }
+                    .font(.pvSubhead.weight(.semibold))
+                    .foregroundStyle(.white)
+                    .padding(.horizontal, 18)
+                    .padding(.vertical, 10)
+                    .accessibilityIdentifier("roadTripSavedOKButton")
+            }
+        }
+        .padding(24)
+        .pvFloating(.bar)
+        .padding(.horizontal, 24)
+        .padding(.bottom, 60)
+        .accessibilityIdentifier("roadTripSaved")
     }
+
+    // MARK: - Alerts
 
     private var failedAlertBinding: Binding<Bool> {
         Binding(get: { if case .failed = vm.exportState { return true } else { return false } },
                 set: { if !$0 { vm.dismissExportResult() } })
+    }
+}
+
+/// A photo of the film: its decoded preview when the preparation loaded it,
+/// otherwise the URL to load it from.
+struct RoadTripPhotoSource {
+    let image: UIImage?
+    let url: URL
+}
+
+/// Draws a road-trip photo aspect-filled. The preloaded image is drawn on the
+/// very frame it is needed — no placeholder, no fade-in — which is what keeps
+/// the cuts, crossfades and arrival dives clean; the asynchronous loader is
+/// only the fallback for a photo the preparation did not hold.
+struct RoadTripPhoto: View {
+    let source: RoadTripPhotoSource
+    let token: String?
+
+    var body: some View {
+        if let image = source.image {
+            Image(uiImage: image)
+                .resizable()
+                .aspectRatio(contentMode: .fill)
+        } else {
+            AuthenticatedAsyncImage(url: source.url, token: token, contentMode: .fill)
+        }
     }
 }

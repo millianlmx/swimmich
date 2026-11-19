@@ -20,7 +20,7 @@ ROOT = Path(__file__).resolve().parent.parent
 FAKE_TOOLS = ("security", "openssl", "base64", "codesign", "xcodegen", "xcodebuild", "xcrun")
 KEY_MATERIAL = "BEGIN " + "PRIVATE KEY"
 README_LANGS = {
-    "README.md": {
+    "docs/TECHNICAL.md": {
         "toc_title": "Contributing",
         "subs": ["Prerequisites", "Secrets", "Publishing a release", "After the upload"],
         "ci": "### CI and signed IPA",
@@ -33,7 +33,7 @@ README_LANGS = {
                                  "review", "manual"],
         },
     },
-    "README.fr.md": {
+    "docs/TECHNICAL.fr.md": {
         "toc_title": "Contribuer",
         "subs": ["Préalables", "Secrets", "Publier une release", "Après l'envoi"],
         "ci": "### CI et IPA signé",
@@ -426,7 +426,7 @@ class TestRepository(unittest.TestCase):
         self.assertEqual(hits.stdout.split(), [])
 
     def test_AC_2_no_nothing_is_uploaded_claim(self):
-        for name in ("README.md", "README.fr.md", ".github/workflows/ci.yml"):
+        for name in ("README.md", "README.fr.md", "docs/TECHNICAL.md", "docs/TECHNICAL.fr.md", ".github/workflows/ci.yml"):
             text = read(name)
             self.assertNotIn("Nothing is uploaded", text, name)
             self.assertNotIn("Rien n'est envoyé", text, name)
@@ -533,12 +533,13 @@ class TestReadmes(unittest.TestCase):
                     path, _, anchor = target.partition("#")
                     with self.subTest(name=name, target=target):
                         if path:
-                            self.assertTrue((ROOT / path).exists())
+                            # Relative to the document, as GitHub resolves it.
+                            self.assertTrue(((ROOT / name).parent / path).exists())
                         else:
                             self.assertIn(anchor, slugs)
 
     def test_AC_4_release_section_english_only(self):
-        text = release_section("README.md") + ci_section("README.md")
+        text = release_section("docs/TECHNICAL.md") + ci_section("docs/TECHNICAL.md")
         self.assertIsNone(re.search(r"préalables|publier|après|envoi|contenu|obtenir|rôle", text, re.I))
         self.assertIsNone(re.search(r"\b\d+ (unit )?tests\b", text))
 
@@ -546,7 +547,7 @@ class TestReadmes(unittest.TestCase):
         def outline(name):
             return [(h[0], h[1]) for h in headings(release_section(name))]
 
-        en, fr = outline("README.md"), outline("README.fr.md")
+        en, fr = outline("docs/TECHNICAL.md"), outline("docs/TECHNICAL.fr.md")
         self.assertEqual([lvl for lvl, _ in en], [lvl for lvl, _ in fr])
         self.assertEqual(en[0], fr[0])
         self.assertEqual(en[2], fr[2])

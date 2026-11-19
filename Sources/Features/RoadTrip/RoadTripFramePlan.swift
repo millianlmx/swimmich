@@ -28,9 +28,9 @@ struct RoadTripLeg: Equatable, Sendable {
 
 /// The fully-resolved, deterministic show plan. Both the live player and the
 /// export renderer consume the same timeline — same seeds, same durations,
-/// same transforms — so positions and motion match. (Travel legs: the player
-/// renders real 3D MapKit; the export simulates the same chase perspective
-/// from 2D snapshots via `RoadTripDriveCamera`.)
+/// same transforms — so positions and motion match. (Map shots: the player
+/// moves a live MapKit view, the export crops satellite snapshots, both
+/// through `RoadTripAerialCamera`.)
 struct RoadTripTimeline: Equatable, Sendable {
 
     struct Slideshow: Equatable, Sendable {
@@ -43,6 +43,11 @@ struct RoadTripTimeline: Equatable, Sendable {
         let recipeOffset: Int
         /// Arc energy 0…1 at this cluster (drives pacing + Ken Burns speed).
         let energy: Double
+        /// The stop's opening slide as a collage: one tile per photo, for the
+        /// first `collage.count` entries of `assetIndices`. Empty (or a single
+        /// tile): the stop opens on one photo. `photoDurations` then holds one
+        /// duration per SLIDE — the collage is slide 0.
+        var collage: [RoadTripCollage.Tile] = []
     }
 
     struct Travel: Equatable, Sendable {
@@ -115,33 +120,156 @@ struct RoadTripTimeline: Equatable, Sendable {
     }
 }
 
+extension RoadTripTimeline.Slideshow {
+
+    /// Photos the opening slide shows together (1: a single photo).
+    var collageCount: Int { collage.count > 1 ? collage.count : 1 }
+
+    /// Whether `slide` is the collage.
+    func isCollage(slide: Int) -> Bool { slide == 0 && collageCount > 1 }
+
+    /// The `assetIndices` positions slide `slide` shows: the collage's photos
+    /// for slide 0, one photo for every other slide.
+    func positions(ofSlide slide: Int) -> Range<Int> {
+        guard slide > 0 else { return 0..<min(collageCount, assetIndices.count) }
+        let position = slide + collageCount - 1
+        return position..<(position + 1)
+    }
+}
+
+extension RoadTripTimeline {
+
+    /// The road length of a leg: its route's arc (a winding road is longer
+    /// than its chord), the straight distance when it has no route.
+    static func arcMeters(_ travel: Travel) -> Double {
+        guard travel.route.count >= 2 else { return travel.distanceMeters }
+        return RoadTripTravelTiming.cumulativeLengths(travel.route).last ?? travel.distanceMeters
+    }
+
+    /// Photos the film shows (a stop's photos are a pick among its own).
+    var photoCount: Int {
+        segments.reduce(0) { total, segment in
+            if case .slideshow(let slideshow) = segment { return total + slideshow.assetIndices.count }
+            return total
+        }
+    }
+
+    /// The whole trip's road length.
+    var totalDrivenMeters: Double {
+        segments.reduce(0) { total, segment in
+            if case .travel(let travel) = segment { return total + Self.arcMeters(travel) }
+            return total
+        }
+    }
+
+    /// Road driven by film time `t`: every leg before, and the leg being
+    /// driven up to the car — the counter that ticks up over the map.
+    func drivenMeters(at t: TimeInterval) -> Double {
+        guard !segments.isEmpty else { return 0 }
+        guard t < totalDuration else { return totalDrivenMeters }
+        let (index, local) = localTime(at: max(t, 0))
+        var meters = 0.0
+        for (i, segment) in segments.enumerated() where i <= index {
+            guard case .travel(let travel) = segment else { continue }
+            if i < index {
+                meters += Self.arcMeters(travel)
+            } else {
+                let frame = RoadTripTravelTiming.frame(travel: travel, localTime: local)
+                meters += Self.arcMeters(travel) * min(max(frame.routeDrawnFraction, 0), 1)
+            }
+        }
+        return meters
+    }
+
+    /// "142 km" (miles where the road signs are in miles), one decimal under 10.
+    static func distanceText(meters: Double, locale: Locale = .current) -> String {
+        let unit: UnitLength = locale.measurementSystem == .metric ? .kilometers : .miles
+        let value = Measurement(value: max(meters, 0), unit: UnitLength.meters).converted(to: unit).value
+        return Measurement(value: value, unit: unit).formatted(
+            .measurement(
+                width: .abbreviated,
+                usage: .asProvided,
+                numberFormatStyle: .number.precision(.fractionLength(value < 10 ? 1 : 0))
+            )
+            .locale(locale)
+        )
+    }
+}
+
 // MARK: - Builder + pacing
 
 /// Builds the timeline from clusters + legs — the "best of the trip" film.
 ///
-/// Structure: a deterministic energy arc across the trip (build-up → climax →
-/// resolution) drives photo durations (on a rhythm grid), travel pacing and
-/// Ken Burns speed. A global budget keeps the film at the social-media target
-/// (~78 s max), the best photos are picked first (favorites weighted, quality
-/// scored), and every duration stays quantized so the cuts land on a steady
-/// tempo even without music.
+/// Cut for the vertical travel videos people share (Reels, TikTok, Shorts): a
+/// map hook in the first two seconds, then a quick beat — every cut lands on a
+/// 120 BPM grid (`beat`), a stop opens on its hero photo held three beats and
+/// the others hold two, and a leg is a short burst of map (2–3.5 s, longer for
+/// a longer road) where the trip's line draws itself behind the car. A global
+/// budget keeps the film around `targetDuration`; the best photos are picked
+/// first (favorites weighted, quality scored).
 enum RoadTripTimelineBuilder {
 
-    static let openingDuration: TimeInterval = 2.5
-    static let endingDuration: TimeInterval = 3.5
-    /// Hard duration target: budgets shrink toward it (social-media friendly).
-    /// Raised from 78 s to fund slower, readable travel legs.
-    static let targetDuration: TimeInterval = 90
-    /// Rhythm grid — photo durations are multiples of this unit.
-    static let gridUnit: TimeInterval = 1.3
+    /// The tempo every duration snaps to: one beat at 120 BPM, so a trending
+    /// sound laid over the export in Instagram or TikTok falls on the cuts.
+    static let beat: TimeInterval = 0.5
+    /// The hook: the whole trip on the map under its title.
+    static let openingDuration: TimeInterval = 4 * beat
+    /// The finale: the whole route drawn, a photo on every stop.
+    static let endingDuration: TimeInterval = 8 * beat
+    /// Soft duration target the photo budget shrinks toward.
+    static let targetDuration: TimeInterval = 40
+    /// A stop opens on its hero photo, held this long…
+    static let heroPhotoDuration: TimeInterval = 3 * beat
+    /// …and its other photos cut on every second beat.
+    static let photoDuration: TimeInterval = 2 * beat
     static let maxPhotosPerCluster: Int = 6
     /// Desired photo count across the whole trip (duration is the hard cap).
-    /// Trimmed from 18 so the slower travel legs still fit the budget.
     static let desiredTotalPhotos = 14
-    static let crossfadeDuration: TimeInterval = 0.4
-    /// Photo duration multipliers (grid units) at peak / lowest energy.
-    static let maxMultiplier = 3.0
-    static let minMultiplier = 1.0
+    /// A quick dissolve between two photos of a stop: reads as a cut.
+    static let crossfadeDuration: TimeInterval = 0.15
+    /// Bounds of a leg's duration.
+    static let minTravelDuration: TimeInterval = 4 * beat
+    static let maxTravelDuration: TimeInterval = 7 * beat
+    /// A stop's best photo must score this much for the stop to open on a
+    /// collage (pinned photos and favorites always qualify)…
+    static let collageFloor = 0.35
+    /// …and its other photos join from this fraction of the best one's score:
+    /// a bar relative to the stop, since an album's scores sit wherever its
+    /// photos do (a fixed 0.55 left most stops without a second photo).
+    static let collageRelativeScore = 0.8
+    /// "As many collages as possible": any photo from this score up joins.
+    static let collageMaxModeFloor = 0.2
+    static let maxCollageTiles = 4
+    /// Collages may push the film this far past its target length: each tile
+    /// costs a beat, and a trip of many stops still gets them…
+    static let collageAllowance: TimeInterval = 5
+    /// …and this far in "as many collages as possible".
+    static let collageMaxModeAllowance: TimeInterval = 15
+    /// Two photos taken closer than this are one burst: a collage keeps one.
+    static let burstGap: TimeInterval = 20
+
+    /// How a stop may open on several photos at once.
+    enum CollageMode: String, Codable, CaseIterable, Sendable {
+        /// Never: one photo per slide.
+        case off
+        /// When the stop has several good, distinct photos.
+        case auto
+        /// Whenever the stop has several usable photos.
+        case max
+    }
+
+    /// What the person chose for their film (`RoadTripSettings`); the
+    /// defaults are the automatic film.
+    struct Options: Equatable, Sendable {
+        /// Soft length the photo budget shrinks toward.
+        var targetDuration: TimeInterval = RoadTripTimelineBuilder.targetDuration
+        var collages: CollageMode = .auto
+        /// Photos a stop shows at most, collage tiles included.
+        var maxPhotosPerStop: Int = RoadTripTimelineBuilder.maxPhotosPerCluster
+        /// Asset ids that must be in the film: ranked first at their stop,
+        /// shown whatever their score.
+        var pinned: Set<String> = []
+    }
 
     /// Energy arc across the cluster sequence: 0.35 → 1 (middle) → 0.35.
     static func energy(at index: Int, count: Int) -> Double {
@@ -150,25 +278,29 @@ enum RoadTripTimelineBuilder {
         return 0.35 + 0.65 * sin(.pi * x)
     }
 
-    /// Travel duration from the leg's ARC length + energy. The old formula
-    /// paced a 6 km leg at 2.5 s (2.4 km/s) — hairpins crossed in 1–2 frames,
-    /// which is what made winding roads strobe. Now: ~1.2 km/s, 4–9 s per
-    /// leg, so any corner receives ≥ 3 frames. Winding legs use their arc
-    /// (≫ chord), not the straight-line distance.
+    /// A leg's duration from its road's ARC length: logarithmic, so a 2 km hop
+    /// and a 200 km drive both stay a short burst of map (2–3.5 s), a little
+    /// shorter at the trip's climax, snapped to the beat.
     static func travelDuration(arcMeters: Double, energy: Double) -> TimeInterval {
-        let base = min(max(arcMeters / 1_200.0, 4.0), 9.0)
-        return max(3.5, base * (1.0 - 0.15 * energy))
+        let km = max(arcMeters, 0) / 1_000
+        let raw = (1.5 + 0.6 * log2(1 + km / 5)) * (1.0 - 0.15 * min(max(energy, 0), 1))
+        let snapped = (raw / beat).rounded() * beat
+        return min(max(snapped, minTravelDuration), maxTravelDuration)
     }
 
-    /// Photo duration multiplier (grid units) at the given energy.
-    static func photoMultiplier(energy: Double) -> Double {
-        maxMultiplier - (maxMultiplier - minMultiplier) * min(max(energy, 0), 1)
-    }
-
+    /// - Parameters:
+    ///   - scores: quality per asset id (0…1). Without them the photos keep
+    ///     their order and no stop opens on a collage.
+    ///   - aspects: width / height per asset id, for the collage layouts
+    ///     (missing: the EXIF size, else a 3:4 portrait).
+    ///   - options: the person's choices (length, collages, photos per stop,
+    ///     pinned photos).
     static func build(
         clusters: [RoadTripCluster],
         legs: [RoadTripLeg],
-        scores: [String: Double]? = nil
+        scores: [String: Double]? = nil,
+        aspects: [String: Double]? = nil,
+        options: Options = Options()
     ) -> RoadTripTimeline? {
         guard !clusters.isEmpty, clusters.allSatisfy({ !$0.assets.isEmpty }) else { return nil }
 
@@ -189,36 +321,98 @@ enum RoadTripTimelineBuilder {
             travelTotal += duration
         }
 
-        // Pass 2: photo budget — fit the remaining time under the target.
-        let photoTimeBudget = max(gridUnit, targetDuration - openingDuration - endingDuration - travelTotal)
-        let desiredPhotos = min(desiredTotalPhotos, max(clusters.count, Int(photoTimeBudget / gridUnit)))
+        // Pass 2: photo budget — every stop gets its hero photo, the time left
+        // under the target buys the others, the climax stops first.
+        let photoTimeBudget = options.targetDuration - openingDuration - endingDuration - travelTotal
+        let heroTotal = heroPhotoDuration * Double(clusters.count)
+        let affordable = max(0, Int(((photoTimeBudget - heroTotal) / photoDuration).rounded(.down)))
+        var extra = min(max(desiredTotalPhotos - clusters.count, 0), affordable)
 
-        let caps = clusters.map { min($0.assets.count, maxPhotosPerCluster) }
-        let capTotal = caps.reduce(0, +)
-        var counts = caps.map { cap in
-            capTotal > 0 ? max(1, Int((Double(desiredPhotos) * Double(cap) / Double(capTotal)).rounded())) : 1
+        let perStop = max(options.maxPhotosPerStop, 1)
+        let caps = clusters.map { min($0.assets.count, perStop) }
+        var counts = clusters.map { _ in 1 }
+        let byEnergy = clusters.indices.sorted { a, b in
+            let ea = energy(at: a, count: clusters.count)
+            let eb = energy(at: b, count: clusters.count)
+            if abs(ea - eb) > 1e-9 { return ea > eb }
+            return a < b
         }
-        // Trim the largest shares (from the end, deterministic) until the
-        // budget holds — never below one photo per stop.
-        while counts.reduce(0, +) > desiredPhotos {
-            var drop = counts.count - 1
-            for i in stride(from: counts.count - 1, through: 0, by: -1) where counts[i] > counts[drop] {
-                drop = i
+        while extra > 0 {
+            var granted = false
+            for i in byEnergy where extra > 0 && counts[i] < caps[i] {
+                counts[i] += 1
+                extra -= 1
+                granted = true
             }
-            if counts[drop] > 1 { counts[drop] -= 1 } else { break }
+            if !granted { break }
+        }
+        // Pinned photos are shown whatever the budget.
+        let pinnedCounts = clusters.map { cluster in cluster.assets.filter { options.pinned.contains($0.id) }.count }
+        for i in clusters.indices {
+            counts[i] = max(counts[i], min(pinnedCounts[i], caps[i]))
+        }
+
+        // Pass 3: collages — a stop with several good, distinct photos opens
+        // on them together, a tile landing on every beat. Each tile costs a
+        // beat, granted in energy order like the photos above.
+        let ranks = clusters.map { rank(for: $0, scores: scores, pinned: options.pinned) }
+        var tiles = clusters.map { _ in 1 }
+        var collageMembers: [[Int]] = clusters.map { _ in [] }
+        let tileCap = min(maxCollageTiles, perStop)
+        if let scores, options.collages != .off, tileCap > 1 {
+            for (index, cluster) in clusters.enumerated() {
+                collageMembers[index] = collageCandidates(
+                    in: cluster, rank: ranks[index], scores: scores, mode: options.collages, pinned: options.pinned
+                )
+                // A stop's pinned photos open it together.
+                tiles[index] = max(1, min(pinnedCounts[index], tileCap, collageMembers[index].count))
+            }
+            let extrasGranted = counts.reduce(0, +) - clusters.count
+            let pinnedTiles = Double(tiles.reduce(0, +) - clusters.count) * beat
+            let used = openingDuration + endingDuration + travelTotal + heroTotal
+                + Double(extrasGranted) * photoDuration + pinnedTiles
+            let allowance = options.collages == .max ? collageMaxModeAllowance : collageAllowance
+            var slack = options.targetDuration + allowance - used
+            var granted = true
+            while granted {
+                granted = false
+                for i in byEnergy where slack >= beat - 1e-9 && tiles[i] < min(collageMembers[i].count, tileCap) {
+                    tiles[i] += 1
+                    slack -= beat
+                    granted = true
+                }
+            }
         }
 
         var slideshows: [RoadTripTimeline.Slideshow] = []
         for (index, cluster) in clusters.enumerated() {
             let e = energy(at: index, count: clusters.count)
-            let rank = rank(for: cluster, scores: scores)
-            let indices = selectedIndices(kept: counts[index], count: cluster.assets.count, rank: rank)
+            let rank = ranks[index]
+            guard tiles[index] > 1 else {
+                let indices = selectedIndices(kept: counts[index], count: cluster.assets.count, rank: rank)
+                slideshows.append(RoadTripTimeline.Slideshow(
+                    clusterID: cluster.id,
+                    assetIndices: indices,
+                    photoDurations: photoDurations(kept: indices.count),
+                    recipeOffset: stableHash(cluster.id),
+                    energy: e
+                ))
+                continue
+            }
+            let members = Array(collageMembers[index].prefix(tiles[index]))
+            let layout = RoadTripCollage.layout(aspects: members.map { aspect(of: cluster.assets[$0], aspects: aspects) })
+            let ordered = layout.order.map { members[$0] }
+            // The stop's other photos it affords, after the collage, in order.
+            let singleCount = max(0, min(counts[index] - 1, perStop - members.count))
+            let singles = Array(rank.filter { !members.contains($0) }.prefix(singleCount)).sorted()
             slideshows.append(RoadTripTimeline.Slideshow(
                 clusterID: cluster.id,
-                assetIndices: indices,
-                photoDurations: photoDurations(kept: indices.count, multiplier: photoMultiplier(energy: e)),
+                assetIndices: ordered + singles,
+                photoDurations: [RoadTripCollage.duration(tiles: ordered.count)]
+                    + Array(repeating: photoDuration, count: singles.count),
                 recipeOffset: stableHash(cluster.id),
-                energy: e
+                energy: e,
+                collage: layout.tiles
             ))
         }
 
@@ -240,11 +434,13 @@ enum RoadTripTimelineBuilder {
         return RoadTripTimeline(segments: segments)
     }
 
-    /// Preference order for a cluster's assets: favorites first, then quality
-    /// score (ties by index — stable and deterministic).
-    static func rank(for cluster: RoadTripCluster, scores: [String: Double]?) -> [Int] {
+    /// Preference order for a cluster's assets: pinned photos first, then
+    /// favorites, then quality score (ties by index — stable and deterministic).
+    static func rank(for cluster: RoadTripCluster, scores: [String: Double]?, pinned: Set<String> = []) -> [Int] {
         let indices = Array(cluster.assets.indices)
         return indices.sorted { a, b in
+            let pa = pinned.contains(cluster.assets[a].id), pb = pinned.contains(cluster.assets[b].id)
+            if pa != pb { return pa }
             let fa = cluster.assets[a].isFavorite ? 1.0 : 0.0
             let fb = cluster.assets[b].isFavorite ? 1.0 : 0.0
             if fa != fb { return fa > fb }
@@ -253,6 +449,48 @@ enum RoadTripTimelineBuilder {
             if sa != sb { return sa > sb }
             return a < b
         }
+    }
+
+    /// The photos of `cluster` good enough for its collage, best first: its
+    /// pinned photos, then — in `auto` — its best photo (scoring at least
+    /// `collageFloor`) and every photo within `collageRelativeScore` of it,
+    /// in `max` every photo from `collageMaxModeFloor`; favorites always
+    /// qualify. A photo taken within `burstGap` of one already in is skipped
+    /// (unless pinned).
+    static func collageCandidates(
+        in cluster: RoadTripCluster,
+        rank: [Int],
+        scores: [String: Double],
+        mode: CollageMode = .auto,
+        pinned: Set<String> = []
+    ) -> [Int] {
+        guard mode != .off, let best = rank.first else { return [] }
+        let bestScore = scores[cluster.assets[best].id] ?? 0
+        let bar = mode == .max ? collageMaxModeFloor : max(collageFloor, bestScore * collageRelativeScore)
+        var picked: [Int] = []
+        var dates: [Date] = []
+        for index in rank {
+            let asset = cluster.assets[index]
+            let isPinned = pinned.contains(asset.id)
+            let good = isPinned || asset.isFavorite || (scores[asset.id] ?? 0) >= bar
+            // The stop's best photo leads; a weak best photo means no collage.
+            guard good else {
+                if picked.isEmpty { return [] }
+                continue
+            }
+            let date = RoadTripClusterer.parse(asset.fileCreatedAt)
+            if !isPinned, let date, dates.contains(where: { abs($0.timeIntervalSince(date)) < burstGap }) { continue }
+            picked.append(index)
+            if let date { dates.append(date) }
+        }
+        return picked
+    }
+
+    /// Width / height of `asset` as displayed.
+    static func aspect(of asset: AssetReactItem, aspects: [String: Double]?) -> Double {
+        if let aspect = aspects?[asset.id], aspect > 0 { return aspect }
+        if let size = asset.pixelSize { return Double(size.aspectRatio) }
+        return 0.75
     }
 
     /// Top-`kept` of the ranked indices, back in chronological order so the
@@ -269,18 +507,11 @@ enum RoadTripTimelineBuilder {
         return (0..<k).map { Int((Double($0) * Double(count - 1) / Double(k - 1)).rounded()) }
     }
 
-    /// Per-photo durations on the rhythm grid, alternating ⌈m⌉/⌊m⌋ units so
-    /// the mean stays at `multiplier` units (last duration absorbs the
-    /// remainder) — a musical feel that holds the budget.
-    static func photoDurations(kept: Int, multiplier: Double) -> [TimeInterval] {
+    /// Per-photo durations on the beat grid: the hero photo holds three
+    /// beats, every other photo two.
+    static func photoDurations(kept: Int) -> [TimeInterval] {
         guard kept > 0 else { return [] }
-        let low = max(1.0, floor(multiplier))
-        let high = max(low, ceil(multiplier))
-        var result = (0..<kept).map { i in (i % 2 == 0 ? high : low) * gridUnit }
-        let target = multiplier * gridUnit * Double(kept)
-        let sum = result.reduce(0, +)
-        result[kept - 1] += target - sum
-        return result
+        return [heroPhotoDuration] + Array(repeating: photoDuration, count: kept - 1)
     }
 
     /// FNV-1a-ish stable hash (deterministic across launches) for recipe salts.
@@ -302,6 +533,19 @@ struct KenBurnsTransform: Equatable, Sendable {
     var offsetY: Double = 0
 
     static let identity = KenBurnsTransform()
+
+    /// Where a photo aspect-filled into `canvas` lies once transformed: scaled
+    /// about the canvas centre, then offset — what the player's
+    /// `scaleEffect` + `offset` and the export's `transformed` both draw.
+    func rect(in canvas: CGSize) -> CGRect {
+        let width = canvas.width * CGFloat(scale)
+        let height = canvas.height * CGFloat(scale)
+        return CGRect(
+            x: (canvas.width - width) / 2 + CGFloat(offsetX) * canvas.width,
+            y: (canvas.height - height) / 2 + CGFloat(offsetY) * canvas.height,
+            width: width, height: height
+        )
+    }
 }
 
 enum KenBurnsMotion: String, CaseIterable, Sendable {
@@ -350,7 +594,8 @@ enum KenBurnsRecipe {
 enum RoadTripSlideTiming {
 
     struct Frame: Equatable, Sendable {
-        /// Position into `slideshow.assetIndices`.
+        /// The slide on screen — the position into `slideshow.assetIndices`
+        /// unless the stop opens on a collage (`Slideshow.positions(ofSlide:)`).
         let currentIndex: Int
         let currentTransform: KenBurnsTransform
         /// Set during the tail crossfade of the current slide.
@@ -405,6 +650,197 @@ enum RoadTripSlideTiming {
             crossfade: crossfade
         )
     }
+
+    /// The Ken Burns framing of the slideshow's first photo on its first frame
+    /// (`first`) or of its last photo on its last frame: where the arrival
+    /// dive lands and where the outgoing photo leaves from, so the cut
+    /// between the map and the photos does not jump.
+    static func edgeTransform(slideshow: RoadTripTimeline.Slideshow, first: Bool, reduceMotion: Bool) -> KenBurnsTransform {
+        let time = first ? 0 : slideshow.photoDurations.reduce(0, +)
+        return frame(slideshow: slideshow, localTime: time, reduceMotion: reduceMotion).currentTransform
+    }
+
+    /// `edgeTransform` of the slideshow segment at `segmentIndex`; identity
+    /// when that segment is not a slideshow.
+    static func edgeTransform(segmentIndex: Int, in timeline: RoadTripTimeline, first: Bool, reduceMotion: Bool) -> KenBurnsTransform {
+        guard timeline.segments.indices.contains(segmentIndex),
+              case .slideshow(let slideshow) = timeline.segments[segmentIndex] else { return .identity }
+        return edgeTransform(slideshow: slideshow, first: first, reduceMotion: reduceMotion)
+    }
+
+    /// The photos on the slideshow's first frame (`first`) or its last one,
+    /// where they sit on `canvas`: the arrival dive lands on the first and the
+    /// outgoing photos leave from the last, so the cut does not jump. One
+    /// photo framed by its Ken Burns transform — or a collage's tiles (the
+    /// dive grows the first from the pin and fades the others in).
+    static func edgeTiles(
+        slideshow: RoadTripTimeline.Slideshow,
+        first: Bool,
+        reduceMotion: Bool,
+        canvas: CGSize
+    ) -> [RoadTripCollage.DrawnTile] {
+        let slide = first ? 0 : max(slideshow.photoDurations.count - 1, 0)
+        if slideshow.isCollage(slide: slide) {
+            let time = first ? 0 : slideshow.photoDurations[0]
+            return RoadTripCollage.drawnTiles(slideshow: slideshow, localTime: time, canvas: canvas, reduceMotion: reduceMotion)
+        }
+        let transform = edgeTransform(slideshow: slideshow, first: first, reduceMotion: reduceMotion)
+        return [RoadTripCollage.DrawnTile(
+            position: slideshow.positions(ofSlide: slide).lowerBound,
+            rect: transform.rect(in: canvas), rotation: 0, framed: false, alpha: 1
+        )]
+    }
+
+    /// `edgeTiles` of the slideshow segment at `segmentIndex`; none when that
+    /// segment is not a slideshow.
+    static func edgeTiles(
+        segmentIndex: Int,
+        in timeline: RoadTripTimeline,
+        first: Bool,
+        reduceMotion: Bool,
+        canvas: CGSize
+    ) -> [RoadTripCollage.DrawnTile] {
+        guard timeline.segments.indices.contains(segmentIndex),
+              case .slideshow(let slideshow) = timeline.segments[segmentIndex] else { return [] }
+        return edgeTiles(slideshow: slideshow, first: first, reduceMotion: reduceMotion, canvas: canvas)
+    }
+}
+
+// MARK: - Collage
+
+/// A stop's photos on one screen, laid out by how many there are and which
+/// way they face: the travel-reel collage. Every tile is on screen from the
+/// slide's first frame — the arrival dive grows the first one from the pin
+/// while the others fade in with it — and each photo pushes in slowly inside
+/// its tile. Shared by the player and the export.
+enum RoadTripCollage {
+
+    /// One photo's place on the canvas.
+    struct Tile: Equatable, Sendable {
+        /// Fractions of the canvas (x, width of its width; y, height of its height).
+        let rect: CGRect
+        /// Clockwise tilt, radians.
+        let rotation: Double
+        /// A white rim around it — the "polaroid" laid over another photo.
+        let framed: Bool
+    }
+
+    /// A tile as drawn at an instant, in canvas points.
+    struct DrawnTile: Equatable, Sendable {
+        /// Position into the slideshow's `assetIndices`.
+        let position: Int
+        let rect: CGRect
+        let rotation: Double
+        let framed: Bool
+        let alpha: Double
+        /// The photo's scale inside its tile (the slow push-in), ≥ 1.
+        var zoom: Double = 1
+    }
+
+    /// The film's frame (9:16): the layouts fit its tiles to the photos.
+    static let canvasAspect = 9.0 / 16.0
+    /// Gap between tiles (fraction of the canvas width).
+    static let gutter = 0.012
+    /// White rim of a framed tile (fraction of the canvas width).
+    static let frameBorder = 0.014
+    /// How far each photo pushes in over the collage slide.
+    static let pushIn = 0.05
+
+    /// The collage slide's length: the single photo's three beats, and a
+    /// beat more per tile after the first to take them in.
+    static func duration(tiles: Int) -> TimeInterval {
+        Double(max(tiles, 1) + 2) * RoadTripTimelineBuilder.beat
+    }
+
+    /// Tiles for photos of `aspects` (width / height, best photo first), and
+    /// the order they take (`order[k]`: the photo of tile `k`) — at most four.
+    static func layout(aspects: [Double]) -> (order: [Int], tiles: [Tile]) {
+        let count = min(aspects.count, RoadTripTimelineBuilder.maxCollageTiles)
+        guard count >= 2 else { return (Array(0..<count), count == 1 ? [Tile(rect: unit, rotation: 0, framed: false)] : []) }
+        let photos = Array(aspects.prefix(count))
+        let portraits = photos.indices.filter { photos[$0] < 1 }
+        let landscapes = photos.indices.filter { photos[$0] >= 1 }
+        let gx = gutter, gy = gutter * canvasAspect
+
+        switch count {
+        case 2 where portraits.count == 2:
+            // The best photo full screen, the other laid over it as a print.
+            let width = 0.52
+            let height = width * canvasAspect / 0.75
+            return ([0, 1], [
+                Tile(rect: unit, rotation: 0, framed: false),
+                Tile(rect: CGRect(x: 0.42, y: 0.56, width: width, height: height), rotation: 0.07, framed: true)
+            ])
+        case 2 where portraits.count == 1:
+            // The portrait on top, tall; the landscape under it, wide.
+            let split = 0.62
+            return ([portraits[0], landscapes[0]], [
+                Tile(rect: CGRect(x: 0, y: 0, width: 1, height: split - gy / 2), rotation: 0, framed: false),
+                Tile(rect: CGRect(x: 0, y: split + gy / 2, width: 1, height: 1 - split - gy / 2), rotation: 0, framed: false)
+            ])
+        case 2:
+            return ([0, 1], bands(2, gy: gy))
+        case 3 where portraits.isEmpty:
+            return ([0, 1, 2], bands(3, gy: gy))
+        case 3:
+            // The odd one out across the top, sized to its photo; the other
+            // two side by side under it.
+            let hero = portraits.count == 1 ? portraits[0] : (landscapes.count == 1 ? landscapes[0] : 0)
+            let split = min(max(canvasAspect / photos[hero], 0.35), 0.65)
+            let others = photos.indices.filter { $0 != hero }
+            return ([hero] + others, [
+                Tile(rect: CGRect(x: 0, y: 0, width: 1, height: split - gy / 2), rotation: 0, framed: false),
+                Tile(rect: CGRect(x: 0, y: split + gy / 2, width: 0.5 - gx / 2, height: 1 - split - gy / 2), rotation: 0, framed: false),
+                Tile(rect: CGRect(x: 0.5 + gx / 2, y: split + gy / 2, width: 0.5 - gx / 2, height: 1 - split - gy / 2), rotation: 0, framed: false)
+            ])
+        default:
+            if landscapes.count >= 3 {
+                return ([0, 1, 2, 3], bands(4, gy: gy))
+            }
+            // A 2 × 2 grid: tall tiles, made for portraits.
+            let w = 0.5 - gx / 2, h = 0.5 - gy / 2
+            return ([0, 1, 2, 3], [
+                Tile(rect: CGRect(x: 0, y: 0, width: w, height: h), rotation: 0, framed: false),
+                Tile(rect: CGRect(x: 0.5 + gx / 2, y: 0, width: w, height: h), rotation: 0, framed: false),
+                Tile(rect: CGRect(x: 0, y: 0.5 + gy / 2, width: w, height: h), rotation: 0, framed: false),
+                Tile(rect: CGRect(x: 0.5 + gx / 2, y: 0.5 + gy / 2, width: w, height: h), rotation: 0, framed: false)
+            ])
+        }
+    }
+
+    /// The tiles `localTime` into the collage slide, in drawing order: all of
+    /// them, each photo pushed in by `pushIn` over the slide (still under
+    /// reduce-motion).
+    static func drawnTiles(
+        slideshow: RoadTripTimeline.Slideshow,
+        localTime: TimeInterval,
+        canvas: CGSize,
+        reduceMotion: Bool
+    ) -> [DrawnTile] {
+        let duration = max(slideshow.photoDurations.first ?? 1, 0.001)
+        let progress = min(max(localTime / duration, 0), 1)
+        let zoom = reduceMotion ? 1 : 1 + pushIn * KenBurnsRecipe.smoothstep(progress)
+        return slideshow.collage.prefix(slideshow.assetIndices.count).enumerated().map { k, tile in
+            DrawnTile(
+                position: k,
+                rect: CGRect(
+                    x: tile.rect.minX * canvas.width, y: tile.rect.minY * canvas.height,
+                    width: tile.rect.width * canvas.width, height: tile.rect.height * canvas.height
+                ),
+                rotation: tile.rotation, framed: tile.framed, alpha: 1, zoom: zoom
+            )
+        }
+    }
+
+    private static let unit = CGRect(x: 0, y: 0, width: 1, height: 1)
+
+    /// `count` full-width bands, top to bottom.
+    private static func bands(_ count: Int, gy: Double) -> [Tile] {
+        let height = (1 - gy * Double(count - 1)) / Double(count)
+        return (0..<count).map { k in
+            Tile(rect: CGRect(x: 0, y: Double(k) * (height + gy), width: 1, height: height), rotation: 0, framed: false)
+        }
+    }
 }
 
 // MARK: - Segment transitions
@@ -414,7 +850,7 @@ enum RoadTripSlideTiming {
 enum RoadTripSegue {
     /// Slideshow→travel: the last photo of the outgoing slideshow fades out
     /// over the first moments of the map leg.
-    static let photoFadeOutDuration: TimeInterval = 0.4
+    static let photoFadeOutDuration: TimeInterval = 0.3
     /// Travel→slideshow: the "arrival dive" window at the tail of the leg —
     /// a pin pops at the destination, the first photo of the next stop
     /// thumbnails up from the pin and fills the screen as the map fades.
@@ -437,6 +873,18 @@ enum RoadTripSegue {
         return KenBurnsRecipe.smoothstep(p)
     }
 
+    /// Opacity of the black laid over the map through the dive: black by its
+    /// end, so a photo landing on part of the screen (a collage's first tile)
+    /// cuts to the collage's black, not from a dimmed map.
+    static func mapDim(_ dive: Double) -> Double {
+        mapFade(dive)
+    }
+
+    /// Opacity of the destination pin through the dive: gone with the map.
+    static func pinAlpha(_ dive: Double) -> Double {
+        1 - mapFade(dive)
+    }
+
     /// Thumbnail opacity through the dive: quick reveal, held to the end.
     static func thumbnailAlpha(_ dive: Double) -> Double {
         KenBurnsRecipe.smoothstep(min(max(dive / 0.25, 0), 1))
@@ -448,19 +896,37 @@ enum RoadTripSegue {
         1 + 0.35 * (1 - KenBurnsRecipe.smoothstep(min(max(dive * 2.5, 0), 1)))
     }
 
-    /// Thumbnail rect from the destination pin to full canvas (linear lerp of
-    /// the dive — the Ken Burns motion stays on the slideshow side).
-    static func thumbnailRect(pinCenter: CGPoint, pinSize: CGSize, canvas: CGSize, dive: Double) -> CGRect {
-        let t = min(max(dive, 0), 1)
+    /// Thumbnail rect from the destination pin to `landing` — the framing the
+    /// next slideshow opens on (`RoadTripSlideTiming.edgeTransform`), the full
+    /// canvas by default — eased so it settles on the slideshow's first frame
+    /// instead of snapping to it.
+    static func thumbnailRect(pinCenter: CGPoint, pinSize: CGSize, canvas: CGSize, dive: Double, landing: CGRect? = nil) -> CGRect {
+        let t = KenBurnsRecipe.smoothstep(min(max(dive, 0), 1))
         let from = CGRect(x: pinCenter.x - pinSize.width / 2, y: pinCenter.y - pinSize.height / 2,
                           width: pinSize.width, height: pinSize.height)
-        let to = CGRect(origin: .zero, size: canvas)
+        let to = landing ?? CGRect(origin: .zero, size: canvas)
         return CGRect(
             x: from.minX + (to.minX - from.minX) * t,
             y: from.minY + (to.minY - from.minY) * t,
             width: from.width + (to.width - from.width) * t,
             height: from.height + (to.height - from.height) * t
         )
+    }
+
+    /// A projected point kept inside the canvas margins, so the arrival pin
+    /// never pops at the screen edge.
+    static func clampedToMargins(_ point: CGPoint, canvas: CGSize) -> CGPoint {
+        CGPoint(
+            x: min(max(point.x, canvas.width * 0.12), canvas.width * 0.88),
+            y: min(max(point.y, canvas.height * 0.15), canvas.height * 0.85)
+        )
+    }
+
+    /// Opacity of what sits over the map during a leg — the road counter and
+    /// the leg's pill: gone by the time the dive's photo grows, which would
+    /// otherwise slide under them.
+    static func overlayAlpha(_ dive: Double) -> Double {
+        1 - KenBurnsRecipe.smoothstep(min(max(dive / thumbRevealFraction, 0), 1))
     }
 
     /// Outgoing-photo fade-out alpha over the incoming map (1 → 0).
@@ -530,7 +996,7 @@ enum RoadTripTravelTiming {
             total += RoadTripClusterer.haversine(route[i - 1].coordinate, route[i].coordinate)
             result.append(total)
         }
-        cumulativeCache.countLimit = 16
+        cumulativeCache.countLimit = 64
         cumulativeCache.setObject(CumulativeEntry(result), forKey: key)
         return result
     }
@@ -597,7 +1063,7 @@ enum RoadTripTravelTiming {
         let deviation = total / straight - 1.0
         guard deviation > 1e-3 else { return 0 }
         let value = min(deviation / 0.5, 1)
-        twistinessCache.countLimit = 16
+        twistinessCache.countLimit = 64
         twistinessCache.setObject(NSNumber(value: value), forKey: key)
         return value
     }
@@ -668,7 +1134,7 @@ enum RoadTripTravelTiming {
         let maxT = t
         var timeFrac = rawTime.map { maxT > 0 ? $0 / maxT : 0 }
         timeFrac[timeFrac.count - 1] = 1
-        speedProfileCache.countLimit = 16
+        speedProfileCache.countLimit = 64
         let profile = SpeedProfile(timeFrac, arcFrac)
         speedProfileCache.setObject(profile, forKey: key)
         return profile

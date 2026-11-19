@@ -1,0 +1,22 @@
+{
+  "name": "swimmich-showcase-video",
+  "private": true,
+  "description": "The demo video of README.md, made with Remotion from docs/showcase and the screen recording of Scripts/showcase.sh.",
+  "scripts": {
+    "prestudio": "rm -rf public/showcase && cp -R ../showcase public/showcase",
+    "studio": "remotion studio",
+    "prerender": "rm -rf public/showcase && cp -R ../showcase public/showcase",
+    "render": "remotion render Showcase out/swimmich.mp4 && npm run preview",
+    "preview": "mkdir -p ../media && ffmpeg -y -v error -i out/swimmich.mp4 -vf \"fps=12,scale=720:-1:flags=lanczos,split[a][b];[a]palettegen=max_colors=128[p];[b][p]paletteuse=dither=bayer\" ../media/swimmich-preview.gif && cp out/swimmich.mp4 ../media/swimmich.mp4"
+  },
+  "dependencies": {
+    "@remotion/cli": "4.0.531",
+    "react": "19.1.0",
+    "react-dom": "19.1.0",
+    "remotion": "4.0.531"
+  },
+  "devDependencies": {
+    "@types/react": "19.1.8",
+    "typescript": "5.8.3"
+  }
+}

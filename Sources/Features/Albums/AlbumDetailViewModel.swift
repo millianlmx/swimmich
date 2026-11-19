@@ -75,9 +75,45 @@ final class AlbumDetailViewModel {
     private var loadGeneration = 0
     private var isFetchingFirstPage = false
 
-    init(client: any ImmichClient, albumId: String) {
+    /// The album as last shown this session (nil: none kept, as in the tests).
+    private let cache: AlbumDetailCache?
+    /// The screen's first appearance has started its read. Coming back to the
+    /// screen (a viewer or a sheet closed over it) reads nothing: the grid is
+    /// already there, and replacing it dropped its later pages under the user.
+    private var hasAppeared = false
+
+    /// `cache`: an album opened before starts from what it showed — no skeleton —
+    /// and the first appearance's read replaces it in place.
+    init(client: any ImmichClient, albumId: String, cache: AlbumDetailCache? = nil) {
         self.client = client
         self.albumId = albumId
+        self.cache = cache
+        if let snapshot = cache?.snapshot(for: albumId) {
+            album = snapshot.album
+            assets = snapshot.assets
+            loadedIds = Set(snapshot.assets.map(\.id))
+            nextPage = snapshot.nextPage
+            hasMorePages = snapshot.nextPage != nil
+            pageOrder = snapshot.pageOrder
+            hasLoadedAssets = true
+        }
+    }
+
+    /// The screen's `.task`: the first appearance reads (`load()`); a later one,
+    /// once the read has started, does nothing.
+    func appear() async {
+        guard !hasAppeared else { return }
+        hasAppeared = true
+        await load()
+    }
+
+    /// Keeps what the screen shows for the next opening of the album.
+    func saveSnapshot() {
+        guard let cache, let album, hasLoadedAssets, !isDeleted else { return }
+        cache.store(
+            AlbumDetailCache.Snapshot(album: album, assets: assets, nextPage: hasMorePages ? nextPage : nil, pageOrder: pageOrder),
+            for: albumId
+        )
     }
 
     // MARK: - Selection mode (AC-201 parity)
@@ -371,6 +407,7 @@ final class AlbumDetailViewModel {
             assetsLoadError = nil
             hasLoadedAssets = true
             gridEndRevision += 1
+            saveSnapshot()
         } catch {
             guard g == loadGeneration else { return }
             // Album metadata already populated; surface the error but keep
@@ -423,6 +460,7 @@ final class AlbumDetailViewModel {
             loadMoreErrorMessage = nil
             isLoadingMore = false
             gridEndRevision += 1
+            saveSnapshot()
         } catch {
             guard g == loadGeneration else { return }
             loadMoreErrorMessage = error.userFacingMessage
@@ -540,6 +578,7 @@ final class AlbumDetailViewModel {
             try await client.deleteAlbum(id: albumId)
             // 204 No Content handled by sendAuthedRaw — no decode crash (AC-518).
             isDeleted = true
+            cache?.remove(albumId)
             actionErrorMessage = nil
         } catch {
             actionErrorMessage = error.userFacingMessage

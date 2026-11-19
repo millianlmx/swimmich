@@ -36,6 +36,8 @@ struct AlbumDetailView: View {
     @State private var activityFeedItem: ActivityFeedSheetItem?
     @State private var roadTripVM: RoadTripViewModel?
     @State private var presentingRoadTrip = false
+    /// The color mosaic or photo dump on screen (album menu or Create menu).
+    @State private var creation: SelectionCreation?
     @State private var lastRemoveTick = 0
     @State private var lastDeleteTick = 0
     @State private var lastFavoriteTick = 0
@@ -71,10 +73,11 @@ struct AlbumDetailView: View {
 
     init(
         album: AlbumResponseDto,
-        client: any ImmichClient = DependencyContainer.shared.libraryClient
+        client: any ImmichClient = DependencyContainer.shared.libraryClient,
+        cache: AlbumDetailCache? = AlbumDetailCache.shared
     ) {
         self.initialAlbum = album
-        _vm = State(initialValue: AlbumDetailViewModel(client: client, albumId: album.id))
+        _vm = State(initialValue: AlbumDetailViewModel(client: client, albumId: album.id, cache: cache))
     }
 
     var body: some View {
@@ -160,6 +163,10 @@ struct AlbumDetailView: View {
                             .labelStyle(.iconOnly)
                     }
                     .disabled(vm.selectedIds.isEmpty)
+
+                    SelectionCreateMenu(isDisabled: vm.selectedIds.isEmpty) { make in
+                        creation = make(vm.assets.filter { vm.selectedIds.contains($0.id) }, auth.baseURL, auth.accessToken)
+                    }
                 }
                 // Native trailing ellipsis menu — Photos-parity bulk actions.
                 // Not rendered when the user has nothing to do in it.
@@ -263,6 +270,30 @@ struct AlbumDetailView: View {
                                 .foregroundStyle(Color.primary)
                         }
                         .tint(Color.primary)
+                        Button {
+                            creation = .colorMosaic(assets: vm.assets, baseURL: auth.baseURL, token: auth.accessToken)
+                        } label: {
+                            Label("Color Mosaic", systemImage: "square.grid.3x3.fill")
+                                .foregroundStyle(Color.primary)
+                        }
+                        .tint(Color.primary)
+                        Button {
+                            creation = .photoDump(assets: vm.assets, baseURL: auth.baseURL, token: auth.accessToken)
+                        } label: {
+                            Label("Photo Dump", systemImage: "photo.stack")
+                                .foregroundStyle(Color.primary)
+                        }
+                        .tint(Color.primary)
+                        Button {
+                            creation = .reel(
+                                assets: vm.assets, title: vm.album?.albumName ?? initialAlbum.albumName,
+                                baseURL: auth.baseURL, token: auth.accessToken
+                            )
+                        } label: {
+                            Label("Reel", systemImage: "film.stack")
+                                .foregroundStyle(Color.primary)
+                        }
+                        .tint(Color.primary)
                         if !albumActions.isEmpty {
                             Divider()
                         }
@@ -325,10 +356,13 @@ struct AlbumDetailView: View {
                 }
             }
         }
+        // Once per screen: coming back from the viewer or a sheet keeps the grid
+        // as it is (a read here used to reload it, back to its first page).
         .task {
-            await vm.load()
+            await vm.appear()
             await vm.probeServerVersionIfEditor(currentUserId: auth.userId)
         }
+        .onDisappear { vm.saveSnapshot() }
         .sheet(isPresented: $presentingShare) {
             SharedLinkSheet(vm: vm)
         }
@@ -424,6 +458,9 @@ struct AlbumDetailView: View {
             if let roadTripVM {
                 RoadTripView(vm: roadTripVM)
             }
+        }
+        .pvFullScreenCover(item: $creation) { creation in
+            creation.view
         }
     }
 

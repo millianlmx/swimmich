@@ -84,6 +84,33 @@ final class ViewerShareViewModel {
         }
     }
 
+    /// Shares a device-only photo (merged timeline): its original, written
+    /// out by Photos — downloaded from iCloud if needed — under the same
+    /// progress and failure states as a server share.
+    func shareDevicePhoto(_ asset: AssetReactItem) {
+        guard let deviceID = asset.deviceAssetID else { return }
+        if case .downloading = phase { return }
+        phase = .downloading(fraction: nil)
+        task = Task { [weak self] in
+            do {
+                let file = try await DeviceMedia.exportForSharing(localIdentifier: deviceID)
+                guard let self, !Task.isCancelled else {
+                    try? FileManager.default.removeItem(at: file.deletingLastPathComponent())
+                    return
+                }
+                self.phase = .idle
+                self.presentShare([file]) { [fileManager = self.fileManager] in
+                    try? fileManager.removeItem(at: file.deletingLastPathComponent())
+                }
+            } catch {
+                guard let self else { return }
+                self.phase = UserFacingError.isCancellation(error)
+                    ? .idle
+                    : .failed(message: error.userFacingMessage ?? String(localized: "Couldn't Share"))
+            }
+        }
+    }
+
     /// Stops the download in flight. Without effect when none is, so it is safe
     /// to call whenever the viewer goes away.
     func cancel() {

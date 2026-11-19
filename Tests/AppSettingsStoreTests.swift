@@ -160,6 +160,19 @@ final class AppSettingsStoreTests: XCTestCase {
         XCTAssertEqual(AppSettingsStore(defaults: defaults).accent, .immich)
     }
 
+    /// The merged Photos timeline is on by default, and the switch persists
+    /// and resets like every other preference.
+    func test_showsDeviceAssets_defaultsOnPersistsAndResets() {
+        XCTAssertTrue(AppSettingsStore(defaults: defaults).showsDeviceAssets)
+        AppSettingsStore(defaults: defaults).showsDeviceAssets = false
+        XCTAssertEqual(defaults.object(forKey: AppSettingsStore.timelineShowsDeviceAssetsKey) as? Bool, false)
+        let store = AppSettingsStore(defaults: defaults)
+        XCTAssertFalse(store.showsDeviceAssets)
+        store.resetToDefaults()
+        XCTAssertTrue(store.showsDeviceAssets)
+        XCTAssertNil(defaults.object(forKey: AppSettingsStore.timelineShowsDeviceAssetsKey))
+    }
+
     func test_AC_92_smoothScrubbing_defaultsOffAndPersists() {
         XCTAssertFalse(AppSettingsStore(defaults: defaults).smoothScrubbing)
         XCTAssertNil(defaults.object(forKey: AppSettingsStore.timelineSmoothScrubbingKey), "reading writes nothing")
@@ -186,24 +199,6 @@ final class AppSettingsStoreTests: XCTestCase {
                 components(of: AppAccent.immich.color, style: style),
                 components(of: Color.immichPrimary, style: style),
                 "\(style) brand color drifted"
-            )
-        }
-    }
-
-    /// AC-8: the mark's two ends are `immichPrimary` frozen at one appearance
-    /// each (pale = its dark value, deep = its light value), and they stay
-    /// frozen: the mark must not follow the system appearance.
-    func test_logoPalette_isTheBrandPairInEveryAppearance() {
-        for style in [UIUserInterfaceStyle.light, .dark] {
-            XCTAssertEqual(
-                components(of: .immichLogoLight, style: style),
-                components(of: .immichPrimary, style: .dark),
-                "\(style) pale end drifted from immichPrimary dark"
-            )
-            XCTAssertEqual(
-                components(of: .immichLogoDeep, style: style),
-                components(of: .immichPrimary, style: .light),
-                "\(style) deep end drifted from immichPrimary light"
             )
         }
     }

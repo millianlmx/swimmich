@@ -38,7 +38,7 @@ final class SearchViewModel {
     /// toggle; file name and description are `POST /api/search/metadata`
     /// criteria (a substring, case and accent insensitive).
     enum SearchMode: String, CaseIterable, Hashable { case smart, metadata, filename, description }
-    enum ViewMode: Hashable { case results, explore, map }
+    enum ViewMode: Hashable { case results, map }
 
     /// EXIF field a user can drill into from an Explore card. Maps the server's
     /// `fieldName` ("exifInfo.city" …) onto the matching `MetadataSearchDto`
@@ -549,6 +549,20 @@ final class SearchViewModel {
         await restartSearch()
     }
 
+    /// Done in the Filters sheet. With something to search — a constraint or a
+    /// text — it is `applyFilters()`. With nothing (no filter, no text) it is
+    /// the way back to Explore, not a search of the whole library: that left
+    /// the screen on results with no ✕ to clear and no way back to the map.
+    func confirmFilters() async {
+        let typed = query.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard typed.isEmpty, !isFilterActive else {
+            await applyFilters()
+            return
+        }
+        pendingExploreFilter = nil
+        clearSearch()
+    }
+
     /// Reset, from the sheet or the chips bar: back to `SearchFilter()`, then
     /// the same dispatch path. The query is **not** touched — only the
     /// constraints go; the file name / description text mode is one of them
@@ -744,7 +758,7 @@ final class SearchViewModel {
             break
         }
 
-        // The "Search options" menu's detected-text toggle keeps its meaning:
+        // The results bar's detected-text chip keeps its meaning:
         // *the typed query is* the criterion, so that route replaces free
         // text. An OCR criterion typed into the sheet is a filter like any
         // other (`filter.apply` already wrote it) and joins the query instead

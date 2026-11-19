@@ -1,3 +1,4 @@
+import CryptoKit
 import Foundation
 import Security
 import os
@@ -23,6 +24,12 @@ public struct WidgetSession: Codable, Equatable, Sendable {
     /// Optional on purpose: a session stored by an earlier build has no such key
     /// and must keep decoding.
     public var trustedHosts: [String]?
+
+    /// The certificate pinned for each of `trustedHosts` (`host → fingerprint`,
+    /// see `ServerCertificatePin`): a trusted host is only talked to when it
+    /// presents that certificate. Optional for the same reason; a trusted host
+    /// without a pin is refused until the app has reached it and published one.
+    public var trustedPins: [String: String]?
 
     /// The installation identifier the app uploads under (`DeviceIdentity`).
     /// It travels with the session because it lives in the *app's*
@@ -58,6 +65,7 @@ public struct WidgetSession: Codable, Equatable, Sendable {
         userName: String? = nil,
         userId: String? = nil,
         trustedHosts: [String]? = nil,
+        trustedPins: [String: String]? = nil,
         deviceId: String? = nil,
         customHeaders: [CustomHTTPHeader]? = nil,
         localURL: String? = nil,
@@ -70,6 +78,7 @@ public struct WidgetSession: Codable, Equatable, Sendable {
         self.userName = userName
         self.userId = userId
         self.trustedHosts = trustedHosts
+        self.trustedPins = trustedPins
         self.deviceId = deviceId
         self.customHeaders = customHeaders
         self.localURL = localURL
@@ -79,6 +88,12 @@ public struct WidgetSession: Codable, Equatable, Sendable {
     }
 
     public var trustedHostSet: Set<String> { Set(trustedHosts ?? []) }
+
+    /// The fingerprint a trusted `host` must present; nil for a host that is not
+    /// trusted or has no pin.
+    public func pin(for host: String) -> String? {
+        trustedHostSet.contains(host) ? trustedPins?[host] : nil
+    }
 
     /// The settings the app published, in the shape `ServerAddressSelector` reads.
     public var addressSettings: ServerAddressSettings {
@@ -192,6 +207,46 @@ public struct WidgetSessionStore: WidgetSessionStoring {
 
 // MARK: - Certificate trust
 
+/// The certificate a host is trusted with, once the user accepted it despite a
+/// failed evaluation.
+///
+/// Trusting a host name alone would accept any certificate presented under that
+/// name — including the one of somebody sitting between the phone and the
+/// server. So the decision is pinned: the fingerprint of one certificate of the
+/// chain is remembered, and a later chain is accepted only if it holds that very
+/// certificate and verifies against it.
+///
+/// The pin is the LAST certificate the server presented: the certificate itself
+/// for a self-signed server, the issuing authority for a server behind a private
+/// authority that renews its certificate (the renewal then needs no new consent).
+public enum ServerCertificatePin {
+    /// Lowercase hexadecimal SHA-256 of the certificate (DER).
+    public static func fingerprint(of certificate: SecCertificate) -> String {
+        let der = SecCertificateCopyData(certificate) as Data
+        return SHA256.hash(data: der).map { String(format: "%02x", $0) }.joined()
+    }
+
+    /// The fingerprint a first trust decision pins; nil for an empty chain.
+    public static func candidate(in trust: SecTrust) -> String? {
+        chain(of: trust).last.map(fingerprint(of:))
+    }
+
+    /// Whether the chain of `trust` holds the certificate `pin` names and
+    /// verifies against it, and it alone. The policy of `trust` (host name,
+    /// dates) still applies.
+    public static func evaluate(_ trust: SecTrust, pinnedTo pin: String) -> Bool {
+        guard let anchor = chain(of: trust).first(where: { fingerprint(of: $0) == pin }) else { return false }
+        SecTrustSetAnchorCertificates(trust, [anchor] as CFArray)
+        SecTrustSetAnchorCertificatesOnly(trust, true)
+        var error: CFError?
+        return SecTrustEvaluateWithError(trust, &error)
+    }
+
+    private static func chain(of trust: SecTrust) -> [SecCertificate] {
+        SecTrustCopyCertificateChain(trust) as? [SecCertificate] ?? []
+    }
+}
+
 /// Server-trust handling for the widget's own `URLSession`.
 ///
 /// The app evaluates server trust through `TrustEvaluatingURLSessionDelegate`
@@ -199,8 +254,9 @@ public struct WidgetSessionStore: WidgetSessionStoring {
 /// `URLSession.shared` has no delegate at all, so an Immich behind a
 /// self-signed certificate — which works perfectly in the app — fails every
 /// fetch and the widget shows nothing. Same policy as the app: default
-/// evaluation first, and the server's own chain is anchored only for a host the
-/// user explicitly trusted.
+/// evaluation first, then, for a host the user explicitly trusted, the
+/// certificate the app pinned for it (`ServerCertificatePin`). The widget never
+/// pins by itself: the app is the one that asked the user.
 public final class WidgetTrustDelegate: NSObject, URLSessionTaskDelegate, @unchecked Sendable {
     private let sessionStore: any WidgetSessionStoring
     private let clientCertificates: ClientCertificateResponder
@@ -256,20 +312,12 @@ public final class WidgetTrustDelegate: NSObject, URLSessionTaskDelegate, @unche
             return
         }
 
-        guard trustsCertificates(for: challenge.protectionSpace.host),
-              let certificates = SecTrustCopyCertificateChain(serverTrust) as? [SecCertificate],
-              !certificates.isEmpty
+        guard let pin = sessionStore.load()?.pin(for: challenge.protectionSpace.host),
+              ServerCertificatePin.evaluate(serverTrust, pinnedTo: pin)
         else {
             completionHandler(.cancelAuthenticationChallenge, nil)
             return
         }
-
-        SecTrustSetAnchorCertificates(serverTrust, certificates as CFArray)
-        SecTrustSetAnchorCertificatesOnly(serverTrust, true)
-        if SecTrustEvaluateWithError(serverTrust, &error) {
-            completionHandler(.useCredential, URLCredential(trust: serverTrust))
-        } else {
-            completionHandler(.cancelAuthenticationChallenge, nil)
-        }
+        completionHandler(.useCredential, URLCredential(trust: serverTrust))
     }
 }

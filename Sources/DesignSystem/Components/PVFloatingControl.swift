@@ -3,12 +3,14 @@ import UIKit
 
 // MARK: - PhotoVault Floating Controls
 //
-// The one material for every control that floats above photos, the map or a
-// list: dark tinted glass with white content, the same in light and dark
+// The one material for every control that floats above photos or video:
+// dark tinted glass with white content, the same in light and dark
 // appearance (the photo behind it decides the contrast, not the theme). Three
 // roles, three shapes, one style each: `.circle` for an icon button, `.pill`
 // for a capsule (badge, position, small menu), `.bar` for a floating bar or
 // banner. Screens never write their own glass, material or translucent black.
+// Over an interface surface rather than a photo (the map), `pvGlass` gives the
+// same three shapes in the system's adaptive glass instead.
 
 /// Tokens of the floating-control style. Every colour drawn directly on the
 /// glass comes from here, and each one is checked for WCAG contrast against the
@@ -43,6 +45,20 @@ extension View {
     func pvFloating(_ role: PVFloatingRole) -> some View {
         foregroundStyle(PVFloating.content)
             .glassEffect(.regular.tint(PVFloating.tint), in: role.shape)
+    }
+}
+
+extension View {
+    /// Dresses the view as a floating control of `role` over an INTERFACE
+    /// surface (the map, a list): the system's own adaptive Liquid Glass with
+    /// primary content — light in light mode, dark in dark mode, exactly like
+    /// the navigation bar and the tab bar it sits next to. `pvFloating` stays
+    /// for controls over photos and video, where the media decides the
+    /// contrast; side by side with the system chrome its fixed dark tint read
+    /// as a different material.
+    func pvGlass(_ role: PVFloatingRole) -> some View {
+        foregroundStyle(Color.primary)
+            .glassEffect(.regular.interactive(), in: role.shape)
     }
 }
 

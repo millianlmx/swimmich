@@ -29,6 +29,8 @@ struct MapSegmentView: View {
     @State private var isRenderingMarkers = false
     /// Map settings sheet (gap G14b).
     @State private var presentSettings = false
+    /// "Everywhere I've been": the poster of every place in the library.
+    @State private var posterVM: MapPosterViewModel?
     /// The photo sheet is presented by `RootView` on the same host controller,
     /// so it has to come down before the settings sheet can go up; this
     /// remembers to put it back when settings closes.
@@ -68,11 +70,22 @@ struct MapSegmentView: View {
         .onChange(of: vm.markers.isEmpty) { _, isEmpty in
             // Markers just arrived (cache or network) — the annotation
             // render is about to start; ClusteredMapView signals the
-            // first wave via onInitialRenderCompleted. Deferred so no
-            // state is mutated during the view update.
-            if !isEmpty {
-                DispatchQueue.main.async { isRenderingMarkers = true }
-            }
+            // first wave via onInitialRenderCompleted. Set at once, not
+            // deferred: `onChange` may run AFTER `updateUIView` added the
+            // annotations, and a deferred `true` then landed after the
+            // (deferred) "render completed" — the spinner never went away on
+            // the map's first opening, the only one where the markers arrive
+            // while the map is on screen. `onChange` is not the view update:
+            // writing state here is safe.
+            if !isEmpty { isRenderingMarkers = true }
+        }
+        // Belt and braces: a render signal that never comes (MapKit adding no
+        // view for the first wave) must not leave the spinner up for good.
+        .task(id: isRenderingMarkers) {
+            guard isRenderingMarkers else { return }
+            try? await Task.sleep(for: .seconds(4))
+            guard !Task.isCancelled else { return }
+            isRenderingMarkers = false
         }
         .onChange(of: vm.visiblePhotos.isEmpty) { _, isEmpty in
             // Present the native photo sheet once the region has photos.
@@ -85,12 +98,14 @@ struct MapSegmentView: View {
                 }
             }
         }
+        .pvFullScreenCover(item: $posterVM) { posterVM in
+            MapPosterView(vm: posterVM)
+        }
         // Map settings (gap G14b). A sheet, not a push — no NavigationStack.
         .sheet(isPresented: $presentSettings) {
             MapSettingsSheet(
                 store: vm.settings,
-                onApply: { filter in Task { await vm.applyFilter(filter) } },
-                onClose: { presentSettings = false }
+                onApply: { filter in Task { await vm.applyFilter(filter) } }
             )
             .presentationDetents([.medium, .large])
             .presentationDragIndicator(.visible)
@@ -191,24 +206,26 @@ struct MapSegmentView: View {
             if ((isLoadingPhotos || vm.isLoading) && vm.markers.isEmpty) || isRenderingMarkers {
                 HStack(spacing: PVSpacing.s8) {
                     ProgressView()
-                        .tint(PVFloating.content)
                     Text("Loading photos…")
                         .font(.pvSubhead)
-                        .foregroundStyle(PVFloating.secondaryContent)
+                        .foregroundStyle(Color.textSecondaryPV)
                 }
                 .padding(.horizontal, PVSpacing.s16)
                 .padding(.vertical, PVSpacing.s8)
-                .pvFloating(.pill)
+                .pvGlass(.pill)
                 .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .center)
             }
 
             // Filter + settings: floating glass controls, the only surface that
             // is legitimately above a full-screen map (same family as the
-            // spinner capsule).
+            // spinner capsule). The system's adaptive glass (`pvGlass`), like
+            // the navigation bar and the tab bar around the map — the dark
+            // over-photo tint read as a second material next to them.
             PVAdaptiveStack(hAlignment: .center, vAlignment: .trailing, spacing: PVSpacing.s8) {
                 if !vm.filter.isEmpty { activeFilterBadge }
                 myLocationButton
                 settingsButton
+                posterButton
             }
             .frame(maxWidth: .infinity, alignment: .trailing)
             .padding(.horizontal, PVSpacing.s16)
@@ -250,7 +267,7 @@ struct MapSegmentView: View {
                 .padding(.vertical, PVSpacing.s8)
         }
         .buttonStyle(.plain)
-        .pvFloating(.pill)
+        .pvGlass(.pill)
         .accessibilityElement(children: .combine)
         .accessibilityIdentifier("mapFilterActiveBadge")
         .transition(PVMotion.appearance(.opacityAndScale(0.92), reduceMotion: reduceMotion).anyTransition)
@@ -263,9 +280,23 @@ struct MapSegmentView: View {
                 .padding(PVSpacing.s12)
         }
         .buttonStyle(.plain)
-        .pvFloating(.circle)
+        .pvGlass(.circle)
         .accessibilityLabel("Map settings")
         .accessibilityIdentifier("mapSettingsButton")
+    }
+
+    private var posterButton: some View {
+        Button {
+            posterVM = DependencyContainer.shared.makeMapPosterViewModel()
+        } label: {
+            Image(systemName: "photo.artframe")
+                .font(.pvBody.weight(.semibold))
+                .padding(PVSpacing.s12)
+        }
+        .buttonStyle(.plain)
+        .pvGlass(.circle)
+        .accessibilityLabel("Map Poster")
+        .accessibilityIdentifier("mapPosterButton")
     }
 
     private var myLocationButton: some View {
@@ -275,7 +306,7 @@ struct MapSegmentView: View {
                 .padding(PVSpacing.s12)
         }
         .buttonStyle(.plain)
-        .pvFloating(.circle)
+        .pvGlass(.circle)
         .disabled(vm.isLocating)
         .accessibilityLabel("My Location")
         .accessibilityIdentifier("mapMyLocationButton")
@@ -301,7 +332,7 @@ struct MapSegmentView: View {
             .buttonStyle(PVSubtleButtonStyle())
         }
         .padding(PVSpacing.s16)
-        .pvFloating(.bar)
+        .pvGlass(.bar)
     }
 
     private func errorView(_ msg: String) -> some View {
@@ -519,6 +550,76 @@ private final class PhotoAnnotation: NSObject, MKAnnotation {
     }
     var coordinate: CLLocationCoordinate2D { marker.photo.coordinate }
     var title: String? { marker.photo.placeName.isEmpty ? nil : marker.photo.placeName }
+}
+
+// MARK: - Map preview (Explore)
+
+/// The way into the map from Explore: a small, non-interactive map of the
+/// library's places — a sample of the markers (`MapViewModel.previewPins`),
+/// framed on all of them — that opens the full map on a tap, the way the
+/// Places album of Photos does. It loads the markers itself (disk cache
+/// first), so the full map opens already filled.
+struct MapPreviewCard: View {
+    let vm: MapViewModel
+    let action: () -> Void
+    @Environment(\.colorScheme) private var colorScheme
+    @State private var position: MapCameraPosition = .automatic
+
+    private static let height: CGFloat = 180
+
+    var body: some View {
+        Button(action: action) {
+            Map(position: $position, interactionModes: []) {
+                ForEach(vm.previewPins) { pin in
+                    // No title: an empty key would be extracted to the catalog.
+                    Annotation(coordinate: pin.coordinate, anchor: .center) {
+                        Circle()
+                            .fill(Color.immichPrimary)
+                            .frame(width: 10, height: 10)
+                            .overlay(Circle().stroke(Color.white, lineWidth: 2))
+                    } label: {
+                        EmptyView()
+                    }
+                }
+            }
+            .mapStyle(.standard(pointsOfInterest: .excludingAll))
+            .environment(\.colorScheme, vm.settings.theme.colorScheme ?? colorScheme)
+            .allowsHitTesting(false)
+            .frame(maxWidth: .infinity)
+            .frame(height: Self.height)
+            .overlay(alignment: .bottomLeading) {
+                Label("Map", systemImage: "map")
+                    .font(.pvSubhead.weight(.semibold))
+                    .padding(.horizontal, PVSpacing.s12)
+                    .padding(.vertical, PVSpacing.s8)
+                    .pvGlass(.pill)
+                    .padding(PVSpacing.s12)
+            }
+            .clipShape(RoundedRectangle(cornerRadius: PVRadius.lg, style: .continuous))
+            .contentShape(RoundedRectangle(cornerRadius: PVRadius.lg, style: .continuous))
+        }
+        .buttonStyle(.plain)
+        // Re-framed on every new sample: the camera fitted on an empty map
+        // (markers still loading) would stay on the whole world.
+        .onChange(of: vm.previewPins) { _, _ in position = .automatic }
+        .task { await vm.loadMarkers() }
+        .accessibilityElement(children: .ignore)
+        .accessibilityAddTraits(.isButton)
+        .accessibilityLabel("Map")
+        .accessibilityHint("Your photos on a map")
+        .accessibilityIdentifier("searchMapEntry")
+    }
+}
+
+private extension MapTheme {
+    /// The scheme the preview is drawn in; `nil` follows the app.
+    var colorScheme: ColorScheme? {
+        switch self {
+        case .system: nil
+        case .light: .light
+        case .dark: .dark
+        }
+    }
 }
 
 /// UIViewRepresentable MKMapView with MKMarkerAnnotationView clustering.

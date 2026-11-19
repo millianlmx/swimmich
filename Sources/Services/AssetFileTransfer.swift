@@ -34,11 +34,33 @@ enum AssetFileTransfer {
     /// file name stripped of its extension, else a readable date-based fallback
     /// ("Photo-yyyy-MM-dd").
     static func baseName(originalName: String?, datePrefix: String) -> String {
-        if let originalName, !originalName.isEmpty {
-            let base = (originalName as NSString).deletingPathExtension
-            return base.isEmpty ? originalName : base
+        if let originalName, let safe = safeFileName(originalName) {
+            let base = (safe as NSString).deletingPathExtension
+            return base.isEmpty ? safe : base
         }
         return "Photo-\(datePrefix)"
+    }
+
+    /// A name that is one path component and nothing else: what is left of
+    /// `name` after its last separator, without control characters. Nil when
+    /// nothing usable is left (empty, `.`, `..`).
+    ///
+    /// The server's `originalFileName` is whatever the person who uploaded the
+    /// photo sent — a partner, a member of a shared album. Joined to a folder
+    /// as it comes, `../../Library/x` would land the file outside that folder.
+    static func safeFileName(_ name: String) -> String? {
+        let last = name.split(whereSeparator: { $0 == "/" || $0 == "\\" }).last.map(String.init) ?? ""
+        let cleaned = String(String.UnicodeScalarView(
+            last.unicodeScalars.filter { !CharacterSet.controlCharacters.contains($0) }
+        ))
+        guard !cleaned.isEmpty, cleaned != ".", cleaned != ".." else { return nil }
+        return cleaned
+    }
+
+    /// `safeFileName`, or a fixed name when nothing usable is left: the last
+    /// gate before a name the caller built is joined to a folder.
+    private static func component(_ name: String) -> String {
+        safeFileName(name) ?? "file"
     }
 
     /// Writes bytes into a UNIQUE temp directory so the file's basename is the
@@ -47,7 +69,7 @@ enum AssetFileTransfer {
         let dir = URL(fileURLWithPath: NSTemporaryDirectory())
             .appendingPathComponent("immich-share-\(UUID().uuidString)", isDirectory: true)
         try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
-        let fileURL = dir.appendingPathComponent(name)
+        let fileURL = dir.appendingPathComponent(component(name))
         try data.write(to: fileURL, options: .atomic)
         return fileURL
     }
@@ -60,7 +82,7 @@ enum AssetFileTransfer {
         let dir = URL(fileURLWithPath: NSTemporaryDirectory())
             .appendingPathComponent("immich-share-\(UUID().uuidString)", isDirectory: true)
         try fileManager.createDirectory(at: dir, withIntermediateDirectories: true)
-        let fileURL = dir.appendingPathComponent(name)
+        let fileURL = dir.appendingPathComponent(component(name))
         do {
             try fileManager.moveItem(at: source, to: fileURL)
         } catch {

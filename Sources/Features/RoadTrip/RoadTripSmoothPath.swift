@@ -29,6 +29,9 @@ struct RoadTripSmoothPath: Sendable {
     }
     private static let cache = NSCache<NSString, Box>()
 
+    /// Ceiling on the resampled points of a rail (the spacing widens past it).
+    static let maxResampledPoints = 20_000.0
+
     /// Builds (or fetches from cache) the smoothed rail for a route.
     static func make(route: [RoutePoint], sigma: Double, spacing: Double = 10, minSigma: Double? = nil) -> RoadTripSmoothPath {
         guard route.count >= 2 else { return RoadTripSmoothPath(route: route) }
@@ -39,7 +42,7 @@ struct RoadTripSmoothPath: Sendable {
         let key = "\(route.count)|\(hash)|\(sigma)|\(spacing)|\(minSigma ?? -1)" as NSString
         if let box = cache.object(forKey: key) { return box.path }
         let path = RoadTripSmoothPath(route: route, sigma: sigma, spacing: spacing, minSigma: minSigma, cacheKey: key as String)
-        cache.countLimit = 24
+        cache.countLimit = 64
         cache.setObject(Box(path), forKey: key)
         return path
     }
@@ -60,7 +63,10 @@ struct RoadTripSmoothPath: Sendable {
 
         let midLat = route.map(\.latitude).reduce(0, +) / Double(route.count)
         let ppm = MKMapPointsPerMeterAtLatitude(midLat)
-        let spacingMP = spacing * ppm
+        // Never more than ~`maxResampledPoints` samples: at 10 m a long leg
+        // (a 1 000 km straight line between two far stops) made 100 000
+        // points, smoothed on the main actor at the leg's first frame.
+        let spacingMP = max(spacing, rawTotal / Self.maxResampledPoints) * ppm
 
         // Resample linearly in map-point space, carrying each point's raw
         // arc-length label so smoothing never changes the parameterization.
@@ -335,7 +341,7 @@ struct RoadTripHeadingRail: Sendable {
             lookAheadFraction: lookAheadFraction, lookAheadBlend: lookAheadBlend,
             blendThreshold: blendThreshold, blendRamp: blendRamp
         )
-        cache.countLimit = 24
+        cache.countLimit = 64
         cache.setObject(Box(built), forKey: key)
         return built
     }

@@ -132,11 +132,11 @@ final class VoiceOverLabelsUITests: XCTestCase {
         "Photo, %@": ["en": "Photo, %@", "fr": "Photo, %@", "de": "Foto, %@", "es": "Foto, %@", "it": "Foto, %@"],
         "Video, %@": ["en": "Video, %@", "fr": "Vidéo, %@", "de": "Video, %@", "es": "Vídeo, %@", "it": "Video, %@"],
         "Remove rating": ["en": "Remove rating", "fr": "Retirer la note", "de": "Bewertung entfernen", "es": "Quitar la valoración", "it": "Rimuovi la valutazione"],
-        "Search options": ["en": "Search options", "fr": "Options de recherche", "de": "Suchoptionen", "es": "Opciones de búsqueda", "it": "Opzioni di ricerca"],
         "Smart": ["en": "Smart", "fr": "Intelligent", "de": "Intelligent", "es": "Inteligente", "it": "Intelligente"],
         "Metadata": ["en": "Metadata", "fr": "Métadonnées", "de": "Metadaten", "es": "Metadatos", "it": "Metadati"],
         "Save search…": ["en": "Save search…", "fr": "Enregistrer la recherche…", "de": "Suche speichern…", "es": "Guardar búsqueda…", "it": "Salva ricerca…"],
-        "Search typed text in detected text: Off": ["en": "Search typed text in detected text: Off", "fr": "Chercher le texte saisi dans le texte détecté : désactivé", "de": "Eingegebenen Text im erkannten Text suchen: Aus", "es": "Buscar el texto escrito en el texto detectado: desactivado", "it": "Cerca il testo digitato nel testo rilevato: disattivato"],
+        "Search in detected text": ["en": "Search in detected text", "fr": "Chercher dans le texte détecté", "de": "Im erkannten Text suchen", "es": "Buscar en el texto detectado", "it": "Cerca nel testo rilevato"],
+        "Search mode": ["en": "Search mode", "fr": "Mode de recherche", "de": "Suchmodus", "es": "Modo de búsqueda", "it": "Modalità di ricerca"],
         "Invite a partner": ["en": "Invite a partner", "fr": "Inviter un partenaire", "de": "Partner einladen", "es": "Invitar a un socio", "it": "Invita un partner"],
         "Stop sharing with %@": ["en": "Stop sharing with %@", "fr": "Ne plus partager avec %@", "de": "Teilen mit %@ beenden", "es": "Dejar de compartir con %@", "it": "Interrompi condivisione con %@"],
         "Copy link": ["en": "Copy link", "fr": "Copier le lien", "de": "Link kopieren", "es": "Copiar enlace", "it": "Copia link"],
@@ -302,21 +302,25 @@ final class VoiceOverLabelsUITests: XCTestCase {
         XCTAssertTrue(waitForLabel(videoPlayPause, before == pause ? play : pause),
                       "the video's Play/Pause did not flip from \"\(before)\" — it reads \"\(videoPlayPause.label)\"")
 
-        // The search's detected-text toggle, in the "Search options" menu, is inactive
-        // (the stub's server predates the structured filter): its title reads its
-        // action and its state (the iOS 26 menu item reads only the title).
+        // The search's detected-text chip, in the results bar once the mode is
+        // Metadata, is inactive (the stub's server predates the structured
+        // filter): its label names it, its value reads its state.
         relaunch(lang)
         openTab(4)
-        let options = button("searchModeMenu")
-        XCTAssertTrue(options.waitForExistence(timeout: 25), "search: no searchModeMenu button — \(screenReads())")
-        options.tap()
+        activateSearchField()
+        let modeChip = button("searchModeMenu")
+        XCTAssertTrue(modeChip.waitForExistence(timeout: 25), "search: no searchModeMenu chip — \(screenReads())")
+        modeChip.tap()
+        let metadataItem = button("searchTextMode_metadata")
+        XCTAssertTrue(metadataItem.waitForExistence(timeout: 15), "search: the mode menu holds no Metadata — \(screenReads())")
+        metadataItem.tap()
         let filter = button("searchOcrFilterToggle")
         XCTAssertTrue(filter.waitForExistence(timeout: 20),
                       "search, detected-text filter inactive: no searchOcrFilterToggle among the app's buttons — \(screenReads())")
-        let expected = text("Search typed text in detected text: Off", lang)
-        XCTAssertTrue(filter.label == expected,
-                      "the search's detected-text filter does not read \"\(expected)\": label '\(filter.label)'")
-        closeMenu("searchOcrFilterToggle")
+        XCTAssertEqual(filter.label, text("Search in detected text", lang), "the search's detected-text chip: its label")
+        let off = text("off", lang)
+        XCTAssertTrue((filter.value as? String) == off,
+                      "the search's detected-text chip does not read \"\(off)\": value '\(String(describing: filter.value))'")
 
         // The change-password screen's reveal: masked offers "Show password", revealed
         // offers "Hide password".
@@ -404,22 +408,21 @@ final class VoiceOverLabelsUITests: XCTestCase {
             assertButton(id, label: text("Show password", lang), "change password")
         }
 
-        // The search: the options menu (the mode as its value, then save in its
-        // sheet of actions), then the filters' stars (AC-34.5 reads their labels in
-        // every language).
+        // The search: the results bar (the mode chip names itself and reads the
+        // mode as its value; then Save search), then the filters' stars (AC-34.5
+        // reads their labels in every language).
         relaunch(lang)
         openTab(4)
+        activateSearchField()
         let smart = text("Smart", lang)
         let metadata = text("Metadata", lang)
         let modeMenu = button("searchModeMenu")
-        XCTAssertTrue(modeMenu.waitForExistence(timeout: 25), "search: no searchModeMenu button — \(screenReads())")
-        XCTAssertEqual(modeMenu.label, text("Search options", lang), "search: the options menu's label")
+        XCTAssertTrue(modeMenu.waitForExistence(timeout: 25), "search: no searchModeMenu chip — \(screenReads())")
+        XCTAssertEqual(modeMenu.label, text("Search mode", lang), "search: the mode chip's label")
         let modeValue = modeMenu.value as? String ?? ""
         XCTAssertTrue([smart, metadata].contains(modeValue),
-                      "search: the options menu reads \"\(modeValue)\", expected \"\(smart)\" or \"\(metadata)\"")
-        modeMenu.tap()
+                      "search: the mode chip reads \"\(modeValue)\", expected \"\(smart)\" or \"\(metadata)\"")
         assertButton("searchSaveButton", label: text("Save search…", lang), "search")
-        closeMenu("searchSaveButton")
 
         // The shared links.
         relaunch(lang)
@@ -438,6 +441,40 @@ final class VoiceOverLabelsUITests: XCTestCase {
         openAlbumAction("Road Trip")
         assertButton("roadTripCloseButton", label: text("Close", lang), "road trip")
         assertButton("roadTripExportButton", label: text("Export video", lang), "road trip")
+    }
+
+    // MARK: - AC-34.12
+
+    /// The Road Trip's map leg reads the drive (`roadTripMap`: the two stops, then how far
+    /// the car is) — and the car drives: its progress grows while the leg plays. The SwiftUI
+    /// map it replaces froze on its first frame, the car on its start.
+    func test_AC_34_12_roadTripMapReadsTheDrive() throws {
+        try start()
+        openAlbum()
+        openAlbumAction("Road Trip")
+
+        // The leg is playing once its pill names it (the map is set up, hidden, before).
+        let leg = "Paris, France → Versailles, France"
+        XCTAssertTrue(app.staticTexts[leg].waitForExistence(timeout: 90), "the Road Trip never reached its map leg — \(screenReads())")
+        let map = element("roadTripMap")
+        XCTAssertTrue(map.waitForExistence(timeout: 5), "the playing leg has no roadTripMap — \(screenReads())")
+        XCTAssertEqual(map.label, leg, "the map leg names its two stops")
+        // A leg is a short burst of map (2.5 s here): read the progress until
+        // the leg ends, then compare the first and the last reading.
+        var readings: [Int] = []
+        let deadline = Date().addingTimeInterval(4)
+        while Date() < deadline, let value = percent(map) {
+            readings.append(value)
+            Thread.sleep(forTimeInterval: 0.3)
+        }
+        XCTAssertFalse(readings.isEmpty, "the map leg reads no progress: \(String(describing: map.value))")
+        XCTAssertGreaterThan(readings.last ?? -1, readings.first ?? 100, "the car did not move along the route (read \(readings) %)")
+    }
+
+    /// The whole number a progress value reads ("42%" → 42).
+    private func percent(_ element: XCUIElement) -> Int? {
+        guard element.exists, let value = element.value as? String else { return nil }
+        return Int(value.filter(\.isNumber))
     }
 
     // MARK: - AC-34.7
@@ -876,9 +913,17 @@ final class VoiceOverLabelsUITests: XCTestCase {
 
     private func openMapTab() {
         openTab(4)
-        let segment = element("searchModeSegment_map")
-        XCTAssertTrue(segment.waitForExistence(timeout: 25), "the Map segment is missing — \(screenReads())")
-        segment.tap()
+        let entry = element("searchMapEntry")
+        XCTAssertTrue(entry.waitForExistence(timeout: 25), "Explore's Map entry is missing — \(screenReads())")
+        entry.tap()
+    }
+
+    /// The search field, made active: the results bar (mode chips, detected
+    /// text, Save, Select) shows from then on.
+    private func activateSearchField() {
+        let field = app.searchFields.firstMatch
+        XCTAssertTrue(field.waitForExistence(timeout: 25), "search: no search field — \(screenReads())")
+        field.tap()
     }
 
     /// A row of the Albums library, scrolled into reach.

@@ -10,9 +10,12 @@ import XCTest
 ///    language (AC-14, AC-90).
 /// 2. The scrubber is there for every filter and grouping, never over an empty
 ///    or failed timeline (AC-86).
-/// 3. A release sends ONE `GET /api/timeline/bucket` for the targeted month, with
-///    the filters of the month list; the months crossed by the drag send none
-///    (AC-87, AC-88, AC-92). A failed month is retried alone (AC-89) and a
+/// 3. The gesture asks for the targeted month once, with the filters of the
+///    month list (AC-87, AC-88, AC-92). The grid follows the finger while it
+///    moves, one load at a time (`TimelineView.scrubberMoved`): months the drag
+///    passed over may be asked on the way, a month asked once in the gesture is
+///    not asked again, and a release on the month still loading reuses that
+///    load. A failed month is retried alone (AC-89) and a
 ///    release made while another month is in flight wins (AC-95).
 /// 4. The handle follows the finger-scrolled grid (AC-91), snaps to the first
 ///    photo of the month by default and to the exact spot with "Smooth
@@ -351,7 +354,7 @@ final class TimelineScrubberUITests: XCTestCase {
         return (2025 - yyyy) * 12 + (12 - mm)
     }
 
-    /// "MMMM yyyy" in `locale`, the app's own bubble/value format. Comparing to
+    /// "MMMM yyyy" in `locale`, sentence-cased: the app's own bubble/value format. Comparing to
     /// the formatter (not to a literal) is what lets AC-90 run in two languages.
     private func expectedLabel(_ yyyy: Int, _ mm: Int, _ locale: Locale) -> String {
         var calendar = Calendar(identifier: .gregorian)
@@ -362,7 +365,10 @@ final class TimelineScrubberUITests: XCTestCase {
         formatter.calendar = calendar
         formatter.timeZone = calendar.timeZone
         formatter.dateFormat = "MMMM yyyy"
-        return formatter.string(from: date)
+        // The app sentence-cases the label ("Juin 2024" in French).
+        let text = formatter.string(from: date)
+        guard let first = text.first else { return text }
+        return String(first).uppercased() + text.dropFirst()
     }
 
     private func firstVisibleMonthAndRank() -> (yyyy: Int, mm: Int, rank: Int)? {
@@ -643,8 +649,8 @@ final class TimelineScrubberUITests: XCTestCase {
 
         waitForTop(2023, 1, rank: 1)
         waitForScrubberValue(expectedLabel(2023, 1, enUS))
-        XCTAssertEqual(bucketMonths(after: mark).first, "2023-01-01",
-                       "the release must ask for the oldest month — got:\n\(describe(bucketRequests(after: mark)))")
+        XCTAssertTrue(bucketMonths(after: mark).contains("2023-01-01"),
+                      "the gesture must ask for the oldest month — got:\n\(describe(bucketRequests(after: mark)))")
         shot("s14-oldest-month")
     }
 
@@ -742,14 +748,17 @@ final class TimelineScrubberUITests: XCTestCase {
         waitForTop(2024, 6, rank: 1)
 
         let requests = bucketRequests(after: mark)
-        XCTAssertEqual(requests.first?.month, "2024-06-01",
-                       "the first month asked after the gesture must be the one targeted — got:\n\(describe(requests))")
+        // The grid follows the finger: months the drag rested on may be asked
+        // on the way, but the targeted one is asked, once.
+        let targeted = requests.filter { $0.month == "2024-06-01" }
+        XCTAssertEqual(targeted.count, 1,
+                       "the targeted month must be asked exactly once — got:\n\(describe(requests))")
         let list = stubRequests().last { $0.method == "GET" && $0.path == "/api/timeline/buckets" }
         XCTAssertNotNil(list, "the app never asked for the month list")
-        XCTAssertEqual(requests.first?.params["visibility"], "timeline",
+        XCTAssertEqual(targeted.first?.params["visibility"], "timeline",
                        "the month request must carry visibility=timeline for the All filter")
         for (key, value) in list?.params ?? [:] {
-            XCTAssertEqual(requests.first?.params[key], value,
+            XCTAssertEqual(targeted.first?.params[key], value,
                            "the month request must carry the month list's filter \(key)=\(value)")
         }
 
@@ -774,10 +783,10 @@ final class TimelineScrubberUITests: XCTestCase {
         waitForTop(2024, 2, rank: 1)
 
         let requests = bucketRequests(after: mark)
-        XCTAssertEqual(requests.first?.month, "2024-02-01",
-                       "the release must ask for the oldest favorite month — got:\n\(describe(requests))")
-        XCTAssertEqual(requests.first?.params["isFavorite"], "true",
-                       "the month request must carry isFavorite=true — got:\n\(describe(requests))")
+        let targeted = requests.first { $0.month == "2024-02-01" }
+        XCTAssertNotNil(targeted, "the gesture must ask for the oldest favorite month — got:\n\(describe(requests))")
+        XCTAssertTrue(requests.allSatisfy { $0.params["isFavorite"] == "true" },
+                      "every month request of the gesture must carry isFavorite=true — got:\n\(describe(requests))")
         waitForScrubberValue(expectedLabel(2024, 2, enUS))
         shot("s88-oldest-favorite")
     }
@@ -802,8 +811,12 @@ final class TimelineScrubberUITests: XCTestCase {
 
         let all = stubRequests().dropFirst(mark)
         let months = bucketMonths(after: mark)
-        XCTAssertEqual(Array(months.prefix(2)), ["2024-03-01", "2024-03-01"],
-                       "the failed month must be asked twice, back to back — got:\n\(describe(Array(all)))")
+        // Once by the gesture (which fails: the release does not ask again,
+        // the banner stays), once by Try Again — back to back.
+        let march = months.indices.filter { months[$0] == "2024-03-01" }
+        XCTAssertEqual(march.count, 2, "the failed month must be asked twice — got:\n\(describe(Array(all)))")
+        XCTAssertEqual(march.last, march.first.map { $0 + 1 },
+                       "the two requests for the failed month must be back to back — got:\n\(describe(Array(all)))")
         XCTAssertFalse(all.contains { $0.method == "GET" && $0.path == "/api/timeline/buckets" },
                        "Try Again must not reload the month list — got:\n\(describe(Array(all)))")
         XCTAssertFalse(months.contains("2025-12-01"),
@@ -902,9 +915,9 @@ final class TimelineScrubberUITests: XCTestCase {
         var mark = requestMark()
         dragScrubber(toTrackFraction: middle)
         waitForTop(2024, 6, rank: 1)
-        XCTAssertEqual(bucketMonths(after: mark).first, "2024-06-01",
-                       "the gesture must send one request, for the targeted month — got:\n"
-                       + "\(describe(bucketRequests(after: mark)))")
+        XCTAssertTrue(bucketMonths(after: mark).contains("2024-06-01"),
+                      "the gesture must ask for the targeted month — got:\n"
+                      + "\(describe(bucketRequests(after: mark)))")
 
         // Smooth Scrubbing on, without relaunching.
         openPreferences()
@@ -927,9 +940,9 @@ final class TimelineScrubberUITests: XCTestCase {
         let seenRank: String = top.map { String($0.rank) } ?? "none"
         XCTAssertTrue((7...13).contains(top?.rank ?? 0),
                       "the first visible cell must be around the middle of the month (rank 7 to 13), got \(seenRank)")
-        XCTAssertEqual(bucketMonths(after: mark).first, "2024-06-01",
-                       "the gesture must send one request, for the targeted month — got:\n"
-                       + "\(describe(bucketRequests(after: mark)))")
+        XCTAssertTrue(bucketMonths(after: mark).contains("2024-06-01"),
+                      "the gesture must ask for the targeted month — got:\n"
+                      + "\(describe(bucketRequests(after: mark)))")
         shot("s92-smooth")
 
         // Relaunch: still on.

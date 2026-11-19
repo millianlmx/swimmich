@@ -462,19 +462,23 @@ final class SyncStatusUITests: XCTestCase {
                       + "\(app.staticTexts.allElementsBoundByIndex.map(\.label))")
         shot("s04-timeline")
 
-        // MARK: The bar's sync button → Sync Status, BEFORE any run
+        // MARK: The avatar → the Me hub's first row → Sync Status, BEFORE any run
 
-        // The entry point is a sibling of the avatar in the bar, not a row of
-        // the Me hub: that hub already carries Backup, and a read-out of the
-        // ledger sitting under the screen that feeds it read as the same
-        // feature stated twice.
+        // The avatar is the backup's only mark in the bars (it carries the
+        // run's ring), and Sync Status is the first row of the hub it opens.
+        let avatar = app.buttons.matching(identifier: "profileAvatar").firstMatch
+        XCTAssertTrue(avatar.waitForExistence(timeout: 15), "the avatar is missing from the bar")
+        avatar.tap()
         let syncButton = app.buttons.matching(identifier: "syncStatusButton").firstMatch
-        XCTAssertTrue(syncButton.waitForExistence(timeout: 15), "Sync Status button missing from the bar")
+        XCTAssertTrue(syncButton.waitForExistence(timeout: 15), "Sync Status row missing from the Me hub")
         shot("s04b-sync-button")
+        // The hub reads its own state (storage, servers) as it opens: those
+        // requests land before the mark, so what follows is the screen's alone.
+        sleep(4)
 
         let beforeOpen = stubRequests().count
         syncButton.tap()
-        sleep(4) // the sheet animates in; the screen is not hittable before it does
+        sleep(4) // the screen is pushed; it is not hittable before it lands
 
         // Nothing has ever been recorded: the screen says so instead of showing
         // a grid of zeros that would read as a finished, empty library.
@@ -604,15 +608,16 @@ final class SyncStatusUITests: XCTestCase {
         // MARK: A fresh open — the counters survive a re-render
 
         let done = app.buttons.matching(identifier: "syncStatusDone").firstMatch
-        XCTAssertTrue(done.waitForExistence(timeout: 10), "no way out of the Sync Status sheet")
+        XCTAssertTrue(done.waitForExistence(timeout: 10), "no way out of the Sync Status screen")
         done.tap()
         sleep(2)
 
+        // "Done" pops back to the hub: the row is right there.
         let openedAgain = app.buttons.matching(identifier: "syncStatusButton").firstMatch
         XCTAssertTrue(openedAgain.waitForExistence(timeout: 10),
-                      "Sync Status button missing from the bar again")
+                      "Sync Status row missing from the Me hub again")
         openedAgain.tap()
-        sleep(4) // the sheet animates in again
+        sleep(4) // the screen is pushed again
         XCTAssertTrue(waitUntil(25) { self.statValue("syncStatusTrackedValue") == expected },
                       "a fresh open must show the same counters — it reads:\n\(counters())")
         XCTAssertEqual(statValue("syncStatusUploadedValue"), expected,

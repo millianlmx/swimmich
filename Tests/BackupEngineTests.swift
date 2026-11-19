@@ -2887,3 +2887,41 @@ final class ICloudFirstRunBackupTests: XCTestCase {
         assertStopped(rig, elapsed: elapsed)
     }
 }
+
+/// What a killed process leaves in `tmp` — full-size copies of photos and
+/// videos — is gone at the next launch, and nothing else of `tmp` is touched.
+final class TemporaryExportPurgeTests: XCTestCase {
+    func test_purgeOrphans_removesExportsAndUploadBodiesOnly() throws {
+        let fm = FileManager.default
+        let tmp = fm.temporaryDirectory.appendingPathComponent("purge-\(UUID().uuidString)", isDirectory: true)
+        try fm.createDirectory(at: tmp, withIntermediateDirectories: true)
+        defer { try? fm.removeItem(at: tmp) }
+
+        for directory in ["immich-backup", "immich-local-check", "immich-upload", "immich-share"] {
+            let dir = tmp.appendingPathComponent(directory, isDirectory: true)
+            try fm.createDirectory(at: dir, withIntermediateDirectories: true)
+            try Data(repeating: 1, count: 1_024).write(to: dir.appendingPathComponent("IMG_0001.HEIC"))
+        }
+        // A body written by an older version, at the root of tmp.
+        let legacy = tmp.appendingPathComponent("immich-upload-\(UUID().uuidString).multipart")
+        try Data(repeating: 2, count: 1_024).write(to: legacy)
+        // Anything else stays.
+        let unrelated = tmp.appendingPathComponent("notes.txt")
+        try Data("keep".utf8).write(to: unrelated)
+        let lookalike = tmp.appendingPathComponent("immich-upload-notes.txt")
+        try Data("keep".utf8).write(to: lookalike)
+
+        BackupExportDirectory.purgeOrphans(in: tmp)
+
+        let left = try fm.contentsOfDirectory(atPath: tmp.path).sorted()
+        XCTAssertEqual(left, ["immich-upload-notes.txt", "notes.txt"])
+    }
+
+    func test_uploadBodies_isTheDirectoryThePurgeEmpties() {
+        XCTAssertEqual(BackupExportDirectory.uploadBodies.lastPathComponent, "immich-upload")
+        XCTAssertEqual(
+            BackupExportDirectory.uploadBodies.deletingLastPathComponent().standardizedFileURL.path,
+            BackupExportDirectory.backup.deletingLastPathComponent().standardizedFileURL.path
+        )
+    }
+}

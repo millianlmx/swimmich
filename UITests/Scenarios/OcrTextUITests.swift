@@ -19,8 +19,8 @@ import XCTest
 /// leave the search toggle disabled. See its docstring.
 ///
 /// The search half's criterion is typed into the **Filters sheet's "Detected
-/// text" field**. The "Search options" menu's detected-text item
-/// (`searchOcrFilterToggle`, next to the text modes) rewrites the *typed query*
+/// text" field**. The results bar's detected-text chip
+/// (`searchOcrFilterToggle`, after the text modes) rewrites the *typed query*
 /// as the filter (`toggleCarriesCriterion`); that path, typed query to
 /// `filter.ocr.matches`, is proven by `SearchRedesignUITests.test_AC_9`. Here
 /// the item is asserted as a control (present, enabled on the v3.2.0 shape the
@@ -64,16 +64,6 @@ final class OcrTextUITests: XCTestCase {
     /// VoiceOver value is a catalog key (`on`, shipped in five languages), so it
     /// follows the machine.
     private let latchedCopy = ["on", "Activé", "Ein", "Activado", "Attivato"]
-
-    /// The title of the "Search options" menu's detected-text item once latched.
-    /// The iOS 26 menu item publishes no value, so its title carries the state
-    /// (`SearchView.ocrFilterToggle`). Five languages, as `noTextCopy`: the
-    /// language follows the machine. Copied from `Localizable.xcstrings`.
-    private let menuToggleOnCopy = ["Search typed text in detected text: On",
-                                    "Chercher le texte saisi dans le texte détecté : activé",
-                                    "Eingegebenen Text im erkannten Text suchen: Ein",
-                                    "Buscar el texto escrito en el texto detectado: activado",
-                                    "Cerca il testo digitato nel testo rilevato: attivato"]
 
     override func setUpWithError() throws {
         continueAfterFailure = false
@@ -278,17 +268,6 @@ final class OcrTextUITests: XCTestCase {
     private func waitForValue(_ element: XCUIElement, _ accepted: [String],
                               timeout: TimeInterval = 10) -> Bool {
         let predicate = NSPredicate(format: accepted.map { _ in "value == %@" }.joined(separator: " OR "),
-                                    argumentArray: accepted)
-        let expectation = XCTNSPredicateExpectation(predicate: predicate, object: element)
-        return XCTWaiter().wait(for: [expectation], timeout: timeout) == .completed
-    }
-
-    /// `waitForValue`'s twin on `label`: the Search options menu item publishes no
-    /// value on iOS 26, its title carries the state. Equality is exact — a title
-    /// ending in "Off", or in a language the catalogue does not ship, fails.
-    private func waitForLabel(_ element: XCUIElement, _ accepted: [String],
-                              timeout: TimeInterval = 10) -> Bool {
-        let predicate = NSPredicate(format: accepted.map { _ in "label == %@" }.joined(separator: " OR "),
                                     argumentArray: accepted)
         let expectation = XCTNSPredicateExpectation(predicate: predicate, object: element)
         return XCTWaiter().wait(for: [expectation], timeout: timeout) == .completed
@@ -527,53 +506,44 @@ final class OcrTextUITests: XCTestCase {
 
         // The detected-text toggle is a mode of the METADATA search, and it is
         // off the table on a server without the structured filter: the stub
-        // answers 3.2.0, so a disabled toggle here is a real failure. It lives
-        // in the "Search options" menu, with the text modes.
-        let modeMenu = app.buttons.matching(identifier: "searchModeMenu").firstMatch
-        if !modeMenu.waitForExistence(timeout: 25) {
-            shot("08b-no-search-toolbar")
-            XCTFail("no Search options menu in the toolbar — buttons read: "
-                    + "\(app.buttons.allElementsBoundByIndex.map(\.label))")
+        // answers 3.2.0, so a disabled toggle here is a real failure. It is the
+        // chip next to the mode chip, shown while the mode is Metadata; the
+        // results bar shows once the search field is active.
+        let field = app.searchFields.firstMatch
+        if !field.waitForExistence(timeout: 25) {
+            shot("08b-no-search-field")
+            XCTFail("no search field — buttons read: \(app.buttons.allElementsBoundByIndex.map(\.label))")
         }
+        field.tap()
+        let modeMenu = app.buttons.matching(identifier: "searchModeMenu").firstMatch
+        XCTAssertTrue(modeMenu.waitForExistence(timeout: 15),
+                      "the results bar shows no mode chip — buttons read: "
+                      + "\(app.buttons.allElementsBoundByIndex.map(\.label))")
         shot("08-search")
         modeMenu.tap()
-        XCTAssertTrue(tapAnyButton(["Metadata", "Métadonnées", "Metadaten"], timeout: 15),
+        let metadata = app.buttons.matching(identifier: "searchTextMode_metadata").firstMatch
+        XCTAssertTrue(metadata.waitForExistence(timeout: 15),
                       "the mode menu offers no Metadata option — buttons read: "
                       + "\(app.buttons.allElementsBoundByIndex.map(\.label))")
+        metadata.tap()
 
-        // The menu closes on the pick: open it again for the toggle, and again
-        // while the toggle is still disabled (the server's version may not be in).
+        // Disabled until the mode is Metadata and the server's version is in.
         let ocrFilter = app.buttons.matching(identifier: "searchOcrFilterToggle").firstMatch
-        let outsideTheMenu = app.windows.firstMatch.coordinate(withNormalizedOffset: CGVector(dx: 0.1, dy: 0.5))
-        let enabledBy = Date().addingTimeInterval(25)
-        var enabled = false
-        while !enabled && Date() < enabledBy {
-            modeMenu.tap()
-            XCTAssertTrue(ocrFilter.waitForExistence(timeout: 25),
-                          "no detected-text toggle in the Search options menu — buttons read: "
-                          + "\(app.buttons.allElementsBoundByIndex.map(\.label))")
-            enabled = ocrFilter.isEnabled
-            if !enabled {
-                outsideTheMenu.tap()
-                _ = ocrFilter.waitForNonExistence(timeout: 5)
-            }
-        }
-        XCTAssertTrue(enabled,
+        XCTAssertTrue(ocrFilter.waitForExistence(timeout: 25),
+                      "no detected-text chip in the results bar — buttons read: "
+                      + "\(app.buttons.allElementsBoundByIndex.map(\.label))")
+        let enabled = XCTNSPredicateExpectation(predicate: NSPredicate(format: "enabled == true"), object: ocrFilter)
+        XCTAssertTrue(XCTWaiter().wait(for: [enabled], timeout: 25) == .completed,
                       "the detected-text toggle stayed disabled: either the mode is not Metadata"
                       + " or the server never answered 3.2.0 (the stub does)")
         ocrFilter.tap()
-        _ = ocrFilter.waitForNonExistence(timeout: 5)
-        modeMenu.tap()
-        XCTAssertTrue(ocrFilter.waitForExistence(timeout: 10), "the Search options menu did not open again")
-        XCTAssertTrue(waitForLabel(ocrFilter, menuToggleOnCopy),
-                      "the detected-text toggle did not latch — its title reads '\(ocrFilter.label)'")
-        outsideTheMenu.tap()
-        _ = ocrFilter.waitForNonExistence(timeout: 5)
+        XCTAssertTrue(waitForValue(ocrFilter, latchedCopy),
+                      "the detected-text toggle did not latch — its value reads '\(String(describing: ocrFilter.value))'")
 
         // MARK: - Search: the criterion travels as a structured filter
 
         // The criterion is written by the Filters sheet's "Detected text"
-        // field. The menu's toggle rewrites the typed QUERY as the filter
+        // field. The results bar's toggle rewrites the typed QUERY as the filter
         // (`SearchViewModel.toggleCarriesCriterion`), a path proven by
         // `SearchRedesignUITests.test_AC_9`; here the toggle is proven as a
         // control — present, gated on the v3.2.0 shape the stub answers, and

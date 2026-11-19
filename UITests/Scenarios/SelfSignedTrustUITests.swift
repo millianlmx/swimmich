@@ -678,11 +678,11 @@ final class SelfSignedTrustUITests: XCTestCase {
     private var roadTripIds: [String] { roadTripStops.flatMap { $0 } }
     /// The leg's label (`RoadTripView.placeLabel`): the EXIF city and country of the two stops.
     private let roadTripLeg = "Paris, France → Versailles, France"
-    /// Seconds of the player clock (`RoadTripFramePlan.swift`: opening 2.5 s, then the 6 photos of
-    /// Paris alternating 3.9 s and 2.6 s, the last one 1.04 s, then a leg of 8.53 s for 17.9 km).
-    /// The clock starts when the view is created, so it includes the preparation.
-    private let parisEnd = 20.4
-    private let legEnd = 29.0
+    /// Seconds of the player clock (`RoadTripFramePlan.swift`: opening 2 s, then the 6 photos of
+    /// Paris, the hero 1.5 s and the others 1 s, then a leg of 2.5 s for 17.9 km).
+    /// The clock starts when the player appears, once the preparation is over.
+    private let parisEnd = 8.5
+    private let legEnd = 11.0
 
     private let errorAlbumId = "dddddddd-4444-4444-8444-000000000002"
     private let errorAlbumName = "Broken Journey"

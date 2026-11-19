@@ -16,13 +16,16 @@ struct MemoriesView: View {
     @Bindable var vm: MemoriesViewModel
     @Environment(AuthViewModel.self) private var auth
     @Environment(\.openProfile) private var openProfile
-    @Environment(\.openSyncStatus) private var openSyncStatus
 
     /// The full-screen playback, created by the list's view model so it reads the
     /// live list: a memory whose assets were just edited (or emptied) is never
     /// shown stale, and a delete moves on to the next memory.
     @State private var playback: MemoryPlaybackViewModel?
     @State private var addingPhotosToID: String?
+    /// Then & now, pushed while set.
+    @State private var thenAndNowVM: ThenAndNowViewModel?
+    /// Swimmich Wrapped, full-screen while set.
+    @State private var wrappedVM: WrappedViewModel?
     @State private var pendingDelete: MemoryResponseDto?
 
     var body: some View {
@@ -54,12 +57,44 @@ struct MemoriesView: View {
                     }
                     .accessibilityIdentifier("memoriesCreateButton")
                 }
-                ToolbarItemGroup(placement: .topBarTrailing) {
-                    SyncStatusButton { openSyncStatus() }
-                    ProfileAvatarButton { openProfile() }
+                // The places photographed years apart.
+                ToolbarItem(placement: .topBarLeading) {
+                    Button {
+                        thenAndNowVM = DependencyContainer.shared.makeThenAndNowViewModel(
+                            baseURL: auth.baseURL ?? URL(string: "https://example.com")!,
+                            token: auth.accessToken
+                        )
+                    } label: {
+                        Label("Then & Now", systemImage: "clock.arrow.2.circlepath")
+                            .labelStyle(.iconOnly)
+                    }
+                    .accessibilityIdentifier("memoriesThenAndNowButton")
                 }
+                // The year in photos, as a story.
+                ToolbarItem(placement: .topBarLeading) {
+                    Button {
+                        wrappedVM = DependencyContainer.shared.makeWrappedViewModel(
+                            baseURL: auth.baseURL ?? URL(string: "https://example.com")!,
+                            token: auth.accessToken
+                        )
+                    } label: {
+                        Label("Wrapped", systemImage: "gift")
+                            .labelStyle(.iconOnly)
+                    }
+                    .accessibilityIdentifier("memoriesWrappedButton")
+                }
+                ProfileAvatarToolbarItem { openProfile() }
             }
             .task { await vm.load() }
+            .pvFullScreenCover(item: $wrappedVM) { wrappedVM in
+                WrappedView(vm: wrappedVM)
+            }
+            .navigationDestination(isPresented: Binding(
+                get: { thenAndNowVM != nil },
+                set: { if !$0 { thenAndNowVM = nil } }
+            )) {
+                if let thenAndNowVM { ThenAndNowListView(vm: thenAndNowVM) }
+            }
             .sheet(isPresented: $vm.showCreate) {
                 CreateMemorySheet(vm: vm)
             }

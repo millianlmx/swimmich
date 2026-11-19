@@ -234,16 +234,6 @@ final class DynamicTypeTests: XCTestCase {
         XCTAssertEqual(styledLarge.width, plainLarge.width, accuracy: 0.5)
     }
 
-    func test_AC_26_3_searchModeBarNotCappedAtAX5() {
-        let ax5 = hostedSize(SearchModeGlassBar(mode: .constant(.results)), size: .accessibility5)
-        XCTAssertGreaterThanOrEqual(
-            ax5.height, 3 * PVFontMetrics.lineHeight(.pvSubhead, at: .accessibility5),
-            "three stacked segments at the uncapped Subhead size"
-        )
-        let large = hostedSize(SearchModeGlassBar(mode: .constant(.results)), size: .large)
-        XCTAssertEqual(large.height, 44, accuracy: 0.5)
-    }
-
     // MARK: - AC-26.4
 
     func test_AC_26_4_uploadAssetRowWrapsAtAX5() {

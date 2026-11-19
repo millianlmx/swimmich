@@ -7,21 +7,21 @@ import SwiftUI
 /// `NavigationStack` (two navigation bars otherwise).
 ///
 /// Edits go to a local `draft` and are applied once, when the sheet closes —
-/// toggling three switches must not fire three full-catalogue refetches. Swipe
-/// down applies too: there is no silent cancel. The theme is the exception: it
-/// is not part of the filter, so it is written to the store as it is picked and
-/// the map behind the sheet repaints immediately.
+/// toggling three switches must not fire three full-catalogue refetches. The
+/// sheet closes the native way, by a swipe down (or a tap on the map above
+/// it), and that applies: there is no silent cancel, so there is no "Done"
+/// either — a big button that did what the swipe already does. An inverted
+/// custom range blocks the swipe until it is fixed (the inline error says
+/// why). The theme is the exception: it is not part of the filter, so it is
+/// written to the store as it is picked and the map behind the sheet repaints
+/// immediately.
 struct MapSettingsSheet: View {
     @Bindable var store: MapSettingsStore
-    /// Called with the edited filter on Done / swipe-down.
+    /// Called with the edited filter when the sheet closes.
     let onApply: (MapMarkerFilter) -> Void
-    /// Called after `onApply` when the sheet closed itself (Done).
-    let onClose: () -> Void
 
     /// Local draft — nothing is applied until the sheet closes.
     @State private var draft: MapMarkerFilter
-    /// Guards the two close paths (Done and swipe-down) from applying twice.
-    @State private var applied = false
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
 
     /// Upstream `map_custom_time_range.dart` opens its pickers at
@@ -35,12 +35,10 @@ struct MapSettingsSheet: View {
 
     init(
         store: MapSettingsStore,
-        onApply: @escaping (MapMarkerFilter) -> Void,
-        onClose: @escaping () -> Void
+        onApply: @escaping (MapMarkerFilter) -> Void
     ) {
         self.store = store
         self.onApply = onApply
-        self.onClose = onClose
         _draft = State(initialValue: store.filter)
     }
 
@@ -50,14 +48,10 @@ struct MapSettingsSheet: View {
             markersSection
             dateRangeSection
         }
-        // Mirrors upstream's "remove custom date range": drops both bounds and
-        // the relative preset in one action.
-        .safeAreaInset(edge: .bottom) { doneBar }
         .interactiveDismissDisabled(!draft.isValid)
         .onDisappear {
-            // Swipe-down closes the sheet without calling `finish()`; applying
-            // here keeps both exits equivalent.
-            if !applied, draft.isValid { onApply(draft) }
+            // Every way out (swipe down, tap above the sheet) ends here.
+            if draft.isValid { onApply(draft) }
         }
     }
 
@@ -141,18 +135,6 @@ struct MapSettingsSheet: View {
             }
             .accessibilityIdentifier("mapSettingsCustomRangeButton")
         }
-    }
-
-    private var doneBar: some View {
-        Button("Done") { finish() }
-            .buttonStyle(PVPrimaryButtonStyle())
-            .disabled(!draft.isValid)
-            .accessibilityIdentifier("mapSettingsDoneButton")
-            .padding(.horizontal, PVSpacing.s16)
-            .padding(.vertical, PVSpacing.s12)
-            .pvFloating(.bar)
-            .padding(.horizontal, PVSpacing.s16)
-            .padding(.bottom, PVSpacing.s8)
     }
 
     // MARK: - Rows
@@ -260,12 +242,5 @@ struct MapSettingsSheet: View {
         case 1095: "3 years"
         default: "All"
         }
-    }
-
-    private func finish() {
-        guard !applied else { return }
-        applied = true
-        onApply(draft)
-        onClose()
     }
 }

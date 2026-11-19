@@ -91,6 +91,11 @@ final class NetworkSettingsViewModel {
         await persist(settings)
     }
 
+    /// `pendingUntrustedHost` was already trusted, with another certificate.
+    var pendingHostCertificateChanged: Bool {
+        pendingUntrustedHost.map { trustStore.pin(for: $0) != nil } ?? false
+    }
+
     /// The user accepted the certificate of `pendingUntrustedHost`: remember it
     /// and measure the addresses again.
     func trustPendingHost() async {

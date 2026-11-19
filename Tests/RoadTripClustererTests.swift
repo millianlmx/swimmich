@@ -87,6 +87,19 @@ final class RoadTripClustererTests: XCTestCase {
         XCTAssertEqual(Set(clusters[0].assets.map(\.id)), ["a", "b"])
     }
 
+    func test_cluster_unlocatedFirstThenLocated_doesNotCrash() {
+        // An unlocated photo far in time from the others gets a cluster of its
+        // own before any located one: the located clusters' anchors must not
+        // be looked up by the wrong index (crashed on the Immich demo album).
+        let clusters = RoadTripClusterer.cluster([
+            makeAsset(id: "u", time: "2024-07-01T08:00:00.000Z"),
+            makeAsset(id: "a", time: "2024-07-02T10:00:00.000Z", lat: 48.8584, lon: 2.2945),
+            makeAsset(id: "b", time: "2024-07-02T10:05:00.000Z", lat: 48.8590, lon: 2.2950),
+        ])
+        XCTAssertEqual(Set(clusters.flatMap(\.assets).map(\.id)), ["u", "a", "b"])
+        XCTAssertTrue(clusters.contains { Set($0.assets.map(\.id)) == ["a", "b"] }, "a and b are one stop")
+    }
+
     func test_cluster_unlocatedFormsTrailingCluster() {
         let located = makeAsset(id: "a", time: "2024-07-01T10:00:00.000Z", lat: 48.8584, lon: 2.2945)
         let farNoGPS = makeAsset(id: "b", time: "2024-07-10T10:00:00.000Z")
@@ -98,15 +111,17 @@ final class RoadTripClustererTests: XCTestCase {
         XCTAssertNil(trailing?.latitude)
     }
 
-    // MARK: - Centroid + determinism
+    // MARK: - Medoid + determinism
 
-    func test_cluster_centroidIsMean() {
+    func test_cluster_sitsOnThePhotoNearestTheMean() {
         let clusters = RoadTripClusterer.cluster([
             makeAsset(id: "a", time: "2024-07-01T10:00:00.000Z", lat: 48.8580, lon: 2.2940),
-            makeAsset(id: "b", time: "2024-07-01T10:05:00.000Z", lat: 48.8584, lon: 2.2946)
+            makeAsset(id: "b", time: "2024-07-01T10:05:00.000Z", lat: 48.8583, lon: 2.2944),
+            makeAsset(id: "c", time: "2024-07-01T10:10:00.000Z", lat: 48.8590, lon: 2.2950)
         ])
-        XCTAssertEqual(clusters[0].latitude!, 48.8582, accuracy: 0.0001)
-        XCTAssertEqual(clusters[0].longitude!, 2.2943, accuracy: 0.0001)
+        // The mean (48.8584, 2.2945) is nobody's spot; "b" is the nearest photo.
+        XCTAssertEqual(clusters[0].latitude!, 48.8583, accuracy: 0.000001)
+        XCTAssertEqual(clusters[0].longitude!, 2.2944, accuracy: 0.000001)
     }
 
     func test_cluster_idDeterministic() {

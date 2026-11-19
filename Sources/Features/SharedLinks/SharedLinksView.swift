@@ -14,7 +14,6 @@ struct SharedLinksView: View {
     @Environment(AuthViewModel.self) private var auth
     @Environment(AlbumsViewModel.self) private var albumsVM
     @Environment(\.openProfile) private var openProfile
-    @Environment(\.openSyncStatus) private var openSyncStatus
     @State private var presentingCreate = false
     @State private var presentingViewer = false
     @State private var pendingRevokeId: String?
@@ -43,10 +42,16 @@ struct SharedLinksView: View {
                     }
                     .accessibilityIdentifier("openSharedLinkViewer")
                 }
-                ToolbarItemGroup(placement: .topBarTrailing) {
-                    SyncStatusButton { openSyncStatus() }
-                    ProfileAvatarButton { openProfile() }
+                ToolbarItem(placement: .topBarLeading) {
+                    Button {
+                        presentingCreate = true
+                    } label: {
+                        Label("New Link", systemImage: "plus")
+                            .labelStyle(.iconOnly)
+                    }
+                    .accessibilityIdentifier("sharedLinksToolbarCreateButton")
                 }
+                ProfileAvatarToolbarItem { openProfile() }
             }
             .task {
                 await vm.load()

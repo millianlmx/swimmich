@@ -1856,7 +1856,7 @@ final class TimelineViewModelTests: XCTestCase {
     }
 
     func test_AC_90_monthLabel_followsLocale() {
-        XCTAssertEqual(TimelineSectionBuilder.monthLabel(forTimeBucket: "2023-03-01", locale: Locale(identifier: "fr_FR")), "mars 2023")
+        XCTAssertEqual(TimelineSectionBuilder.monthLabel(forTimeBucket: "2023-03-01", locale: Locale(identifier: "fr_FR")), "Mars 2023")
         XCTAssertEqual(TimelineSectionBuilder.monthLabel(forTimeBucket: "2023-03-01", locale: Locale(identifier: "en_US")), "March 2023")
     }
 

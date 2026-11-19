@@ -340,6 +340,7 @@ final class ShareAndCachesUITests: XCTestCase {
         XCTAssertTrue(waitUntil(timeout: 15) { !clear.isEnabled }, "the purge left offline photos counted on Sync Status")
         tapElement("syncStatusDone", "no way out of Sync Status")
         XCTAssertTrue(waitUntil(timeout: 10) { !self.element("syncStatusDone").exists }, "Sync Status did not close")
+        closeHub()
         assertNoOfflinePhotos("after the purge from Sync Status")
 
         // Download Info.
@@ -566,11 +567,14 @@ final class ShareAndCachesUITests: XCTestCase {
         goToPhotosRoot()
     }
 
+    /// Sync Status is the first row of the Me hub (the avatar carries the
+    /// backup ring in every bar): the hub, then the row. "Done" pops back to
+    /// the hub, which `closeHub()` then takes down.
     private func openSyncStatus() {
-        selectTab("Photos")
-        let button = app.buttons.matching(identifier: "syncStatusButton").firstMatch
-        XCTAssertTrue(button.waitForExistence(timeout: 15), "the Sync Status button is missing from the bar")
-        button.tap()
+        openHub()
+        let row = app.buttons.matching(identifier: "syncStatusButton").firstMatch
+        XCTAssertTrue(row.waitForExistence(timeout: 15), "the Sync Status row is missing from the Me hub")
+        row.tap()
         XCTAssertTrue(element("syncStatusDone").waitForExistence(timeout: 15), "Sync Status did not open — \(screenReads())")
     }
 

@@ -344,6 +344,14 @@ private struct PersonDetailView: View {
                             birthdayPerson = person
                         }
                         .accessibilityIdentifier("personBirthdayAction")
+                        actionButton("person.crop.rectangle.stack", .textSecondaryPV, "Growing Up") {
+                            growingUpVM = DependencyContainer.shared.makeGrowingUpViewModel(
+                                person: person,
+                                baseURL: auth.baseURL ?? URL(string: "https://example.com")!,
+                                token: auth.accessToken
+                            )
+                        }
+                        .accessibilityIdentifier("personGrowingUpAction")
                         mergeMenu
                     }
                     .pvGlyphControlCap()
@@ -458,10 +466,15 @@ private struct PersonDetailView: View {
                 }
             )
         }
+        // The person's faces over the years, eye to eye.
+        .pvFullScreenCover(item: $growingUpVM) { growingUpVM in
+            GrowingUpView(vm: growingUpVM)
+        }
         .accessibilityElement(children: .contain)
         .accessibilityIdentifier("personScreen_\(pushed.id)")
     }
 
+    @State private var growingUpVM: GrowingUpViewModel?
     @State private var renamePerson: PersonResponseDto?
     @State private var renameText = ""
     @State private var birthdayPerson: PersonResponseDto?

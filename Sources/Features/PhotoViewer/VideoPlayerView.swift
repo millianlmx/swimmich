@@ -79,6 +79,13 @@ struct VideoPlayerView: View {
     var posterURL: URL? = nil
     /// Provisional image under the poster — the flying image of the open.
     var posterPlaceholder: UIImage? = nil
+    /// The page is the one on screen. The viewer's pager lays its neighbours
+    /// out ahead of time, and SwiftUI calls their `onAppear` then: every video
+    /// next door started streaming (and auto-playing, unseen) beside the one
+    /// being watched, which played in fits and starts on the bandwidth left.
+    /// An inactive page prepares nothing; it starts when it becomes the
+    /// current one, and stops when it is no longer.
+    var isActive: Bool = true
 
     @State private var vm: VideoPlaybackViewModel
     @State private var playerLayer: AVPlayerLayer?
@@ -105,7 +112,8 @@ struct VideoPlayerView: View {
         loopsVideo: Bool? = nil,
         appSettings: AppSettingsStore = .shared,
         posterURL: URL? = nil,
-        posterPlaceholder: UIImage? = nil
+        posterPlaceholder: UIImage? = nil,
+        isActive: Bool = true
     ) {
         self.asset = asset
         self.baseURL = baseURL
@@ -121,6 +129,7 @@ struct VideoPlayerView: View {
         self.loopsVideo = loopsVideo
         self.posterURL = posterURL
         self.posterPlaceholder = posterPlaceholder
+        self.isActive = isActive
         _vm = State(initialValue: VideoPlaybackViewModel(appSettings: appSettings, loopsVideo: loopsVideo))
     }
 
@@ -160,10 +169,17 @@ struct VideoPlayerView: View {
             if playerLayer == nil {
                 playerLayer = vm.engine.makePlayerLayer()
             }
-            Task { await vm.prepare(assetID: assetID ?? asset.id, baseURL: baseURL, token: token, localFileURL: localFileURL) }
+            if isActive { prepareVideo() }
         }
         .onDisappear {
             vm.pause()
+        }
+        .onChange(of: isActive) { _, active in
+            if !active {
+                vm.pause()
+            } else if vm.status == .idle {
+                prepareVideo()
+            }
         }
         .task(id: playerLayer.map { ObjectIdentifier($0) }) {
             await handOffPoster()
@@ -191,6 +207,22 @@ struct VideoPlayerView: View {
         }
         .onTapGesture(perform: onSingleTap)
         .contentShape(Rectangle())
+    }
+
+    private func prepareVideo() {
+        // A device-only video (merged timeline): the file Photos hands over,
+        // downloaded from iCloud if needed. No server copy to fall back on.
+        if assetID == nil, let deviceID = asset.deviceAssetID {
+            Task {
+                guard let url = await DeviceMedia.videoURL(localIdentifier: deviceID) else {
+                    vm.markUnavailable()
+                    return
+                }
+                await vm.prepare(url: url, assetID: asset.id, token: nil)
+            }
+            return
+        }
+        Task { await vm.prepare(assetID: assetID ?? asset.id, baseURL: baseURL, token: token, localFileURL: localFileURL) }
     }
 
     // MARK: - Poster (L-14)
@@ -345,7 +377,7 @@ struct VideoPlayerView: View {
             }
             Button {
                 vm.reset()
-                Task { await vm.prepare(assetID: assetID ?? asset.id, baseURL: baseURL, token: token, localFileURL: localFileURL) }
+                prepareVideo()
             } label: {
                 Text("Retry")
                     .font(.pvSubhead.weight(.semibold))

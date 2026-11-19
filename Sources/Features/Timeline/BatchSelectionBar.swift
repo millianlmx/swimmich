@@ -1,7 +1,7 @@
 import SwiftUI
 
 /// The selection bar of the photo grids, written once (L-23b): Cancel on the
-/// leading side, the seven batch actions of the timeline on the trailing side,
+/// leading side, the batch actions of the timeline on the trailing side,
 /// and everything those actions raise — the delete confirmation, the
 /// "edited version or original" question of a download, the refusal and
 /// partner-notice alerts, the album sheet and the haptics. The timeline and the
@@ -26,6 +26,8 @@ struct BatchSelectionBar<Model: BatchSelectionModel>: ViewModifier {
     @State private var presentAlbumPicker = false
     @State private var favoriteTick = 0
     @State private var deleteTick = 0
+    @State private var creation: SelectionCreation?
+    @Environment(AuthViewModel.self) private var auth
 
     func body(content: Content) -> some View {
         content
@@ -53,6 +55,16 @@ struct BatchSelectionBar<Model: BatchSelectionModel>: ViewModifier {
                         await model.deleteSelected(currentUserId: userId)
                         deleteTick &+= 1
                     }
+                }
+                // Backed-up photos this device still holds: their copies too.
+                if !model.deviceCopies(of: model.ownerScopedSelection(currentUserId: userId).ids).isEmpty {
+                    Button("Delete from This Device Too", role: .destructive) {
+                        Task {
+                            await model.deleteSelectedEverywhere(currentUserId: userId)
+                            deleteTick &+= 1
+                        }
+                    }
+                    .accessibilityIdentifier("batchDeleteEverywhere")
                 }
                 Button("Cancel", role: .cancel) {}
             } message: {
@@ -87,6 +99,9 @@ struct BatchSelectionBar<Model: BatchSelectionModel>: ViewModifier {
                 AddToAlbumPickerSheet(selectedAssetIds: model.selectedIds) {
                     model.exitSelectionMode()
                 }
+            }
+            .pvFullScreenCover(item: $creation) { creation in
+                creation.view
             }
     }
 
@@ -215,6 +230,13 @@ struct BatchSelectionBar<Model: BatchSelectionModel>: ViewModifier {
                 }
                 .disabled(empty)
                 .accessibilityIdentifier("downloadSelectionButton")
+
+                // Color mosaic or photo dump of the selection. Photos still
+                // only on this device have nothing on the server to look at
+                // and are left out.
+                SelectionCreateMenu(isDisabled: empty) { make in
+                    creation = make(model.selectedItems, auth.baseURL, auth.accessToken)
+                }
             }
         }
     }

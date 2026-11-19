@@ -40,7 +40,7 @@ final class AuthViewModel: AuthSessionDelegate {
 
     /// Must match the `CFBundleURLTypes` scheme *and* the value whitelisted at
     /// the OIDC provider — this is the exact URI the Immich docs publish.
-    static let oauthRedirectURI = "app.immich:///oauth-callback"
+    nonisolated static let oauthRedirectURI = "app.immich:///oauth-callback"
 
     /// Injectable browser-session hook. Production default runs an
     /// `ASWebAuthenticationSession`; tests inject a mock closure.
@@ -309,10 +309,14 @@ final class AuthViewModel: AuthSessionDelegate {
         // container), so a host whose certificate the user accepted travels
         // with the session — without it a self-signed server is unreachable
         // from the widget even though the app opens it fine. Both addresses.
+        // The certificate pinned for each one travels too: the widget accepts
+        // that certificate and no other (`ServerCertificatePin`).
         var trustedHosts: [String] = []
+        var trustedPins: [String: String] = [:]
         for host in [published.host, localURL?.host].compactMap({ $0 })
         where trustStore.contains(host) && !trustedHosts.contains(host) {
             trustedHosts.append(host)
+            trustedPins[host] = trustStore.pin(for: host)
         }
         widgetSession.save(WidgetSession(
             baseURL: published.absoluteString,
@@ -320,6 +324,7 @@ final class AuthViewModel: AuthSessionDelegate {
             userName: userName,
             userId: userId,
             trustedHosts: trustedHosts,
+            trustedPins: trustedPins.isEmpty ? nil : trustedPins,
             // The share extension uploads from its own process and reads this
             // snapshot; without the id its assets would show up as a second
             // device in the web UI's per-device filter.
@@ -366,6 +371,31 @@ final class AuthViewModel: AuthSessionDelegate {
         }
         while trimmed.hasSuffix("/") { trimmed.removeLast() }
         return URL(string: trimmed)
+    }
+
+    /// A plain `http` address that leaves the home: the password, the session
+    /// token and the photos then cross networks nobody controls, readable by
+    /// anyone on the way. The device itself, a private address (RFC 1918,
+    /// link-local) and a name of the local network (`nas`, `nas.local`) are
+    /// left alone: plain HTTP is how most servers are reached at home.
+    nonisolated static func sendsCredentialsInClear(_ url: URL?) -> Bool {
+        guard let url, url.scheme?.lowercased() == "http",
+              let host = url.host?.lowercased(), !host.isEmpty else { return false }
+        if host == "localhost" || host.hasSuffix(".local") || host.hasSuffix(".lan")
+            || host.hasSuffix(".home.arpa") || host.hasSuffix(".internal") { return false }
+        // IPv6 literal: loopback, link-local and unique-local stay at home.
+        if host.contains(":") {
+            return !(host == "::1" || host.hasPrefix("fe80:") || host.hasPrefix("fc") || host.hasPrefix("fd"))
+        }
+        let parts = host.split(separator: ".", omittingEmptySubsequences: false)
+        // A single label is a name only the local network resolves.
+        if parts.count == 1 { return false }
+        let octets = parts.compactMap { UInt8($0) }
+        guard parts.count == 4, octets.count == 4 else { return true }
+        switch (octets[0], octets[1]) {
+        case (10, _), (127, _), (192, 168), (169, 254), (172, 16...31), (100, 64...127): return false
+        default: return true
+        }
     }
 
     /// The identity of the active account: the address it was connected with.
@@ -557,6 +587,12 @@ final class AuthViewModel: AuthSessionDelegate {
     /// Host whose TLS certificate failed validation (P5 selfsigned-cert).
     var pendingUntrustedHost: String?
 
+    /// The pending host was already trusted, with another certificate: the
+    /// question to ask is no longer "trust it?" but "it changed, trust it again?".
+    var pendingHostCertificateChanged: Bool {
+        pendingUntrustedHost.map { trustStore.pin(for: $0) != nil } ?? false
+    }
+
     /// Persists the pending host as trusted and re-runs connectivity.
     @MainActor
     func trustPendingServer() async {
@@ -669,7 +705,7 @@ final class AuthViewModel: AuthSessionDelegate {
                 return // User cancelled — keep the current state.
             }
             let response = try await client.exchangeOAuthCode(
-                url: callbackURL.absoluteString,
+                url: Self.serverCallbackURL(from: callbackURL),
                 state: pkce.state,
                 codeVerifier: pkce.codeVerifier
             )
@@ -685,6 +721,21 @@ final class AuthViewModel: AuthSessionDelegate {
         } catch let e {
             errorMessage = e.userFacingMessage
         }
+    }
+
+    /// The URL the server finishes the sign-in with: the provider's answer (its
+    /// query: `code`, `state`) on the very redirect URI the authorization was
+    /// asked with. The server sends the part before `?` back to the provider as
+    /// `redirect_uri`, and the provider refuses a token for any other address
+    /// (Authentik: `invalid_client`). Authentik rewrites
+    /// `app.immich:///oauth-callback` as `app.immich:/oauth-callback` when it
+    /// adds the code (Python drops the empty host), so its own answer did not
+    /// match the address it was asked for: the sign-in worked in a browser
+    /// (an `https` address) and failed in the app.
+    nonisolated static func serverCallbackURL(from callback: URL) -> String {
+        guard let query = URLComponents(url: callback, resolvingAgainstBaseURL: false)?.percentEncodedQuery,
+              !query.isEmpty else { return callback.absoluteString }
+        return "\(oauthRedirectURI)?\(query)"
     }
 
     /// From v3.2.0 the public config no longer carries the external domain

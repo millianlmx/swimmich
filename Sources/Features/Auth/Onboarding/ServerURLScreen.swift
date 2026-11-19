@@ -71,6 +71,17 @@ struct ServerURLScreen: View {
                         }
                     }
 
+                    if AuthViewModel.sendsCredentialsInClear(auth.normalizedBaseURL(from: auth.serverURLString)) {
+                        Label {
+                            Text("This address is not encrypted: your password and your photos can be read on the networks between your phone and the server. Use an https address if your server has one.")
+                        } icon: {
+                            Image(systemName: "exclamationmark.triangle.fill")
+                        }
+                        .font(.pvCaption)
+                        .foregroundStyle(Color.textSecondaryPV)
+                        .accessibilityIdentifier("serverCleartextWarning")
+                    }
+
                     serverHeadersButton
                     serverClientCertificateButton
 
@@ -90,7 +101,7 @@ struct ServerURLScreen: View {
                 // Certificates: HTTPS servers go through the standard trust
                 // evaluation (TrustEvaluatingURLSessionDelegate). A self-signed
                 // server is accepted only after the "Trust this server?" alert
-                // below, which pins its certificate chain. NSAllowsArbitraryLoads
+                // below, which pins its certificate (`ServerCertificatePin`). NSAllowsArbitraryLoads
                 // only relaxes App Transport Security (plain-HTTP self-hosted
                 // servers); it does not skip certificate validation.
 
@@ -154,7 +165,11 @@ struct ServerURLScreen: View {
             }
             Button("Cancel", role: .cancel) { auth.pendingUntrustedHost = nil }
         } message: {
-            Text("The certificate of \(auth.pendingUntrustedHost ?? "this server") cannot be verified. Trust it anyway?")
+            if auth.pendingHostCertificateChanged {
+                Text("The certificate of \(auth.pendingUntrustedHost ?? "this server") has changed since you trusted it. If you did not replace it yourself, someone may be intercepting the connection. Trust the new certificate?")
+            } else {
+                Text("The certificate of \(auth.pendingUntrustedHost ?? "this server") cannot be verified. Trust it anyway?")
+            }
         }
         .onboardingBottomBar {
             Button(action: primaryAction) {

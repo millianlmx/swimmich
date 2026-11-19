@@ -68,6 +68,9 @@ immich_stub_voiceover.py VoiceOverLabelsUITests/test_AC_34_2_labelsInFourLanguag
 # VoiceOverLabelsUITests/test_AC_34_4_twoStateButtonsFollowState: not listed — fails before the redesign: XCTAssertTrue "viewer, detected text off: no viewerOcrToggle among the app's buttons (missing, or not a button)" (VoiceOverLabelsUITests.swift:785, observed: the viewer's top bar folds the detected-text pill into the "⋯" menu, whose item viewerMenuOcr announces no state — bar buttons without viewerOcrToggle, viewerOverflowMenu open [viewerMenuCast, viewerMenuDetails, viewerMenuOcr], window 402 pt; check-run 133310912452, 665896e6ddf4). Out of this lot.
 immich_stub_voiceover.py VoiceOverLabelsUITests/test_AC_34_5_ratingStars --erase --release
 immich_stub_voiceover.py VoiceOverLabelsUITests/test_AC_34_6_otherScreens --erase --stub-version 2.0.0 --release
+# VoiceOverLabelsUITests/test_AC_34_12_roadTripMapReadsTheDrive: the album's Road Trip (Paris → Versailles); its map leg
+# reads the two stops and the car's progress, which grows over 2.5 s of the leg (the SwiftUI map froze on its first frame).
+immich_stub_voiceover.py VoiceOverLabelsUITests/test_AC_34_12_roadTripMapReadsTheDrive --erase --release
 # VoiceOverLabelsUITests/test_AC_34_11_mapMarkersAreButtons: not listed — fails before the redesign: XCTAssertTrue "en, map markers: no mapMarker_dddddddd-2222-4222-8222-000000000001 among the app's buttons (missing, or not a button)" (VoiceOverLabelsUITests.swift:751, observed: the map stays on its "Loading photos…" spinner (MapView.swift:191-195) after 40 s and never shows a marker button — screen reads "Loading photos… | Results | Explorer | Map"; check-run 133327258651, 0ed09d4b4aee). Out of this lot.
 immich_stub_floating_controls.py FloatingControlsUITests/test_AC_30_4_controlsOnWhitePhotoAndLightMapKeepTheirIdentifiers --erase --release
 # MapSettingsUITests/test_mapSettings: Search tab, "Map" segment, then the map settings sheet. A custom range puts
@@ -115,6 +118,9 @@ immich_stub_locked_folder.py AppLockUITests/test_AC_21_searchKeyboardNotOverLock
 immich_stub_viewer_zoom.py ViewerZoomUITests/test_AC_27_1 --erase --release
 immich_stub_viewer_zoom.py ViewerZoomUITests/test_AC_27_3 --erase --release
 immich_stub_viewer_zoom.py ViewerZoomUITests/test_AC_27_5 --erase --release
+# ViewerZoomUITests/test_AC_27_9: no film. From the timeline, a swipe left turns the viewer to the next photo, a swipe
+# right comes back, a drag down closes it onto the grid (the pages' hittability tells which one is on screen).
+immich_stub_viewer_zoom.py ViewerZoomUITests/test_AC_27_9 --erase --release
 
 # Search redesign (AC-2 to AC-26): the Results screen's bar (Filters, Search options, sync, avatar),
 # its menu, the chips over "No results". Release: one line per test; the

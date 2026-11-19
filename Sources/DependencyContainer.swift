@@ -181,9 +181,13 @@ final class DependencyContainer {
     }
 
     init() {
+        // First, before anything can upload or export: the full-size temp
+        // copies a killed process left behind (uploads, backup exports).
+        BackupExportDirectory.purgeOrphans()
         self.keychain = KeychainStoreImpl()
         let identities = KeychainClientIdentityStore()
         self.clientIdentities = identities
+        #if DEBUG
         // Test only (`-uiTestResetClientCertificates YES`): every UI scenario
         // starts without a certificate, whatever the previous one left in the
         // keychain of the simulator.
@@ -196,7 +200,6 @@ final class DependencyContainer {
         if UserDefaults.standard.bool(forKey: "uiTestResetWhatsNewSeen") {
             UserDefaults.standard.removeObject(forKey: WhatsNewStore.seenReleaseKey)
         }
-        #if DEBUG
         // Test only (`-uiTestEditAssetNamed <file name>`): edits that Photos
         // asset in place so a scenario holds a really edited photo.
         UITestPhotoEditHook.runIfRequested()
@@ -324,7 +327,7 @@ final class DependencyContainer {
     }
 
     func makeAuthViewModel() -> AuthViewModel {
-        AuthViewModel(
+        let auth = AuthViewModel(
             client: libraryClient,
             keychain: keychain,
             // The very store the API client's TLS delegate reads, so the logout
@@ -347,6 +350,12 @@ final class DependencyContainer {
             identities: clientIdentities,
             endpoints: serverEndpoints
         )
+        // A certificate pinned during a handshake reaches the widgets and the
+        // share extension through the session they read: publish it again.
+        (trustedServers as? TrustedServerStoreImpl)?.onPinLearned = { [weak auth] in
+            Task { @MainActor in auth?.publishWidgetSession() }
+        }
+        return auth
     }
 
     /// Client certificate screen of one server (L-10). `onChange` runs after an
@@ -370,8 +379,16 @@ final class DependencyContainer {
         )
     }
 
+    /// The Photos tab's timeline: the server's, with this device's photos not
+    /// backed up yet merged in (`DeviceTimelineSource`) — the only
+    /// `TimelineViewModel` that has a device source.
     func makeTimelineViewModel() -> TimelineViewModel {
-        TimelineViewModel(client: libraryClient)
+        let vm = TimelineViewModel(client: libraryClient)
+        vm.deviceSource = PhotoKitDeviceTimelineSource()
+        vm.uploadedDeviceIDs = { [cloudStatus = self.cloudStatus] in cloudStatus.uploadedLocalIDs }
+        vm.showsDeviceAssets = { [appSettings = self.appSettings] in appSettings.showsDeviceAssets }
+        vm.deviceCopyID = { [cloudStatus = self.cloudStatus] id in cloudStatus.localID(forServerAssetID: id) }
+        return vm
     }
 
     /// Change-password screen (gap G18). Only lends the shared `ImmichClient`:
@@ -596,7 +613,102 @@ final class DependencyContainer {
             baseURL: { ServerAddressBook.shared.activeURL ?? baseURL },
             token: token,
             photos: photos,
-            session: { [serverSessions] in serverSessions.roadTrip }
+            session: { [serverSessions] in serverSessions.roadTrip },
+            appLog: appLog
+        )
+    }
+
+    func makeColorMosaicViewModel(
+        assets: [AssetReactItem],
+        baseURL: URL,
+        token: String?
+    ) -> ColorMosaicViewModel {
+        ColorMosaicViewModel(
+            assets: assets,
+            // The address in use when asked, not the one at creation (L-26).
+            baseURL: { ServerAddressBook.shared.activeURL ?? baseURL },
+            token: token,
+            photos: photos,
+            session: { [serverSessions] in serverSessions.images }
+        )
+    }
+
+    func makePhotoDumpViewModel(
+        assets: [AssetReactItem],
+        baseURL: URL,
+        token: String?
+    ) -> PhotoDumpViewModel {
+        PhotoDumpViewModel(
+            assets: assets,
+            // The address in use when asked, not the one at creation (L-26).
+            baseURL: { ServerAddressBook.shared.activeURL ?? baseURL },
+            token: token,
+            photos: photos,
+            session: { [serverSessions] in serverSessions.images }
+        )
+    }
+
+    func makeGrowingUpViewModel(
+        person: PersonResponseDto,
+        baseURL: URL,
+        token: String?
+    ) -> GrowingUpViewModel {
+        GrowingUpViewModel(
+            person: person,
+            client: libraryClient,
+            // The address in use when asked, not the one at creation (L-26).
+            baseURL: { ServerAddressBook.shared.activeURL ?? baseURL },
+            token: token,
+            photos: photos,
+            session: { [serverSessions] in serverSessions.images }
+        )
+    }
+
+    /// `title`: the words searched for (`ranked`: the assets are in the order
+    /// they matched) or an album's name.
+    func makeReelViewModel(
+        assets: [AssetReactItem],
+        title: String?,
+        ranked: Bool,
+        baseURL: URL,
+        token: String?
+    ) -> ReelViewModel {
+        ReelViewModel(
+            assets: assets,
+            title: title,
+            ranked: ranked,
+            client: libraryClient,
+            // The address in use when asked, not the one at creation (L-26).
+            baseURL: { ServerAddressBook.shared.activeURL ?? baseURL },
+            token: token,
+            photos: photos,
+            session: { [serverSessions] in serverSessions.images }
+        )
+    }
+
+    func makeMapPosterViewModel() -> MapPosterViewModel {
+        MapPosterViewModel(client: libraryClient, photos: photos)
+    }
+
+    func makeThenAndNowViewModel(baseURL: URL, token: String?) -> ThenAndNowViewModel {
+        ThenAndNowViewModel(
+            client: libraryClient,
+            // The address in use when asked, not the one at creation (L-26).
+            baseURL: { ServerAddressBook.shared.activeURL ?? baseURL },
+            token: token,
+            photos: photos,
+            session: { [serverSessions] in serverSessions.images }
+        )
+    }
+
+    func makeWrappedViewModel(baseURL: URL, token: String?) -> WrappedViewModel {
+        WrappedViewModel(
+            client: libraryClient,
+            // The address in use when asked, not the one at creation (L-26).
+            baseURL: { ServerAddressBook.shared.activeURL ?? baseURL },
+            token: token,
+            photos: photos,
+            session: { [serverSessions] in serverSessions.images }
         )
     }
 

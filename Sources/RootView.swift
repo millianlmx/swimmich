@@ -106,13 +106,15 @@ struct RootView: View {
 /// Owns every tab view model so the parent can recreate the whole subtree on
 /// account switch (`.id(activeAccountID)`) — fresh VMs = fresh loads.
 ///
-/// From Photos the bubble lands on the real Search tab (a plain tab, so a
-/// `.sheet` can be presented safely on top of it — the search full-screen
-/// cover was removed because SwiftUI serializes presentations from the same
-/// presenter, which made a sheet above it impossible, and a sheet inside the
-/// cover crashed on teardown). From Albums/Shared/Me the bubble keeps its
-/// contextual action (create / placeholder / logout) and the selection snaps
-/// back. The bubble icon mirrors the active tab.
+/// The bubble is Search, and only Search, from every tab: a magnifying glass
+/// that lands on the real Search tab (a plain tab, so a `.sheet` can be
+/// presented safely on top of it). It used to turn into a "+" on the other tabs
+/// and snap the selection back to the tab it came from: the label still read
+/// "Search", and tapping it there crashed the app — the selection of a
+/// `role: .search` tab was reset from inside its own `onChange`, while the
+/// tab bar was already moving to the search, then a sheet was presented in
+/// the same pass. No selection is ever rewritten now. Creating an album or a
+/// shared link is each tab's own toolbar "+".
 private struct AuthenticatedRoot: View {
     @Environment(AuthViewModel.self) private var auth
     @PVReduceMotion private var reduceMotion
@@ -201,7 +203,6 @@ private struct AuthenticatedRoot: View {
     /// Log level and image cache of the Advanced section (B-31).
     @State private var advanced: AdvancedSettingsViewModel
     @State private var selection: RootTab = .photos
-    @State private var lastContentTab: RootTab = .photos
     @State private var pendingTimelineScrollID: String?
     @State private var pendingTimelineScrollDay: String?
     /// The widget link taken from the root (L-28): the photo it names, handed
@@ -220,10 +221,7 @@ private struct AuthenticatedRoot: View {
     /// A widget link reached this root: no automatic What's New in this launch.
     @State private var widgetLinkReceived = false
     @Binding private var pendingWidgetLink: PendingWidgetLink?
-    @State private var showCreateAlbum = false
-    @State private var showCreateSharedLink = false
     @State private var showProfile = false
-    @State private var showSyncStatus = false
     @State private var showWhatsNew = false
     @State private var showDownloadInfo = false
 
@@ -316,7 +314,7 @@ private struct AuthenticatedRoot: View {
                     )
                 }
             }
-            Tab("Search", systemImage: bubbleIcon, value: RootTab.search, role: .search) {
+            Tab("Search", systemImage: "magnifyingglass", value: RootTab.search, role: .search) {
                 SearchView(vm: search, mapVM: map, downloads: downloads)
             }
         }
@@ -324,7 +322,6 @@ private struct AuthenticatedRoot: View {
         .environment(\.coverDismissalRequest, coverDismissalRequest)
         .environment(upload)
         .environment(\.openProfile) { showProfile = true }
-        .environment(\.openSyncStatus) { showSyncStatus = true }
         .environment(\.openInTimeline) { assetID, day in
             pendingTimelineScrollID = assetID
             pendingTimelineScrollDay = day
@@ -368,20 +365,9 @@ private struct AuthenticatedRoot: View {
             applyWidgetLink(pending.link)
         }
         .onChange(of: selection) { _, newValue in
-            if newValue == .search {
-                if lastContentTab == .photos {
-                    // Bubble from Photos: land on the Search tab itself.
-                    lastContentTab = newValue
-                } else {
-                    handleBubbleTap()
-                    selection = lastContentTab
-                }
-            } else {
-                lastContentTab = newValue
-                // Leaving the search tab takes the map photo sheet down with
-                // it (stable presenter — AuthenticatedRoot — so no teardown trap).
-                map.isPhotoSheetPresented = false
-            }
+            // Leaving the search tab takes the map photo sheet down with it
+            // (stable presenter — AuthenticatedRoot — so no teardown trap).
+            if newValue != .search { map.isPhotoSheetPresented = false }
         }
         // An evaluation of the server address ended (L-26): the tab on screen
         // reloads from the address now in use. Pushed screens are left alone;
@@ -430,12 +416,6 @@ private struct AuthenticatedRoot: View {
         .sheet(isPresented: $showDownloadInfo) {
             NavigationStack { DownloadInfoView(vm: downloads) }
         }
-        .sheet(isPresented: $showCreateAlbum) {
-            CreateAlbumSheet(vm: albums, preselectedAssetIds: nil)
-        }
-        .sheet(isPresented: $showCreateSharedLink) {
-            CreateSharedLinkSheet(vm: sharedLinks)
-        }
         // Native map photo sheet, owned by AuthenticatedRoot (never deallocated
         // while the tab tree lives): the only presentation active while browsing
         // the map tab, so SwiftUI presents it directly above the tab — detents,
@@ -456,6 +436,7 @@ private struct AuthenticatedRoot: View {
                 readOnly: readOnly,
                 freeUpSpace: freeUpSpace,
                 profilePicture: profilePicture,
+                syncStatus: syncStatus,
                 changePassword: changePassword,
                 apiKeys: apiKeys,
                 whatsNew: whatsNew,
@@ -484,13 +465,6 @@ private struct AuthenticatedRoot: View {
             .environment(offline)
             .environment(container.offlineIndex)
             .environment(container.cloudStatus)
-        }
-        // Sync Status, presented from the same stable root presenter as the Me
-        // sheet: its button rides in five navigation bars, and a presentation
-        // declared by a tab view would be torn down with that tab. The stack is
-        // the sheet's — `SyncStatusView` declares none.
-        .sheet(isPresented: $showSyncStatus) {
-            NavigationStack { SyncStatusView(vm: syncStatus) }
         }
         // What's New (gap G23): presented from the stable root presenter, like
         // the Me sheet above — never from a tab view that comes and goes.
@@ -541,10 +515,7 @@ private struct AuthenticatedRoot: View {
             // The root's own sheets. The sheets of the tab screens stay: they may
             // hold something being typed.
             showProfile = false
-            showSyncStatus = false
             showDownloadInfo = false
-            showCreateAlbum = false
-            showCreateSharedLink = false
             map.isPhotoSheetPresented = false
             if showWhatsNew {
                 whatsNewYieldedToLink = true
@@ -565,22 +536,6 @@ private struct AuthenticatedRoot: View {
             pendingLinkedAsset = request
         }
         if route.startsBackup { container.startManualBackup() }
-    }
-
-    private var bubbleIcon: String {
-        switch selection {
-        case .photos, .memories, .search: "magnifyingglass"
-        case .albums, .shared: "plus"
-        }
-    }
-
-    private func handleBubbleTap() {
-        switch lastContentTab {
-        case .photos, .memories: break // Landing on the Search tab is handled by the TabView itself.
-        case .albums: showCreateAlbum = true
-        case .shared: showCreateSharedLink = true
-        case .search: break
-        }
     }
 }
 
@@ -672,26 +627,20 @@ extension EnvironmentValues {
     }
 }
 
-/// Presentation action injected by AuthenticatedRoot so the sync-status button
-/// that every tab's bar carries can raise its screen from the same stable
-/// presenter as the Me sheet (same iOS 26 constraint).
-private struct OpenSyncStatusKey: EnvironmentKey {
-    static let defaultValue: () -> Void = {}
-}
-
-extension EnvironmentValues {
-    var openSyncStatus: () -> Void {
-        get { self[OpenSyncStatusKey.self] }
-        set { self[OpenSyncStatusKey.self] = newValue }
-    }
-}
-
 /// Circular initials avatar pinned to the trailing corner of every tab's
 /// navigation bar. Tapping presents the Me section (`ProfileView`) as a sheet
 /// from AuthenticatedRoot.
+///
+/// It is also the backup's only mark in the bars: a ring around the initials
+/// while a run checks or uploads, gone when it ends. The account and its backup
+/// are one control — Sync Status is the first row of the Me hub it opens — so
+/// every tab's bar holds one disc where it used to hold two. iOS never shows an
+/// app's own Live Activity while that app is frontmost, and the ring is only
+/// visible while it is: the two never compete.
 struct ProfileAvatarButton: View {
     let action: () -> Void
     @Environment(AuthViewModel.self) private var auth
+    @Environment(UploadViewModel.self) private var upload
     /// Read-only mode (gap G17). The same store the hub's switch writes: the
     /// avatar is the second surface of that ONE boolean.
     @Environment(ReadOnlyModeStore.self) private var readOnly
@@ -705,6 +654,11 @@ struct ProfileAvatarButton: View {
                 .foregroundStyle(Color.immichOnPrimary)
         }
         .frame(width: 44, height: 44)
+        // The glass is the disc's own, in its shape: in a navigation bar the
+        // item's shared capsule is hidden (`ProfileAvatarToolbarItem`), so
+        // nothing spills left and right of the avatar.
+        .pvGlass(.circle)
+        .overlay { backupRing }
         // The mode's only permanent marker: 12 pt, pinned to the CIRCLE's own
         // corner rather than to a padded frame's — the avatar no longer keeps a
         // ring of dead space, it IS the 44 pt target. Hidden from VoiceOver (the
@@ -733,45 +687,60 @@ struct ProfileAvatarButton: View {
         }
         .accessibilityAddTraits(.isButton)
         .accessibilityLabel("Profile")
-        .accessibilityValue(readOnly.isEnabled ? Text("Read-only") : Text(""))
+        .accessibilityValue(accessibilityState)
         // VoiceOver cannot long-press: the same toggle as a named action.
         .accessibilityAction(named: Text("Read-only Mode")) { readOnly.toggle() }
         // The label is translated, so the UI tests reach for the identifier
         // instead of a string that changes with the language.
         .accessibilityIdentifier("profileAvatar")
     }
+
+    private var isBackingUp: Bool {
+        upload.engine.phase == .checking || upload.engine.phase == .uploading
+    }
+
+    /// Progress of the current run, drawn inside the disc in white so it reads
+    /// on the brand fill in both appearances.
+    @ViewBuilder
+    private var backupRing: some View {
+        if isBackingUp {
+            Circle()
+                .trim(from: 0, to: max(0.02, upload.engine.progressFraction))
+                .stroke(Color.white, style: StrokeStyle(lineWidth: 3, lineCap: .round))
+                .frame(width: 38, height: 38)
+                .rotationEffect(.degrees(-90))
+                .animation(
+                    PVMotion.movement(.spring(duration: 0.5, bounce: 0.15), reduceMotion: reduceMotion),
+                    value: upload.engine.progressFraction
+                )
+                .accessibilityHidden(true)
+                .transition(PVMotion.appearance(.opacityAndScale(0.7), reduceMotion: reduceMotion).anyTransition)
+        }
+    }
+
+    /// One announcement for the two states the disc can carry.
+    private var accessibilityState: Text {
+        switch (readOnly.isEnabled, isBackingUp) {
+        case (true, true): Text("Read-only") + Text(verbatim: ", ") + Text("Backing up — \(upload.engine.progressPercent) percent")
+        case (true, false): Text("Read-only")
+        case (false, true): Text("Backing up — \(upload.engine.progressPercent) percent")
+        case (false, false): Text("")
+        }
+    }
 }
 
-/// Standalone entry to the Sync Status screen, pinned immediately to the left of
-/// the profile avatar in every tab's bar. It is a sibling of the avatar, not a
-/// row of the Me hub where it was born: that hub already carries Backup, and a
-/// read-out of the ledger two rows under the screen that feeds it read as the
-/// same feature stated twice.
-///
-/// The glyph is the whole control. Inside a navigation bar iOS 26 draws the
-/// chrome itself — a manual `glassEffect` there double-glasses and clips
-/// (measured on `SearchView`) — so the Photos overlay, the one call site with no
-/// bar under it, is the only one that brings a surface of its own.
-struct SyncStatusButton: View {
+/// The avatar as a navigation-bar item. On iOS 26 every bar item sits in a
+/// shared Liquid Glass capsule sized for text buttons: around a 44 pt disc it
+/// stuck out left and right. The capsule is hidden here — the avatar carries
+/// its own circular glass — and the item is never grouped with another control,
+/// which would put both back in one capsule.
+struct ProfileAvatarToolbarItem: ToolbarContent {
     let action: () -> Void
 
-    var body: some View {
-        Button(action: action) {
-            // Cloud backup, the app's own vocabulary for this feature: the same
-            // glyph as the Backup row (`icloud.and.arrow.up`) and the Live
-            // Activity. It used to be `arrow.triangle.2.circlepath`, chosen only
-            // to stay distinct from that row while the two sat in the same list —
-            // the button lives in the bar now, and "back up to the cloud" is
-            // what it opens.
-            Image(systemName: "icloud.and.arrow.up")
-                .font(.system(size: 17, weight: .semibold))
-                // 44 pt target, the same circle as the avatar next door: in the
-                // Photos overlay both discs are drawn, and a smaller one would
-                // read as a second-class control.
-                .frame(width: 44, height: 44)
-                .contentShape(Circle())
+    var body: some ToolbarContent {
+        ToolbarItem(placement: .topBarTrailing) {
+            ProfileAvatarButton(action: action)
         }
-        .accessibilityLabel("Sync Status")
-        .accessibilityIdentifier("syncStatusButton")
+        .sharedBackgroundVisibility(.hidden)
     }
 }

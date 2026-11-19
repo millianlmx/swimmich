@@ -8,7 +8,10 @@ struct RoadTripCluster: Identifiable, Equatable, Sendable {
     /// player and the export renderer, which must agree on every segment).
     let id: String
     let assets: [AssetReactItem]
-    /// Centroid of the cluster's geolocated members; nil when none are located.
+    /// Where the stop sits: the geolocated member nearest the members' mean
+    /// (a real photo spot — a mean can fall in a field or the sea); nil when
+    /// none are located. Once the routes are known, `RoadTripAnchoring` moves
+    /// it onto the road the car arrives by.
     let latitude: Double?
     let longitude: Double?
     /// "Paris, France" from EXIF (first asset carrying city/country).
@@ -53,7 +56,10 @@ enum RoadTripClusterer {
         }
 
         var members: [[AssetReactItem]] = []
-        var anchors: [CLLocationCoordinate2D] = []   // parallel to located clusters only
+        // The anchor of each located cluster, by its index in `members`: an
+        // unlocated photo can open a cluster of its own (`attachByTime`), so
+        // the located ones are not the first `anchors.count` of `members`.
+        var anchors: [Int: CLLocationCoordinate2D] = [:]
         var grid: [GridKey: [Int]] = [:]             // cell -> located cluster indices (anchor-based)
 
         let latCell = radiusMeters / 110_000.0       // degrees of latitude per cell
@@ -76,7 +82,8 @@ enum RoadTripClusterer {
                 for dLon in -1...1 {
                     guard let indices = grid[GridKey(lat: key.lat + dLat, lon: key.lon + dLon)] else { continue }
                     for index in indices {
-                        let d = haversine(coord, anchors[index])
+                        guard let anchor = anchors[index] else { continue }
+                        let d = haversine(coord, anchor)
                         if d < bestDistance { bestDistance = d; best = index }
                     }
                 }
@@ -86,7 +93,7 @@ enum RoadTripClusterer {
             } else {
                 let newIndex = members.count
                 members.append([asset])
-                anchors.append(coord)
+                anchors[newIndex] = coord
                 grid[key, default: []].append(newIndex)
             }
         }
@@ -162,12 +169,12 @@ enum RoadTripClusterer {
     /// the sorted member ids, so live and export agree.
     private static func merged(_ a: RoadTripCluster, _ b: RoadTripCluster) -> RoadTripCluster {
         let assets = a.assets + b.assets
-        let located = assets.filter { $0.latitude != nil && $0.longitude != nil }
+        let center = medoid(of: assets)
         return RoadTripCluster(
             id: assets.map(\.id).sorted().joined(separator: "|"),
             assets: assets,
-            latitude: located.isEmpty ? nil : located.compactMap(\.latitude).reduce(0, +) / Double(located.count),
-            longitude: located.isEmpty ? nil : located.compactMap(\.longitude).reduce(0, +) / Double(located.count),
+            latitude: center?.latitude,
+            longitude: center?.longitude,
             placeName: a.placeName ?? b.placeName,
             startDate: min(a.startDate ?? .distantFuture, b.startDate ?? .distantFuture),
             endDate: max(a.endDate ?? .distantPast, b.endDate ?? .distantPast)
@@ -175,6 +182,26 @@ enum RoadTripClusterer {
     }
 
     // MARK: - Internals
+
+    /// The located member nearest the located members' mean (ties: the first).
+    static func medoid(of assets: [AssetReactItem]) -> CLLocationCoordinate2D? {
+        let located = assets.compactMap { asset -> CLLocationCoordinate2D? in
+            guard let lat = asset.latitude, let lon = asset.longitude else { return nil }
+            return CLLocationCoordinate2D(latitude: lat, longitude: lon)
+        }
+        guard !located.isEmpty else { return nil }
+        let mean = CLLocationCoordinate2D(
+            latitude: located.map(\.latitude).reduce(0, +) / Double(located.count),
+            longitude: located.map(\.longitude).reduce(0, +) / Double(located.count)
+        )
+        var best = located[0]
+        var bestDistance = haversine(best, mean)
+        for coordinate in located.dropFirst() {
+            let d = haversine(coordinate, mean)
+            if d < bestDistance { bestDistance = d; best = coordinate }
+        }
+        return best
+    }
 
     private static func attachByTime(
         _ asset: AssetReactItem,
@@ -206,15 +233,13 @@ enum RoadTripClusterer {
 
     private static func makeCluster(_ assets: [AssetReactItem]) -> RoadTripCluster {
         let id = assets.map(\.id).sorted().joined(separator: "|")
-        let located = assets.filter { $0.latitude != nil && $0.longitude != nil }
-        let latitude = located.isEmpty ? nil : located.compactMap(\.latitude).reduce(0, +) / Double(located.count)
-        let longitude = located.isEmpty ? nil : located.compactMap(\.longitude).reduce(0, +) / Double(located.count)
+        let center = medoid(of: assets)
         let dates = assets.compactMap { parse($0.fileCreatedAt) }
         return RoadTripCluster(
             id: id,
             assets: assets,
-            latitude: latitude,
-            longitude: longitude,
+            latitude: center?.latitude,
+            longitude: center?.longitude,
             placeName: placeName(of: assets),
             startDate: dates.min(),
             endDate: dates.max()
@@ -247,7 +272,7 @@ enum RoadTripClusterer {
         return trimmed.isEmpty ? nil : trimmed
     }
 
-    private static func parse(_ iso: String) -> Date? {
+    static func parse(_ iso: String) -> Date? {
         ISO8601.immichFormatter.date(from: iso) ?? ISO8601.fallbackFormatter.date(from: iso)
     }
 

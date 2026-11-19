@@ -103,7 +103,7 @@ final class ListStatesUITests: XCTestCase {
         XCTAssertTrue(element("partnerLibraryLink-\(incomingPartner)").waitForExistence(timeout: 20),
                       "Partners shows no data after the last pull — \(screenText())")
         goBack()
-        // The Search bubble opens Search only from Photos; from Albums it opens New Album (RootView, onChange(of: selection)).
+        // Photos first, so the step starts from the same tab as the others.
         let photos = app.tabBars.buttons["Photos"]
         XCTAssertTrue(photos.waitForExistence(timeout: 15), "Photos tab missing — \(screenText())")
         photos.tap()
@@ -134,8 +134,9 @@ final class ListStatesUITests: XCTestCase {
             var sent = searchSent(since: count)
             for _ in 0..<2 where !sent {
                 let window = app.windows.firstMatch.frame
-                let modeBar = element("searchModeSegment_results")
-                let top = modeBar.exists ? modeBar.frame.maxY + 40 : window.height * 0.3
+                // From under the results bar (its lowest control), inside the results.
+                let resultsBar = element("searchSelectButton")
+                let top = resultsBar.exists ? resultsBar.frame.maxY + 40 : window.height * 0.3
                 let origin = app.windows.firstMatch.coordinate(withNormalizedOffset: .zero)
                 origin.withOffset(CGVector(dx: window.width / 2, dy: top))
                     .press(forDuration: 0.2,
@@ -266,7 +267,7 @@ final class ListStatesUITests: XCTestCase {
         XCTAssertTrue(element("partnerLibraryLink-\(incomingPartner)").waitForExistence(timeout: 20))
         goBack()
 
-        // The Search bubble opens Search only from Photos; from Albums it opens New Album (RootView, onChange(of: selection)).
+        // Photos first, so the step starts from the same tab as the others.
         let photos = app.tabBars.buttons["Photos"]
         XCTAssertTrue(photos.waitForExistence(timeout: 15), "Photos tab missing — \(screenText())")
         photos.tap()
