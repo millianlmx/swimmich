@@ -65,4 +65,12 @@ enum AppAccent: String, CaseIterable, Identifiable {
         case .purple: return .purple
         }
     }
+
+    /// Label ink on this accent's fill (`.borderedProminent`), projected at the
+    /// root as `pvOnTint`. The brand accent keeps its own ink (white on the
+    /// light indigo, deep blue on the dark pale blue); the system presets take
+    /// white or black, whichever reads better in each appearance.
+    var onColor: Color {
+        self == .immich ? .immichOnPrimary : .pvInk(on: color)
+    }
 }

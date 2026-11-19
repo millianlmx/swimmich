@@ -130,6 +130,47 @@ final class DesignSystemTokensTests: XCTestCase {
         }
     }
 
+    /// `.borderedProminent` fills with the root tint, the accent picked in
+    /// Preferences, and keeps a white system label: 1.66:1 on the dark brand
+    /// accent. Its label takes `AppAccent.onColor`: every preset, light and dark.
+    func test_AC_1_prominentButtonLabelMeetsTextContrastOnEveryAccent() {
+        for accent in AppAccent.allCases {
+            for (styleName, style) in [("light", UIUserInterfaceStyle.light), ("dark", .dark)] {
+                let ratio = contrast(components(accent.onColor, style), components(accent.color, style))
+                XCTAssertGreaterThanOrEqual(ratio, 4.5, "\(styleName) · label on the \(accent.rawValue) fill: \(ratio):1")
+            }
+        }
+    }
+
+    /// No `.borderedProminent` bypasses `pvProminentButtonStyle()`, which gives
+    /// the label the tint's ink. The photo editor's Revert button is tinted red,
+    /// not by the accent, and stays out of this feature.
+    func test_AC_1_prominentButtonsTakeTheTintInk() throws {
+        var root = URL(fileURLWithPath: #filePath)
+        while root.path != "/", !FileManager.default.fileExists(atPath: root.appendingPathComponent("project.yml").path) {
+            root.deleteLastPathComponent()
+        }
+        let allowed: Set<String> = ["Sources/Features/Editor/PhotoEditorView.swift"]
+        var offenders: [String] = []
+        var scanned = 0
+        for folder in ["Sources", "ImmichShareExtension", "ImmichWidgets"] {
+            let base = root.appendingPathComponent(folder)
+            guard let files = FileManager.default.enumerator(atPath: base.path) else { continue }
+            for case let path as String in files where path.hasSuffix(".swift") {
+                let relative = "\(folder)/\(path)"
+                guard !relative.hasPrefix("Sources/DesignSystem/"), !allowed.contains(relative) else { continue }
+                scanned += 1
+                let source = try String(contentsOf: base.appendingPathComponent(path), encoding: .utf8)
+                for (index, line) in source.components(separatedBy: "\n").enumerated()
+                where line.contains(".borderedProminent") && !line.trimmingCharacters(in: .whitespaces).hasPrefix("//") {
+                    offenders.append("\(relative):\(index + 1)")
+                }
+            }
+        }
+        XCTAssertGreaterThan(scanned, 100, "the scan must reach the app's sources")
+        XCTAssertEqual(offenders, [], "use `pvProminentButtonStyle()` so the label reads on the tint")
+    }
+
     /// The identifiers that are not visible stay what they were: a renamed
     /// bundle ID, widget kind or URL scheme would orphan installs, widgets and
     /// the scheduled backup task. (The former mark's colour checks went with

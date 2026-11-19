@@ -97,7 +97,7 @@ private struct LockedFolderSetupView: View {
                 Button("Create a PIN") {
                     Task { await vm.setupPIN() }
                 }
-                .buttonStyle(.borderedProminent)
+                .pvProminentButtonStyle()
                 .disabled(!canSubmit)
                 .accessibilityIdentifier("lockedFolderCreatePINButton")
             }
@@ -148,7 +148,7 @@ private struct LockedFolderPINView: View {
                 Button("Unlock") {
                     Task { await vm.submitPIN() }
                 }
-                .buttonStyle(.borderedProminent)
+                .pvProminentButtonStyle()
                 .disabled(vm.isBusy || vm.pinEntry.count != 6 || vm.attemptsExhausted)
                 .accessibilityIdentifier("lockedFolderUnlockButton")
 

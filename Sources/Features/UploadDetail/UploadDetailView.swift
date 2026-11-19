@@ -106,7 +106,7 @@ struct UploadDetailView: View {
             .frame(maxWidth: .infinity, minHeight: 44)
             .contentTransition(PVMotion.contentChange(.symbolEffect(.replace), reduceMotion: reduceMotion))
         }
-        .buttonStyle(.borderedProminent)
+        .pvProminentButtonStyle()
         .disabled(vm.isCancelling)
         .accessibilityIdentifier("uploadDetailCancelButton")
     }

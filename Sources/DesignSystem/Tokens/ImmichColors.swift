@@ -76,6 +76,55 @@ extension Color {
     }
 }
 
+// MARK: - Contenu sur la teinte (boutons `.borderedProminent`)
+//
+// `.borderedProminent` remplit le bouton de la teinte (`.tint`, l'accent choisi
+// dans Préférences) et garde un libellé système blanc : 1,66:1 sur l'accent
+// sombre #ACCBFA, sous le seuil texte de 4,5:1. Ces boutons passent par
+// `pvProminentButtonStyle()`, qui pose `pvOnTint`, l'encre de la teinte courante.
+
+extension Color {
+    /// Encre lisible sur un aplat `fill` : blanc ou noir, celui qui contraste le
+    /// plus, résolu séparément en clair et en sombre. L'un des deux dépasse
+    /// toujours 4,58:1 (WCAG), quelle que soit la couleur de l'aplat.
+    static func pvInk(on fill: Color) -> Color {
+        Color(light: ink(on: fill, .light), dark: ink(on: fill, .dark))
+    }
+
+    private static func ink(on fill: Color, _ scheme: ColorScheme) -> Color {
+        var environment = EnvironmentValues()
+        environment.colorScheme = scheme
+        let c = fill.resolve(in: environment)
+        let luminance = 0.2126 * Double(c.linearRed) + 0.7152 * Double(c.linearGreen) + 0.0722 * Double(c.linearBlue)
+        // Le blanc l'emporte quand 1,05 / (L + 0,05) > (L + 0,05) / 0,05.
+        return (luminance + 0.05) * (luminance + 0.05) < 1.05 * 0.05 ? .white : .black
+    }
+}
+
+extension EnvironmentValues {
+    /// Encre des libellés posés sur la teinte courante. La racine la pose à côté
+    /// de `.tint`, depuis le même accent ; la valeur par défaut est celle de la
+    /// teinte par défaut, `immichPrimary`.
+    @Entry var pvOnTint: Color = .immichOnPrimary
+}
+
+extension View {
+    /// `.borderedProminent` avec un libellé lisible sur la teinte courante.
+    func pvProminentButtonStyle() -> some View {
+        modifier(PVProminentButtonModifier())
+    }
+}
+
+private struct PVProminentButtonModifier: ViewModifier {
+    @Environment(\.pvOnTint) private var onTint
+
+    func body(content: Content) -> some View {
+        content
+            .buttonStyle(.borderedProminent)
+            .foregroundStyle(onTint)
+    }
+}
+
 // MARK: - Usage recommandé
 //
 // - `Color.immichPrimary` remplace `Color.accentColor` partout où l'identité

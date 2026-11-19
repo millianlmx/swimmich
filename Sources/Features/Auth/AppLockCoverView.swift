@@ -13,6 +13,7 @@ struct AppLockCoverRoot: View {
             .environment(\.locale, language.effectiveLocale)
             .preferredColorScheme(appSettings.theme.colorScheme)
             .tint(appSettings.accent.color)
+            .environment(\.pvOnTint, appSettings.accent.onColor)
     }
 }
 
