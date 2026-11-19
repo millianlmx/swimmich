@@ -187,6 +187,7 @@ final class DependencyContainer {
         self.keychain = KeychainStoreImpl()
         let identities = KeychainClientIdentityStore()
         self.clientIdentities = identities
+        #if DEBUG
         // Test only (`-uiTestResetClientCertificates YES`): every UI scenario
         // starts without a certificate, whatever the previous one left in the
         // keychain of the simulator.
@@ -199,7 +200,6 @@ final class DependencyContainer {
         if UserDefaults.standard.bool(forKey: "uiTestResetWhatsNewSeen") {
             UserDefaults.standard.removeObject(forKey: WhatsNewStore.seenReleaseKey)
         }
-        #if DEBUG
         // Test only (`-uiTestEditAssetNamed <file name>`): edits that Photos
         // asset in place so a scenario holds a really edited photo.
         UITestPhotoEditHook.runIfRequested()
@@ -327,7 +327,7 @@ final class DependencyContainer {
     }
 
     func makeAuthViewModel() -> AuthViewModel {
-        AuthViewModel(
+        let auth = AuthViewModel(
             client: libraryClient,
             keychain: keychain,
             // The very store the API client's TLS delegate reads, so the logout
@@ -350,6 +350,12 @@ final class DependencyContainer {
             identities: clientIdentities,
             endpoints: serverEndpoints
         )
+        // A certificate pinned during a handshake reaches the widgets and the
+        // share extension through the session they read: publish it again.
+        (trustedServers as? TrustedServerStoreImpl)?.onPinLearned = { [weak auth] in
+            Task { @MainActor in auth?.publishWidgetSession() }
+        }
+        return auth
     }
 
     /// Client certificate screen of one server (L-10). `onChange` runs after an

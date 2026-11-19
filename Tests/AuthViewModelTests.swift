@@ -2036,3 +2036,34 @@ private final class ConnectionResetSpy: ConnectionResetting {
         await onResetAsync?()
     }
 }
+
+/// The warning under the server address: a plain `http` address that leaves the home.
+final class CleartextServerAddressTests: XCTestCase {
+    private func warns(_ text: String) -> Bool {
+        AuthViewModel.sendsCredentialsInClear(URL(string: text))
+    }
+
+    func test_publicHTTPAddressWarns() {
+        XCTAssertTrue(warns("http://photos.example.com"))
+        XCTAssertTrue(warns("http://photos.example.com:2283/immich"))
+        XCTAssertTrue(warns("HTTP://203.0.113.7:2283"))
+        XCTAssertTrue(warns("http://172.32.0.1"))
+        XCTAssertTrue(warns("http://[2001:db8::1]:2283"))
+    }
+
+    func test_httpsNeverWarns() {
+        XCTAssertFalse(warns("https://photos.example.com"))
+        XCTAssertFalse(warns("https://203.0.113.7"))
+        XCTAssertFalse(AuthViewModel.sendsCredentialsInClear(nil))
+    }
+
+    func test_homeAddressesDoNotWarn() {
+        for address in [
+            "http://localhost:2283", "http://127.0.0.1:2283", "http://192.168.1.10:2283", "http://10.0.0.5",
+            "http://172.16.4.2", "http://172.31.255.1", "http://169.254.10.1", "http://100.100.1.2",
+            "http://nas:2283", "http://nas.local:2283", "http://immich.lan", "http://[::1]:2283", "http://[fd12:3456::1]",
+        ] {
+            XCTAssertFalse(warns(address), address)
+        }
+    }
+}

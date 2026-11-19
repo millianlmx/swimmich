@@ -33383,6 +33383,62 @@
         }
       }
     },
+    "The certificate of %@ has changed since you trusted it. If you did not replace it yourself, someone may be intercepting the connection. Trust the new certificate?" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Das Zertifikat von %@ hat sich geändert, seit du ihm vertraut hast. Wenn du es nicht selbst ersetzt hast, fängt möglicherweise jemand die Verbindung ab. Dem neuen Zertifikat vertrauen?"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "El certificado de %@ ha cambiado desde que confiaste en él. Si no lo has reemplazado tú, es posible que alguien esté interceptando la conexión. ¿Confiar en el nuevo certificado?"
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Le certificat de %@ a changé depuis que vous lui avez fait confiance. Si vous ne l’avez pas remplacé vous-même, quelqu’un intercepte peut-être la connexion. Faire confiance au nouveau certificat ?"
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Il certificato di %@ è cambiato da quando ti sei fidato. Se non l’hai sostituito tu, qualcuno potrebbe intercettare la connessione. Fidarsi del nuovo certificato?"
+          }
+        }
+      }
+    },
+    "This address is not encrypted: your password and your photos can be read on the networks between your phone and the server. Use an https address if your server has one." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Diese Adresse ist nicht verschlüsselt: Dein Passwort und deine Fotos können in den Netzwerken zwischen deinem iPhone und dem Server mitgelesen werden. Verwende eine https-Adresse, wenn dein Server eine hat."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Esta dirección no está cifrada: tu contraseña y tus fotos pueden leerse en las redes entre tu teléfono y el servidor. Usa una dirección https si tu servidor tiene una."
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Cette adresse n’est pas chiffrée : votre mot de passe et vos photos peuvent être lus sur les réseaux entre votre téléphone et le serveur. Utilisez une adresse https si votre serveur en a une."
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Questo indirizzo non è cifrato: la password e le foto possono essere lette sulle reti tra il telefono e il server. Usa un indirizzo https se il tuo server ne ha uno."
+          }
+        }
+      }
+    },
     "The certificate of %@ cannot be verified. Trust it anyway?" : {
       "localizations" : {
         "de" : {

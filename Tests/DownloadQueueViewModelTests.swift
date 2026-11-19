@@ -144,6 +144,18 @@ final class DownloadQueueViewModelTests: XCTestCase {
         XCTAssertEqual(item.receivedBytes, 4096)
     }
 
+    func test_serverNameWithAPath_landsInDocumentsDownloads() async throws {
+        stubAsset(id: "a", name: "../../Library/Preferences/evil.HEIC", size: 4)
+
+        await vm.enqueue(asset: makeAsset(id: "a"))
+        await settle()
+
+        let destination = try XCTUnwrap(vm.items.first?.destinationURL)
+        XCTAssertEqual(destination.lastPathComponent, "evil.HEIC")
+        XCTAssertEqual(destination.deletingLastPathComponent().lastPathComponent, "Downloads")
+        XCTAssertFalse(destination.pathComponents.contains(".."), "no `..` left in the path")
+    }
+
     func test_sameServerNameTwice_doesNotOverwriteTheFirstFile() async throws {
         stubAsset(id: "a", name: "IMG_0421.HEIC")
         stubAsset(id: "b", name: "IMG_0421.HEIC")

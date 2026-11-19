@@ -8,8 +8,15 @@ final class NetworkSettingsViewModelTests: XCTestCase {
     private final class FakeTrustStore: TrustedServerStore {
         var hosts: Set<String> = []
         func contains(_ host: String) -> Bool { hosts.contains(host) }
-        func add(_ host: String) { hosts.insert(host) }
-        func removeAll() { hosts = [] }
+        var pins: [String: String] = [:]
+        func add(_ host: String) { hosts.insert(host); pins[host] = nil }
+        func pin(for host: String) -> String? { hosts.contains(host) ? pins[host] : nil }
+        func pinIfAbsent(_ fingerprint: String, for host: String) -> String? {
+            guard hosts.contains(host) else { return nil }
+            if pins[host] == nil { pins[host] = fingerprint }
+            return pins[host]
+        }
+        func removeAll() { hosts = []; pins = [:] }
     }
 
     private let account = URL(string: "https://photos.example.org")!
