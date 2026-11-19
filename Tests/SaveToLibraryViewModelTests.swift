@@ -234,6 +234,32 @@ final class SaveToLibraryViewModelTests: XCTestCase {
         XCTAssertEqual(AssetFileTransfer.baseName(originalName: "", datePrefix: "2024-07-01"), "Photo-2024-07-01")
     }
 
+    func test_assetFileTransfer_baseName_neverCarriesAPath() {
+        XCTAssertEqual(AssetFileTransfer.baseName(originalName: "../../Library/Preferences/evil.plist", datePrefix: "2024-07-01"), "evil")
+        XCTAssertEqual(AssetFileTransfer.baseName(originalName: "/etc/passwd", datePrefix: "2024-07-01"), "passwd")
+        XCTAssertEqual(AssetFileTransfer.baseName(originalName: "..\\..\\evil.jpg", datePrefix: "2024-07-01"), "evil")
+        XCTAssertEqual(AssetFileTransfer.baseName(originalName: "..", datePrefix: "2024-07-01"), "Photo-2024-07-01")
+        XCTAssertEqual(AssetFileTransfer.baseName(originalName: "a/", datePrefix: "2024-07-01"), "a")
+    }
+
+    func test_assetFileTransfer_safeFileName() {
+        XCTAssertEqual(AssetFileTransfer.safeFileName("IMG_1234.JPG"), "IMG_1234.JPG")
+        XCTAssertEqual(AssetFileTransfer.safeFileName("Été 2024 – plage.heic"), "Été 2024 – plage.heic")
+        XCTAssertEqual(AssetFileTransfer.safeFileName("../../x.plist"), "x.plist")
+        XCTAssertEqual(AssetFileTransfer.safeFileName("a\u{0}b\n.jpg"), "ab.jpg")
+        XCTAssertNil(AssetFileTransfer.safeFileName(""))
+        XCTAssertNil(AssetFileTransfer.safeFileName("."))
+        XCTAssertNil(AssetFileTransfer.safeFileName("../.."))
+        XCTAssertNil(AssetFileTransfer.safeFileName("///"))
+    }
+
+    func test_assetFileTransfer_writeTempFile_staysInItsOwnDirectory() throws {
+        let url = try AssetFileTransfer.writeTempFile(data: Data("x".utf8), name: "../../escaped.jpg")
+        defer { try? FileManager.default.removeItem(at: url.deletingLastPathComponent()) }
+        XCTAssertEqual(url.lastPathComponent, "escaped.jpg")
+        XCTAssertTrue(url.deletingLastPathComponent().lastPathComponent.hasPrefix("immich-share-"))
+    }
+
     func test_assetFileTransfer_fetchData_rejectsNon2xx() async {
         CapturingURLProtocol.nextStatus = 401
         let session = makeMockedSession()

@@ -113,6 +113,39 @@ final class ServerRedirectPolicyTests: XCTestCase {
         redirected.assertSecretsKept()
     }
 
+    func test_sameHostDowngradeToHTTPDropsCustomHeadersAndToken() {
+        let original = URLRequest.proxiedServerRequest()
+        let redirected = ServerRedirectPolicy.redirectedRequest(
+            proposed(from: original, to: "http://a.proxy.test/y"), original: original
+        )
+        redirected.assertNoSecrets()
+    }
+
+    func test_sameHostOtherPortDropsCustomHeadersAndToken() {
+        let original = URLRequest.proxiedServerRequest()
+        let redirected = ServerRedirectPolicy.redirectedRequest(
+            proposed(from: original, to: "https://a.proxy.test:8443/y"), original: original
+        )
+        redirected.assertNoSecrets()
+    }
+
+    func test_sameHostExplicitDefaultPortIsTheSameServer() {
+        let original = URLRequest.proxiedServerRequest()
+        let redirected = ServerRedirectPolicy.redirectedRequest(
+            URLRequest(url: URL(string: "https://a.proxy.test:443/y")!), original: original
+        )
+        redirected.assertSecretsKept()
+    }
+
+    func test_sameHostUpgradeToHTTPSKeepsCustomHeadersAndToken() {
+        var original = URLRequest.proxiedServerRequest()
+        original.url = URL(string: "http://a.proxy.test:2283/x")
+        let redirected = ServerRedirectPolicy.redirectedRequest(
+            URLRequest(url: URL(string: "https://a.proxy.test/y")!), original: original
+        )
+        redirected.assertSecretsKept()
+    }
+
     func test_AC_120_hostComparisonIgnoresCase() {
         let original = URLRequest.proxiedServerRequest()
         let redirected = ServerRedirectPolicy.redirectedRequest(

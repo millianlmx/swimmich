@@ -3,12 +3,15 @@ import Foundation
 /// What a redirect keeps: the single rule shared by every session that talks to
 /// the server (the app's sessions, the widgets', the extension's).
 ///
-/// - **Same host** (port ignored, as before L-09): every header of the original
-///   request the redirected one lost comes back — `Authorization`,
-///   `x-immich-user-token` and the custom headers.
-/// - **Another host**: every header is removed except the few the app itself
-///   sets (`preservedAcrossHosts`). A custom header — `User-Agent` included —
-///   never leaves the server it was declared for.
+/// - **Same server**: every header of the original request the redirected one
+///   lost comes back — `Authorization`, `x-immich-user-token` and the custom
+///   headers. The same server is the same host on the same scheme and port, or
+///   the `https` address an `http` one upgrades to (any port: `:80` → `:443`).
+/// - **Anything else** — another host, another port of the same host (another
+///   service of the machine), or `https` falling back to `http` (the secrets
+///   would travel in clear): every header is removed except the few the app
+///   itself sets (`preservedAcrossHosts`). A custom header — `User-Agent`
+///   included — never leaves the server it was declared for.
 public enum ServerRedirectPolicy {
     /// The headers the app sets itself. Invariant: a subset of
     /// `CustomHeaderValidation.reservedNames`, so every name allowed to cross
@@ -22,7 +25,7 @@ public enum ServerRedirectPolicy {
             return proposed
         }
         var request = proposed
-        if proposed.url?.host?.lowercased() == originalHost {
+        if isSameServer(proposed.url, as: original?.url) {
             for (name, value) in original?.allHTTPHeaderFields ?? [:]
             where !preservedAcrossHosts.contains(name.lowercased()) && request.value(forHTTPHeaderField: name) == nil {
                 request.setValue(value, forHTTPHeaderField: name)
@@ -34,6 +37,27 @@ public enum ServerRedirectPolicy {
             }
         }
         return request
+    }
+
+    /// Whether a redirect from `original` to `proposed` stays on the server the
+    /// secrets were meant for (see the type's rule).
+    static func isSameServer(_ proposed: URL?, as original: URL?) -> Bool {
+        guard let proposed, let original,
+              let host = original.host?.lowercased(), !host.isEmpty,
+              proposed.host?.lowercased() == host,
+              let from = original.scheme?.lowercased(), let to = proposed.scheme?.lowercased()
+        else { return false }
+        if from == to { return effectivePort(of: proposed) == effectivePort(of: original) }
+        return from == "http" && to == "https"
+    }
+
+    private static func effectivePort(of url: URL) -> Int? {
+        if let port = url.port { return port }
+        switch url.scheme?.lowercased() {
+        case "https", "wss": return 443
+        case "http", "ws": return 80
+        default: return nil
+        }
     }
 }
 

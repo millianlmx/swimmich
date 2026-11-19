@@ -114,7 +114,11 @@ struct NetworkSettingsView: View {
             Button("Trust", role: .destructive) { Task { await vm.trustPendingHost() } }
             Button("Cancel", role: .cancel) { vm.pendingUntrustedHost = nil }
         } message: {
-            Text("The certificate of \(vm.pendingUntrustedHost ?? "this server") cannot be verified. Trust it anyway?")
+            if vm.pendingHostCertificateChanged {
+                Text("The certificate of \(vm.pendingUntrustedHost ?? "this server") has changed since you trusted it. If you did not replace it yourself, someone may be intercepting the connection. Trust the new certificate?")
+            } else {
+                Text("The certificate of \(vm.pendingUntrustedHost ?? "this server") cannot be verified. Trust it anyway?")
+            }
         }
     }
 

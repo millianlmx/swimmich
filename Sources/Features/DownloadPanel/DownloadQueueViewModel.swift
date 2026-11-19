@@ -429,6 +429,8 @@ final class DownloadQueueViewModel {
         let folder = documents.appendingPathComponent("Downloads", isDirectory: true)
         try fileManager.createDirectory(at: folder, withIntermediateDirectories: true)
 
+        // One path component, whatever the row was named: the file never leaves `Downloads/`.
+        let fileName = AssetFileTransfer.safeFileName(fileName) ?? "download"
         let base = (fileName as NSString).deletingPathExtension
         let ext = (fileName as NSString).pathExtension
         var candidate = folder.appendingPathComponent(fileName)

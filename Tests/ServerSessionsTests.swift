@@ -26,8 +26,26 @@ final class ServerSessionsTests: XCTestCase {
         tYwonIVkpiZDAhwRWzxopABHktJKL0j7pZ8lSIBdPajUKX11XE9cHFoJ9FDz7a4XBwVM9iqmOZbSN6Ytf0iZSA9qIP6v/K1V4Zwz
         Qnaytu4qU+abyCXmzFy6Vg==
         """
+    /// Another self-signed certificate for the same name (same command), valid 365 days from
+    /// 2026-11-19 19:56:31 UTC: what somebody between the phone and the server would present.
+    private static let otherCertificateBase64 = """
+        MIIDRTCCAi2gAwIBAgIUYjR5A/HwJyGNDQmBnpRWrgbVLH0wDQYJKoZIhvcNAQELBQAwGTEXMBUGA1UEAwwObmFzLnRydXN0LnRl
+        c3QwHhcNMjYxMTE5MTk1NjMxWhcNMjcxMTE5MTk1NjMxWjAZMRcwFQYDVQQDDA5uYXMudHJ1c3QudGVzdDCCASIwDQYJKoZIhvcN
+        AQEBBQADggEPADCCAQoCggEBALvPL3fQQWHvXaVfVQfNsTFmi/w7f0Pabl+bUeK9Hz9z0y7FUs/CSsDChw3C6kifCidaS95Lhwrt
+        e8AE9FXxGAUy0N92+ipyn+ZYVOnKgdi+ja/0FXtvIEVkZT99O99PyC5Ayucs/lJfMVqhwarqKxUxfgBQAJf5M10ylP0HzPlN9ebi
+        FPiJ92W9J0qMpPrY4YD7iKvg56AO64Ifpzbz7e+1KyqZIh4ElZE7cFxDlz0hwHQ5i/eaOlhlguto+dOmyVZ1uqQ2egzyKlYe6DZO
+        bxnBnaBhlVMfGSA8qsqcGL++ZRiULcQbSivbJKAkDfwoKceM+GBps3Bkc2AYFXivtmUCAwEAAaOBhDCBgTAdBgNVHQ4EFgQUIkS1
+        gOXaIZvfPasQIPWT7WGtsVMwHwYDVR0jBBgwFoAUIkS1gOXaIZvfPasQIPWT7WGtsVMwDwYDVR0TAQH/BAUwAwEB/zAZBgNVHREE
+        EjAQgg5uYXMudHJ1c3QudGVzdDATBgNVHSUEDDAKBggrBgEFBQcDATANBgkqhkiG9w0BAQsFAAOCAQEALrhAJLUlyIWf2NOmjZPi
+        iSLh3EZzIfTKcH+TqACQdQ2G1LnlcTaCklBrjJMvk5kSHUYOVDPQIRXvtYGzJMFhqvucrLumBpWFpUTsr9EF+I1U2SQaUKemzMVG
+        kx8KjN0qH3M64zAg7Ncf5w2gogMbZOhoVOkswDiI/wYWz1c5GTbMpWcfzywQNRNLtqSXO+EWGskG+1MMKTbna25X3tPrFozHAPS5
+        4ylk2QJQim9Q1yoMOnHmT+4MXySq+yhtJy8HTuwH1RsSwaxuis1O6hAeAegEHeE+ef66u6yhHuCgWxU+4t60nc/ovGxeX+v8tpUo
+        7Uj3xG2XacPp4VfaNeAxJw==
+        """
     /// notBefore + 1 day: the trust evaluation runs at this date, whatever the clock says.
     private static let verifyDate = Date(timeIntervalSince1970: 1_793_459_609)
+    /// notBefore of the other certificate + 1 day; the first one is still valid then.
+    private static let otherVerifyDate = Date(timeIntervalSince1970: 1_795_204_591)
 
     private var suites: [String] = []
     private var sessions: [ServerSessions] = []
@@ -63,15 +81,16 @@ final class ServerSessionsTests: XCTestCase {
     }
 
     private func serverTrustChallenge(
-        host: String = ServerSessionsTests.host, certificateHost: String? = nil
+        host: String = ServerSessionsTests.host, certificateHost: String? = nil, otherCertificate: Bool = false
     ) throws -> URLAuthenticationChallenge {
-        let der = try XCTUnwrap(Data(base64Encoded: Self.certificateBase64, options: .ignoreUnknownCharacters))
+        let base64 = otherCertificate ? Self.otherCertificateBase64 : Self.certificateBase64
+        let der = try XCTUnwrap(Data(base64Encoded: base64, options: .ignoreUnknownCharacters))
         let certificate = try XCTUnwrap(SecCertificateCreateWithData(nil, der as CFData))
         // A fresh SecTrust per challenge: the delegate mutates its anchors.
         var created: SecTrust?
         XCTAssertEqual(SecTrustCreateWithCertificates(certificate, SecPolicyCreateSSL(true, (certificateHost ?? host) as CFString), &created), errSecSuccess)
         let trust = try XCTUnwrap(created)
-        SecTrustSetVerifyDate(trust, Self.verifyDate as CFDate)
+        SecTrustSetVerifyDate(trust, (otherCertificate ? Self.otherVerifyDate : Self.verifyDate) as CFDate)
         SecTrustSetNetworkFetchAllowed(trust, false)
         return URLAuthenticationChallenge(
             protectionSpace: StubServerTrustSpace(host: host, trust: trust),
@@ -160,6 +179,71 @@ final class ServerSessionsTests: XCTestCase {
         try assertRefused(made.images)
         store.add(Self.host)
         try assertTrusted(made.images)
+    }
+
+    // MARK: - Certificate pin
+
+    func test_trustedHost_pinsTheCertificateOfItsFirstHandshake() throws {
+        let (made, store) = makeSessions(trusting: [Self.host])
+        XCTAssertNil(store.pin(for: Self.host))
+
+        try assertTrusted(made.images)
+
+        let der = try XCTUnwrap(Data(base64Encoded: Self.certificateBase64, options: .ignoreUnknownCharacters))
+        let certificate = try XCTUnwrap(SecCertificateCreateWithData(nil, der as CFData))
+        XCTAssertEqual(store.pin(for: Self.host), ServerCertificatePin.fingerprint(of: certificate))
+        try assertTrusted(made.images)
+    }
+
+    func test_trustedHost_refusesAnotherCertificateOnceOneIsPinned() throws {
+        let (made, store) = makeSessions(trusting: [Self.host])
+        try assertTrusted(made.images)
+        let pinned = store.pin(for: Self.host)
+
+        let (disposition, credential) = try answer(of: made.images, for: serverTrustChallenge(otherCertificate: true))
+
+        XCTAssertEqual(disposition, .cancelAuthenticationChallenge, "a self-signed certificate for the same name is not the pinned one")
+        XCTAssertNil(credential)
+        XCTAssertEqual(store.pin(for: Self.host), pinned, "a refused certificate never replaces the pin")
+    }
+
+    func test_trustingTheHostAgain_acceptsItsNewCertificate() throws {
+        let (made, store) = makeSessions(trusting: [Self.host])
+        try assertTrusted(made.images)
+
+        store.add(Self.host)
+        let (disposition, _) = try answer(of: made.images, for: serverTrustChallenge(otherCertificate: true))
+
+        XCTAssertEqual(disposition, .useCredential)
+        let (old, _) = try answer(of: made.images, for: serverTrustChallenge())
+        XCTAssertEqual(old, .cancelAuthenticationChallenge, "the certificate of before is no longer the pinned one")
+    }
+
+    func test_widgetDelegate_acceptsOnlyThePinnedCertificate() throws {
+        let der = try XCTUnwrap(Data(base64Encoded: Self.certificateBase64, options: .ignoreUnknownCharacters))
+        let certificate = try XCTUnwrap(SecCertificateCreateWithData(nil, der as CFData))
+        let pin = ServerCertificatePin.fingerprint(of: certificate)
+
+        func disposition(
+            pins: [String: String]?, otherCertificate: Bool = false
+        ) throws -> URLSession.AuthChallengeDisposition {
+            let delegate = WidgetTrustDelegate(sessionStore: PinnedWidgetSession(session: WidgetSession(
+                baseURL: "https://\(Self.host)", token: "jwt", trustedHosts: [Self.host], trustedPins: pins
+            )))
+            let box = Box<URLSession.AuthChallengeDisposition>()
+            let answered = expectation(description: "challenge answered")
+            delegate.urlSession(.shared, didReceive: try serverTrustChallenge(otherCertificate: otherCertificate)) { value, _ in
+                box.value = value
+                answered.fulfill()
+            }
+            wait(for: [answered], timeout: 2)
+            return try XCTUnwrap(box.value)
+        }
+
+        XCTAssertEqual(try disposition(pins: [Self.host: pin]), .useCredential)
+        XCTAssertEqual(try disposition(pins: [Self.host: pin], otherCertificate: true), .cancelAuthenticationChallenge)
+        XCTAssertEqual(try disposition(pins: nil), .cancelAuthenticationChallenge, "a trusted host without a pin is refused: the widget never pins by itself")
+        XCTAssertEqual(try disposition(pins: ["other.example": pin]), .cancelAuthenticationChallenge)
     }
 
     // MARK: - Redirects (AC-5, AC-6)
@@ -435,4 +519,11 @@ private final class StubServerTrustSpace: URLProtectionSpace {
     required init?(coder: NSCoder) { nil }
 
     override var serverTrust: SecTrust? { stubTrust }
+}
+
+private struct PinnedWidgetSession: WidgetSessionStoring {
+    let session: WidgetSession?
+    func save(_ session: WidgetSession) {}
+    func load() -> WidgetSession? { session }
+    func clear() {}
 }
