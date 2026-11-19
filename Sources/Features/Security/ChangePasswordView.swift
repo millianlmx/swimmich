@@ -125,7 +125,7 @@ struct ChangePasswordView: View {
                 Button("Change Password") {
                     send()
                 }
-                .buttonStyle(.borderedProminent)
+                .pvProminentButtonStyle()
                 .frame(maxWidth: .infinity)
                 .disabled(!vm.canSubmit)
                 .accessibilityIdentifier("changePasswordSubmit")

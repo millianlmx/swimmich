@@ -137,11 +137,12 @@ struct PartnerAvatarCircle: View {
     var size: CGFloat = 36
 
     var body: some View {
+        let serverColor = Color(hex: partner.avatarColor)
         ZStack {
-            Circle().fill(Color(hex: partner.avatarColor) ?? Color.immichPrimary)
+            Circle().fill(serverColor ?? Color.immichPrimary)
             Text(UserAvatarCircle.initials(from: partner.name))
                 .font(.system(size: size * 0.4, weight: .semibold))
-                .foregroundStyle(Color.white)
+                .foregroundStyle(serverColor == nil ? Color.immichOnPrimary : Color.white)
         }
         .frame(width: size, height: size)
     }

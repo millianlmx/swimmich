@@ -91,6 +91,8 @@ struct RootView: View {
         // is what hands the color scheme back to iOS.
         .preferredColorScheme(appSettings.theme.colorScheme)
         .tint(appSettings.accent.color)
+        // `.borderedProminent` fills with that tint; its label takes this ink.
+        .environment(\.pvOnTint, appSettings.accent.onColor)
         // App Lock lives in its own window above every sheet, cover and alert.
         .background(AppLockWindowInstaller(appLock: appLock, language: language, appSettings: appSettings))
         #if DEBUG
@@ -651,7 +653,7 @@ struct ProfileAvatarButton: View {
             Circle().fill(Color.immichPrimary)
             Text(UserAvatarCircle.initials(from: auth.userName ?? "?"))
                 .font(.system(size: 18, weight: .semibold))
-                .foregroundStyle(Color.white)
+                .foregroundStyle(Color.immichOnPrimary)
         }
         .frame(width: 44, height: 44)
         // The glass is the disc's own, in its shape: in a navigation bar the

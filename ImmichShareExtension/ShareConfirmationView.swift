@@ -139,7 +139,7 @@ struct ShareConfirmationView: View {
                 onFinish()
             }
         }
-        .buttonStyle(.borderedProminent)
+        .pvProminentButtonStyle()
         .controlSize(.large)
         .tint(Color.immichPrimary)
         .frame(maxWidth: .infinity)
@@ -279,7 +279,7 @@ struct ShareNoSessionView: View {
             )
             .accessibilityIdentifier("shareExtensionNoSessionView")
             Button(String(localized: "Close"), action: onClose)
-                .buttonStyle(.borderedProminent)
+                .pvProminentButtonStyle()
                 .controlSize(.large)
                 .tint(Color.immichPrimary)
                 .accessibilityIdentifier("shareExtensionNoSessionCloseButton")

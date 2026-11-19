@@ -34,8 +34,10 @@ struct OcrOverlayView: View {
                 let quad = box.quad.path(
                     in: imageRect, scale: scale, offset: offset, viewport: viewportSize
                 )
-                context.fill(quad, with: .color(Color.immichPrimary.opacity(0.18)))
-                context.stroke(quad, with: .color(Color.immichPrimary), lineWidth: 1.5)
+                // The layer sits on the viewer's black: `immichPrimary` in light
+                // appearance (#4250AF) is 2.996:1 there, under the 3:1 glyph bar.
+                context.fill(quad, with: .color(PVFloating.accent.opacity(0.18)))
+                context.stroke(quad, with: .color(PVFloating.accent), lineWidth: 1.5)
 
                 guard box.isConfident else { continue }
                 let label = context.resolve(

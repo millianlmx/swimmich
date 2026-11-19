@@ -258,7 +258,7 @@ struct SyncStatusView: View {
                     Label("Stop", systemImage: "stop.circle")
                         .frame(maxWidth: .infinity)
                 }
-                .buttonStyle(.borderedProminent)
+                .pvProminentButtonStyle()
                 .disabled(vm.isCancelling)
                 .accessibilityIdentifier("syncStatusCancel")
             } else {
@@ -268,7 +268,7 @@ struct SyncStatusView: View {
                     Label("Run now", systemImage: "arrow.triangle.2.circlepath")
                         .frame(maxWidth: .infinity)
                 }
-                .buttonStyle(.borderedProminent)
+                .pvProminentButtonStyle()
                 .accessibilityIdentifier("syncStatusRunNow")
             }
 

@@ -177,7 +177,7 @@ struct ThenAndNowCompareView: View {
                         Label("Save Video", systemImage: "film")
                             .frame(maxWidth: .infinity)
                     }
-                    .buttonStyle(.borderedProminent)
+                    .pvProminentButtonStyle()
                     .accessibilityIdentifier("thenAndNowSaveVideo")
                 }
                 .disabled(vm.exportState != .idle)
@@ -240,7 +240,7 @@ struct ThenAndNowCompareView: View {
                     Label("Share", systemImage: "square.and.arrow.up")
                         .frame(maxWidth: .infinity)
                 }
-                .buttonStyle(.borderedProminent)
+                .pvProminentButtonStyle()
                 .accessibilityIdentifier("thenAndNowShareButton")
             }
             Button("OK") { vm.dismissExportResult() }
