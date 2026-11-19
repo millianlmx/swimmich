@@ -25,10 +25,13 @@ struct UserAvatarCircle: View {
                     .clipShape(Circle())
                     .transition(.opacity)
             } else {
-                Circle().fill(Color(hex: user.avatarColor) ?? Color.immichPrimary)
+                // The server's own colour keeps white initials; the fallback is the
+                // accent, whose pale dark-mode value needs `immichOnPrimary`.
+                let serverColor = Color(hex: user.avatarColor)
+                Circle().fill(serverColor ?? Color.immichPrimary)
                 Text(Self.initials(from: user.name))
                     .font(.system(size: size * 0.4, weight: .semibold))
-                    .foregroundStyle(Color.white)
+                    .foregroundStyle(serverColor == nil ? Color.immichOnPrimary : Color.white)
             }
         }
         .frame(width: size, height: size)

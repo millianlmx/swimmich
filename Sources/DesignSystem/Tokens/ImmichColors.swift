@@ -15,6 +15,15 @@ extension Color {
         dark: Color(red: 172 / 255, green: 203 / 255, blue: 250 / 255)
     )
 
+    /// Contenu posé sur un aplat `immichPrimary` (libellé de CTA, initiales, badge
+    /// de compteur). Le blanc ne tient que sur l'indigo clair (7,0:1) ; sur le
+    /// bleu pâle du mode sombre il tombe à 1,66:1, d'où un bleu nuit (≈ 11:1).
+    /// Light: #FFFFFF · Dark: #081430
+    static let immichOnPrimary = Color(
+        light: .white,
+        dark: Color(red: 8 / 255, green: 20 / 255, blue: 48 / 255)
+    )
+
     /// Fond principal — noir pur en dark mode (pas de gris système),
     /// pour un rendu très contrasté façon "cinema mode" sur les photos.
     /// Light: #FFFFFF · Dark: #000000

@@ -135,7 +135,7 @@ struct DuplicatesView: View {
                         if keep.contains(dto.id) {
                             Text("Keep")
                                 .font(.pvCaption.weight(.semibold))
-                                .foregroundStyle(Color.white)
+                                .foregroundStyle(Color.immichOnPrimary)
                                 .padding(.horizontal, PVSpacing.s8)
                                 .padding(.vertical, PVSpacing.s4)
                                 .background(Color.immichPrimary, in: Capsule())

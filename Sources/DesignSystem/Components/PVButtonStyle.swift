@@ -6,14 +6,15 @@ import SwiftUI
 // feedback uses a 0.97 scaleEffect animated with `PVMotion.snappy`; both are
 // dropped under Reduce Motion.
 
-/// Primary CTA: indigo fill, white label, capsule, 50pt min height.
+/// Primary CTA: accent fill, `immichOnPrimary` label (white on the light indigo,
+/// deep blue on the dark pale blue), capsule, 50pt min height.
 struct PVPrimaryButtonStyle: ButtonStyle {
     @PVReduceMotion private var reduceMotion
 
     func makeBody(configuration: Configuration) -> some View {
         configuration.label
             .font(.pvHeadline)
-            .foregroundStyle(.white)
+            .foregroundStyle(Color.immichOnPrimary)
             .frame(maxWidth: .infinity, minHeight: 50)
             .background(Color.immichPrimary)
             .clipShape(RoundedRectangle(cornerRadius: PVRadius.control, style: .continuous))

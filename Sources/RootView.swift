@@ -702,7 +702,7 @@ struct ProfileAvatarButton: View {
             Circle().fill(Color.immichPrimary)
             Text(UserAvatarCircle.initials(from: auth.userName ?? "?"))
                 .font(.system(size: 18, weight: .semibold))
-                .foregroundStyle(Color.white)
+                .foregroundStyle(Color.immichOnPrimary)
         }
         .frame(width: 44, height: 44)
         // The mode's only permanent marker: 12 pt, pinned to the CIRCLE's own

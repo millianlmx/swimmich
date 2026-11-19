@@ -125,7 +125,7 @@ struct AdjustDateSheet: View {
                     .padding(.vertical, PVSpacing.s12)
                 }
                 .buttonStyle(.plain)
-                .foregroundStyle(Color.white)
+                .foregroundStyle(Color.immichOnPrimary)
                 .background(RoundedRectangle(cornerRadius: PVRadius.md, style: .continuous).fill(Color.immichPrimary))
                 .disabled(vm.isSaving)
                 .accessibilityIdentifier("adjustDateSaveButton")

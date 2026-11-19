@@ -208,7 +208,7 @@ struct SearchView: View {
                     if vm.activeFilterCount > 0 {
                         Text("\(vm.activeFilterCount)")
                             .font(.pvCaption)
-                            .foregroundStyle(.white)
+                            .foregroundStyle(Color.immichOnPrimary)
                             .padding(.horizontal, PVSpacing.s4)
                             .frame(minWidth: 18, minHeight: 18)
                             .background(Color.immichPrimary, in: Capsule())

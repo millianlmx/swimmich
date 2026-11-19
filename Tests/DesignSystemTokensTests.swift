@@ -58,6 +58,78 @@ final class DesignSystemTokensTests: XCTestCase {
         }
     }
 
+    // MARK: - Accent contrast (AC-1, WCAG 2.x: glyph >= 3:1, text >= 4.5:1)
+
+    private func luminance(_ rgb: [Double]) -> Double {
+        func linear(_ v: Double) -> Double { v <= 0.04045 ? v / 12.92 : pow((v + 0.055) / 1.055, 2.4) }
+        return 0.2126 * linear(rgb[0]) + 0.7152 * linear(rgb[1]) + 0.0722 * linear(rgb[2])
+    }
+
+    private func contrast(_ a: [Double], _ b: [Double]) -> Double {
+        let la = luminance(a), lb = luminance(b)
+        return (max(la, lb) + 0.05) / (min(la, lb) + 0.05)
+    }
+
+    /// `foreground` at `alpha` over an opaque `background`.
+    private func over(_ foreground: [Double], alpha: Double, _ background: [Double]) -> [Double] {
+        zip(foreground, background).map { alpha * $0 + (1 - alpha) * $1 }
+    }
+
+    /// The real surfaces the accent is read on, per appearance: the app's own
+    /// background tokens, the system backgrounds of lists and forms, and the
+    /// tertiary fill of subtle buttons and cards.
+    private func surfaces(_ style: UIUserInterfaceStyle) -> [(String, [Double])] {
+        let trait = UITraitCollection(userInterfaceStyle: style)
+        func system(_ color: UIColor) -> [Double] { components(Color(uiColor: color.resolvedColor(with: trait))) }
+        return [
+            ("immichBackground", components(Color.immichBackground, style)),
+            ("immichGray", components(Color.immichGray, style)),
+            ("systemBackground", system(.systemBackground)),
+            ("secondarySystemBackground", system(.secondarySystemBackground)),
+            ("systemGroupedBackground", system(.systemGroupedBackground)),
+            ("secondarySystemGroupedBackground", system(.secondarySystemGroupedBackground))
+        ]
+    }
+
+    /// Accent as text on every surface, and on the 12 % / 14 % accent washes
+    /// behind icon tiles and selected rows, in light and in dark.
+    func test_AC_1_accentAsTextMeetsTextContrastOnRealSurfaces() {
+        for (styleName, style) in [("light", UIUserInterfaceStyle.light), ("dark", .dark)] {
+            let accent = components(Color.immichPrimary, style)
+            for (name, surface) in surfaces(style) {
+                XCTAssertGreaterThanOrEqual(contrast(accent, surface), 4.5, "\(styleName) · accent on \(name)")
+                for wash in [0.12, 0.14] {
+                    let tinted = over(accent, alpha: wash, surface)
+                    XCTAssertGreaterThanOrEqual(
+                        contrast(accent, tinted), 4.5, "\(styleName) · accent on \(name) + \(wash) accent wash"
+                    )
+                }
+            }
+        }
+    }
+
+    /// Content on an accent fill (CTA label, counter badge, initials): white
+    /// read 1.66:1 on the dark pale blue before `immichOnPrimary`.
+    func test_AC_1_contentOnAccentFillMeetsTextContrastInBothAppearances() {
+        for (styleName, style) in [("light", UIUserInterfaceStyle.light), ("dark", .dark)] {
+            let ratio = contrast(components(Color.immichOnPrimary, style), components(Color.immichPrimary, style))
+            XCTAssertGreaterThanOrEqual(ratio, 4.5, "\(styleName) · immichOnPrimary on immichPrimary: \(ratio):1")
+        }
+        let whiteOnDarkAccent = contrast([1, 1, 1], components(Color.immichPrimary, .dark))
+        XCTAssertLessThan(whiteOnDarkAccent, 4.5, "white on the dark accent fill is the defect immichOnPrimary fixes")
+    }
+
+    /// Layers drawn on the viewer's black (OCR boxes): the light accent sat at
+    /// 2.996:1 there, a hair under the glyph bar; the floating accent is fixed.
+    func test_AC_1_accentGlyphOnViewerBlackMeetsGlyphContrastInBothAppearances() {
+        let black = [0.0, 0.0, 0.0]
+        XCTAssertLessThan(contrast(components(Color.immichPrimary, .light), black), 3.0)
+        for (styleName, style) in [("light", UIUserInterfaceStyle.light), ("dark", .dark)] {
+            let ratio = contrast(components(PVFloating.accent, style), black)
+            XCTAssertGreaterThanOrEqual(ratio, 3.0, "\(styleName) · PVFloating.accent on black: \(ratio):1")
+        }
+    }
+
     /// The mark is drawn in the app's accent, not in Immich's official colours,
     /// and the identifiers that are not visible stay what they were: a renamed
     /// bundle ID, widget kind or URL scheme would orphan installs, widgets and
