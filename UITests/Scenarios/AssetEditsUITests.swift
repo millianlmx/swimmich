@@ -1126,7 +1126,9 @@ final class AssetEditsUITests: XCTestCase {
     ]
 
     /// The element's own identifier, else the action whose label equals its label.
+    /// The system's overflow button is no action, even where iOS gives it the identifier `OverflowBarButtonItem`.
     private func canonicalId(of element: XCUIElement) -> String? {
+        if element.identifier == "OverflowBarButtonItem" { return nil }
         if !element.identifier.isEmpty { return element.identifier }
         let label = element.label
         return Self.barLabels.first { $0.value.contains(label) }?.key
@@ -1186,7 +1188,12 @@ final class AssetEditsUITests: XCTestCase {
         let select = element("selectButton")
         XCTAssertTrue(select.waitForExistence(timeout: 30), "no Select button — \(screenText())")
         select.tap()
+        // A tile tapped before the selection mode is on opens nothing and selects nothing.
+        XCTAssertTrue(element("selectionCancelButton").waitForExistence(timeout: 10),
+                      "the selection mode never started — \(screenText())")
         for id in ids { tile(id).tap() }
+        let counted = app.navigationBars.matching(NSPredicate(format: "identifier BEGINSWITH %@", "\(ids.count) ")).firstMatch
+        XCTAssertTrue(counted.waitForExistence(timeout: 10), "the selection does not hold \(ids.count) photos — \(screenText())")
     }
 
     /// Answers the question "which version?" with `choice`; the alert goes away and does not come back.

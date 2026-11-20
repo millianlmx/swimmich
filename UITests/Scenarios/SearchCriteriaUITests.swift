@@ -941,7 +941,9 @@ final class SearchCriteriaUITests: XCTestCase {
     ]
 
     /// The element's own identifier, else the action whose label equals its label.
+    /// The system's overflow button is no action, even where iOS gives it the identifier `OverflowBarButtonItem`.
     private func canonicalId(of element: XCUIElement) -> String? {
+        if element.identifier == "OverflowBarButtonItem" { return nil }
         if !element.identifier.isEmpty { return element.identifier }
         let label = element.label
         return Self.barLabels.first { $0.value.contains(label) }?.key
@@ -972,9 +974,11 @@ final class SearchCriteriaUITests: XCTestCase {
     /// The menu's actions while the overflow is open: below the bar, recognised
     /// by identifier or label, top to bottom.
     private func overflowActions(below bar: XCUIElement) -> [String] {
-        let barBottom = bar.frame.maxY
+        // The menu's first row can overlap the bar's bottom edge: what tells a
+        // menu item apart is that it is none of the bar's own buttons.
+        let barFrames = bar.buttons.allElementsBoundByIndex.map(\.frame)
         let items = app.buttons.allElementsBoundByIndex
-            .filter { $0.frame.minY >= barBottom - 1 && $0.isHittable }
+            .filter { !barFrames.contains($0.frame) && $0.isHittable }
             .compactMap { element -> (CGFloat, String)? in
                 guard let id = canonicalId(of: element), Self.barLabels[id] != nil else { return nil }
                 logElement("menu", element)
@@ -1004,11 +1008,17 @@ final class SearchCriteriaUITests: XCTestCase {
         let ordered = inBar.sorted { $0.0 < $1.0 }.map(\.1)
         var menu: [String] = []
         if ordered.count < Self.barOrder(archive: true).count, let overflow {
+            let overflowFrame = overflow.frame
             overflow.tap()
             Thread.sleep(forTimeInterval: 1)
             menu = overflowActions(below: bar)
             for id in menu where !id.isEmpty { raw.append(id) }
-            overflow.tap()
+            // The open menu takes the button out of the tree, and its first row
+            // starts right under the button: a tap on the bar left of the menu
+            // (the title's place) closes it without choosing an action.
+            app.coordinate(withNormalizedOffset: .zero)
+                .withOffset(CGVector(dx: 100, dy: overflowFrame.midY)).tap()
+            XCTAssertTrue(selectionBar().waitForExistence(timeout: 5), "the menu did not close — \(screenText())")
             Thread.sleep(forTimeInterval: 1)
         }
         let all = ordered + menu
