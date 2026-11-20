@@ -192,6 +192,27 @@ class TestReadmeContent(unittest.TestCase):
                     else:
                         self.assertIn(value, declared, f"{value} is not declared in the code")
 
+    def test_AC_1_docs_index_links_resolve_and_cover_every_document(self):
+        index = read("docs/README.md")
+        slug = lambda title: re.sub(r"[^\w\- ]", "", title.lower()).replace(" ", "-")
+        targets = re.findall(r"\]\(([^)\s]+)\)", index)
+        for target in targets:
+            path, _, anchor = target.partition("#")
+            with self.subTest(target=target):
+                document = ROOT / "docs" / path
+                self.assertTrue(document.exists(), f"{path} is missing")
+                if anchor:
+                    self.assertIn(anchor, {slug(h[1]) for h in headings(document.read_text(encoding="utf-8"))})
+        linked = {(ROOT / "docs" / t.partition("#")[0]).resolve() for t in targets}
+        for doc in READMES + TECHNICAL + ("PRIVACY.md", "PRIVACY.fr.md", "PRIVACY.de.md", "PRIVACY.es.md",
+                                          "PRIVACY.it.md", "docs/mobile-features-vs-flutter.md",
+                                          "docs/parity-registry-v3.4.0.md", "docs/feature-parity-plan.md",
+                                          "docs/app-review-ats.txt"):
+            with self.subTest(document=doc):
+                self.assertIn((ROOT / doc).resolve(), linked, f"{doc} is not in the docs index")
+        self.assertNotIn("README.md#", index)
+        self.assertIsNone(re.search(r"[àâçéèêëîïôûùüÿœ]", prose(index)))
+
     def test_AC_21_documented_commands_point_at_existing_scripts_and_targets(self):
         project = read("project.yml")
         for name in DOCS:
