@@ -1,14 +1,14 @@
 # Feature Parity Plan — ImmichSwiftUI vs Flutter client
 
-> Status: active — 2026-08-12. Sequential card program; each card = `.opencode/scratch/<slug>.acceptance.md` contract → implementation → tests → memory.md entry → AC pass/fail report.
+> Status: completed. The card program below shipped; what remains open against the official client is tracked in `docs/parity-registry-v3.4.0.md`. Sequential card program; each card = `.opencode/scratch/<slug>.acceptance.md` contract → implementation → tests → memory.md entry → AC pass/fail report.
 
 ## Program rules (each card enforces)
 
 1. **Native SwiftUI only** — no UIKit windows, no Flutter patterns. Layered architecture immutable: protocol (L1) → DI (container) → `@Observable @MainActor` VM (L3) → stateless View (L4). Single app target unless a card explicitly adds one (widgets, Live Activity).
-2. **Tested** — XCTest per VM with mocks (`Tests/Mocks/MockImmichClient` pattern); every card runs the **full suite** (baseline regression) plus new AC checks; baseline today ≈ 214 green.
+2. **Tested** — XCTest per VM with mocks (`Tests/Mocks/MockImmichClient` pattern); every card runs the **full suite** (baseline regression) plus new AC checks.
 3. **Documented** — memory.md decision entry per shipped card (tag: feature) + doc-comments on public surface; server fields verified against OpenAPI / `.opencode/scratch/dto-reference.md` before encoding.
 4. **xcodegen** — regen `project.yml` after every new file; identity fields never touched (memory 2026-07-29 pitfall).
-5. Validation: `xcodebuild test -destination 'platform=iOS Simulator,name=iPhone 17'` (iOS 26.5; no iPhone 16 sim in this install).
+5. Validation: `xcodebuild test -destination 'platform=iOS Simulator,name=iPhone 17'` (iOS 26+).
 
 ## Phase map
 
@@ -49,7 +49,7 @@
 | selfsigned-cert | URLSession delegate trust eval + Keychain trust store; drop blanket NSAllowsArbitraryLoads; PRD §5.10 |
 | multi-server | server registry (UserDefaults + per-URL Keychain tokens), switcher UI |
 | widgets-appintents | WidgetKit extension target + AppIntents (backup now, open album) + Spotlight |
-| i18n-catalog | route all hardcoded FR/EN copy through Localizable.xcstrings — ✅ 2026-09-14 (issue #21): 629 keys, EN source + fr/de/es/it, in-app language picker, `AppDateFormat` |
+| i18n-catalog | route all hardcoded FR/EN copy through Localizable.xcstrings — ✅ (issue #21): EN source + fr/de/es/it, in-app language picker, `AppDateFormat`; the catalog is now guarded by `Scripts/i18n-audit.py` |
 | shared-link-viewer | *beyond parity* — `GET /shared-links/me?key=|slug=`, `POST /shared-links/login` (cookie), `POST /search/metadata` with `albumIds`, `POST /assets?key=`; no Flutter equivalent. Card: `.opencode/scratch/shared-link-viewer.acceptance.md` |
 | notifications (ex `push-notifications`) | ✅ 2026-09-13 — autorisation OS locale (`UNUserNotificationCenter`), **aucun endpoint** : `POST /users/me/device-token` n'existe dans aucune version publiée et le Flutter n'a pas de push |
 

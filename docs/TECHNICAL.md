@@ -300,7 +300,9 @@ Conventions to follow:
 
 | Doc | Content |
 |---|---|
+| `docs/README.md` | Index of this folder: documents, README resources, code map |
 | `docs/mobile-features-vs-flutter.md` | Upstream Flutter client reference (parity target) |
+| `docs/parity-registry-v3.4.0.md` | Gaps with the official mobile client v3.4.0, and the batches that close them (checked by `Scripts/check-parity-registry.sh`) |
 | `docs/feature-parity-plan.md` | Flutter parity plan |
 | `docs/app-review-ats.txt` | App Review justification for `NSAllowsArbitraryLoads` (app, widget, Share Extension), ready to paste into App Store Connect |
 | `.omp/backlog/ImmichSwiftUI-backlog.md` | Backlog: phases, AC cards, missing endpoints |

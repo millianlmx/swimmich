@@ -1,34 +1,43 @@
-# immich_swiftui — documentation index
+# Swimmich — index de la documentation
 
-Le point d'entrée est le [README](../README.md) à la racine : présentation du projet, motivations, architecture, fonctionnement, démarrage et contribution.
+Deux points d'entrée à la racine du dépôt : [`../README.md`](../README.md) (ce que fait l'app, en anglais ; [`../README.fr.md`](../README.fr.md) en français) et la documentation technique ([`TECHNICAL.md`](TECHNICAL.md), [`TECHNICAL.fr.md`](TECHNICAL.fr.md)) : comment l'app est construite, testée et publiée.
 
 ## Documents
 
 | Doc | Contenu |
 | --- | --- |
-| [`../README.md`](../README.md) | Entrée canonique : projet, architecture, build, tests, contribution |
-| [`mobile-features-vs-flutter.md`](mobile-features-vs-flutter.md) | Référence du client Flutter upstream — objectif de parité |
-| [`parity-registry-v3.4.0.md`](parity-registry-v3.4.0.md) | Registre des écarts vs client mobile Immich v3.4.0 et suivi des lots |
-| [`feature-parity-plan.md`](feature-parity-plan.md) | Plan de parité Flutter |
+| [`TECHNICAL.md`](TECHNICAL.md) · [`TECHNICAL.fr.md`](TECHNICAL.fr.md) | Fonctionnalités par dossier de `Sources/Features/`, architecture, fonctionnement, démarrage, tests, CI, release App Store, contribution |
+| [`mobile-features-vs-flutter.md`](mobile-features-vs-flutter.md) | Référence du client Flutter upstream, objectif de parité |
+| [`parity-registry-v3.4.0.md`](parity-registry-v3.4.0.md) | Registre des écarts avec le client mobile Immich v3.4.0 et suivi des lots (contrôlé par `Scripts/check-parity-registry.sh`) |
+| [`feature-parity-plan.md`](feature-parity-plan.md) | Plan de parité Flutter : programme de cartes, terminé |
 | [`app-review-ats.txt`](app-review-ats.txt) | Justification App Review (anglais, à coller dans App Store Connect) de `NSAllowsArbitraryLoads` dans l'app, le widget et la Share Extension |
 | [`../.omp/backlog/ImmichSwiftUI-backlog.md`](../.omp/backlog/ImmichSwiftUI-backlog.md) | Backlog : phases P0–P5, cartes AC, endpoints manquants |
-| [`../.omp/<feature>/`](../.omp/) | Specs (`*.specs.md`), briefs UI (`*.ui.md`) et cartes d'acceptance (`*.AC.md`) par feature |
 
-## Code map (résumé)
+## Ressources du README
 
-- `Sources/DesignSystem/` — tokens (`Tokens/`, couleurs canoniques dans `Tokens/ImmichColors.swift`) + composants (`Components/`).
-- `Sources/Core/` — `Types/` (DTOs), `Protocols/` (contrats d'injection), `Utilities/`.
-- `Sources/Services/` — `ImmichAPIClient`, `BackupEngine`, `ImageCache`, `AuthenticatedAsyncImage`, `RealtimeService`, …
-- `Sources/Features/` — un dossier par feature, MVVM (`*ViewModel.swift` + `*View.swift`).
-- `Sources/ImmichSharedKit/` + `ImmichWidgets/` — framework partagé et extension widget (Live Activity).
-- `Sources/RootView.swift` + `Sources/DependencyContainer.swift` — routeur auth-gated et composition root.
+| Dossier | Contenu | Régénération |
+| --- | --- | --- |
+| `docs/showcase/` | images de la vitrine, prises sur un vrai serveur Immich | `Scripts/showcase.sh` |
+| `docs/media/` | la vidéo `swimmich.mp4` et son aperçu animé | `docs/video/` (Remotion), voir [`TECHNICAL.md`](TECHNICAL.md#showcase-and-video) |
+| `docs/screenshots/` | les cinq captures de la section Screenshots de la documentation technique, prises sur un stub local | `Scripts/screenshots.sh` |
+| `docs/logo/` | l'icône de l'app en trois variantes | `docs/logo/generate.py` |
 
-Détails dans le [README](../README.md#architecture).
+## Plan du code
 
-## Quick start
+Le détail est dans la section [Architecture](TECHNICAL.md#architecture) de la documentation technique ; en bref :
+
+- `Sources/DesignSystem/` : `Tokens/` et `Components/`.
+- `Sources/Core/` : `Types/` (DTOs), `Protocols/` (contrats d'injection), `Utilities/`.
+- `Sources/Services/` : implémentations des protocoles (`ImmichAPIClient`, `BackupEngine`, `ImageCache`, `RealtimeService`…).
+- `Sources/Features/` : un dossier par fonctionnalité, MVVM (`*ViewModel.swift` + `*View.swift`).
+- `Sources/ImmichSharedKit/`, `ImmichWidgets/`, `ImmichShareExtension/` : framework partagé, widgets et Live Activity, extension de partage.
+- `Sources/RootView.swift` et `Sources/DependencyContainer.swift` : routeur et composition root.
+
+## Démarrage
 
 ```bash
-xcodegen generate        # régénère ImmichSwiftUI.xcodeproj depuis project.yml
+xcodegen generate
 open ImmichSwiftUI.xcodeproj
-# choisir un simulateur, ⌘R
 ```
+
+Choisir un simulateur iOS 26, puis ⌘R. Les tests et la CI : [`TECHNICAL.md`](TECHNICAL.md#tests).

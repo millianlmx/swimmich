@@ -300,7 +300,9 @@ Conventions à respecter :
 
 | Doc | Contenu |
 |---|---|
+| `docs/README.md` | Index de ce dossier : documents, ressources des README, plan du code |
 | `docs/mobile-features-vs-flutter.md` | Référence du client Flutter upstream (objectif de parité) |
+| `docs/parity-registry-v3.4.0.md` | Écarts avec le client mobile officiel v3.4.0 et lots qui les ferment (contrôlé par `Scripts/check-parity-registry.sh`) |
 | `docs/feature-parity-plan.md` | Plan de parité Flutter |
 | `docs/app-review-ats.txt` | Justification App Review de `NSAllowsArbitraryLoads` (app, widget, Share Extension), à coller dans App Store Connect |
 | `.omp/backlog/ImmichSwiftUI-backlog.md` | Backlog : phases, cartes AC, endpoints manquants |

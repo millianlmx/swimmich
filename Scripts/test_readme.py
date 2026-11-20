@@ -28,6 +28,7 @@ from immich_stub_base import Request  # noqa: E402
 # (how it is built, tested and released), each in English and French.
 READMES = ("README.md", "README.fr.md")
 TECHNICAL = ("docs/TECHNICAL.md", "docs/TECHNICAL.fr.md")
+INDEX = "docs/README.md"  # the index of docs/, in French like the registry it points to
 DOCS = READMES + TECHNICAL
 FEATURES_TITLE = {"docs/TECHNICAL.md": "Features", "docs/TECHNICAL.fr.md": "Fonctionnalités"}
 SHOWCASE_SCENARIO = "UITests/Scenarios/ShowcaseScreenshotsUITests.swift"
@@ -244,6 +245,40 @@ class TestReadmeContent(unittest.TestCase):
                     self.assertIsNone(re.search(r"['\"`()]", "\n".join(body)),
                                       "quote, backtick or parenthesis in a heredoc inside $( ): "
                                       "move the heredoc into a function body")
+
+    def test_AC_1_docs_index_lists_every_document_and_its_citations_exist(self):
+        index = read(INDEX)
+        for doc in sorted(p.name for p in (ROOT / "docs").iterdir() if p.is_file() and p.name != "README.md"):
+            with self.subTest(document=doc):
+                self.assertIn(f"]({doc})", index, "a document of docs/ the index does not link")
+        for folder in sorted(p.name for p in (ROOT / "docs").iterdir() if p.is_dir()):
+            with self.subTest(folder=folder):
+                self.assertIn(f"`docs/{folder}/`", index, "a folder of docs/ the index does not describe")
+        slugs = {re.sub(r"[^\w\- ]", "", h[1].lower()).replace(" ", "-")
+                 for name in TECHNICAL for h in headings(read(name))}
+        for target in re.findall(r"\]\(([^)\s]+)\)", prose(index)):
+            path, _, anchor = target.partition("#")
+            with self.subTest(target=target):
+                self.assertTrue((ROOT / "docs" / path).exists(), f"{path} is missing")
+                if anchor:
+                    self.assertIn(anchor, slugs)
+        files = tracked_files()
+        roots = {f.split("/")[0] for f in files}
+        declared = swift_declarations() | EXTERNAL_NAMES
+        for item in sorted(set(re.findall(r"`([^`\n]+)`", prose(index)))):
+            found = citation(item, roots)
+            if found is None:
+                continue
+            with self.subTest(item=item):
+                if found[0] == "path":
+                    self.assertTrue((ROOT / found[1].rstrip("/")).exists() or (ROOT / "docs" / found[1]).exists(),
+                                    f"{found[1]} is not in the repository")
+                else:
+                    self.assertIn(found[1], declared)
+        for name in TECHNICAL:
+            with self.subTest(technical=name):
+                self.assertIn("`docs/README.md`", read(name))
+                self.assertIn("`docs/parity-registry-v3.4.0.md`", read(name))
 
 
 class TestScreenshots(unittest.TestCase):
