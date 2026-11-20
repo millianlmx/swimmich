@@ -19,7 +19,9 @@ name: CI
 # * the release suite, every line (about 50 minutes): on Sunday night, and on a
 #   `v*` tag before its IPA.
 #
-# Run workflow offers the three (`suite`).
+# Run workflow offers the three (`suite`). Run on a `v*` tag with `gate`, it sends
+# the build after the gate alone, without the release suite: the maintainer's
+# explicit choice when that suite is red for reasons the release does not touch.
 #
 # On `main`, once the gate passes, a last job archives in Release and keeps the
 # IPA signed for the App Store by the Apple ID of the Mac as an artifact; nothing
@@ -134,7 +136,7 @@ jobs:
     name: UI suite (iOS simulator)
     if: >-
       github.event_name == 'schedule'
-      || startsWith(github.ref, 'refs/tags/v')
+      || (github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v'))
       || (github.event_name == 'workflow_dispatch' && inputs.suite != 'gate')
     runs-on: [self-hosted, macOS, ARM64, xcode]
     timeout-minutes: 120
@@ -199,9 +201,10 @@ jobs:
   appstore:
     name: App Store upload
     # No `always()`: a gate or release suite that did not succeed skips this job,
-    # and nothing is sent.
+    # and nothing is sent. The release suite is skipped only when a maintainer
+    # runs the workflow on the tag with `suite: gate` (see the top of this file).
     needs: [unit-tests, ui-suite]
-    if: startsWith(github.ref, 'refs/tags/v')
+    if: startsWith(github.ref, 'refs/tags/v') && !cancelled() && needs.unit-tests.result == 'success' && (needs.ui-suite.result == 'success' || (github.event_name == 'workflow_dispatch' && inputs.suite == 'gate' && needs.ui-suite.result == 'skipped'))
     runs-on: [self-hosted, macOS, ARM64, xcode]
     timeout-minutes: 60
     # The secrets of the Environment are released to this job only, and only for

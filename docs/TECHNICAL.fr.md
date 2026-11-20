@@ -267,6 +267,7 @@ git tag v1.2.3 && git push origin v1.2.3
 
 - **Format du tag :** `v<major>`, `v<major>.<minor>` ou `v<major>.<minor>.<patch>`, nombres sans zéro initial. Le tag fixe la version marketing ; le numéro de build est l'heure UTC (`YYYYMMDD.HHMM`), qui ne fait que croître.
 - **Contrôles d'abord.** Le run passe par `Unit tests (iOS simulator)`, puis la suite UI de release, puis `App Store upload`. Si un contrôle échoue, rien n'est envoyé.
+- **Gate seul, à la main.** Quand la suite de release est rouge pour des raisons étrangères à la release, un mainteneur peut envoyer le tag après le seul gate : `gh workflow run ci.yml --ref v1.2.3 -f suite=gate`. Seul ce lancement manuel saute la suite de release ; un tag poussé l'attend toujours.
 - **Secret manquant.** `App Store upload` échoue avant l'archivage et nomme chaque secret manquant ou mal formé dans une annotation du run (les journaux du job peuvent être illisibles sans droits admin).
 - **Signature.** `Scripts/release.sh` signe manuellement, depuis un trousseau temporaire et les trois profils : ni Apple ID, ni certificat ou profil créé côté Apple. Une annotation `Signing` affiche l'empreinte SHA-1 du certificat qui a signé l'app et ses deux extensions, et les UUID des profils. Le trousseau, les secrets décodés et les profils installés sont supprimés à la fin du job, échec compris.
 - **`main`** produit toujours l'IPA en artefact, signé par l'Apple ID connecté à Xcode sur le Mac, et n'envoie rien.

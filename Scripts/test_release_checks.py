@@ -391,6 +391,14 @@ class TestWorkflow(unittest.TestCase):
         self.assertNotIn("always()", re.sub(r"(?s)- name: Remove the signing state.*", "", block))
         self.assertIn("name: Unit tests (iOS simulator)", self.jobs["unit-tests"])
 
+    def test_upload_skips_the_release_suite_only_on_a_manual_gate_run(self):
+        block = code_lines(self.jobs["appstore"])
+        self.assertIn("needs.unit-tests.result == 'success'", block)
+        self.assertIn("(github.event_name == 'workflow_dispatch' && inputs.suite == 'gate' "
+                      "&& needs.ui-suite.result == 'skipped')", block)
+        suite = code_lines(self.jobs["ui-suite"])
+        self.assertIn("(github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v'))", suite)
+
     def test_AC_12_signed_ipa_job_runs_on_main_without_secrets(self):
         block = code_lines(self.jobs["ipa"])
         self.assertIn("github.ref == 'refs/heads/main'", block)

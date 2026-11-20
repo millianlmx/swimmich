@@ -267,6 +267,7 @@ git tag v1.2.3 && git push origin v1.2.3
 
 - **Tag format:** `v<major>`, `v<major>.<minor>` or `v<major>.<minor>.<patch>`, numbers without a leading zero. The tag sets the marketing version; the build number is the UTC time (`YYYYMMDD.HHMM`), which only grows.
 - **Checks first.** The run goes through `Unit tests (iOS simulator)`, then the release UI suite, then `App Store upload`. If a check fails, nothing is sent.
+- **Gate only, by hand.** When the release suite is red for reasons the release does not touch, a maintainer can send the tag after the gate alone: `gh workflow run ci.yml --ref v1.2.3 -f suite=gate`. Only that manual run skips the release suite; a pushed tag always waits for it.
 - **Missing secret.** `App Store upload` fails before archiving and names each missing or malformed secret in an annotation of the run (job logs may not be readable without admin rights).
 - **Signing.** `Scripts/release.sh` signs manually, from a temporary keychain and the three profiles: no Apple ID, no certificate or profile created on the Apple side. An annotation `Signing` shows the SHA-1 of the certificate that signed the app and its two extensions, and the profile UUIDs. The keychain, the decoded secrets and the installed profiles are removed when the job ends, failure included.
 - **`main`** still produces the IPA as an artifact, signed by the Apple ID signed in to Xcode on the Mac, and sends nothing.
