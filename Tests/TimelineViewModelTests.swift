@@ -1476,6 +1476,27 @@ final class TimelineViewModelTests: XCTestCase {
         return byId
     }
 
+    /// AC-196: a reload after an edit made elsewhere brings the same rows (same count, same last id)
+    /// with a new thumbhash; the grid must render the new copies, not the cached sections.
+    @MainActor
+    func test_AC_196_reloadOfTheSameRowsRendersTheNewThumbhash() async {
+        let mock = MockImmichClient()
+        mock.bucketsResponse = [TimeBucketsResponseDto(timeBucket: "2024-07-01", count: 2)]
+        mock.bucketResponses = [
+            "2024-07-01": columnar(ids: ["a1", "a2"], ratios: [1, 1], thumbhashes: ["h1", "h2"], favorites: [false, false])
+        ]
+        let vm = TimelineViewModel(client: mock)
+        await vm.load()
+        XCTAssertEqual(renderedItems(vm)["a1"]?.thumbhash, "h1", "primes the section cache")
+
+        mock.bucketResponses = [
+            "2024-07-01": columnar(ids: ["a1", "a2"], ratios: [1, 1], thumbhashes: ["h1-e1", "h2"], favorites: [false, false])
+        ]
+        await vm.refresh()
+        XCTAssertEqual(vm.items.first { $0.id == "a1" }?.thumbhash, "h1-e1")
+        XCTAssertEqual(renderedItems(vm)["a1"]?.thumbhash, "h1-e1", "the grid reads the reloaded copies")
+    }
+
     @MainActor
     func test_unarchive_AC1_archivedFilterOffersUnarchive() async {
         let vm = await archivedGridVM(MockImmichClient())

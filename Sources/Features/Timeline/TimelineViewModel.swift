@@ -8,7 +8,17 @@ import SwiftUI
 @Observable
 final class TimelineViewModel {
     var buckets: [TimeBucketsResponseDto] = []
-    var items: [AssetReactItem] = []
+    var items: [AssetReactItem] = [] {
+        // Any change rebuilds the grid's sections, an in-place one included: a
+        // reload after an edit made elsewhere brings the same rows with a new
+        // thumbhash, which the `(count, lastId)` signature alone cannot see.
+        didSet {
+            _groupedByDay = nil
+            _groupedByDayKey = nil
+            _timelineSections = nil
+            _timelineSectionsKey = nil
+        }
+    }
     var bucketIndex: Int = 0
     /// Next NEWER bucket to load when scrolling up (after a `jump`). -1 = none
     /// (the timeline already starts at the newest bucket).
@@ -894,12 +904,9 @@ final class TimelineViewModel {
     ///
     /// Memoized: the Dictionary grouping + two sorts ran on every `body`
     /// evaluation (audit P1) even though the grouping only depends on `items`.
-    /// The cache is invalidated by a `(count, lastId)` signature — every
-    /// `items` mutation that adds or removes rows (append, replace-all,
-    /// removeAll) changes one of these. An in-place patch (`items[idx] = …`)
-    /// changes neither, and the cells render the cached COPIES: a patch that
-    /// must show in the grid (`applyUnarchived`) resets the four cache
-    /// storages itself. The in-place favorite patch does not (pre-existing).
+    /// Every `items` change resets the cache (`items.didSet`), an in-place
+    /// patch (`items[idx] = …`) or a reload of the same rows included; the
+    /// `(count, lastId)` signature only guards against a stale cache.
     private var _groupedByDay: [(day: String, items: [AssetReactItem])]?
     private var _groupedByDayKey: (count: Int, lastId: String?)?
 

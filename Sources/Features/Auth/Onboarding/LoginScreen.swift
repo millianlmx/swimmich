@@ -133,9 +133,15 @@ struct LoginScreen: View {
         .background(Color.bgPrimary.ignoresSafeArea())
         .navigationTitle("Sign In")
         .navigationBarTitleDisplayMode(.inline)
-        .onAppear { if showsPasswordForm { focus = .email } }
+        // The email field takes the focus only when the password is the one way
+        // in: with SSO offered too, the keyboard would lift the Sign In bar over
+        // the SSO button.
+        .onAppear { if showsPasswordForm && !auth.canOAuthLogin { focus = .email } }
         .onChange(of: showsPasswordForm) { _, shown in
-            if shown { focus = .email }
+            if shown && !auth.canOAuthLogin { focus = .email }
+        }
+        .onChange(of: auth.canOAuthLogin) { _, offered in
+            if offered, focus == .email, email.isEmpty { focus = nil }
         }
         // The modes are read once the screen is up (the launch can open directly
         // on this step). A read that was cancelled leaves the state unknown and
