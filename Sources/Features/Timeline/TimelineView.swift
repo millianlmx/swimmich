@@ -391,6 +391,15 @@ struct TimelineView: View {
             if vm.items.isEmpty {
                 await vm.load()
             }
+            // First appearance with Photos access never answered: ask now, so
+            // the device photos join the timeline without a backup first.
+            if DeviceAccessPrompt.shouldAsk(
+                status: photoAccess,
+                showsDeviceAssets: appSettings.showsDeviceAssets,
+                serverURL: auth.baseURL
+            ) {
+                requestDeviceAccess()
+            }
         }
         // The photo of a widget link (L-28). `initial` covers a link that was
         // set before this view appeared (a cold launch). The resolution runs
@@ -494,7 +503,8 @@ struct TimelineView: View {
     /// The way back to the device half when Photos access was refused: without
     /// it the tab silently showed the server alone — not the library the Photos
     /// app shows. Leads to Settings. Never shown while access was simply never
-    /// asked (the backup setup and the Preferences switch ask for it), nor with
+    /// asked (the timeline asks on its first appearance, `DeviceAccessPrompt`;
+    /// the backup setup and the Preferences switch ask too), nor with
     /// "Show Photos from This Device" off.
     @ViewBuilder
     private var deviceAccessBanner: some View {
