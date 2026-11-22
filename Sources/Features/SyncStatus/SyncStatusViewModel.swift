@@ -58,6 +58,11 @@ final class SyncStatusViewModel {
     /// start showing the same file with two different sizes.
     func formattedOfflineBytes() -> String { offline.formattedUsage(offline.cacheUsage) }
 
+    /// "Purge" only exists while there is something to purge: an empty cache
+    /// offers no action rather than a disabled one.
+    var showsOfflinePurge: Bool { offlineCount > 0 }
+    var canPurgeOffline: Bool { showsOfflinePurge && !isRunning }
+
     // MARK: - Run state
 
     var phase: BackupEngine.Phase { upload.engine.phase }
@@ -68,6 +73,11 @@ final class SyncStatusViewModel {
     var lastRun: UploadHistoryEntry? { upload.uploadHistory.last }
     /// When the ledger was last confronted with the server (nil = never).
     var lastServerCheck: Date? { upload.lastReconciliation }
+
+    /// The secondary actions are the screen's ledger edits: none of them may
+    /// start while a pass is working on that ledger.
+    var canCheckServer: Bool { !isRunning }
+    var canResetLedger: Bool { !isRunning }
 
     // MARK: - Errors + empty state
 
@@ -102,7 +112,12 @@ final class SyncStatusViewModel {
     @discardableResult
     func cancelRun() -> Bool { upload.cancelBackup() }
 
-    func reconcileNow() async { await upload.reconcileNow() }
+    /// Re-confronts the ledger with the server. Refused while a pass runs: the
+    /// pass reconciles on its own, and two confrontations would race on the ledger.
+    func reconcileNow() async {
+        guard canCheckServer else { return }
+        await upload.reconcileNow()
+    }
 
     func resetLedger() { upload.resetBackupTracking() }
 
