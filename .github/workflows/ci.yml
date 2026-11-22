@@ -11,7 +11,8 @@ name: CI
 # * the gate, on every push: the build, the unit tests, the i18n audit, the UI
 #   scenarios the push changed and the smoke lines, one per free simulator.
 #   Under 5 minutes (`SWIMMICH_CI_GATE_BUDGET`); it is the check the branch
-#   protection of `main` requires.
+#   protection of `main` requires. A merge into `main` skips it when the merged
+#   tree is the one its pull request already passed (job `gate-reuse`).
 # * the core suite, every night on `main`: the smoke lines and the journeys and
 #   sole proofs of each feature (about 25 minutes). A scenario a merge broke
 #   turns the night's run red: fixed the next morning, it does not hold every
@@ -65,11 +66,52 @@ permissions:
   contents: read
 
 jobs:
+  gate-reuse:
+    # A merge into `main` does not run the gate again when the pull request's
+    # head passed it on the very same tree: a squash, a rebase or a merge commit
+    # of a branch up to date with `main` gives the tested tree, byte for byte.
+    # A branch behind `main` (or a direct push) gives a tree never tested, and
+    # the gate runs as before. Seconds of `gh api`, no build.
+    name: Gate already passed?
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    runs-on: [self-hosted, macOS, ARM64, xcode]
+    timeout-minutes: 5
+    permissions:
+      contents: read
+      pull-requests: read
+      checks: read
+    outputs:
+      reuse: ${{ steps.check.outputs.reuse }}
+    steps:
+      - id: check
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          SHA: ${{ github.sha }}
+          TREE: ${{ github.event.head_commit.tree_id }}
+        run: |
+          reuse=false
+          for head in $(gh api "repos/$REPO/commits/$SHA/pulls" --jq '.[] | select(.merged_at != null) | .head.sha' 2>/dev/null); do
+            head_tree=$(gh api "repos/$REPO/git/commits/$head" --jq .tree.sha 2>/dev/null) || continue
+            [ "$head_tree" = "$TREE" ] || { echo "PR head $head: tree $head_tree differs from $TREE"; continue; }
+            passed=$(gh api "repos/$REPO/commits/$head/check-runs?check_name=Unit%20tests%20(iOS%20simulator)" \
+              --jq '[.check_runs[] | select(.conclusion == "success")] | length' 2>/dev/null) || continue
+            if [ "${passed:-0}" -gt 0 ]; then
+              echo "::notice title=Gate::tree $TREE already passed the gate on PR head $head; not run again"
+              reuse=true
+              break
+            fi
+          done
+          echo "reuse=$reuse" >> "$GITHUB_OUTPUT"
+
   unit-tests:
     # Required by the branch protection of `main` under this exact name.
     name: Unit tests (iOS simulator)
-    # A scheduled run is the suite alone: it runs the unit tests too.
-    if: github.event_name != 'schedule'
+    needs: gate-reuse
+    # A scheduled run is the suite alone: it runs the unit tests too. A merge
+    # whose tree already passed the gate skips it (`gate-reuse`). `!cancelled()`:
+    # `gate-reuse` is skipped everywhere but on `main`, and must not skip this job.
+    if: ${{ !cancelled() && github.event_name != 'schedule' && needs.gate-reuse.outputs.reuse != 'true' }}
     runs-on: [self-hosted, macOS, ARM64, xcode]
     timeout-minutes: 45
     env:
@@ -171,12 +213,13 @@ jobs:
 
   ipa:
     name: Signed IPA
-    needs: [unit-tests, ui-suite]
-    # A skipped `ui-suite` (a push to `main`) does not hold the IPA.
+    needs: [gate-reuse, unit-tests, ui-suite]
+    # A skipped `ui-suite` (a push to `main`) does not hold the IPA, nor a gate
+    # skipped because the merged tree had already passed it (`gate-reuse`).
     # `always()`: without it a skipped need skips this job.
     if: >-
       always()
-      && needs.unit-tests.result == 'success'
+      && (needs.unit-tests.result == 'success' || needs.gate-reuse.outputs.reuse == 'true')
       && (needs.ui-suite.result == 'success' || needs.ui-suite.result == 'skipped')
       && github.ref == 'refs/heads/main'
     runs-on: [self-hosted, macOS, ARM64, xcode]
