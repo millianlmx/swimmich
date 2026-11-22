@@ -272,6 +272,13 @@ final class SyncStatusUITests: XCTestCase {
         return value.isEmpty ? element.label : "\(element.label) \(value)"
     }
 
+    /// The server-check date. The row is a button: its children may be merged
+    /// into the button's own element, whose label then carries the date.
+    private func lastServerCheckText() -> String {
+        let value = tileText("syncStatusLastServerCheckValue")
+        return value.isEmpty ? tileText("syncStatusReconcile") : value
+    }
+
     /// The NUMBER a counter tile renders — its last numeric token. `nil` when
     /// the tile is not on screen, which is what the empty state looks like.
     private func statValue(_ identifier: String) -> String? {
@@ -573,7 +580,7 @@ final class SyncStatusUITests: XCTestCase {
         let year = "\(Calendar.current.component(.year, from: Date()))"
         XCTAssertTrue(tileText("syncStatusLastRunValue").contains(year),
                       "Last run must show the run that just finished (\(year)):\n\(counters())")
-        XCTAssertTrue(tileText("syncStatusLastServerCheckValue").contains(year),
+        XCTAssertTrue(lastServerCheckText().contains(year),
                       "the run confronts the ledger with the server before scanning, so the check has a date too:\n\(counters())")
         shot("s07-sync-status-after-run")
 

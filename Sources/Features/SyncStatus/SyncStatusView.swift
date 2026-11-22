@@ -28,6 +28,7 @@ struct SyncStatusView: View {
                     emptyState
                 } else {
                     countsCard
+                    offlineCard
                     activityCard
                 }
 
@@ -55,6 +56,21 @@ struct SyncStatusView: View {
                 Button("Done") { dismiss() }
                     .fontWeight(.semibold)
                     .accessibilityIdentifier("syncStatusDone")
+            }
+            ToolbarItem(placement: .topBarTrailing) {
+                Menu {
+                    Button(role: .destructive) {
+                        showResetLedgerConfirm = true
+                    } label: {
+                        Label("Reset tracking", systemImage: "arrow.counterclockwise")
+                    }
+                    .accessibilityIdentifier("syncStatusResetLedger")
+                } label: {
+                    Image(systemName: "ellipsis.circle")
+                }
+                .disabled(!vm.canResetLedger)
+                .accessibilityLabel("More actions")
+                .accessibilityIdentifier("syncStatusMoreMenu")
             }
         }
         .task { await vm.refresh() }
@@ -93,8 +109,9 @@ struct SyncStatusView: View {
 
     // MARK: - Counters
 
-    /// The ledger and the current run in eight tiles: what is tracked, what is
-    /// still moving, what the server already had, what failed, what is pinned.
+    /// The ledger and the current run in six tiles: what is tracked, what is
+    /// still moving, what the server already had, what failed. The offline
+    /// cache has its own card (`offlineCard`), next to the action that empties it.
     private var countsCard: some View {
         LazyVGrid(
             columns: [
@@ -140,18 +157,6 @@ struct SyncStatusView: View {
                 systemImage: "exclamationmark.triangle",
                 identifier: "syncStatusFailedValue"
             )
-            StatTile(
-                title: "Offline",
-                value: Text(vm.offlineCount, format: .number),
-                systemImage: "arrow.down.circle",
-                identifier: "syncStatusOfflineValue"
-            )
-            StatTile(
-                title: "Offline size",
-                value: Text(vm.formattedOfflineBytes()),
-                systemImage: "internaldrive",
-                identifier: "syncStatusOfflineBytesValue"
-            )
         }
     }
 
@@ -196,8 +201,80 @@ struct SyncStatusView: View {
                 }
             }
 
-            LabeledContent("Last server check", value: vm.formattedLastServerCheck())
-                .accessibilityIdentifier("syncStatusLastServerCheckValue")
+            lastServerCheckRow
+        }
+        .padding(PVSpacing.s12)
+        .background(Color.bgSecondary, in: RoundedRectangle(cornerRadius: PVRadius.md, style: .continuous))
+    }
+
+    /// The row is the action: tapping the date it shows re-checks the server,
+    /// so the "check" lives next to the figure it refreshes instead of in a
+    /// button stack. The refresh glyph is the only hint it is tappable.
+    private var lastServerCheckRow: some View {
+        Button {
+            Task { await vm.reconcileNow() }
+        } label: {
+            PVAdaptiveStack(spacing: PVSpacing.s8) {
+                Text("Last server check")
+                    .font(.pvBody)
+                    .foregroundStyle(Color.textPrimaryPV)
+                    .multilineTextAlignment(.leading)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                HStack(spacing: PVSpacing.s4) {
+                    Text(vm.formattedLastServerCheck())
+                        .font(.pvBody)
+                        .foregroundStyle(Color.textSecondaryPV)
+                        .multilineTextAlignment(.leading)
+                        .accessibilityIdentifier("syncStatusLastServerCheckValue")
+                    Image(systemName: "arrow.clockwise")
+                        .foregroundStyle(Color.immichPrimary)
+                        .accessibilityHidden(true)
+                }
+            }
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .disabled(!vm.canCheckServer)
+        .accessibilityHint("Checks the server again")
+        .accessibilityIdentifier("syncStatusReconcile")
+    }
+
+    // MARK: - Offline cache
+
+    /// What the offline cache holds, and the one action that empties it. "Purge"
+    /// is absent (not disabled) while the cache is empty. The count and the size
+    /// are two texts so each keeps its own identifier.
+    private var offlineCard: some View {
+        PVAdaptiveStack(vAlignment: .leading, spacing: PVSpacing.s8) {
+            PVAdaptiveStack(vAlignment: .leading, spacing: PVSpacing.s8) {
+                Label("Offline", systemImage: "arrow.down.circle")
+                    .font(.pvBody)
+                    .foregroundStyle(Color.textPrimaryPV)
+                HStack(spacing: PVSpacing.s4) {
+                    Text(vm.offlineCount, format: .number)
+                        .accessibilityIdentifier("syncStatusOfflineValue")
+                    Text("·")
+                        .accessibilityHidden(true)
+                    Text(vm.formattedOfflineBytes())
+                        .accessibilityIdentifier("syncStatusOfflineBytesValue")
+                }
+                .font(.pvBody)
+                .foregroundStyle(Color.textSecondaryPV)
+                .monospacedDigit()
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+
+            if vm.showsOfflinePurge {
+                Button(role: .destructive) {
+                    showClearOfflineConfirm = true
+                } label: {
+                    Text("Purge")
+                        .font(.pvBody)
+                }
+                .buttonStyle(.borderless)
+                .disabled(!vm.canPurgeOffline)
+                .accessibilityIdentifier("syncStatusClearOffline")
+            }
         }
         .padding(PVSpacing.s12)
         .background(Color.bgSecondary, in: RoundedRectangle(cornerRadius: PVRadius.md, style: .continuous))
@@ -271,36 +348,6 @@ struct SyncStatusView: View {
                 .pvProminentButtonStyle()
                 .accessibilityIdentifier("syncStatusRunNow")
             }
-
-            Button {
-                Task { await vm.reconcileNow() }
-            } label: {
-                Label("Check server", systemImage: "arrow.triangle.2.circlepath")
-                    .frame(maxWidth: .infinity)
-            }
-            .buttonStyle(.bordered)
-            .disabled(vm.isRunning)
-            .accessibilityIdentifier("syncStatusReconcile")
-
-            Button(role: .destructive) {
-                showResetLedgerConfirm = true
-            } label: {
-                Label("Reset tracking", systemImage: "arrow.counterclockwise")
-                    .frame(maxWidth: .infinity)
-            }
-            .buttonStyle(.bordered)
-            .disabled(vm.isRunning)
-            .accessibilityIdentifier("syncStatusResetLedger")
-
-            Button(role: .destructive) {
-                showClearOfflineConfirm = true
-            } label: {
-                Label("Purge offline cache", systemImage: "trash")
-                    .frame(maxWidth: .infinity)
-            }
-            .buttonStyle(.bordered)
-            .disabled(vm.isRunning || vm.offlineCount == 0)
-            .accessibilityIdentifier("syncStatusClearOffline")
         }
     }
 
