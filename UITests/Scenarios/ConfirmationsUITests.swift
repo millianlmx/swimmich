@@ -413,6 +413,17 @@ final class ConfirmationsUITests: XCTestCase {
         sleep(4) // the sheet animates in; its Form is not hittable before it does
     }
 
+    /// "Reset tracking" lives in the bar's ⋯ menu, not on the page: open the
+    /// menu, then pick the item (the menu is in the navigation bar, so no scroll).
+    private func openResetLedgerFromMoreMenu() {
+        let more = element("syncStatusMoreMenu")
+        XCTAssertTrue(more.waitForExistence(timeout: 15), "no ⋯ menu on Sync Status — \(screenText())")
+        more.tap()
+        let reset = element("syncStatusResetLedger")
+        XCTAssertTrue(reset.waitForExistence(timeout: 10), "the ⋯ menu has no Reset tracking item — \(screenText())")
+        reset.tap()
+    }
+
     /// Sync Status is the first row of the Me hub: the avatar (which carries the
     /// backup ring in every bar), then the row.
     private func openSyncStatus() {
@@ -720,13 +731,13 @@ final class ConfirmationsUITests: XCTestCase {
         scrollTo("syncStatusTrackedValue")
         XCTAssertEqual(count("syncStatusTrackedValue"), tracked, "the sync status screen disagrees with the Backup screen")
 
-        scrollTo("syncStatusResetLedger").tap()
+        openResetLedgerFromMoreMenu()
         alertWithButtons("syncStatusResetLedgerConfirm", "syncStatusResetLedgerCancel", "resetting the ledger")
         alertButton("syncStatusResetLedgerCancel").tap()
         waitUntilNoAlert("resetting the ledger (Cancel)")
         XCTAssertEqual(count("syncStatusTrackedValue"), tracked, "Cancel changed the tracked count (sync status)")
 
-        scrollTo("syncStatusResetLedger").tap()
+        openResetLedgerFromMoreMenu()
         alertWithButtons("syncStatusResetLedgerConfirm", "syncStatusResetLedgerCancel", "resetting the ledger")
         alertButton("syncStatusResetLedgerConfirm").tap()
         waitUntilNoAlert("resetting the ledger (confirm)")

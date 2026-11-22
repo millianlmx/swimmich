@@ -4272,30 +4272,30 @@
         }
       }
     },
-    "Check server" : {
+    "Checks the server again" : {
       "localizations" : {
         "fr" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Vérifier le serveur"
+            "value" : "Vérifie à nouveau le serveur"
           }
         },
         "de" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Server prüfen"
+            "value" : "Prüft den Server erneut"
           }
         },
         "es" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Comprobar servidor"
+            "value" : "Vuelve a comprobar el servidor"
           }
         },
         "it" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Verifica il server"
+            "value" : "Controlla di nuovo il server"
           }
         }
       }
@@ -10556,6 +10556,34 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Foto del profilo"
+          }
+        }
+      }
+    },
+    "Purge" : {
+      "localizations" : {
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Purger"
+          }
+        },
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Leeren"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Vaciar"
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Svuota"
           }
         }
       }
@@ -43211,6 +43239,34 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Rimuovi dal reel"
+          }
+        }
+      }
+    },
+    "More actions" : {
+      "localizations" : {
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Plus d’actions"
+          }
+        },
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Weitere Aktionen"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Más acciones"
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Altre azioni"
           }
         }
       }

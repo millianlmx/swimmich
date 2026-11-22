@@ -337,7 +337,8 @@ final class ShareAndCachesUITests: XCTestCase {
         clear.tap()
         tapAlertButton("syncStatusClearOfflineConfirm", "no confirmation on Sync Status")
         tapElement("offlinePurgeSucceededDismiss", "no purge result alert on Sync Status", timeout: 30)
-        XCTAssertTrue(waitUntil(timeout: 15) { !clear.isEnabled }, "the purge left offline photos counted on Sync Status")
+        // An empty cache offers no "Purge" at all: the action is gone, not greyed out.
+        XCTAssertTrue(waitUntil(timeout: 15) { !clear.exists }, "the purge left offline photos counted on Sync Status")
         tapElement("syncStatusDone", "no way out of Sync Status")
         XCTAssertTrue(waitUntil(timeout: 10) { !self.element("syncStatusDone").exists }, "Sync Status did not close")
         closeHub()

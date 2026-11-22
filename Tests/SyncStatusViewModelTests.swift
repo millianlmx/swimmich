@@ -278,6 +278,58 @@ final class SyncStatusViewModelTests: XCTestCase {
         XCTAssertFalse(harness.index.isCached("pinned-1"), "the timeline badge forgets it too")
     }
 
+    /// AC-1: "Purge" is offered only while the offline cache holds something,
+    /// and emptying it takes the action away rather than greying it out.
+    func test_AC_1_purgeIsOfferedOnlyWhileTheOfflineCacheIsNotEmpty() async {
+        let (client, source) = library(["c1"])
+        let harness = makeHarness(client: client, source: source)
+        transport.payload = Data(repeating: 0x02, count: 128)
+        await harness.sut.refresh()
+        XCTAssertFalse(harness.sut.showsOfflinePurge, "an empty cache has nothing to purge")
+        XCTAssertFalse(harness.sut.canPurgeOffline)
+
+        await harness.offline.downloadAsset(reactItem("pinned-1"), baseURL: baseURL, token: "tok")
+        await harness.sut.refresh()
+        XCTAssertTrue(harness.sut.showsOfflinePurge)
+        XCTAssertTrue(harness.sut.canPurgeOffline, "idle with a cache: the purge can be confirmed")
+
+        await harness.sut.clearOfflineCache()
+        XCTAssertFalse(harness.sut.showsOfflinePurge, "after the purge the action is gone")
+        XCTAssertFalse(harness.sut.canPurgeOffline)
+    }
+
+    /// AC-1: while a pass runs, none of the secondary actions can start —
+    /// the server check is refused by the view model itself, not only greyed
+    /// out by the view — and all of them come back once the pass is over.
+    func test_AC_1_secondaryActionsAreRefusedWhileARunIsInFlight() async {
+        let (client, source) = library(["c1"])
+        source.exportGate = { _ in try await suspendUntilCancelled() }
+        let h = makeHarness(client: client, source: source)
+        transport.payload = Data(repeating: 0x02, count: 128)
+        await h.offline.downloadAsset(reactItem("pinned-1"), baseURL: baseURL, token: "tok")
+        await h.sut.refresh()
+        XCTAssertTrue(h.sut.canCheckServer)
+        XCTAssertTrue(h.sut.canResetLedger)
+
+        let run = Task { @MainActor in await h.sut.runNow() }
+        await pollUntil("export en vol") { source.exportedIDs.contains("c1") }
+
+        XCTAssertFalse(h.sut.canCheckServer)
+        XCTAssertFalse(h.sut.canResetLedger)
+        XCTAssertFalse(h.sut.canPurgeOffline, "a cache is there, but a run is in flight")
+        XCTAssertTrue(h.sut.showsOfflinePurge, "the action stays visible, only disabled")
+        let revision = h.upload.ledgerRevision
+        await h.sut.reconcileNow()
+        XCTAssertEqual(h.upload.ledgerRevision, revision, "a server check must not start during a run")
+
+        XCTAssertTrue(h.sut.cancelRun())
+        await run.value
+        XCTAssertTrue(h.sut.canCheckServer)
+        XCTAssertTrue(h.sut.canResetLedger)
+        await h.sut.reconcileNow()
+        XCTAssertEqual(h.upload.ledgerRevision, revision + 1, "idle again: the server check goes through")
+    }
+
     /// AC-278: the sync-status screen shows what the cache view model recorded
     /// — a success, then a refusal — and clears it on dismissal.
     func test_AC_278_syncStatusProjectsThePurgeResult() async {
