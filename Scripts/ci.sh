@@ -100,7 +100,10 @@ apply_audit_verdict() {
 }
 
 # The udid of the simulator named "$1", created on first use with the newest
-# installed iOS runtime that Xcode can drive.
+# installed iOS runtime that Xcode can drive and that runs $DEVICE_TYPE. An Xcode
+# image can carry, beside the iOS runtime, a variant of the same version made for
+# one device only (iOS-27-2-iPhone19-4 runs the iPhone-Duo alone): picked for its
+# version, it makes `simctl create` fail with "Incompatible device".
 simulator_udid() {
   local name="$1" found runtime
   found=$(xcrun simctl list devices available -j | python3 -c '
@@ -115,10 +118,13 @@ for devices in json.load(sys.stdin)["devices"].values():
   if [[ -z "$found" ]]; then
     runtime=$(xcrun simctl list runtimes available -j | python3 -c '
 import json, sys
-ios = [r for r in json.load(sys.stdin)["runtimes"] if r["platform"] == "iOS"]
+device = sys.argv[1]
+ios = [r for r in json.load(sys.stdin)["runtimes"] if r["platform"] == "iOS"
+       and ("supportedDeviceTypes" not in r
+            or any(d["identifier"] == device for d in r["supportedDeviceTypes"]))]
 ios.sort(key=lambda r: [int(p) for p in r["version"].split(".")])
 print(ios[-1]["identifier"] if ios else "")
-')
+' "$DEVICE_TYPE")
     [[ -n "$runtime" ]] || { echo "ci.sh: no iOS simulator runtime installed" >&2; return 2; }
     found=$(xcrun simctl create "$name" "$DEVICE_TYPE" "$runtime")
   fi
