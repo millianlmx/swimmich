@@ -109,11 +109,30 @@ WHICH VERSION IT ANNOUNCES, AND WHAT IT SERVES (L-20)
 """
 import json
 import os
+import socketserver
 import sys
 import time
 import zlib
-from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+from http.server import BaseHTTPRequestHandler, HTTPServer, ThreadingHTTPServer
 from urllib.parse import parse_qsl
+
+
+def _bind_without_fqdn(server):
+    """`HTTPServer.server_bind` without its `socket.getfqdn(host)`.
+
+    The standard bind names the server after a reverse lookup of the address it
+    listens on, only to fill `server_name`, which no stub reads. On a Mac whose
+    resolver stalls on that lookup (35 s measured for 127.0.0.1, on the host as
+    in a Tart VM), a stub then starts too late for its launcher. Every stub that
+    serves HTTP imports this module, so the patch covers them all.
+    """
+    socketserver.TCPServer.server_bind(server)
+    host, port = server.server_address[:2]
+    server.server_name = host
+    server.server_port = port
+
+
+HTTPServer.server_bind = _bind_without_fqdn
 
 # MARK: - Fixtures
 

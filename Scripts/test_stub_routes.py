@@ -50,6 +50,18 @@ VERSIONS = [(2, 0, 0), (2, 3, 9), (2, 4, 0), (3, 1, 0), (3, 2, 0), (3, 2, 1), (3
 QUEUE = "thumbnailGeneration"
 
 
+class StubBindTests(unittest.TestCase):
+    def test_bind_never_resolves_the_host_name(self):
+        """`http.server` names a server with `socket.getfqdn`, a reverse lookup that
+        took 35 s on a Mac (host and Tart VM alike): a stub must not wait on it."""
+        with mock.patch("socket.getfqdn", side_effect=AssertionError("socket.getfqdn called")):
+            server = ThreadingHTTPServer(("127.0.0.1", 0), base.StubHandler)
+        self.addCleanup(server.server_close)
+        self.assertEqual(server.server_name, "127.0.0.1")
+        self.assertEqual(server.server_port, server.server_address[1])
+        self.assertGreater(server.server_port, 0)
+
+
 class StubRoutesTests(unittest.TestCase):
     def setUp(self):
         for patcher in (mock.patch.object(base, "router", base.Router()),
