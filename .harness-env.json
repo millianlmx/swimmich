@@ -7,8 +7,10 @@
         "provision": [
           "brew install xcodegen",
           "xcrun simctl list runtimes | grep -q 'iOS 27' || xcodebuild -downloadPlatform iOS",
-          "git clone -q --depth 1 https://github.com/millianlmx/swimmich /tmp/warm && cd /tmp/warm && xcodegen generate --quiet && xcodebuild -project ImmichSwiftUI.xcodeproj -scheme ImmichSwiftUI -clonedSourcePackagesDirPath \"$HOME/Library/Caches/swimmich-ci/SourcePackages\" -resolvePackageDependencies -quiet && rm -rf /tmp/warm"
-        ]
+          "git clone -q --depth 1 https://github.com/millianlmx/swimmich \"$HOME/warm\" && cd \"$HOME/warm\" && { SWIMMICH_CI_UI_SCOPE=gate SWIMMICH_CI_UI_WORKERS=2 Scripts/ci.sh || echo 'préchauffage : la porte a échoué, ses caches restent'; } && rm -rf \"$HOME/warm\""
+        ],
+        "cpu": 8,
+        "memory": 16384
       },
       "tests": {
         "touched": "git init -q && git add -A && git -c user.name=omp -c user.email=omp@harness commit -qm arbre --no-verify && git update-ref refs/remotes/origin/main HEAD && SWIMMICH_CI_UI_SCOPE=gate SWIMMICH_CI_UI_WORKERS=2 Scripts/ci.sh",
